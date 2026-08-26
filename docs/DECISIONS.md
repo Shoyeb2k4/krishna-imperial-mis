@@ -402,3 +402,100 @@ in spec §30.
 **Consequences:** Documents written against v1.0 semantics — in particular D-005's
 void claim and D-007's single-engine claim — are superseded, not deleted. History stays
 readable.
+
+---
+
+# Phase 1 — Foundation decisions (2026-08-26)
+
+## D-029 — Application identity: "Krishna Imperial MIS" / `in.krishnaimperial.mis`
+**Date:** 2026-08-26 · **Status:** Accepted (owner decision)
+**Context:** The Android application id is effectively permanent. Changing it after
+installation or publication forces an uninstall/reinstall and destroys local data,
+including any unsynced offline entries. Phase 1 initialisation was deliberately blocked
+until the owner decided, rather than inventing an identifier and continuing.
+**Decision:** Display name **Krishna Imperial MIS**; application id
+**`in.krishnaimperial.mis`**. Flavours append suffixes so all three coexist on one
+device: `in.krishnaimperial.mis.dev`, `.staging`, and the bare id for production, with
+per-flavour launcher labels.
+**Consequences:** The Dart package remains `krishna_mis` for readability; the Android
+`namespace` and `applicationId` are set explicitly rather than being derived from it.
+Windows carries the same product identity in its executable metadata and window title.
+
+## D-030 — Encryption via package:sqlite3 build hooks and the SQLite3MultipleCiphers build
+**Date:** 2026-08-26 · **Status:** Accepted — **supersedes the `sqlcipher_flutter_libs`
+mechanism named in D-010/D-022**; the encryption requirement itself is unchanged.
+**Context:** `sqlcipher_flutter_libs` is **end-of-life**: version 0.7.0+eol contains no
+code at all. `package:sqlite3` 3.x now selects its native SQLite build through Dart build
+hooks, offering upstream SQLite, SQLCipher, or SQLite3MultipleCiphers.
+**Decision:** `pubspec.yaml` declares `hooks.user_defines.sqlite3.source: sqlite3mc`.
+The database is opened with `PRAGMA key = "x'<64 hex>'"`, passing the raw 256-bit key
+rather than a passphrase to be derived.
+**Reason:** SQLite3MultipleCiphers provides AES-256 (including a SQLCipher-compatible
+cipher) uniformly on Android and Windows, and — unlike the SQLCipher build — does not
+link OpenSSL on either platform, which removes a substantial build dependency from a
+product that must compile for two targets for years. The SQLCipher build also lags the
+current SQLite version.
+**Alternatives:** `source: sqlcipher` (OpenSSL linkage, older SQLite); staying on
+`sqlcipher_flutter_libs` (dead package); plaintext local storage (unacceptable).
+**Consequences:** The encryption is **proven, not assumed**. A test asserts that
+`PRAGMA key` genuinely encrypts — so a silent fallback to the plain SQLite build fails
+the build rather than shipping a readable database. Verified on the Windows host and on
+an Android device: the file does not start with `SQLite format 3`, vendor names and
+amounts do not appear in the raw bytes, and a wrong key raises rather than returning an
+empty database. Native binaries are fetched at build time from the package's releases;
+`url_pattern` allows an internal mirror if that ever becomes a requirement.
+
+## D-031 — `flutter_secure_storage` pinned to 9.2.4; Windows needs the Visual Studio ATL component
+**Date:** 2026-08-26 · **Status:** Accepted, with a recorded toolchain blocker
+**Context:** Two findings, both from actually building rather than from reading docs —
+which is exactly what `ARCHITECTURE.md` §8.3 required of Phase 1.
+1. `flutter_secure_storage` 11.x requires `compileSdk 37`. This machine has Android SDK
+   36, and the AAR metadata check fails the Android build outright.
+2. **Every** version of `flutter_secure_storage_windows` (3.1.2 and 4.2.2 both checked)
+   includes `<atlstr.h>`, so the Windows build requires the **C++ ATL** component of
+   Visual Studio. This installation of Build Tools 2026 does not have it, and the
+   Windows build fails with `C1083: Cannot open include file: 'atlstr.h'`.
+**Decision:** Pin to `flutter_secure_storage: 9.2.4`, which builds against SDK 36, and
+request `AndroidOptions(encryptedSharedPreferences: true)` explicitly so the key is held
+in EncryptedSharedPreferences with its master key in the Android Keystore. Record the
+ATL requirement as a one-time build-machine prerequisite for Windows.
+**Alternatives considered:** Installing Android SDK 37 (possible, but pulls the whole
+toolchain forward for one package); replacing the package with a hand-written Windows
+DPAPI FFI store (would not help — merely *depending* on the package builds its Windows
+plugin, so avoiding ATL means dropping it on Android too and hand-writing Keystore
+access, which is far more security-sensitive code than this problem warrants); patching
+the dependency to remove the ATL include (forking a security package — rejected).
+**Consequences:** Android builds and runs today. **The Windows build is blocked** until
+the ATL component is installed — one action in the Visual Studio Installer, recorded in
+`PROJECT_STATUS.md` under owner actions and in `README.md` as a prerequisite. Nothing
+about the design changes; this is a build-machine gap, found in Phase 1 exactly as
+intended rather than near release.
+
+## D-032 — Riverpod 3 without code generation
+**Date:** 2026-08-26 · **Status:** Accepted — **amends D-009**
+**Context:** D-009 chose "Riverpod 2 + riverpod_generator". In practice
+`riverpod_generator` and `drift_dev` cannot currently be resolved together: they require
+incompatible `analyzer` majors, and `riverpod_lint`/`custom_lint` drag in an `analyzer`
+old enough to demand an SDK-provided `macros` package that no longer exists.
+**Decision:** Use **Riverpod 3.4.2 with hand-written providers**. `drift_dev` keeps its
+code generation, because Drift's table classes genuinely need it.
+**Reason:** Drift codegen is load-bearing; Riverpod codegen is convenience. Given a
+forced choice, the convenience goes. Hand-written providers are perfectly maintainable
+and remove `build_runner` from the edit loop for most feature work.
+**Consequences:** Providers are declared explicitly. `riverpod_lint` is deferred until
+the analyzer conflict clears upstream; revisit at Phase 2.
+
+## D-033 — Local timestamps stored as ISO-8601 UTC text
+**Date:** 2026-08-26 · **Status:** Accepted
+**Context:** Drift's default stores `DateTime` as unix seconds and hands the value back
+in the **device's local zone**. A test caught this immediately: a timestamp written as
+`09:00Z` came back as `14:30` with no zone attached.
+**Decision:** `DriftDatabaseOptions(storeDateTimeAsText: true)`, so instants are stored
+as ISO-8601 UTC text and always read back as UTC.
+**Reason:** In a financial system a timestamp that changes meaning with the reader's
+timezone is a defect waiting to happen — the same row would read differently on a laptop
+set to another zone, and a value written as UTC would come back wearing a local label.
+Business *dates* are a separate concept entirely and carry no time at all
+(see `BusinessDate`).
+**Consequences:** Applied before any data exists, so no migration is required. Server
+timestamps remain authoritative; the device clock is forensic metadata only.

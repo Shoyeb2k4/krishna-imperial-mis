@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The local database holds company financial history and is encrypted with a key held in
+  the Android Keystore. That key is never backed up, so a restored database would be
+  unreadable anyway. Excluding everything keeps financial data off cloud backups entirely.
+  See docs/ARCHITECTURE.md §8.1.
+-->
+<full-backup-content>
+    <exclude domain="database" />
+    <exclude domain="sharedpref" />
+    <exclude domain="file" />
+</full-backup-content>

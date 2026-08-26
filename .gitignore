@@ -80,3 +80,7 @@ desktop.ini
 scratch/
 tmp/
 *.log
+
+# Environment config: examples are committed, real values never are.
+config/*.json
+!config/*.example.json
