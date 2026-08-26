@@ -1,0 +1,82 @@
+# ── Secrets and credentials — never commit ─────────────────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.p12
+*.jks
+*.keystore
+key.properties
+android/key.properties
+service-account*.json
+supabase/.temp/
+**/secrets/
+*.local.dart
+config/*.local.*
+
+# ── Flutter / Dart ─────────────────────────────────────────────────────────────
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+pubspec.lock.bak
+doc/api/
+coverage/
+*.iml
+
+# Generated code is committed for reproducible CI (see DECISIONS.md D-009),
+# except analyser/build caches:
+.build_runner.build_script.dart
+.build_runner.state
+
+# ── Android ────────────────────────────────────────────────────────────────────
+android/.gradle/
+android/local.properties
+android/captures/
+android/app/release/
+android/app/debug/
+android/app/profile/
+*.apk
+*.aab
+*.aar
+
+# ── Windows ────────────────────────────────────────────────────────────────────
+windows/flutter/ephemeral/
+windows/**/Generated.props
+*.exe
+*.msix
+*.msixbundle
+installer/output/
+
+# ── iOS / macOS / Linux / Web (not targets, but keep the tree clean) ───────────
+ios/Pods/
+ios/.symlinks/
+macos/Pods/
+macos/Flutter/ephemeral/
+linux/flutter/ephemeral/
+
+# ── Local databases and user data ──────────────────────────────────────────────
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# ── Editors and OS ─────────────────────────────────────────────────────────────
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/launch.json
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Scratch ────────────────────────────────────────────────────────────────────
+scratch/
+tmp/
+*.log
