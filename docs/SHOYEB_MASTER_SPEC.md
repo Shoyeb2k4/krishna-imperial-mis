@@ -129,10 +129,42 @@ The June salary example: `business_date = 2026-06-30`,
 `accounting_period = 2026-06-01 … 2026-06-30`, `pnl_date = 2026-06-30` → June P&L;
 `payment_status = paid`, `payment_date = 2026-07-05` → July cash outflow.
 
-**No proration across months in V1.** A cost whose accounting period spans two months
-lands entirely in the month of `accounting_period_end`. This is a stated management
-simplification, not an oversight; it is recorded as open question Q10 for the owner to
-confirm or correct.
+### 5.2.1 Cross-period allocation (owner decision, D-034)
+
+There is **no universal closing-month rule.** By default the full amount belongs to the
+one accounting period above, and that stays the fast, normal workflow — an expense dated
+18 June is entirely June's.
+
+Where a cost genuinely spans periods — electricity across two months, an annual
+subscription, insurance, rent, an AMC or maintenance contract, a prepaid operating cost —
+an **authorised** user may deliberately allocate it across more than one accounting
+period:
+
+```
+Electricity invoice  ₹60,000     service period 15 May – 14 June
+  ├── May   ₹30,000
+  └── June  ₹30,000
+```
+
+Rules:
+- Optional. Absent, the expense behaves exactly as the default above.
+- Period allocations attach to an **expense allocation line**, so a shared *and*
+  cross-period bill splits on both dimensions without either mechanism special-casing
+  the other.
+- `SUM(period allocations) = the allocation line's amount`, enforced in the database.
+  **No paise may disappear or be duplicated.**
+- Gated by the `expense.allocate_periods` capability — finance and owner roles only.
+- Every allocation is audited, and each target period is checked against period locks
+  and the edit window individually.
+- Reporting uses period allocations where they exist, and the expense's own accounting
+  period otherwise.
+
+Day-count proration, if added later, is an **explicit helper that proposes a split for
+the user to accept or edit** — never a hidden or irreversible assumption.
+
+This is a management attribution mechanism. It is **not** a general ledger: no journal
+entries, no prepaid or accrual accounts, no accrual reversals, no statutory accounting
+(§29).
 
 ### 5.3 What each report uses
 

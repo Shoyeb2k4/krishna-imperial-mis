@@ -499,3 +499,50 @@ Business *dates* are a separate concept entirely and carry no time at all
 (see `BusinessDate`).
 **Consequences:** Applied before any data exists, so no migration is required. Server
 timestamps remain authoritative; the device clock is forensic metadata only.
+
+## D-034 — Cross-period expense allocation is optional, explicit, and exact
+**Date:** 2026-08-27 · **Status:** Accepted (owner decision, answering Q10)
+**Context:** The Phase 0 simplification — a cost spanning two months lands wholly in the
+month of `accounting_period_end` — was put to the owner as Q10 and **rejected**. A
+universal closing-month rule would misstate any bill that genuinely spans a boundary.
+**Decision:** Two behaviours, one model.
+
+*Default (the fast, normal path).* Every expense has a canonical business date and
+optional accounting period. With no period allocation supplied, the **full** amount
+belongs to that one accounting period. ₹12,000 dated 18 June is ₹12,000 in June. Nothing
+about ordinary entry changes, and no extra field appears in the fast path.
+
+*Optional cross-period allocation.* An authorised user may deliberately spread an expense
+across more than one accounting period where economically appropriate — electricity
+spanning two months, annual subscriptions, insurance, maintenance contracts, rent, AMC,
+prepaid operating costs. A ₹60,000 invoice for 15 May – 14 June may be allocated
+₹30,000 / ₹30,000, or by any other deliberate split.
+
+**Invariants:**
+- Period allocations attach to an **expense allocation line**, so cross-period and
+  cross-business-unit splitting compose without either mechanism knowing about the other.
+- `SUM(period allocations) = the allocation line's amount` is enforced by a deferred
+  constraint trigger. **No paise may disappear or be duplicated.**
+- Gated by its own capability (`expense.allocate_periods`), held by finance and owner
+  roles only — not by Manager or Data Entry.
+- Every period allocation and every change to one is audited.
+- Each target period is checked against period locks and the edit window individually: a
+  split touching a closed month is refused like any other write into it.
+
+**Reporting rule:** where period allocations exist, reports use them; otherwise they use
+the expense's own accounting period. Uniform, with no special case in the query — see
+`DATABASE_SCHEMA.md` §5.1 and `ARCHITECTURE.md` §6.2.
+
+**Explicitly not in V1 (spec §29):** no general ledger, no automatic journal entries, no
+prepaid or accrual accounts, no accrual reversals, no statutory accounting. This is a
+management attribution mechanism, not double-entry.
+
+**Day-count proration:** if added later it must be an **explicit helper that proposes a
+split for the user to accept or edit**, shown before it is applied and revisable
+afterwards — never a hidden or irreversible assumption. The suggestion uses
+largest-remainder distribution so a proposed split already reconciles exactly.
+
+**Consequences:** `ARCHITECTURE.md` §12 limitation 2 is withdrawn — the closing-month
+approximation no longer exists. `expense_period_allocations` is added to the schema. The
+capability catalogue gains `expense.allocate_periods`. Ordinary expenses stay exactly as
+simple as they were.

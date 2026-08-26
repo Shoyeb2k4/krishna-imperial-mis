@@ -1,7 +1,7 @@
 # Project Status
 
 Directive: SHOYEB-HOSPITALITY-MIS · **Master Spec v1.1**
-Last updated: **2026-08-26**
+Last updated: **2026-08-27**
 
 > A new session should be able to read this file and know exactly where work stopped.
 > This file — not chat history — is the checkpoint.
@@ -10,11 +10,17 @@ Last updated: **2026-08-26**
 
 ## Current phase
 
-**Phase 1 — Foundation.** Substantially complete and verified, with **one open item**:
-the Windows build is blocked on a missing Visual Studio component (see *Blockers*).
-Everything else in the Phase 1 brief is implemented and tested.
+**Phase 1 — Foundation. NOT complete.** Every Phase 1 item is implemented and verified
+except the Windows gates, which remain **blocked**: the Visual Studio Build Tools
+installation is in a failed state (`isComplete: false`) after the ATL modify was cancelled
+mid-run. ATL itself is now present; the installation around it did not finish.
+Phase 1 is **not** marked complete, because the instruction was explicit — Windows is not
+verified merely because host tests pass.
 
-Phase 0 is complete, approved, and committed (`3a4502f`).
+Phase 2 — Masters & Permissions has begun in parallel, since none of it depends on the
+Windows build.
+
+Phase 0 is complete, approved and committed (`3a4502f`).
 
 ## Completed
 
@@ -65,7 +71,9 @@ Phase 0 is complete, approved, and committed (`3a4502f`).
 
 ## In progress
 
-Nothing. Phase 1 is at its verification gate, pending the Windows toolchain component.
+- **Phase 2 — Masters & Permissions.** Started, since it depends on nothing that is
+  blocked. See the Phase 2 section below.
+- Phase 1's Windows gate is parked awaiting the owner's toolchain fix.
 
 ## Verified
 
@@ -86,7 +94,7 @@ Blocked.**
 | Routing shells, both platforms | **Tested** | 8 widget tests |
 | Android debug build (dev flavour) | **Tested** | `app-dev-debug.apk` built |
 | App starts on Android | **Tested** | installed and executed on emulator by the integration suite |
-| Windows desktop build | **Blocked** | missing Visual Studio ATL component — see below |
+| Windows desktop build | **Blocked** | Visual Studio install incomplete — see Blockers |
 | App starts as a Windows executable | **Blocked** | depends on the Windows build |
 | Windows-host execution of domain/data layers | **Tested** | the 105-test suite runs on Windows against the Windows native SQLite build |
 | Backend, auth, financial modules | **Not implemented** | later phases, by design |
@@ -102,14 +110,27 @@ Blocked.**
 
 ## Blockers
 
-1. **Windows build — missing Visual Studio C++ ATL component.**
-   `flutter_secure_storage_windows` includes `<atlstr.h>`; every version of the package
-   does. Without ATL the Windows build fails with
-   `C1083: Cannot open include file: 'atlstr.h'`. This is a one-time build-machine
-   prerequisite, not a design problem, and it was found in Phase 1 exactly as
-   `ARCHITECTURE.md` §8.3 intended. **Owner action required — see below.**
+1. **Windows build — the Visual Studio installation is in a failed state.**
+   The ATL component *is* now installed: `atlstr.h` is present under
+   `VC/Tools/MSVC/14.51.36231/atlmfc/include`. But the modify that added it was cancelled
+   part-way. The installer log records:
+
+   ```
+   00:09:02  Showing error: It looks like you're installing or
+             modifying another product right now.
+   00:09:03  Error 0x8013153b: TaskCanceledException - A task was canceled.
+   ```
+
+   `vswhere` now reports `isComplete: false`, `isLaunchable: false`
+   (`isRebootRequired: false`), so `flutter doctor` says *"The current Visual Studio
+   installation is incomplete"* and the build stops at *"Unable to find suitable Visual
+   Studio toolchain."* An `msiexec` process was still resident, which is the usual cause
+   of the "another product" error. **Owner action required — see below.** This is a
+   build-machine state problem, not a code or design problem.
 2. **Backend not provisioned.** No Supabase project exists. Deliberate. Blocks
-   authentication wiring and all of Phase 2.
+   authentication wiring and the Postgres/RLS half of Phase 2. The domain model, local
+   schema, capability engine and period-lock engine are all buildable and testable
+   without it, and that is what Phase 2 is building now.
 
 ## Deferred (by design)
 
@@ -124,35 +145,34 @@ Blocked.**
 
 ## Next exact task
 
-1. **Owner installs the C++ ATL component** (below), then:
-   `flutter build windows --debug` and
-   `flutter test integration_test/encrypted_storage_test.dart -d windows`
-   to close the last Phase 1 verification gate.
-2. Begin **Phase 2 — Masters & Permissions**: the master-data schema and migrations, the
-   capability model with mandatory business-unit scope (D-025), and the period-lock
-   enforcement path (D-026) — all buildable and testable locally before any backend
-   exists.
+1. **Owner completes the Visual Studio installation** (below). Then, unattended:
+   `flutter build windows --debug`, launch the executable, verify the shell renders, and
+   run `flutter test integration_test/encrypted_storage_test.dart -d windows`, which now
+   also covers key persistence across restart, wrong-key refusal, absence of a plaintext
+   financial marker in raw bytes, and the documented logout / key-destruction behaviour.
+   Only then is Phase 1 marked **COMPLETE**.
+2. Continue **Phase 2 — Masters & Permissions** (already under way).
 
 ## Open questions for Shoyeb
 
-**Q10 — Costs spanning two accounting months (non-blocking).** An electricity bill
-covering 15 May – 14 June currently lands **entirely in June** (the month of
-`accounting_period_end`). No proration is performed in V1. Confirm this is acceptable, or
-state the split rule you want.
+**None open.**
 
-*Resolved:* Q1 → D-016 · Q2 → D-017 · Q3 → D-018 · Q4 → D-019 · Q5 → D-023 ·
+*Resolved:* Q10 (cross-period expenses) -> **D-034**: no universal closing-month rule; the
+default stays "whole amount in its own accounting period", with optional, authorised,
+exactly-reconciling cross-period allocation for bills that genuinely span months. · Q1 → D-016 · Q2 → D-017 · Q3 → D-018 · Q4 → D-019 · Q5 → D-023 ·
 Q6 → D-024 · Q7 → D-025 · Q8 → D-026 · Q9 → D-027 · Q11 (application identity) → D-029.
 
 ## Owner actions required
 
-1. **Install the Visual Studio C++ ATL component** (unblocks the Windows build):
-   - Open **Visual Studio Installer** (Start menu).
-   - On **Visual Studio Build Tools 2026**, click **Modify**.
-   - Go to the **Individual components** tab.
-   - Search for `ATL` and tick **"C++ ATL for latest build tools (x86 & x64)"**.
-   - Click **Modify** and let it install (a few minutes).
-   - Tell me when it is done and I will build and verify Windows.
-2. Answer Q10 when convenient. It affects month-boundary figures only.
+1. **Finish the interrupted Visual Studio installation** (unblocks the Windows build).
+   ATL is already on disk; the install session simply needs to complete.
+   - **Restart the machine first.** That clears the resident `msiexec` which caused
+     *"you're installing or modifying another product right now"*.
+   - Open **Visual Studio Installer**. It should offer **Repair**, **Continue** or
+     **Update** on *Visual Studio Build Tools 2026* — take it and let it run to the end.
+   - Confirm: `flutter doctor` shows a green tick for Visual Studio with no "incomplete"
+     line.
+   - Tell me, and I will build, launch and verify Windows unattended.
 
 No infrastructure is to be created yet. **You will never be asked to paste a password,
 service-role key, database password, private key or signing password into chat.**
@@ -181,10 +201,10 @@ Windows host and an Android device. No Postgres migrations exist yet;
 
 ## Last important decision
 
-**D-030 — encryption via `package:sqlite3` build hooks with the SQLite3MultipleCiphers
-build**, replacing the now end-of-life `sqlcipher_flutter_libs`. Encryption is asserted by
-tests rather than assumed: if the plain SQLite build were ever silently substituted, the
-suite fails instead of shipping a readable database.
+**D-034 — cross-period expense allocation is optional, explicit and exact.** Ordinary
+expenses stay simple; a bill that genuinely spans months may be split by an authorised
+user, and the split must reconcile to the paisa. The closing-month approximation is
+withdrawn.
 
 ## Master Spec version
 

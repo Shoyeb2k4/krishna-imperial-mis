@@ -94,6 +94,7 @@ visible, auditable and revocable one property at a time.
 ```
 expense.view.own        expense.view.all        expense.create
 expense.edit.own        expense.edit.all        expense.void
+expense.allocate_periods                         -- cross-period allocation (D-034)
 revenue.view            revenue.create          revenue.edit          revenue.void
 transaction.correct.beyond_window                -- edit outside the 7-day window
 transaction.correct.business_date                -- change a derived business date
@@ -328,6 +329,52 @@ expense_allocations (
 5. Percentage splits are computed with **largest-remainder distribution** so a split of an
    odd amount still sums exactly to the header total, to the paisa.
 
+### 5.1 Cross-period allocation (optional, D-034)
+
+By default an allocation line sits wholly in its own `pnl_period_key`, and that is the
+normal, fast path. Where a cost genuinely spans accounting periods, an authorised user may
+split it — and the split hangs off the **allocation line**, so cross-business-unit and
+cross-period splitting compose without either knowing about the other.
+
+```sql
+expense_period_allocations (
+  id uuid pk,
+  org_id uuid not null,
+  expense_allocation_id uuid not null
+      references expense_allocations(id) on delete restrict,
+  pnl_period_key text not null,          -- 'YYYY-MM'
+  pnl_date date not null,                -- representative date inside that period
+  amount_minor bigint not null check (amount_minor > 0),
+  basis text not null default 'manual'
+      check (basis in ('manual','day_count_suggested')),
+  note text,
+  line_no int not null,
+  created_by uuid not null, created_at timestamptz not null default now(),
+  unique (expense_allocation_id, pnl_period_key),
+  unique (expense_allocation_id, line_no)
+)
+```
+
+Enforced in the database, not the UI:
+
+6. `CONSTRAINT TRIGGER ... DEFERRABLE INITIALLY DEFERRED` asserting, for any allocation
+   line that has period rows at all,
+   `SUM(expense_period_allocations.amount_minor) = expense_allocations.amount_minor`.
+   **No paise may disappear or be duplicated.** A line with no period rows is valid and
+   means "wholly in my own period".
+7. `pnl_date` must fall inside `pnl_period_key`, and `pnl_period_key` must be a real
+   `YYYY-MM`.
+8. The `expense.allocate_periods` capability is required to create or change these rows —
+   finance and owner roles only, never Manager or Data Entry.
+9. **Each target period is checked separately** against `period_locks` and the edit
+   window. A split that touches a closed month is refused exactly like any other write
+   into it, with the same `period_closed` error.
+10. Every insert, change and removal writes an `audit_logs` row.
+
+Day-count proration is **not** implemented. If it is added it must propose a split for
+the user to accept or edit — largest-remainder distributed so the proposal already
+reconciles exactly — never applied silently (D-034).
+
 ```sql
 expense_attachments (
   id uuid pk, org_id uuid not null,
@@ -487,6 +534,8 @@ expense_allocations  (org_id, business_unit_id, pnl_date)
 expense_allocations  (org_id, category_id, pnl_date)
 expense_allocations  (org_id, business_date)          -- ledger / edit window
 expense_allocations  (expense_id)
+expense_period_allocations (expense_allocation_id)
+expense_period_allocations (org_id, pnl_period_key)
 expenses             (org_id, business_date desc), (org_id, pnl_period_key)
 expenses             (org_id, payment_status, payment_date)   -- cash view, unpaid list
 expenses             (org_id, vendor_id, business_date), (org_id, status)
@@ -531,10 +580,32 @@ same shapes; **neither performs business arithmetic** — no tax extraction, no 
 margins. Those live in shared Dart.
 
 ```
-v_expense_lines    -- active allocation lines + full master path + all four dates
-v_revenue_lines    -- active revenue entries + unit + category + tax snapshot
+v_expense_period_lines  -- THE expense reporting surface (see below)
+v_revenue_lines         -- active revenue entries + unit + category + tax snapshot
 -- primitive aggregate queries, parameterised by date basis, range, unit scope, grouping
 ```
+
+`v_expense_period_lines` resolves D-034 in one place, so no report carries a special
+case. Each active allocation line contributes either one row at its own period, or one
+row per period allocation:
+
+```sql
+-- lines with no period allocations: wholly their own period
+select a.*, a.pnl_period_key, a.pnl_date, a.amount_minor
+  from expense_allocations a
+ where a.status = 'active'
+   and not exists (select 1 from expense_period_allocations p
+                    where p.expense_allocation_id = a.id)
+union all
+-- lines split across periods: one row each, summing to the line exactly
+select a.*, p.pnl_period_key, p.pnl_date, p.amount_minor
+  from expense_allocations a
+  join expense_period_allocations p on p.expense_allocation_id = a.id
+ where a.status = 'active';
+```
+
+Because the sum invariant is enforced at write time, this view always totals to the
+source expense — split or not.
 
 Drill-down is always `aggregate → v_expense_lines / v_revenue_lines → source document`.
 

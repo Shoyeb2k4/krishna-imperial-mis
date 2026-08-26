@@ -43,11 +43,11 @@ record. Both apps converge on Postgres through the sync engine described in §5.
 |---|---|---|
 | Framework | Flutter 3.44.x, Dart 3.12.x | verified present on this machine |
 | Targets | Android, Windows | no web/PWA target is generated |
-| State | Riverpod 2 + `riverpod_generator` | compile-time safe providers, testable |
+| State | Riverpod 3, hand-written providers | see D-032: `riverpod_generator` conflicts with `drift_dev` on `analyzer` |
 | Routing | `go_router` | declarative routes, auth redirect guard |
 | Local DB | Drift + SQLite | typed SQL, migrations, streaming queries |
-| Local encryption | SQLCipher (`sqlcipher_flutter_libs`) | **must be proven on both platforms in Phase 1** — see §8.3 |
-| Secure storage | `flutter_secure_storage` | Android Keystore / Windows DPAPI-backed |
+| Local encryption | SQLite3MultipleCiphers via `package:sqlite3` build hooks | D-030; `sqlcipher_flutter_libs` is end-of-life. Proven on both platforms — §8.3 |
+| Secure storage | `flutter_secure_storage` **9.2.4** | Android Keystore / Windows DPAPI. Pinned and needs VS ATL on Windows — D-031 |
 | Backend SDK | `supabase_flutter` | auth session, PostgREST, RPC, Storage |
 | Time zones | `timezone` (IANA database) | DST-safe business-date derivation |
 | Money | project `Money` value object over `int` paise | no `double` anywhere |
@@ -113,7 +113,7 @@ Per spec §5 and §9, four date concepts are distinct and all are persisted:
 |---|---|---|
 | `captured_at` | device instant | forensics only, never authoritative |
 | `business_date` | derived from `captured_at` + unit timezone + cut-off, or entered/corrected | ledger, daily views, edit window |
-| `pnl_date` / `pnl_period_key` | `COALESCE(accounting_period_end, business_date)`, computed once and stored | **all profitability reporting** |
+| `pnl_date` / `pnl_period_key` | `COALESCE(accounting_period_end, business_date)`, computed once and stored | **all profitability reporting**, unless the line carries explicit period allocations (D-034) |
 | `payment_date` | entered when `payment_status = paid` | cash/outflow reporting only |
 
 Derivation happens once, in shared domain code, and the result is stored. No report
@@ -506,8 +506,10 @@ transaction detail → audit history.
 
 1. Pull cursor uses `change_seq` with a safety overlap rather than snapshot-based
    cursors (§5.2). Adequate at this concurrency; upgrade path documented.
-2. Costs spanning two accounting months are not prorated; they land in the month of
-   `accounting_period_end` (spec §5.2, open question Q10).
+2. ~~Costs spanning two accounting months are not prorated.~~ **Withdrawn 2026-08-27**
+   by D-034: optional, authorised, exactly-reconciling cross-period allocation is part of
+   the model. Automatic day-count proration remains deliberately absent — when added it
+   must propose rather than assume.
 3. Partial payment is not modelled; `payment_status` is `unpaid` or `paid` (spec §5.4).
 4. Windows local-key protection relies on DPAPI, which is user-account-bound rather than
    hardware-bound (§8.1).

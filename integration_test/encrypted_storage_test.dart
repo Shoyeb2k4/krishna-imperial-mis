@@ -18,6 +18,7 @@ import 'package:integration_test/integration_test.dart';
 import 'package:krishna_mis/data/local/app_database.dart';
 import 'package:krishna_mis/data/local/database_key_manager.dart';
 import 'package:krishna_mis/data/local/encrypted_database.dart';
+import 'package:krishna_mis/data/local/local_data_lifecycle.dart';
 import 'package:krishna_mis/data/sync/outbox_repository.dart';
 import 'package:krishna_mis/domain/sync/pending_mutation.dart';
 import 'package:krishna_mis/domain/sync/sync_state.dart';
@@ -123,6 +124,84 @@ void main() {
       expect(asText.startsWith('SQLite format 3'), isFalse);
       expect(asText, isNot(contains('Sharma Traders')));
     });
+
+    test('a plaintext financial marker never appears in the raw bytes', () async {
+      // A concrete, searchable marker rather than a generic string, so this fails loudly
+      // if encryption is ever silently turned off on this platform.
+      const marker = 'KRISHNA-PLAINTEXT-MARKER-18400';
+      final db = await openEncryptedDatabase();
+      await db
+          .into(db.appMeta)
+          .insert(
+            AppMetaCompanion.insert(
+              key: 'plaintext_probe',
+              value: marker,
+              updatedAt: DateTime.now().toUtc(),
+            ),
+          );
+      await db.close();
+
+      final asText = String.fromCharCodes(
+        (await resolveDatabaseFile()).readAsBytesSync(),
+      );
+      expect(
+        asText,
+        isNot(contains(marker)),
+        reason: 'financial plaintext is readable on disk on $platform',
+      );
+    });
+
+    test(
+      'logging out keeps queued work; erasing refuses while it is pending',
+      () async {
+        final db = await openEncryptedDatabase();
+        final outbox = OutboxRepository(db);
+        final lifecycle = LocalDataLifecycle(
+          outbox: outbox,
+          keyManager: DatabaseKeyManager(),
+        );
+        var sessionsCleared = 0;
+        Future<void> clearSession() async => sessionsCleared++;
+
+        await outbox.enqueue(
+          PendingMutation(
+            mutationId: 'lifecycle-mut-1',
+            entityType: 'expense',
+            entityId: 'lifecycle-exp-1',
+            op: MutationOp.create,
+            payload: const {'amount_minor': 1840000},
+            createdAt: DateTime.now().toUtc(),
+          ),
+          now: DateTime.now().toUtc(),
+        );
+
+        // Sign out keeps everything: the entry exists nowhere else yet.
+        final outcome = await lifecycle.signOut(clearSession: clearSession);
+        expect(sessionsCleared, 1);
+        expect(outcome.localDataRetained, isTrue);
+        expect(outcome.pendingCount, 1);
+        expect((await resolveDatabaseFile()).existsSync(), isTrue);
+        expect(await lifecycle.hasUsableKey(), isTrue);
+
+        // Erase refuses, and refuses totally.
+        await expectLater(
+          lifecycle.eraseLocalData(database: db, clearSession: clearSession),
+          throwsA(isA<UnsyncedDataPending>()),
+        );
+        expect((await resolveDatabaseFile()).existsSync(), isTrue);
+        expect(await lifecycle.hasUsableKey(), isTrue);
+        expect(await outbox.unsyncedCount(), 1);
+
+        // With the queue drained, erasure destroys the database and the key.
+        await outbox.updateStatus('lifecycle-mut-1', status: OutboxStatus.done);
+        await lifecycle.eraseLocalData(
+          database: db,
+          clearSession: clearSession,
+        );
+        expect((await resolveDatabaseFile()).existsSync(), isFalse);
+        expect(await lifecycle.hasUsableKey(), isFalse);
+      },
+    );
 
     test(
       'losing the key makes the database unreadable, as encryption implies',
