@@ -234,17 +234,25 @@ class MasterDetailPanel extends ConsumerWidget {
       await action();
       ref.invalidate(masterGraphProvider);
       ref.invalidate(masterUsageProvider(entry.node.id));
-      messenger?.showSnackBar(SnackBar(content: Text(success)));
+      messenger
+        ?..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(success)));
     } on _Refused catch (error) {
-      messenger?.showSnackBar(SnackBar(content: Text(error.message)));
+      messenger
+        ?..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(error.message)));
     } on MasterWriteRefused catch (error) {
-      messenger?.showSnackBar(SnackBar(content: Text(error.message)));
+      messenger
+        ?..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(error.message)));
     } on HierarchyIntegrityFailure catch (error) {
-      messenger?.showSnackBar(
-        SnackBar(
-          content: Text(error.violations.map((v) => v.message).join(' ')),
-        ),
-      );
+      messenger
+        ?..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(error.violations.map((v) => v.message).join(' ')),
+          ),
+        );
     }
   }
 }

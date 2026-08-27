@@ -65,10 +65,12 @@ void main() {
         findsOneWidget,
       );
 
-      // "More" now opens the real Masters drill-down, not a placeholder.
+      // "More" now opens the real Masters set-up, not a placeholder. A phone picks a
+      // section before drilling into a hierarchy.
       await tester.tap(find.text('More').last);
       await tester.pumpAndSettle();
-      expect(find.text('Business units'), findsOneWidget);
+      expect(find.text('Set-up'), findsOneWidget);
+      expect(find.text('Hierarchy'), findsOneWidget);
     });
 
     testWidgets(

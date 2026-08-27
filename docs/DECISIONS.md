@@ -695,3 +695,30 @@ ordinary inline edit.
 **Consequences:** The Masters UI needs a usage count per master (transactions referencing
 it, with their date range) before the rename dialog can state the impact. That query is a
 Phase 2 deliverable and is listed in `PROJECT_STATUS.md`.
+
+## D-039 — Archiving a parent refuses while it has live children
+**Date:** 2026-08-27 · **Status:** Accepted — **owner may revise; options stated below**
+**Context:** Owner requirement §7 asked for a deliberate, tested rule for what happens to
+active children when a parent master is archived, and for the options to be reported
+before any irreversible semantics were built.
+**Decision:** Archiving refuses while the record has **live children**, naming how many.
+The user archives bottom-up: category, then section, then department. Nothing cascades and
+nothing is reassigned.
+**Why this one:** It is the only option with no destructive or surprising outcome. The
+alternatives were:
+
+| Option | Why not the default |
+|---|---|
+| **Refuse while children are live** *(chosen)* | Slightly tedious for a large subtree, but nothing happens that the user did not ask for, and every step is individually reversible. |
+| Cascade-archive the whole subtree | One click could archive dozens of categories. Reversing it means finding and restoring each one, and a mis-click is expensive. Viable **with an explicit confirmation listing what will be archived** — say the word and it becomes an additional action beside the current one, not a replacement. |
+| Archive the parent and leave children live | Orphans them: a live category hanging off an archived section, still offered in pickers, inside a structure that no longer exists. Rejected outright. |
+| Reassign children to the grandparent | Silently changes the meaning of the hierarchy and therefore of every future report grouped by it. Rejected — this is the reporting-integrity equivalent of a semantic rename (D-038). |
+
+**Nothing about archiving touches history.** An archived master keeps every existing
+reference, stays valid for entries already recorded, is excluded from pickers for new
+ones, and leaves past reports unchanged. Archiving is permitted regardless of how much
+history a record carries — that is precisely what it is for — and only live *children*
+block it. Restore is always available.
+**Consequences:** Implemented in `ArchivePolicy`, enforced by `MasterRepository`, surfaced
+as *"Archive the N records underneath this one first"*, and covered by tests at both the
+domain and UI level.

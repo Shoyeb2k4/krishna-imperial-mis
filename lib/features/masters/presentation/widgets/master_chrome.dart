@@ -239,3 +239,24 @@ class MasterErrorState extends StatelessWidget {
     );
   }
 }
+
+/// A quiet loading placeholder.
+///
+/// Deliberately **not** a spinner. These screens read a local encrypted database and are
+/// usually ready within a frame or two; a spinning indicator would flash and draw the eye
+/// for no reason. A calm line of text also keeps the surface static, which matters more
+/// than it sounds — an indeterminate animation never stops scheduling frames, which makes
+/// the screen impossible to settle in a test and keeps a timer alive after teardown.
+class QuietLoading extends StatelessWidget {
+  const QuietLoading({super.key, this.label = 'Loading…'});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: Padding(
+      padding: const EdgeInsets.all(AppSpacing.xl),
+      child: Text(label, style: AppTypography.bodyMuted),
+    ),
+  );
+}

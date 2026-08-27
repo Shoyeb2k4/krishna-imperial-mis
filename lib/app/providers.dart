@@ -85,14 +85,21 @@ final masterGraphProvider = FutureProvider<MasterGraph>(
   (ref) => ref.watch(masterRepositoryProvider).loadGraph(),
 );
 
-final vendorListProvider = StreamProvider.family<List<Vendor>, bool>(
+/// Vendors and tax rules are read as explicit snapshots and refreshed after a write,
+/// rather than as live query streams.
+///
+/// The repositories still expose `watch()` for whoever needs live updates — sync will —
+/// but a screen that changes only when *this* user changes it does not need a permanently
+/// open query stream, and each one carries a keep-alive timer that makes the surface
+/// impossible to settle deterministically.
+final vendorListProvider = FutureProvider.family<List<Vendor>, bool>(
   (ref, includeArchived) => ref
       .watch(vendorRepositoryProvider)
-      .watch(includeArchived: includeArchived),
+      .list(includeArchived: includeArchived),
 );
 
-final taxRulesProvider = StreamProvider<Map<String, TaxRuleSet>>(
-  (ref) => ref.watch(taxRepositoryProvider).watchAllRules(),
+final taxRulesProvider = FutureProvider<Map<String, TaxRuleSet>>(
+  (ref) => ref.watch(taxRepositoryProvider).allRules(),
 );
 
 /// Usage for one master. Kept out of [masterGraphProvider] because it may reach the

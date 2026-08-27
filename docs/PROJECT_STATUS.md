@@ -14,8 +14,11 @@ Last updated: **2026-08-27**
 were closed by building and **actually running** the compiled desktop application rather
 than inferred from host tests.
 
-**Phase 2 — Masters & Permissions: in progress.** Domain layer, local schema v2,
-repository and seed are done; the Masters UI is next.
+**Phase 2 — Masters & Permissions: local half complete.** Steps 1–3 of the execution
+order (Masters UI, vendor management, date-effective tax configuration) are built and
+tested on both platforms. Steps 4–8 — development Supabase, migrations, RLS/RPC
+server-authoritative enforcement, remote repository and end-to-end verification — are next
+and need the owner to create the development project.
 
 Phase 0 complete and committed (`3a4502f`).
 
@@ -114,8 +117,31 @@ schema and repositories are the next slice.
   from spec §4, Nandbhog as a Crystal Canopy revenue category, five payment methods.
   Re-running changes nothing and does not undo an owner's rename. **No financial data.**
 
-*Next slice:* the masters UI (list, create, rename, archive with the "archive children
-first" message), vendor management, and the tax-rate table (D-017).
+**Masters UI, vendors and tax configuration (steps 1–3) — done and tested (94 tests):**
+- **Windows**: browsable hierarchy with a persistent detail panel, segmented into
+  Hierarchy · Vendors · Tax rules. Search matches name and permanent code and shows the
+  full path. Archived records hidden by default. No modal-dialog stack.
+- **Android**: section list, then a drill-down — Masters → Crystal Canopy → Kitchen →
+  Food Production → Kirana & Pulses — one thumb-reachable level at a time.
+- **Detail view**: name, permanent code, status, parent chain, historical usage,
+  rename/archive/restore. Internal database ids are never shown.
+- **Rename (D-038)**: states the cosmetic-versus-semantic rule with both worked examples,
+  shows real usage, and stays disabled until the name changes **and** the rule is
+  acknowledged. Acknowledgement is required unless the server has positively confirmed no
+  history — a local zero proves nothing.
+- **Usage authority (owner §6)**: `MasterUsage` carries its source. Cached figures say so
+  on screen; only server figures are authoritative; unknown is distinct from zero.
+- **Archive (D-039)**: refuses while live children exist, naming how many. No cascade, no
+  orphaning, no reassignment. History always preserved.
+- **Vendors**: name is the only requirement; optional fields collapsed behind one tap.
+  Duplicate names refused with a useful message. Prefix-ranked search. Archive never
+  deletes.
+- **Tax (D-017)**: a timeline per revenue category. Changing a rate closes the old period
+  and opens a new one atomically — no gap, no overlap, history untouched. No rate is
+  hard-coded.
+
+*Next slice:* steps 4–8 — development Supabase, Postgres migrations, RLS/RPC enforcement,
+remote repository and sync, then end-to-end acceptance on both platforms.
 
 Phase 1's Windows gate is parked awaiting the owner's toolchain fix.
 
@@ -147,7 +173,11 @@ Blocked.**
 | Phase 2 hierarchy integrity, archive, historical labels | **Tested** | 21 tests |
 | Local data lifecycle (sign out / erase / key loss) | **Tested** | 7 host tests + on-device proof |
 | Phase 2 local schema v2, FK enforcement, repository, seed | **Tested** | 25 tests |
-| Phase 2 masters UI, vendors, tax-rate table | **Not implemented** | next slice |
+| Phase 2 Masters UI, both platforms | **Tested** | 20 widget tests |
+| Phase 2 vendors and tax configuration UI | **Tested** | 17 widget tests |
+| Phase 2 tax domain rules and boundaries | **Tested** | 31 tests |
+| Phase 2 tax/vendor/usage repositories | **Tested** | 23 tests |
+| Phase 2 backend, RLS/RPC, remote sync | **Not implemented** | needs the development Supabase project |
 | Backend, auth, financial modules | **Not implemented** | later phases, by design |
 
 ## Known issues
@@ -235,19 +265,23 @@ Q6 → D-024 · Q7 → D-025 · Q8 → D-026 · Q9 → D-027 · Q11 (application
 
 ## Owner actions required
 
-**None.** The Visual Studio installation is complete and verified: `flutter doctor` green,
-`vswhere` `isComplete: true`, ATL registered.
+1. **Create the development Supabase project** — the only thing blocking Phase 2 steps
+   4–8. Exact steps are in the checkpoint report; nothing secret is ever pasted into chat,
+   and only the project URL and the publishable/anon key are needed.
+2. **Optional decision:** whether archiving should also offer a *confirmed* cascade for a
+   whole subtree (D-039). The safe bottom-up rule is implemented and tested; a cascade
+   would be an additional action, not a replacement.
 
 No infrastructure is to be created yet. **You will never be asked to paste a password,
 service-role key, database password, private key or signing password into chat.**
 
 ## Test totals
 
-Unit **153** · Widget **8** · Database **27** · Parity 0.
-**Host suite: 188 passing, 0 failing.**
+Unit **184** · Widget **45** · Database **50** · Parity 0.
+**Host suite: 279 passing, 0 failing.**
 **On-device: Android 8 · Windows 23** (15 shell + 8 encryption), every one executed inside
 the real compiled application.
-**Phase 1 closure total: 219 tests, 0 failing.**
+**Current total: 302 tests, 0 failing** (279 host + 15 Windows + 8 Android).
 
 ## Build status
 
@@ -267,10 +301,9 @@ migrations exist yet — that half waits on the backend.
 
 ## Last important decision
 
-**D-036 — the Windows key protection was verified, and it is not what the proposal
-assumed.** It is user-scope DPAPI (`CryptProtectData`), a single blob under `%APPDATA%`,
-with no application entropy — not Credential Manager. The threat model now states the
-real residual risk: any process running as the same Windows user can recover the key.
+**D-039 — archiving a parent refuses while it has live children.** No cascade, no
+orphaning, no silent reassignment; the alternatives and their costs are recorded so the
+owner can choose a confirmed cascade later if the bottom-up flow proves tedious.
 
 ## Master Spec version
 

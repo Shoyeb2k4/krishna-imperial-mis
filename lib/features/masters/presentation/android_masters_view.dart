@@ -42,8 +42,7 @@ class AndroidMastersView extends ConsumerWidget {
     final graphAsync = ref.watch(masterGraphProvider);
 
     return graphAsync.when(
-      loading: () =>
-          const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+      loading: () => const QuietLoading(),
       error: (error, _) => MasterErrorState(
         '$error',
         onRetry: () => ref.invalidate(masterGraphProvider),
