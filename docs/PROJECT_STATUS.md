@@ -71,9 +71,38 @@ Phase 0 is complete, approved and committed (`3a4502f`).
 
 ## In progress
 
-- **Phase 2 — Masters & Permissions.** Started, since it depends on nothing that is
-  blocked. See the Phase 2 section below.
-- Phase 1's Windows gate is parked awaiting the owner's toolchain fix.
+**Phase 2 — Masters & Permissions.** The domain layer is built and tested; the local
+schema and repositories are the next slice.
+
+*Done and tested (51 tests):*
+- **Capability model** — 26 capabilities with stable string codes, `CapabilityGrant`
+  carrying an optional business-unit scope, `Principal` with fail-closed defaults, and
+  the four roles as capability bundles. No role name appears in any conditional.
+- **Central `Authorizer`** — one place where user × capability × unit scope × record
+  state × period state is decided, in a deliberate order so the user is told the most
+  actionable truth: permission → ownership → voided → period closed → edit window.
+- **Business-unit scoping** — a Manager scoped to Crystal Canopy is refused on Hotel
+  Krishna with `outOfUnitScope`, distinct from `missingCapability`. Covering both
+  properties requires two explicit, separately revocable grants.
+- **Period locks** — closed periods refuse every write including the Owner's and
+  including back-dated creates; a unit-scoped close leaves the other property open;
+  reopening demands a non-empty reason at both the authoriser and the lock object;
+  repeated attempts never wear a lock down. **No path reopens a period implicitly.**
+- **Edit window** — 7 calendar days from the *business* date, inclusive at the boundary,
+  configurable rather than constant, with `correctBeyondWindow` as the escape hatch.
+- **Hierarchy integrity** — `HierarchyValidator` rejects a Hotel Krishna section under a
+  Crystal Canopy department, and every other impossible link, reporting each broken link
+  rather than cascading from one typo.
+- **Archive semantics** — archive never deletes; live children block archiving;
+  being referenced by history explicitly does *not* block it.
+- **Historical integrity** — `MasterReference` carries stable id, immutable code and a
+  transaction-time label snapshot. Archived masters stay valid for existing history and
+  are refused only for new entries.
+
+*Next slice:* Drift tables and migration v2 for the masters, repositories enforcing the
+same hierarchy rules over real data, idempotent seed data, and the masters UI.
+
+Phase 1's Windows gate is parked awaiting the owner's toolchain fix.
 
 ## Verified
 
@@ -97,6 +126,10 @@ Blocked.**
 | Windows desktop build | **Blocked** | Visual Studio install incomplete — see Blockers |
 | App starts as a Windows executable | **Blocked** | depends on the Windows build |
 | Windows-host execution of domain/data layers | **Tested** | the 105-test suite runs on Windows against the Windows native SQLite build |
+| Phase 2 capability model, scoping, period locks, edit window | **Tested** | 30 tests |
+| Phase 2 hierarchy integrity, archive, historical labels | **Tested** | 21 tests |
+| Local data lifecycle (sign out / erase / key loss) | **Tested** | 7 host tests + on-device proof |
+| Phase 2 local schema, repositories, seed, masters UI | **Not implemented** | next slice |
 | Backend, auth, financial modules | **Not implemented** | later phases, by design |
 
 ## Known issues
@@ -179,10 +212,10 @@ service-role key, database password, private key or signing password into chat.*
 
 ## Test totals
 
-Unit **95** · Widget **8** · Integration **6 (Android, passing)** · Database 0 ·
+Unit **153** · Widget **8** · Integration **8 (Android, passing)** · Database 0 ·
 Parity 0.
-Host suite: **105 passing, 0 failing.** On-device: **6 passing on Android**, Windows
-blocked.
+Host suite: **163 passing, 0 failing.** On-device: **8 passing on Android** (now including
+the plaintext-marker probe and the logout/erase proof); Windows blocked.
 
 ## Build status
 
