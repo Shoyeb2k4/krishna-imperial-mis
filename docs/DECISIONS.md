@@ -546,3 +546,30 @@ largest-remainder distribution so a proposed split already reconciles exactly.
 approximation no longer exists. `expense_period_allocations` is added to the schema. The
 capability catalogue gains `expense.allocate_periods`. Ordinary expenses stay exactly as
 simple as they were.
+
+## D-035 — Historical integrity: stable id, immutable code, label snapshot
+**Date:** 2026-08-27 · **Status:** Accepted
+**Context:** Master spec §12 requires that renaming a master must not silently corrupt the
+interpretation of history — while still allowing a genuine typo to be fixed. Those two
+pull in opposite directions, and picking only one of them is wrong either way.
+**Decision:** Three mechanisms together.
+1. **Stable `id`** — every aggregation groups on it, so no display change can move a
+   total by a single paisa.
+2. **Immutable `code`** — assigned at creation, never editable. The repository offers no
+   method that changes it. History, capability grants and joins all key on it.
+3. **Label snapshot** — each transaction stores the master's name as it read on the day
+   it was recorded.
+
+Reports show the **current** name by default, because that is what a manager expects when
+a spelling is corrected. The transaction detail and the audit trail can always show what
+was actually on screen when the entry was made, and `wasRenamedSince` flags the difference
+rather than hiding it.
+**Alternatives:** Snapshot only (a corrected typo never propagates and old reports look
+wrong forever); current name only (renaming "Water" to "Diesel" silently rewrites what
+history appears to say); forbidding renames outright (unusable — typos happen).
+**Consequences:** Re-purposing a master remains prohibited by policy, and no schema can
+detect intent. The system makes it *survivable* instead: every rename is audited, the code
+cannot move, and the snapshot keeps history readable even if someone does it anyway.
+Archived masters stay valid for existing entries and are refused only for new ones, so
+archiving a category can never retroactively invalidate the amounts already booked
+against it.

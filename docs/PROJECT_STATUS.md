@@ -99,8 +99,26 @@ schema and repositories are the next slice.
   transaction-time label snapshot. Archived masters stay valid for existing history and
   are refused only for new entries.
 
-*Next slice:* Drift tables and migration v2 for the masters, repositories enforcing the
-same hierarchy rules over real data, idempotent seed data, and the masters UI.
+*Also done and tested (25 further tests):*
+- **Local schema v2** — `business_units`, `departments`, `sections`,
+  `expense_categories`, `revenue_categories`, `vendors`, `payment_methods`,
+  `period_locks`, `period_lock_events`. Real foreign keys with `ON DELETE RESTRICT` and
+  `PRAGMA foreign_keys = ON`, proven by a test that bypasses the repository entirely and
+  asserts the database refuses an orphan. Codes unique per parent. A raw unique index
+  collapses NULL to `''` for period-lock scope, because SQLite would otherwise permit two
+  org-wide locks on one period.
+- **`MasterRepository`** — loads the graph, validates paths, creates with parent checks,
+  renames without ever touching the code, archives via `ArchivePolicy`, unarchives. Every
+  write bumps `row_version`, so masters obey the same optimistic-concurrency rule as
+  financial records (D-021).
+- **`MasterGraph`** — typed per level, so a category id passed where a section is expected
+  resolves to null instead of silently matching.
+- **Idempotent seed** — both properties with their full department/section/category trees
+  from spec §4, Nandbhog as a Crystal Canopy revenue category, five payment methods.
+  Re-running changes nothing and does not undo an owner's rename. **No financial data.**
+
+*Next slice:* the masters UI (list, create, rename, archive with the "archive children
+first" message), vendor management, and the tax-rate table (D-017).
 
 Phase 1's Windows gate is parked awaiting the owner's toolchain fix.
 
@@ -129,7 +147,8 @@ Blocked.**
 | Phase 2 capability model, scoping, period locks, edit window | **Tested** | 30 tests |
 | Phase 2 hierarchy integrity, archive, historical labels | **Tested** | 21 tests |
 | Local data lifecycle (sign out / erase / key loss) | **Tested** | 7 host tests + on-device proof |
-| Phase 2 local schema, repositories, seed, masters UI | **Not implemented** | next slice |
+| Phase 2 local schema v2, FK enforcement, repository, seed | **Tested** | 25 tests |
+| Phase 2 masters UI, vendors, tax-rate table | **Not implemented** | next slice |
 | Backend, auth, financial modules | **Not implemented** | later phases, by design |
 
 ## Known issues
@@ -212,10 +231,9 @@ service-role key, database password, private key or signing password into chat.*
 
 ## Test totals
 
-Unit **153** · Widget **8** · Integration **8 (Android, passing)** · Database 0 ·
-Parity 0.
-Host suite: **163 passing, 0 failing.** On-device: **8 passing on Android** (now including
-the plaintext-marker probe and the logout/erase proof); Windows blocked.
+Unit **153** · Widget **8** · Database **27** · Integration **8 (Android)** · Parity 0.
+Host suite: **188 passing, 0 failing.** On-device: **8 passing on Android** (including the
+plaintext-marker probe and the logout/erase proof); Windows blocked.
 
 ## Build status
 
@@ -228,16 +246,17 @@ the plaintext-marker probe and the logout/erase proof); Windows blocked.
 
 ## Database migration status
 
-Local Drift schema **v1**: `app_meta`, `sync_outbox`. Created and exercised on both the
-Windows host and an Android device. No Postgres migrations exist yet;
-`docs/DATABASE_SCHEMA.md` remains a proposal awaiting Phase 2.
+Local Drift schema **v2**: v1 added `app_meta` and `sync_outbox`; v2 adds the masters and
+period locks. Both the `onCreate` and `onUpgrade` paths are exercised. Foreign keys are
+enforced, verified by a test that writes raw SQL past the repository. No Postgres
+migrations exist yet — that half waits on the backend.
 
 ## Last important decision
 
-**D-034 — cross-period expense allocation is optional, explicit and exact.** Ordinary
-expenses stay simple; a bill that genuinely spans months may be split by an authorised
-user, and the split must reconcile to the paisa. The closing-month approximation is
-withdrawn.
+**D-035 — historical integrity by stable id, immutable code and label snapshot.** Reports
+group by id and show the current name, so a corrected spelling propagates; the document
+detail and audit trail always show the label the entry was actually recorded under. Codes
+are never editable, so no rename can break a join or a grant.
 
 ## Master Spec version
 
