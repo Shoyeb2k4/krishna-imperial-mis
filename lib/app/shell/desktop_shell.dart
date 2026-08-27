@@ -88,6 +88,11 @@ class _Sidebar extends StatelessWidget {
                     button: true,
                     child: InkWell(
                       onTap: () => onSelect(index),
+                      // A finance workstation is driven by keyboard as much as mouse,
+                      // so focus must be *visible*. Without these the caret moves
+                      // through the sidebar invisibly.
+                      focusColor: AppColors.brassWash,
+                      hoverColor: AppColors.surfaceSunken,
                       child: Container(
                         height: 38,
                         padding: const EdgeInsets.symmetric(

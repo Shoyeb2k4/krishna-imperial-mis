@@ -61,7 +61,9 @@ Every box must be genuinely verified, not assumed. Anything unverified is report
 - [ ] RLS enabled on every table; deny tests pass
 - [ ] Storage buckets private; signed URLs scoped and expiring
 - [ ] Local database encryption active on both platforms; key in OS secure storage
-      (Android Keystore-backed; Windows DPAPI-backed)
+      (Android Keystore-backed; Windows **user-scope DPAPI**, verified per D-036 —
+      re-verify after any `flutter_secure_storage` upgrade, because the package ships a
+      second Credential Manager implementation that a version bump could switch to)
 - [ ] Key never appears in code, config, git history, logs, diagnostics or crash reports
       — grep-verified and logger redaction tested
 - [ ] Logout does not destroy unsynced outbox entries; erase-local-data refuses while
@@ -116,6 +118,22 @@ Every box must be genuinely verified, not assumed. Anything unverified is report
 - [ ] Permissions justified and minimal; camera/storage rationale shown
 - [ ] ProGuard/R8 rules verified; obfuscation does not break Drift or serialisation
 - [ ] App icon, name and splash correct
+
+## I-0. Windows runtime verification (every release, not only the first)
+
+Host tests do not exercise the Windows runtime. The executable must actually run.
+
+- [ ] `flutter build windows --debug` and `--release` both succeed
+- [ ] The built `.exe` launches; process responds; window title correct
+- [ ] No startup exception on stdout/stderr
+- [ ] `flutter test integration_test/windows_shell_test.dart -d windows` green —
+      rendering, pointer navigation, keyboard focus, and **no overflow at 1024x768,
+      1280x720, 1536x864, 1920x1080 and a cramped 820x600**
+- [ ] `flutter test integration_test/encrypted_storage_test.dart -d windows` green
+- [ ] Window fits the work area on the smallest supported display, at 100% **and 125%**
+      display scaling (measure with a DPI-aware tool — a non-aware one reports
+      virtualised coordinates and will mislead)
+- [ ] Application closes cleanly; process exits; no orphan holding the database file
 
 ## I. Windows release
 

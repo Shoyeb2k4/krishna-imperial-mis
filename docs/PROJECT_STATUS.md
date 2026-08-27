@@ -10,17 +10,14 @@ Last updated: **2026-08-27**
 
 ## Current phase
 
-**Phase 1 — Foundation. NOT complete.** Every Phase 1 item is implemented and verified
-except the Windows gates, which remain **blocked**: the Visual Studio Build Tools
-installation is in a failed state (`isComplete: false`) after the ATL modify was cancelled
-mid-run. ATL itself is now present; the installation around it did not finish.
-Phase 1 is **not** marked complete, because the instruction was explicit — Windows is not
-verified merely because host tests pass.
+**Phase 1 — Foundation: COMPLETE.** All gates passed, including the Windows ones, which
+were closed by building and **actually running** the compiled desktop application rather
+than inferred from host tests.
 
-Phase 2 — Masters & Permissions has begun in parallel, since none of it depends on the
-Windows build.
+**Phase 2 — Masters & Permissions: in progress.** Domain layer, local schema v2,
+repository and seed are done; the Masters UI is next.
 
-Phase 0 is complete, approved and committed (`3a4502f`).
+Phase 0 complete and committed (`3a4502f`).
 
 ## Completed
 
@@ -141,9 +138,11 @@ Blocked.**
 | Routing shells, both platforms | **Tested** | 8 widget tests |
 | Android debug build (dev flavour) | **Tested** | `app-dev-debug.apk` built |
 | App starts on Android | **Tested** | installed and executed on emulator by the integration suite |
-| Windows desktop build | **Blocked** | Visual Studio install incomplete — see Blockers |
-| App starts as a Windows executable | **Blocked** | depends on the Windows build |
-| Windows-host execution of domain/data layers | **Tested** | the 105-test suite runs on Windows against the Windows native SQLite build |
+| Windows desktop build | **Tested** | `krishna_mis.exe` built (debug) |
+| App starts as a Windows executable | **Tested** | launched, window titled, responding, no startup exception, exit code 0 on graceful close |
+| Windows shell: render, pointer nav, keyboard focus, overflow | **Tested** | **15 integration tests inside the real .exe**; overflow checked at 1024x768 / 1280x720 / 1536x864 / 1920x1080 / 820x600 |
+| Windows encryption + platform key handling | **Tested** | **8 integration tests inside the real .exe**, plus external verification of the DPAPI artefact |
+| Windows protection mechanism identity | **Verified** | user-scope **DPAPI** (`CryptProtectData`), *not* Credential Manager — D-036 |
 | Phase 2 capability model, scoping, period locks, edit window | **Tested** | 30 tests |
 | Phase 2 hierarchy integrity, archive, historical labels | **Tested** | 21 tests |
 | Local data lifecycle (sign out / erase / key loss) | **Tested** | 7 host tests + on-device proof |
@@ -157,12 +156,27 @@ Blocked.**
    this toolchain has Android SDK 36 (D-031). Revisit when the SDK moves.
 2. **`riverpod_lint` / `custom_lint` deferred.** They pull an `analyzer` version that
    conflicts with `drift_dev` (D-032). Revisit at Phase 2.
-3. Two layout defects (a 2px overflow in the Android tab bar, a 3px overflow in the
-   Windows sidebar) were found by the widget tests and fixed.
+3. Layout defects found by tests and fixed: a 2px overflow in the Android tab bar and a
+   3px overflow in the Windows sidebar.
+4. **Keyboard focus was invisible** in both shells — destinations were focusable but
+   painted no focus state, so a keyboard user could not see where they were. Fixed with
+   `focusColor` on both shells, covered by a Windows integration test.
+5. **Measurement lesson, recorded so it is not repeated.** An early reading suggested the
+   Windows window opened past the screen edge and that content was clipped. Both were
+   **artefacts of a non-DPI-aware measuring process** on a 1920x1080 display at 125%
+   scaling, which reports virtualised coordinates. Measured DPI-aware, the window is
+   1600x900 physical at (160,60) and fits the screen; the overflow tests confirm no
+   clipping. The release checklist now requires a DPI-aware tool. The window-clamping
+   code added in `windows/runner/main.cpp` is retained as a genuine safeguard for small
+   displays — a 1366x768 screen at 125% would not fit the default — but it fixed no
+   existing bug and is described as a safeguard, not a fix.
 
-## Blockers
+## Blockers (former Windows blocker resolved 2026-08-27)
 
-1. **Windows build — the Visual Studio installation is in a failed state.**
+1. ~~**Windows build — the Visual Studio installation is in a failed state.**~~
+   **RESOLVED.** The owner restarted and completed the installer; `flutter doctor` is
+   green, `vswhere` reports `isComplete: true`, and ATL is registered. Retained here for
+   the record only. Original detail:
    The ATL component *is* now installed: `atlstr.h` is present under
    `VC/Tools/MSVC/14.51.36231/atlmfc/include`. But the modify that added it was cancelled
    part-way. The installer log records:
@@ -177,8 +191,8 @@ Blocked.**
    (`isRebootRequired: false`), so `flutter doctor` says *"The current Visual Studio
    installation is incomplete"* and the build stops at *"Unable to find suitable Visual
    Studio toolchain."* An `msiexec` process was still resident, which is the usual cause
-   of the "another product" error. **Owner action required — see below.** This is a
-   build-machine state problem, not a code or design problem.
+   of the "another product" error. It was a build-machine state problem, not a code or
+   design problem, and nothing in the application had to change.
 2. **Backend not provisioned.** No Supabase project exists. Deliberate. Blocks
    authentication wiring and the Postgres/RLS half of Phase 2. The domain model, local
    schema, capability engine and period-lock engine are all buildable and testable
@@ -197,13 +211,18 @@ Blocked.**
 
 ## Next exact task
 
-1. **Owner completes the Visual Studio installation** (below). Then, unattended:
-   `flutter build windows --debug`, launch the executable, verify the shell renders, and
-   run `flutter test integration_test/encrypted_storage_test.dart -d windows`, which now
-   also covers key persistence across restart, wrong-key refusal, absence of a plaintext
-   financial marker in raw bytes, and the documented logout / key-destruction behaviour.
-   Only then is Phase 1 marked **COMPLETE**.
-2. Continue **Phase 2 — Masters & Permissions** (already under way).
+**Phase 2, next slice: the Masters UI**, built around the rename distinction in D-038
+rather than as a generic CRUD table:
+
+1. A usage count per master (transactions referencing it, and their date range), so the
+   rename dialog can state the real impact. Required before the warning can be honest.
+2. Rename flow: silent for an unused master; for one with history, a warning stating the
+   cosmetic-versus-semantic rule, the number of affected transactions and their period,
+   requiring explicit acknowledgement.
+3. Archive flow surfacing "archive the records underneath this one first".
+4. Windows gets a dense management surface with the hierarchy visible; Android stays
+   compact and readable, never a shrunk desktop table.
+5. Then vendor management, then date-effective tax configuration (D-017).
 
 ## Open questions for Shoyeb
 
@@ -216,24 +235,19 @@ Q6 → D-024 · Q7 → D-025 · Q8 → D-026 · Q9 → D-027 · Q11 (application
 
 ## Owner actions required
 
-1. **Finish the interrupted Visual Studio installation** (unblocks the Windows build).
-   ATL is already on disk; the install session simply needs to complete.
-   - **Restart the machine first.** That clears the resident `msiexec` which caused
-     *"you're installing or modifying another product right now"*.
-   - Open **Visual Studio Installer**. It should offer **Repair**, **Continue** or
-     **Update** on *Visual Studio Build Tools 2026* — take it and let it run to the end.
-   - Confirm: `flutter doctor` shows a green tick for Visual Studio with no "incomplete"
-     line.
-   - Tell me, and I will build, launch and verify Windows unattended.
+**None.** The Visual Studio installation is complete and verified: `flutter doctor` green,
+`vswhere` `isComplete: true`, ATL registered.
 
 No infrastructure is to be created yet. **You will never be asked to paste a password,
 service-role key, database password, private key or signing password into chat.**
 
 ## Test totals
 
-Unit **153** · Widget **8** · Database **27** · Integration **8 (Android)** · Parity 0.
-Host suite: **188 passing, 0 failing.** On-device: **8 passing on Android** (including the
-plaintext-marker probe and the logout/erase proof); Windows blocked.
+Unit **153** · Widget **8** · Database **27** · Parity 0.
+**Host suite: 188 passing, 0 failing.**
+**On-device: Android 8 · Windows 23** (15 shell + 8 encryption), every one executed inside
+the real compiled application.
+**Phase 1 closure total: 219 tests, 0 failing.**
 
 ## Build status
 
@@ -241,7 +255,7 @@ plaintext-marker probe and the logout/erase proof); Windows blocked.
 |---|---|
 | Android (debug, dev flavour) | **Built and installed on an emulator** |
 | Android (release APK / AAB) | Not attempted — Phase 9, needs the owner's keystore |
-| Windows (debug) | **Blocked** — missing C++ ATL component |
+| Windows (debug) | **Built, launched, verified, closed cleanly (exit 0)** |
 | Windows (release + installer) | Not attempted — Phase 9 |
 
 ## Database migration status
@@ -253,10 +267,10 @@ migrations exist yet — that half waits on the backend.
 
 ## Last important decision
 
-**D-035 — historical integrity by stable id, immutable code and label snapshot.** Reports
-group by id and show the current name, so a corrected spelling propagates; the document
-detail and audit trail always show the label the entry was actually recorded under. Codes
-are never editable, so no rename can break a join or a grant.
+**D-036 — the Windows key protection was verified, and it is not what the proposal
+assumed.** It is user-scope DPAPI (`CryptProtectData`), a single blob under `%APPDATA%`,
+with no application entropy — not Credential Manager. The threat model now states the
+real residual risk: any process running as the same Windows user can recover the key.
 
 ## Master Spec version
 

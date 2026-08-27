@@ -573,3 +573,125 @@ cannot move, and the snapshot keeps history readable even if someone does it any
 Archived masters stay valid for existing entries and are refused only for new ones, so
 archiving a category can never retroactively invalidate the amounts already booked
 against it.
+
+## D-036 — Verified Windows key protection: user-scope DPAPI, not Credential Manager
+**Date:** 2026-08-27 · **Status:** Accepted — **corrects D-010 and D-022**
+**Context:** D-010/D-022 described the Windows key store as "DPAPI / Credential Manager"
+from the architecture proposal. The owner required this be *verified* rather than
+assumed. It was, by reading the code path that actually executes and then inspecting the
+artefact the running Windows application produced.
+**What is actually used.** `flutter_secure_storage_windows` 3.1.2 ships **two**
+implementations. The C++ plugin (`CredWriteW`, `CRED_TYPE_GENERIC`,
+`CRED_PERSIST_LOCAL_MACHINE`, AES-128-GCM, per-key `.secure` files) is **not** the path
+taken. The **Dart FFI implementation** is, and it calls
+**`CryptProtectData` / `CryptUnprotectData` — Windows DPAPI**, storing the entire
+key/value store as one protected blob:
+
+```
+%APPDATA%\Krishna Imperial\Krishna Imperial MIS\flutter_secure_storage.dat
+```
+
+**Verified empirically on this machine**, not inferred:
+- The file carries the DPAPI blob signature `01 00 00 00 d0 8c 9d df 01 15 d1 11 8c 7a 00 c0`.
+- `ProtectedData.Unprotect(..., CurrentUser)` decrypts it; the plaintext is a plain
+  `{key: value}` map containing `krishna_mis.db_key.v1`.
+- No Windows Credential Manager entry exists for the application (`cmdkey /list` is
+  empty of it), confirming the C++/Credential-Manager path is unused.
+- `CryptProtectData` is called with `dwFlags = 0` — **no `CRYPTPROTECT_LOCAL_MACHINE`**,
+  so the blob is **user-scoped** — and with **no optional entropy**.
+
+**Consequences for the threat model.** The database key's protection is exactly
+"DPAPI, current Windows user, this machine". Practically:
+- Another Windows user on the same machine cannot read it.
+- Copying the `.dat` file to another machine or user profile makes it useless — which is
+  also why a roaming profile would carry an undecryptable blob, since the file lives
+  under Roaming AppData while the DPAPI key does not roam.
+- **Any process running as the same Windows user can call `CryptUnprotectData` and
+  recover the key.** No application-supplied entropy is used, so there is no second
+  factor. This is the residual risk already accepted for V1, now stated precisely rather
+  than approximately. Mitigations remain: require a Windows account password, short
+  session lifetimes, re-authentication after idle, no automatic sign-in.
+- If that residual risk is ever judged unacceptable, the fix is to supply application
+  entropy to `CryptProtectData` or to move the key behind a user-supplied passphrase.
+  Both are deliberate changes, not silent ones.
+**Note:** Android is unaffected — it uses EncryptedSharedPreferences with the master key
+in the Android Keystore, as documented.
+
+## D-037 — The backend is the authority; the client Authorizer is UX and testability
+**Date:** 2026-08-27 · **Status:** Accepted (owner requirement, made explicit)
+**Context:** Phase 2 has produced a complete client-side capability, scope, hierarchy,
+period-lock and edit-window engine. It would be easy to mistake that for security.
+**Decision:** It is not. The pure-Dart `Authorizer` exists to give **immediate, offline,
+testable UX** — a disabled control, an honest error message, a form that cannot be
+submitted. **A modified Android or Windows client must not be able to bypass any rule.**
+When the Supabase portion of Phase 2 lands, every one of the following is re-decided
+server-side and the server's answer is final:
+capabilities · business-unit scope · hierarchy validation · archived-master restrictions ·
+period locks · edit-window rules · close/reopen authorisation · financial mutation
+authorisation.
+**Mechanisms:** RLS on every table for visibility and unit scope; database constraints
+and triggers for hierarchy and allocation-sum integrity; `SECURITY DEFINER` RPCs inside
+a transaction wherever multi-row integrity is at stake (`sync_push`, period close/reopen,
+expense + allocation + period-allocation writes). Direct client table writes are not
+granted on financial tables.
+**Consequences:** The same rules exist twice by design — once in Dart for the interface
+and once in Postgres for the guarantee. That duplication is deliberate and must be kept
+in step: the RLS/RPC test suite asserts **allow and deny** for each rule, and a policy
+without a passing deny-test is not done (`ARCHITECTURE.md` §8). The client's opinion is
+never trusted, never sent as an authorisation claim, and never used to skip a server
+check.
+
+## D-038 — Cosmetic rename versus semantic change (amends D-035)
+**Date:** 2026-08-27 · **Status:** Accepted (owner clarification)
+**Context:** D-035 established stable id, immutable code and label snapshot. It did not
+say plainly *when* a rename is legitimate. This makes the rule explicit.
+
+### Cosmetic rename — permitted
+A master's label may be renamed when its **business meaning is unchanged**. Fixing a
+spelling or spacing is exactly this:
+
+```
+VEGITABLE & FRUITS   →   VEGETABLES & FRUITS
+Frontoffice          →   Front Office
+```
+
+Reports display the corrected current label. The audit trail and the transaction detail
+retain the transaction-time label snapshot, so it stays possible to see what was on
+screen when each entry was made.
+
+### Semantic change — prohibited as a rename
+A rename must **never** be used to change the accounting or operational meaning of
+historical data:
+
+```
+Kirana & Pulses      →   Building Maintenance      ← PROHIBITED
+```
+
+That would make months of grocery spending appear under a materially different concept,
+silently restating history. When the meaning changes, the procedure is:
+
+1. **archive** the existing master;
+2. **create a new master with a new, stable, immutable code**;
+3. use the new master for **new transactions only**;
+4. **preserve every historical reference** to the old master.
+
+### How the application enforces it
+No semantic detection is attempted — that judgement is the owner's, and an AI guess about
+whether two labels "mean the same thing" would be exactly the kind of invented business
+fact this project forbids.
+
+Instead the application makes the distinction **visible and deliberate**:
+- Renaming a master that **has historical usage** shows a warning stating the rule, the
+  number of transactions affected, and the period they span.
+- The Owner/admin must **explicitly acknowledge** the warning before the rename applies.
+- A master with no history renames without ceremony.
+- The immutable `code` and the historical references remain authoritative regardless of
+  what the label says, so even a misjudged rename cannot corrupt aggregation, joins or
+  capability grants.
+- Every rename is audited with before/after values and the acknowledging actor.
+
+The Masters UI is designed around this distinction rather than presenting rename as an
+ordinary inline edit.
+**Consequences:** The Masters UI needs a usage count per master (transactions referencing
+it, with their date range) before the rename dialog can state the impact. That query is a
+Phase 2 deliverable and is listed in `PROJECT_STATUS.md`.

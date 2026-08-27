@@ -85,6 +85,7 @@ class MobileShell extends StatelessWidget {
         child: InkWell(
           onTap: () =>
               navigationShell.goBranch(index, initialLocation: selected),
+          focusColor: AppColors.brassWash,
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             mainAxisSize: MainAxisSize.min,

@@ -408,12 +408,22 @@ committed to git; written to a log; or included in diagnostics, crash reports or
 bundles. A CI grep and a logger redaction rule enforce the last two mechanically rather
 than by discipline.
 
+**Verified, not assumed** (D-036). The mechanism below was confirmed by reading the code
+path that actually executes and then inspecting the artefact the running Windows
+application produced.
+
 | | **Android** | **Windows** |
 |---|---|---|
-| Key store | `flutter_secure_storage` → EncryptedSharedPreferences, master key in **Android Keystore** (hardware-backed where the device provides it) | `flutter_secure_storage` → **DPAPI**-protected credential store, scoped to the current Windows user |
-| Bound to | Device hardware / OS keystore; not extractable by a non-root app | Windows **user account**; not hardware-bound |
-| Backup exposure | `allowBackup=false`; data-extraction rules exclude the database and secure store | Excluded from roaming profiles where configurable |
-| Residual risk | A rooted device or an unlocked device with a compromised user account can reach the key | Malware **running as the same Windows user** can call DPAPI and unwrap the key. Another local administrator can attack an unattended profile |
+| Key store | `flutter_secure_storage` → EncryptedSharedPreferences, master key in **Android Keystore** (hardware-backed where the device provides it) | `flutter_secure_storage` → **DPAPI** `CryptProtectData`, one blob at `%APPDATA%\<Company>\<Product>lutter_secure_storage.dat` |
+| Scope | Device hardware / OS keystore; not extractable by a non-root app | `dwFlags = 0` → **user-scoped**, this machine. **No application entropy** is supplied |
+| Backup exposure | `allowBackup=false`; data-extraction rules exclude the database and secure store | The blob sits under Roaming AppData but the DPAPI key does not roam, so a roamed profile carries an undecryptable file |
+| Residual risk | A rooted device or an unlocked device with a compromised user account can reach the key | **Any process running as the same Windows user** can call `CryptUnprotectData` and recover the key. There is no second factor |
+
+The package also contains a Credential Manager implementation (`CredWriteW`,
+`CRED_PERSIST_LOCAL_MACHINE`, AES-128-GCM). **It is not the code path taken** — the Dart
+FFI implementation is. `cmdkey /list` shows no credential for the application, which
+confirms it. If the residual risk above ever needs reducing, the deliberate fixes are
+application entropy passed to `CryptProtectData`, or a user-supplied passphrase.
 
 **Residual risk on Windows is real and is accepted for V1**, mitigated by: requiring a
 Windows account password on the finance workstation, short application session lifetimes,
@@ -436,14 +446,27 @@ known risk, not a surprise.
   reassurance. This is stated in the release notes and in the user-facing message.
 - Changing the encryption key (rotation) is not a V1 feature.
 
-### 8.3 Phase 1 obligation
+### 8.3 Phase 1 obligation — discharged
 
-SQLCipher's build characteristics differ substantially between Android and Windows.
-Per the owner's instruction, encrypted open + persistence + platform-secure key handling
-must be **proven on both platforms during Phase 1**, not near release. If the trade-off
-proves unacceptable on either platform, it is recorded as a Phase 1 finding with options
-(alternative cipher package, OS-level protection, or an explicitly accepted plaintext
-local store on one platform) and decided by the owner — never silently dropped.
+Encrypted open, persistence and platform-secure key handling were required to be
+**proven on both platforms during Phase 1**, not near release. They were:
+
+- **Android** — 8 on-device tests on an emulator.
+- **Windows** — the same 8 tests inside the compiled `krishna_mis.exe`, plus external
+  verification of the DPAPI artefact (§8.1) and 15 shell tests covering rendering,
+  pointer navigation, keyboard focus and overflow at four window sizes.
+
+Two build-machine findings were recorded rather than worked around: the package pin in
+D-031, and the Visual Studio ATL requirement, which the owner resolved.
+
+### 8.4 Server authority (D-037)
+
+The client-side capability, scope, hierarchy, period-lock and edit-window engine gives
+immediate offline UX and testable semantics. **It is not the security boundary.** Every
+one of those rules is re-decided server-side — RLS for visibility and scope, constraints
+and triggers for integrity, `SECURITY DEFINER` RPCs in a transaction where multi-row
+integrity is at stake. A modified client must not be able to bypass any of them. The
+duplication is deliberate, and the RLS/RPC suite asserts allow **and** deny for each.
 
 ## 9. Performance plan
 

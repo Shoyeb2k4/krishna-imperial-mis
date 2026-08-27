@@ -2,17 +2,23 @@
 ///
 /// The key is a 256-bit CSPRNG value created once per installation. It must never be
 /// hard-coded, never written to configuration, never committed, never logged, and never
-/// included in diagnostics or crash reports — see docs/DECISIONS.md D-022 and
+/// included in diagnostics or crash reports — see docs/DECISIONS.md D-022, D-036 and
 /// docs/ARCHITECTURE.md §8.1.
 ///
-/// | Platform | Protection |
+/// | Platform | Protection (verified against the running app — D-036) |
 /// |---|---|
 /// | Android  | AES-GCM ciphertext, wrapping key held in the Android Keystore |
-/// | Windows  | DPAPI-protected credential store, scoped to the Windows user |
+/// | Windows  | **DPAPI** (`CryptProtectData`), user-scoped, no application entropy |
+///
+/// On Windows the whole key/value store is a single DPAPI blob at
+/// `%APPDATA%\<Company>\<Product>\flutter_secure_storage.dat`. The Credential Manager
+/// path that also ships inside the package is **not** the code path taken — the Dart FFI
+/// implementation is. Confirmed by inspecting the artefact the real Windows build wrote.
 ///
 /// Residual risk, accepted for V1: DPAPI binds to the Windows *user account*, not to
-/// hardware, so malware running as the same user could unwrap the key. Mitigated by
-/// requiring a Windows account password, short session lifetimes and no auto sign-in.
+/// hardware, and no additional entropy is supplied, so **any process running as the same
+/// Windows user can unwrap the key**. Mitigated by requiring a Windows account password,
+/// short session lifetimes, re-authentication after idle and no automatic sign-in.
 library;
 
 import 'dart:math';
