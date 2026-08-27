@@ -4,10 +4,16 @@
 /// navigation architecture over one shared codebase — not to fake finished features.
 library;
 
+import 'package:drift/drift.dart' show driftRuntimeOptions;
+import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:krishna_mis/app/app.dart';
+import 'package:krishna_mis/app/providers.dart';
 import 'package:krishna_mis/app/routing/app_router.dart';
+import 'package:krishna_mis/data/local/app_database.dart';
+import 'package:krishna_mis/data/local/seed/master_seed.dart';
 
 Future<void> pumpApp(WidgetTester tester, AppShellKind shellKind) async {
   await tester.binding.setSurfaceSize(
@@ -17,11 +23,25 @@ Future<void> pumpApp(WidgetTester tester, AppShellKind shellKind) async {
   );
   addTearDown(() => tester.binding.setSurfaceSize(null));
 
-  await tester.pumpWidget(KrishnaMisApp(shellKind: shellKind));
+  // Masters is a real screen now, so the app needs its data layer. An in-memory,
+  // seeded database keeps these tests about *navigation* rather than persistence.
+  final db = AppDatabase(NativeDatabase.memory());
+  await seedMasterData(db, now: DateTime.utc(2026, 6, 15));
+  addTearDown(db.close);
+
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [databaseProvider.overrideWithValue(db)],
+      child: KrishnaMisApp(shellKind: shellKind),
+    ),
+  );
   await tester.pumpAndSettle();
 }
 
 void main() {
+  setUpAll(() => driftRuntimeOptions.dontWarnAboutMultipleDatabases = true);
+  tearDownAll(() => driftRuntimeOptions.dontWarnAboutMultipleDatabases = false);
+
   group('Android shell', () {
     testWidgets('starts on Home with the phone navigation', (tester) async {
       await pumpApp(tester, AppShellKind.mobile);
@@ -45,12 +65,10 @@ void main() {
         findsOneWidget,
       );
 
+      // "More" now opens the real Masters drill-down, not a placeholder.
       await tester.tap(find.text('More').last);
       await tester.pumpAndSettle();
-      expect(
-        find.textContaining('Phase 2 — Masters & Permissions'),
-        findsOneWidget,
-      );
+      expect(find.text('Business units'), findsOneWidget);
     });
 
     testWidgets(
@@ -107,10 +125,7 @@ void main() {
 
       await tester.tap(find.text('Masters').first);
       await tester.pumpAndSettle();
-      expect(
-        find.textContaining('Business units, departments'),
-        findsOneWidget,
-      );
+      expect(find.text('Select a record'), findsOneWidget);
 
       await tester.tap(find.text('Analytics').first);
       await tester.pumpAndSettle();

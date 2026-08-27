@@ -11,6 +11,7 @@ import 'package:go_router/go_router.dart';
 import 'package:krishna_mis/app/routing/app_routes.dart';
 import 'package:krishna_mis/app/shell/desktop_shell.dart';
 import 'package:krishna_mis/app/shell/mobile_shell.dart';
+import 'package:krishna_mis/features/masters/presentation/masters_page.dart';
 import 'package:krishna_mis/features/placeholder/placeholder_page.dart';
 
 enum AppShellKind { mobile, desktop }
@@ -62,11 +63,7 @@ abstract final class AppRouter {
           ),
           _branch(
             AppRoutes.more,
-            const PlaceholderPage(
-              title: 'More',
-              arrivesIn: 'Phase 2 — Masters & Permissions',
-              summary: 'Masters, sync status, profile and settings.',
-            ),
+            const MastersPage(shellKind: AppShellKind.mobile),
           ),
         ],
       ),
@@ -121,13 +118,7 @@ abstract final class AppRouter {
           ),
           _branch(
             AppRoutes.masters,
-            const PlaceholderPage(
-              title: 'Masters',
-              arrivesIn: 'Phase 2 — Masters & Permissions',
-              summary:
-                  'Business units, departments, sections, categories, tax rates, '
-                  'vendors and payment methods.',
-            ),
+            const MastersPage(shellKind: AppShellKind.desktop),
           ),
           _branch(
             AppRoutes.administration,

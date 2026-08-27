@@ -4204,6 +4204,20 @@ class $VendorsTable extends Vendors with TableInfo<$VendorsTable, VendorRow> {
           'REFERENCES expense_categories (id) ON DELETE RESTRICT',
         ),
       );
+  static const VerificationMeta _defaultBusinessUnitIdMeta =
+      const VerificationMeta('defaultBusinessUnitId');
+  @override
+  late final GeneratedColumn<String> defaultBusinessUnitId =
+      GeneratedColumn<String>(
+        'default_business_unit_id',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+        defaultConstraints: GeneratedColumn.constraintIsAlways(
+          'REFERENCES business_units (id) ON DELETE RESTRICT',
+        ),
+      );
   static const VerificationMeta _notesMeta = const VerificationMeta('notes');
   @override
   late final GeneratedColumn<String> notes = GeneratedColumn<String>(
@@ -4227,6 +4241,7 @@ class $VendorsTable extends Vendors with TableInfo<$VendorsTable, VendorRow> {
     phone,
     address,
     defaultCategoryId,
+    defaultBusinessUnitId,
     notes,
   ];
   @override
@@ -4323,6 +4338,15 @@ class $VendorsTable extends Vendors with TableInfo<$VendorsTable, VendorRow> {
         ),
       );
     }
+    if (data.containsKey('default_business_unit_id')) {
+      context.handle(
+        _defaultBusinessUnitIdMeta,
+        defaultBusinessUnitId.isAcceptableOrUnknown(
+          data['default_business_unit_id']!,
+          _defaultBusinessUnitIdMeta,
+        ),
+      );
+    }
     if (data.containsKey('notes')) {
       context.handle(
         _notesMeta,
@@ -4390,6 +4414,10 @@ class $VendorsTable extends Vendors with TableInfo<$VendorsTable, VendorRow> {
         DriftSqlType.string,
         data['${effectivePrefix}default_category_id'],
       ),
+      defaultBusinessUnitId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}default_business_unit_id'],
+      ),
       notes: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}notes'],
@@ -4422,6 +4450,9 @@ class VendorRow extends DataClass implements Insertable<VendorRow> {
   final String? phone;
   final String? address;
   final String? defaultCategoryId;
+
+  /// Optional. Pre-selects the property when this vendor is chosen during entry.
+  final String? defaultBusinessUnitId;
   final String? notes;
   const VendorRow({
     required this.id,
@@ -4436,6 +4467,7 @@ class VendorRow extends DataClass implements Insertable<VendorRow> {
     this.phone,
     this.address,
     this.defaultCategoryId,
+    this.defaultBusinessUnitId,
     this.notes,
   });
   @override
@@ -4462,6 +4494,9 @@ class VendorRow extends DataClass implements Insertable<VendorRow> {
     }
     if (!nullToAbsent || defaultCategoryId != null) {
       map['default_category_id'] = Variable<String>(defaultCategoryId);
+    }
+    if (!nullToAbsent || defaultBusinessUnitId != null) {
+      map['default_business_unit_id'] = Variable<String>(defaultBusinessUnitId);
     }
     if (!nullToAbsent || notes != null) {
       map['notes'] = Variable<String>(notes);
@@ -4493,6 +4528,9 @@ class VendorRow extends DataClass implements Insertable<VendorRow> {
       defaultCategoryId: defaultCategoryId == null && nullToAbsent
           ? const Value.absent()
           : Value(defaultCategoryId),
+      defaultBusinessUnitId: defaultBusinessUnitId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(defaultBusinessUnitId),
       notes: notes == null && nullToAbsent
           ? const Value.absent()
           : Value(notes),
@@ -4519,6 +4557,9 @@ class VendorRow extends DataClass implements Insertable<VendorRow> {
       defaultCategoryId: serializer.fromJson<String?>(
         json['defaultCategoryId'],
       ),
+      defaultBusinessUnitId: serializer.fromJson<String?>(
+        json['defaultBusinessUnitId'],
+      ),
       notes: serializer.fromJson<String?>(json['notes']),
     );
   }
@@ -4538,6 +4579,9 @@ class VendorRow extends DataClass implements Insertable<VendorRow> {
       'phone': serializer.toJson<String?>(phone),
       'address': serializer.toJson<String?>(address),
       'defaultCategoryId': serializer.toJson<String?>(defaultCategoryId),
+      'defaultBusinessUnitId': serializer.toJson<String?>(
+        defaultBusinessUnitId,
+      ),
       'notes': serializer.toJson<String?>(notes),
     };
   }
@@ -4555,6 +4599,7 @@ class VendorRow extends DataClass implements Insertable<VendorRow> {
     Value<String?> phone = const Value.absent(),
     Value<String?> address = const Value.absent(),
     Value<String?> defaultCategoryId = const Value.absent(),
+    Value<String?> defaultBusinessUnitId = const Value.absent(),
     Value<String?> notes = const Value.absent(),
   }) => VendorRow(
     id: id ?? this.id,
@@ -4571,6 +4616,9 @@ class VendorRow extends DataClass implements Insertable<VendorRow> {
     defaultCategoryId: defaultCategoryId.present
         ? defaultCategoryId.value
         : this.defaultCategoryId,
+    defaultBusinessUnitId: defaultBusinessUnitId.present
+        ? defaultBusinessUnitId.value
+        : this.defaultBusinessUnitId,
     notes: notes.present ? notes.value : this.notes,
   );
   VendorRow copyWithCompanion(VendorsCompanion data) {
@@ -4593,6 +4641,9 @@ class VendorRow extends DataClass implements Insertable<VendorRow> {
       defaultCategoryId: data.defaultCategoryId.present
           ? data.defaultCategoryId.value
           : this.defaultCategoryId,
+      defaultBusinessUnitId: data.defaultBusinessUnitId.present
+          ? data.defaultBusinessUnitId.value
+          : this.defaultBusinessUnitId,
       notes: data.notes.present ? data.notes.value : this.notes,
     );
   }
@@ -4612,6 +4663,7 @@ class VendorRow extends DataClass implements Insertable<VendorRow> {
           ..write('phone: $phone, ')
           ..write('address: $address, ')
           ..write('defaultCategoryId: $defaultCategoryId, ')
+          ..write('defaultBusinessUnitId: $defaultBusinessUnitId, ')
           ..write('notes: $notes')
           ..write(')'))
         .toString();
@@ -4631,6 +4683,7 @@ class VendorRow extends DataClass implements Insertable<VendorRow> {
     phone,
     address,
     defaultCategoryId,
+    defaultBusinessUnitId,
     notes,
   );
   @override
@@ -4649,6 +4702,7 @@ class VendorRow extends DataClass implements Insertable<VendorRow> {
           other.phone == this.phone &&
           other.address == this.address &&
           other.defaultCategoryId == this.defaultCategoryId &&
+          other.defaultBusinessUnitId == this.defaultBusinessUnitId &&
           other.notes == this.notes);
 }
 
@@ -4665,6 +4719,7 @@ class VendorsCompanion extends UpdateCompanion<VendorRow> {
   final Value<String?> phone;
   final Value<String?> address;
   final Value<String?> defaultCategoryId;
+  final Value<String?> defaultBusinessUnitId;
   final Value<String?> notes;
   final Value<int> rowid;
   const VendorsCompanion({
@@ -4680,6 +4735,7 @@ class VendorsCompanion extends UpdateCompanion<VendorRow> {
     this.phone = const Value.absent(),
     this.address = const Value.absent(),
     this.defaultCategoryId = const Value.absent(),
+    this.defaultBusinessUnitId = const Value.absent(),
     this.notes = const Value.absent(),
     this.rowid = const Value.absent(),
   });
@@ -4696,6 +4752,7 @@ class VendorsCompanion extends UpdateCompanion<VendorRow> {
     this.phone = const Value.absent(),
     this.address = const Value.absent(),
     this.defaultCategoryId = const Value.absent(),
+    this.defaultBusinessUnitId = const Value.absent(),
     this.notes = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
@@ -4716,6 +4773,7 @@ class VendorsCompanion extends UpdateCompanion<VendorRow> {
     Expression<String>? phone,
     Expression<String>? address,
     Expression<String>? defaultCategoryId,
+    Expression<String>? defaultBusinessUnitId,
     Expression<String>? notes,
     Expression<int>? rowid,
   }) {
@@ -4732,6 +4790,8 @@ class VendorsCompanion extends UpdateCompanion<VendorRow> {
       if (phone != null) 'phone': phone,
       if (address != null) 'address': address,
       if (defaultCategoryId != null) 'default_category_id': defaultCategoryId,
+      if (defaultBusinessUnitId != null)
+        'default_business_unit_id': defaultBusinessUnitId,
       if (notes != null) 'notes': notes,
       if (rowid != null) 'rowid': rowid,
     });
@@ -4750,6 +4810,7 @@ class VendorsCompanion extends UpdateCompanion<VendorRow> {
     Value<String?>? phone,
     Value<String?>? address,
     Value<String?>? defaultCategoryId,
+    Value<String?>? defaultBusinessUnitId,
     Value<String?>? notes,
     Value<int>? rowid,
   }) {
@@ -4766,6 +4827,8 @@ class VendorsCompanion extends UpdateCompanion<VendorRow> {
       phone: phone ?? this.phone,
       address: address ?? this.address,
       defaultCategoryId: defaultCategoryId ?? this.defaultCategoryId,
+      defaultBusinessUnitId:
+          defaultBusinessUnitId ?? this.defaultBusinessUnitId,
       notes: notes ?? this.notes,
       rowid: rowid ?? this.rowid,
     );
@@ -4810,6 +4873,11 @@ class VendorsCompanion extends UpdateCompanion<VendorRow> {
     if (defaultCategoryId.present) {
       map['default_category_id'] = Variable<String>(defaultCategoryId.value);
     }
+    if (defaultBusinessUnitId.present) {
+      map['default_business_unit_id'] = Variable<String>(
+        defaultBusinessUnitId.value,
+      );
+    }
     if (notes.present) {
       map['notes'] = Variable<String>(notes.value);
     }
@@ -4834,6 +4902,7 @@ class VendorsCompanion extends UpdateCompanion<VendorRow> {
           ..write('phone: $phone, ')
           ..write('address: $address, ')
           ..write('defaultCategoryId: $defaultCategoryId, ')
+          ..write('defaultBusinessUnitId: $defaultBusinessUnitId, ')
           ..write('notes: $notes, ')
           ..write('rowid: $rowid')
           ..write(')'))
@@ -6559,6 +6628,790 @@ class PeriodLockEventsCompanion extends UpdateCompanion<PeriodLockEventRow> {
   }
 }
 
+class $RevenueTaxRatesTable extends RevenueTaxRates
+    with TableInfo<$RevenueTaxRatesTable, RevenueTaxRateRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $RevenueTaxRatesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _orgIdMeta = const VerificationMeta('orgId');
+  @override
+  late final GeneratedColumn<String> orgId = GeneratedColumn<String>(
+    'org_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _revenueCategoryIdMeta = const VerificationMeta(
+    'revenueCategoryId',
+  );
+  @override
+  late final GeneratedColumn<String> revenueCategoryId =
+      GeneratedColumn<String>(
+        'revenue_category_id',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: true,
+        defaultConstraints: GeneratedColumn.constraintIsAlways(
+          'REFERENCES revenue_categories (id) ON DELETE RESTRICT',
+        ),
+      );
+  static const VerificationMeta _rateBasisPointsMeta = const VerificationMeta(
+    'rateBasisPoints',
+  );
+  @override
+  late final GeneratedColumn<int> rateBasisPoints = GeneratedColumn<int>(
+    'rate_basis_points',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _treatmentMeta = const VerificationMeta(
+    'treatment',
+  );
+  @override
+  late final GeneratedColumn<String> treatment = GeneratedColumn<String>(
+    'treatment',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _effectiveFromMeta = const VerificationMeta(
+    'effectiveFrom',
+  );
+  @override
+  late final GeneratedColumn<String> effectiveFrom = GeneratedColumn<String>(
+    'effective_from',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _effectiveToMeta = const VerificationMeta(
+    'effectiveTo',
+  );
+  @override
+  late final GeneratedColumn<String> effectiveTo = GeneratedColumn<String>(
+    'effective_to',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _noteMeta = const VerificationMeta('note');
+  @override
+  late final GeneratedColumn<String> note = GeneratedColumn<String>(
+    'note',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _archivedAtMeta = const VerificationMeta(
+    'archivedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> archivedAt = GeneratedColumn<DateTime>(
+    'archived_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdByMeta = const VerificationMeta(
+    'createdBy',
+  );
+  @override
+  late final GeneratedColumn<String> createdBy = GeneratedColumn<String>(
+    'created_by',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _rowVersionMeta = const VerificationMeta(
+    'rowVersion',
+  );
+  @override
+  late final GeneratedColumn<int> rowVersion = GeneratedColumn<int>(
+    'row_version',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(1),
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    orgId,
+    revenueCategoryId,
+    rateBasisPoints,
+    treatment,
+    effectiveFrom,
+    effectiveTo,
+    note,
+    archivedAt,
+    createdBy,
+    createdAt,
+    rowVersion,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'revenue_tax_rates';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<RevenueTaxRateRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('org_id')) {
+      context.handle(
+        _orgIdMeta,
+        orgId.isAcceptableOrUnknown(data['org_id']!, _orgIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_orgIdMeta);
+    }
+    if (data.containsKey('revenue_category_id')) {
+      context.handle(
+        _revenueCategoryIdMeta,
+        revenueCategoryId.isAcceptableOrUnknown(
+          data['revenue_category_id']!,
+          _revenueCategoryIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_revenueCategoryIdMeta);
+    }
+    if (data.containsKey('rate_basis_points')) {
+      context.handle(
+        _rateBasisPointsMeta,
+        rateBasisPoints.isAcceptableOrUnknown(
+          data['rate_basis_points']!,
+          _rateBasisPointsMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_rateBasisPointsMeta);
+    }
+    if (data.containsKey('treatment')) {
+      context.handle(
+        _treatmentMeta,
+        treatment.isAcceptableOrUnknown(data['treatment']!, _treatmentMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_treatmentMeta);
+    }
+    if (data.containsKey('effective_from')) {
+      context.handle(
+        _effectiveFromMeta,
+        effectiveFrom.isAcceptableOrUnknown(
+          data['effective_from']!,
+          _effectiveFromMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_effectiveFromMeta);
+    }
+    if (data.containsKey('effective_to')) {
+      context.handle(
+        _effectiveToMeta,
+        effectiveTo.isAcceptableOrUnknown(
+          data['effective_to']!,
+          _effectiveToMeta,
+        ),
+      );
+    }
+    if (data.containsKey('note')) {
+      context.handle(
+        _noteMeta,
+        note.isAcceptableOrUnknown(data['note']!, _noteMeta),
+      );
+    }
+    if (data.containsKey('archived_at')) {
+      context.handle(
+        _archivedAtMeta,
+        archivedAt.isAcceptableOrUnknown(data['archived_at']!, _archivedAtMeta),
+      );
+    }
+    if (data.containsKey('created_by')) {
+      context.handle(
+        _createdByMeta,
+        createdBy.isAcceptableOrUnknown(data['created_by']!, _createdByMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdByMeta);
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('row_version')) {
+      context.handle(
+        _rowVersionMeta,
+        rowVersion.isAcceptableOrUnknown(data['row_version']!, _rowVersionMeta),
+      );
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  RevenueTaxRateRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return RevenueTaxRateRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      orgId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}org_id'],
+      )!,
+      revenueCategoryId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}revenue_category_id'],
+      )!,
+      rateBasisPoints: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}rate_basis_points'],
+      )!,
+      treatment: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}treatment'],
+      )!,
+      effectiveFrom: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}effective_from'],
+      )!,
+      effectiveTo: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}effective_to'],
+      ),
+      note: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}note'],
+      ),
+      archivedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}archived_at'],
+      ),
+      createdBy: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}created_by'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      rowVersion: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}row_version'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $RevenueTaxRatesTable createAlias(String alias) {
+    return $RevenueTaxRatesTable(attachedDatabase, alias);
+  }
+}
+
+class RevenueTaxRateRow extends DataClass
+    implements Insertable<RevenueTaxRateRow> {
+  final String id;
+  final String orgId;
+  final String revenueCategoryId;
+
+  /// Basis points: 1% = 100. Integers only — a rate never arrives as a float.
+  final int rateBasisPoints;
+
+  /// `inclusive` | `exclusive` | `none`
+  final String treatment;
+
+  /// `YYYY-MM-DD`, inclusive lower bound.
+  final String effectiveFrom;
+
+  /// `YYYY-MM-DD`, **exclusive** upper bound. Null means still in force.
+  final String? effectiveTo;
+  final String? note;
+  final DateTime? archivedAt;
+  final String createdBy;
+  final DateTime createdAt;
+  final int rowVersion;
+  final DateTime updatedAt;
+  const RevenueTaxRateRow({
+    required this.id,
+    required this.orgId,
+    required this.revenueCategoryId,
+    required this.rateBasisPoints,
+    required this.treatment,
+    required this.effectiveFrom,
+    this.effectiveTo,
+    this.note,
+    this.archivedAt,
+    required this.createdBy,
+    required this.createdAt,
+    required this.rowVersion,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['org_id'] = Variable<String>(orgId);
+    map['revenue_category_id'] = Variable<String>(revenueCategoryId);
+    map['rate_basis_points'] = Variable<int>(rateBasisPoints);
+    map['treatment'] = Variable<String>(treatment);
+    map['effective_from'] = Variable<String>(effectiveFrom);
+    if (!nullToAbsent || effectiveTo != null) {
+      map['effective_to'] = Variable<String>(effectiveTo);
+    }
+    if (!nullToAbsent || note != null) {
+      map['note'] = Variable<String>(note);
+    }
+    if (!nullToAbsent || archivedAt != null) {
+      map['archived_at'] = Variable<DateTime>(archivedAt);
+    }
+    map['created_by'] = Variable<String>(createdBy);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['row_version'] = Variable<int>(rowVersion);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  RevenueTaxRatesCompanion toCompanion(bool nullToAbsent) {
+    return RevenueTaxRatesCompanion(
+      id: Value(id),
+      orgId: Value(orgId),
+      revenueCategoryId: Value(revenueCategoryId),
+      rateBasisPoints: Value(rateBasisPoints),
+      treatment: Value(treatment),
+      effectiveFrom: Value(effectiveFrom),
+      effectiveTo: effectiveTo == null && nullToAbsent
+          ? const Value.absent()
+          : Value(effectiveTo),
+      note: note == null && nullToAbsent ? const Value.absent() : Value(note),
+      archivedAt: archivedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(archivedAt),
+      createdBy: Value(createdBy),
+      createdAt: Value(createdAt),
+      rowVersion: Value(rowVersion),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory RevenueTaxRateRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return RevenueTaxRateRow(
+      id: serializer.fromJson<String>(json['id']),
+      orgId: serializer.fromJson<String>(json['orgId']),
+      revenueCategoryId: serializer.fromJson<String>(json['revenueCategoryId']),
+      rateBasisPoints: serializer.fromJson<int>(json['rateBasisPoints']),
+      treatment: serializer.fromJson<String>(json['treatment']),
+      effectiveFrom: serializer.fromJson<String>(json['effectiveFrom']),
+      effectiveTo: serializer.fromJson<String?>(json['effectiveTo']),
+      note: serializer.fromJson<String?>(json['note']),
+      archivedAt: serializer.fromJson<DateTime?>(json['archivedAt']),
+      createdBy: serializer.fromJson<String>(json['createdBy']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      rowVersion: serializer.fromJson<int>(json['rowVersion']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'orgId': serializer.toJson<String>(orgId),
+      'revenueCategoryId': serializer.toJson<String>(revenueCategoryId),
+      'rateBasisPoints': serializer.toJson<int>(rateBasisPoints),
+      'treatment': serializer.toJson<String>(treatment),
+      'effectiveFrom': serializer.toJson<String>(effectiveFrom),
+      'effectiveTo': serializer.toJson<String?>(effectiveTo),
+      'note': serializer.toJson<String?>(note),
+      'archivedAt': serializer.toJson<DateTime?>(archivedAt),
+      'createdBy': serializer.toJson<String>(createdBy),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'rowVersion': serializer.toJson<int>(rowVersion),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  RevenueTaxRateRow copyWith({
+    String? id,
+    String? orgId,
+    String? revenueCategoryId,
+    int? rateBasisPoints,
+    String? treatment,
+    String? effectiveFrom,
+    Value<String?> effectiveTo = const Value.absent(),
+    Value<String?> note = const Value.absent(),
+    Value<DateTime?> archivedAt = const Value.absent(),
+    String? createdBy,
+    DateTime? createdAt,
+    int? rowVersion,
+    DateTime? updatedAt,
+  }) => RevenueTaxRateRow(
+    id: id ?? this.id,
+    orgId: orgId ?? this.orgId,
+    revenueCategoryId: revenueCategoryId ?? this.revenueCategoryId,
+    rateBasisPoints: rateBasisPoints ?? this.rateBasisPoints,
+    treatment: treatment ?? this.treatment,
+    effectiveFrom: effectiveFrom ?? this.effectiveFrom,
+    effectiveTo: effectiveTo.present ? effectiveTo.value : this.effectiveTo,
+    note: note.present ? note.value : this.note,
+    archivedAt: archivedAt.present ? archivedAt.value : this.archivedAt,
+    createdBy: createdBy ?? this.createdBy,
+    createdAt: createdAt ?? this.createdAt,
+    rowVersion: rowVersion ?? this.rowVersion,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  RevenueTaxRateRow copyWithCompanion(RevenueTaxRatesCompanion data) {
+    return RevenueTaxRateRow(
+      id: data.id.present ? data.id.value : this.id,
+      orgId: data.orgId.present ? data.orgId.value : this.orgId,
+      revenueCategoryId: data.revenueCategoryId.present
+          ? data.revenueCategoryId.value
+          : this.revenueCategoryId,
+      rateBasisPoints: data.rateBasisPoints.present
+          ? data.rateBasisPoints.value
+          : this.rateBasisPoints,
+      treatment: data.treatment.present ? data.treatment.value : this.treatment,
+      effectiveFrom: data.effectiveFrom.present
+          ? data.effectiveFrom.value
+          : this.effectiveFrom,
+      effectiveTo: data.effectiveTo.present
+          ? data.effectiveTo.value
+          : this.effectiveTo,
+      note: data.note.present ? data.note.value : this.note,
+      archivedAt: data.archivedAt.present
+          ? data.archivedAt.value
+          : this.archivedAt,
+      createdBy: data.createdBy.present ? data.createdBy.value : this.createdBy,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      rowVersion: data.rowVersion.present
+          ? data.rowVersion.value
+          : this.rowVersion,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('RevenueTaxRateRow(')
+          ..write('id: $id, ')
+          ..write('orgId: $orgId, ')
+          ..write('revenueCategoryId: $revenueCategoryId, ')
+          ..write('rateBasisPoints: $rateBasisPoints, ')
+          ..write('treatment: $treatment, ')
+          ..write('effectiveFrom: $effectiveFrom, ')
+          ..write('effectiveTo: $effectiveTo, ')
+          ..write('note: $note, ')
+          ..write('archivedAt: $archivedAt, ')
+          ..write('createdBy: $createdBy, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('rowVersion: $rowVersion, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    orgId,
+    revenueCategoryId,
+    rateBasisPoints,
+    treatment,
+    effectiveFrom,
+    effectiveTo,
+    note,
+    archivedAt,
+    createdBy,
+    createdAt,
+    rowVersion,
+    updatedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is RevenueTaxRateRow &&
+          other.id == this.id &&
+          other.orgId == this.orgId &&
+          other.revenueCategoryId == this.revenueCategoryId &&
+          other.rateBasisPoints == this.rateBasisPoints &&
+          other.treatment == this.treatment &&
+          other.effectiveFrom == this.effectiveFrom &&
+          other.effectiveTo == this.effectiveTo &&
+          other.note == this.note &&
+          other.archivedAt == this.archivedAt &&
+          other.createdBy == this.createdBy &&
+          other.createdAt == this.createdAt &&
+          other.rowVersion == this.rowVersion &&
+          other.updatedAt == this.updatedAt);
+}
+
+class RevenueTaxRatesCompanion extends UpdateCompanion<RevenueTaxRateRow> {
+  final Value<String> id;
+  final Value<String> orgId;
+  final Value<String> revenueCategoryId;
+  final Value<int> rateBasisPoints;
+  final Value<String> treatment;
+  final Value<String> effectiveFrom;
+  final Value<String?> effectiveTo;
+  final Value<String?> note;
+  final Value<DateTime?> archivedAt;
+  final Value<String> createdBy;
+  final Value<DateTime> createdAt;
+  final Value<int> rowVersion;
+  final Value<DateTime> updatedAt;
+  final Value<int> rowid;
+  const RevenueTaxRatesCompanion({
+    this.id = const Value.absent(),
+    this.orgId = const Value.absent(),
+    this.revenueCategoryId = const Value.absent(),
+    this.rateBasisPoints = const Value.absent(),
+    this.treatment = const Value.absent(),
+    this.effectiveFrom = const Value.absent(),
+    this.effectiveTo = const Value.absent(),
+    this.note = const Value.absent(),
+    this.archivedAt = const Value.absent(),
+    this.createdBy = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.rowVersion = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  RevenueTaxRatesCompanion.insert({
+    required String id,
+    required String orgId,
+    required String revenueCategoryId,
+    required int rateBasisPoints,
+    required String treatment,
+    required String effectiveFrom,
+    this.effectiveTo = const Value.absent(),
+    this.note = const Value.absent(),
+    this.archivedAt = const Value.absent(),
+    required String createdBy,
+    required DateTime createdAt,
+    this.rowVersion = const Value.absent(),
+    required DateTime updatedAt,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       orgId = Value(orgId),
+       revenueCategoryId = Value(revenueCategoryId),
+       rateBasisPoints = Value(rateBasisPoints),
+       treatment = Value(treatment),
+       effectiveFrom = Value(effectiveFrom),
+       createdBy = Value(createdBy),
+       createdAt = Value(createdAt),
+       updatedAt = Value(updatedAt);
+  static Insertable<RevenueTaxRateRow> custom({
+    Expression<String>? id,
+    Expression<String>? orgId,
+    Expression<String>? revenueCategoryId,
+    Expression<int>? rateBasisPoints,
+    Expression<String>? treatment,
+    Expression<String>? effectiveFrom,
+    Expression<String>? effectiveTo,
+    Expression<String>? note,
+    Expression<DateTime>? archivedAt,
+    Expression<String>? createdBy,
+    Expression<DateTime>? createdAt,
+    Expression<int>? rowVersion,
+    Expression<DateTime>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (orgId != null) 'org_id': orgId,
+      if (revenueCategoryId != null) 'revenue_category_id': revenueCategoryId,
+      if (rateBasisPoints != null) 'rate_basis_points': rateBasisPoints,
+      if (treatment != null) 'treatment': treatment,
+      if (effectiveFrom != null) 'effective_from': effectiveFrom,
+      if (effectiveTo != null) 'effective_to': effectiveTo,
+      if (note != null) 'note': note,
+      if (archivedAt != null) 'archived_at': archivedAt,
+      if (createdBy != null) 'created_by': createdBy,
+      if (createdAt != null) 'created_at': createdAt,
+      if (rowVersion != null) 'row_version': rowVersion,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  RevenueTaxRatesCompanion copyWith({
+    Value<String>? id,
+    Value<String>? orgId,
+    Value<String>? revenueCategoryId,
+    Value<int>? rateBasisPoints,
+    Value<String>? treatment,
+    Value<String>? effectiveFrom,
+    Value<String?>? effectiveTo,
+    Value<String?>? note,
+    Value<DateTime?>? archivedAt,
+    Value<String>? createdBy,
+    Value<DateTime>? createdAt,
+    Value<int>? rowVersion,
+    Value<DateTime>? updatedAt,
+    Value<int>? rowid,
+  }) {
+    return RevenueTaxRatesCompanion(
+      id: id ?? this.id,
+      orgId: orgId ?? this.orgId,
+      revenueCategoryId: revenueCategoryId ?? this.revenueCategoryId,
+      rateBasisPoints: rateBasisPoints ?? this.rateBasisPoints,
+      treatment: treatment ?? this.treatment,
+      effectiveFrom: effectiveFrom ?? this.effectiveFrom,
+      effectiveTo: effectiveTo ?? this.effectiveTo,
+      note: note ?? this.note,
+      archivedAt: archivedAt ?? this.archivedAt,
+      createdBy: createdBy ?? this.createdBy,
+      createdAt: createdAt ?? this.createdAt,
+      rowVersion: rowVersion ?? this.rowVersion,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (orgId.present) {
+      map['org_id'] = Variable<String>(orgId.value);
+    }
+    if (revenueCategoryId.present) {
+      map['revenue_category_id'] = Variable<String>(revenueCategoryId.value);
+    }
+    if (rateBasisPoints.present) {
+      map['rate_basis_points'] = Variable<int>(rateBasisPoints.value);
+    }
+    if (treatment.present) {
+      map['treatment'] = Variable<String>(treatment.value);
+    }
+    if (effectiveFrom.present) {
+      map['effective_from'] = Variable<String>(effectiveFrom.value);
+    }
+    if (effectiveTo.present) {
+      map['effective_to'] = Variable<String>(effectiveTo.value);
+    }
+    if (note.present) {
+      map['note'] = Variable<String>(note.value);
+    }
+    if (archivedAt.present) {
+      map['archived_at'] = Variable<DateTime>(archivedAt.value);
+    }
+    if (createdBy.present) {
+      map['created_by'] = Variable<String>(createdBy.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (rowVersion.present) {
+      map['row_version'] = Variable<int>(rowVersion.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('RevenueTaxRatesCompanion(')
+          ..write('id: $id, ')
+          ..write('orgId: $orgId, ')
+          ..write('revenueCategoryId: $revenueCategoryId, ')
+          ..write('rateBasisPoints: $rateBasisPoints, ')
+          ..write('treatment: $treatment, ')
+          ..write('effectiveFrom: $effectiveFrom, ')
+          ..write('effectiveTo: $effectiveTo, ')
+          ..write('note: $note, ')
+          ..write('archivedAt: $archivedAt, ')
+          ..write('createdBy: $createdBy, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('rowVersion: $rowVersion, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -6577,6 +7430,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $PeriodLockEventsTable periodLockEvents = $PeriodLockEventsTable(
     this,
   );
+  late final $RevenueTaxRatesTable revenueTaxRates = $RevenueTaxRatesTable(
+    this,
+  );
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -6593,6 +7449,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     paymentMethods,
     periodLocks,
     periodLockEvents,
+    revenueTaxRates,
   ];
 }
 
@@ -7179,6 +8036,24 @@ final class $$BusinessUnitsTableReferences
     );
   }
 
+  static MultiTypedResultKey<$VendorsTable, List<VendorRow>> _vendorsRefsTable(
+    _$AppDatabase db,
+  ) => MultiTypedResultKey.fromTable(
+    db.vendors,
+    aliasName: 'business_units__id__vendors__default_business_unit_id',
+  );
+
+  $$VendorsTableProcessedTableManager get vendorsRefs {
+    final manager = $$VendorsTableTableManager($_db, $_db.vendors).filter(
+      (f) => f.defaultBusinessUnitId.id.sqlEquals($_itemColumn<String>('id')!),
+    );
+
+    final cache = $_typedResult.readTableOrNull(_vendorsRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
   static MultiTypedResultKey<$PeriodLocksTable, List<PeriodLockRow>>
   _periodLocksRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
     db.periodLocks,
@@ -7303,6 +8178,31 @@ class $$BusinessUnitsTableFilterComposer
           }) => $$RevenueCategoriesTableFilterComposer(
             $db: $db,
             $table: $db.revenueCategories,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> vendorsRefs(
+    Expression<bool> Function($$VendorsTableFilterComposer f) f,
+  ) {
+    final $$VendorsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.vendors,
+      getReferencedColumn: (t) => t.defaultBusinessUnitId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$VendorsTableFilterComposer(
+            $db: $db,
+            $table: $db.vendors,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -7502,6 +8402,31 @@ class $$BusinessUnitsTableAnnotationComposer
     return f(composer);
   }
 
+  Expression<T> vendorsRefs<T extends Object>(
+    Expression<T> Function($$VendorsTableAnnotationComposer a) f,
+  ) {
+    final $$VendorsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.vendors,
+      getReferencedColumn: (t) => t.defaultBusinessUnitId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$VendorsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.vendors,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
   Expression<T> periodLocksRefs<T extends Object>(
     Expression<T> Function($$PeriodLocksTableAnnotationComposer a) f,
   ) {
@@ -7544,6 +8469,7 @@ class $$BusinessUnitsTableTableManager
           PrefetchHooks Function({
             bool departmentsRefs,
             bool revenueCategoriesRefs,
+            bool vendorsRefs,
             bool periodLocksRefs,
           })
         > {
@@ -7626,6 +8552,7 @@ class $$BusinessUnitsTableTableManager
               ({
                 departmentsRefs = false,
                 revenueCategoriesRefs = false,
+                vendorsRefs = false,
                 periodLocksRefs = false,
               }) {
                 return PrefetchHooks(
@@ -7633,6 +8560,7 @@ class $$BusinessUnitsTableTableManager
                   explicitlyWatchedTables: [
                     if (departmentsRefs) db.departments,
                     if (revenueCategoriesRefs) db.revenueCategories,
+                    if (vendorsRefs) db.vendors,
                     if (periodLocksRefs) db.periodLocks,
                   ],
                   addJoins: null,
@@ -7680,6 +8608,27 @@ class $$BusinessUnitsTableTableManager
                               ),
                           typedResults: items,
                         ),
+                      if (vendorsRefs)
+                        await $_getPrefetchedData<
+                          BusinessUnitRow,
+                          $BusinessUnitsTable,
+                          VendorRow
+                        >(
+                          currentTable: table,
+                          referencedTable: $$BusinessUnitsTableReferences
+                              ._vendorsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$BusinessUnitsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).vendorsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.defaultBusinessUnitId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
                       if (periodLocksRefs)
                         await $_getPrefetchedData<
                           BusinessUnitRow,
@@ -7724,6 +8673,7 @@ typedef $$BusinessUnitsTableProcessedTableManager =
       PrefetchHooks Function({
         bool departmentsRefs,
         bool revenueCategoriesRefs,
+        bool vendorsRefs,
         bool periodLocksRefs,
       })
     >;
@@ -9315,6 +10265,26 @@ final class $$RevenueCategoriesTableReferences
       manager.$state.copyWith(prefetchedData: [item]),
     );
   }
+
+  static MultiTypedResultKey<$RevenueTaxRatesTable, List<RevenueTaxRateRow>>
+  _revenueTaxRatesRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.revenueTaxRates,
+    aliasName: 'revenue_categories__id__revenue_tax_rates__revenue_category_id',
+  );
+
+  $$RevenueTaxRatesTableProcessedTableManager get revenueTaxRatesRefs {
+    final manager =
+        $$RevenueTaxRatesTableTableManager($_db, $_db.revenueTaxRates).filter(
+          (f) => f.revenueCategoryId.id.sqlEquals($_itemColumn<String>('id')!),
+        );
+
+    final cache = $_typedResult.readTableOrNull(
+      _revenueTaxRatesRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
 }
 
 class $$RevenueCategoriesTableFilterComposer
@@ -9387,6 +10357,31 @@ class $$RevenueCategoriesTableFilterComposer
           ),
     );
     return composer;
+  }
+
+  Expression<bool> revenueTaxRatesRefs(
+    Expression<bool> Function($$RevenueTaxRatesTableFilterComposer f) f,
+  ) {
+    final $$RevenueTaxRatesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.revenueTaxRates,
+      getReferencedColumn: (t) => t.revenueCategoryId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$RevenueTaxRatesTableFilterComposer(
+            $db: $db,
+            $table: $db.revenueTaxRates,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
   }
 }
 
@@ -9522,6 +10517,31 @@ class $$RevenueCategoriesTableAnnotationComposer
     );
     return composer;
   }
+
+  Expression<T> revenueTaxRatesRefs<T extends Object>(
+    Expression<T> Function($$RevenueTaxRatesTableAnnotationComposer a) f,
+  ) {
+    final $$RevenueTaxRatesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.revenueTaxRates,
+      getReferencedColumn: (t) => t.revenueCategoryId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$RevenueTaxRatesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.revenueTaxRates,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$RevenueCategoriesTableTableManager
@@ -9537,7 +10557,10 @@ class $$RevenueCategoriesTableTableManager
           $$RevenueCategoriesTableUpdateCompanionBuilder,
           (RevenueCategoryRow, $$RevenueCategoriesTableReferences),
           RevenueCategoryRow,
-          PrefetchHooks Function({bool businessUnitId})
+          PrefetchHooks Function({
+            bool businessUnitId,
+            bool revenueTaxRatesRefs,
+          })
         > {
   $$RevenueCategoriesTableTableManager(
     _$AppDatabase db,
@@ -9611,49 +10634,74 @@ class $$RevenueCategoriesTableTableManager
                 ),
               )
               .toList(),
-          prefetchHooksCallback: ({businessUnitId = false}) {
-            return PrefetchHooks(
-              db: db,
-              explicitlyWatchedTables: [],
-              addJoins:
-                  <
-                    T extends TableManagerState<
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic
-                    >
-                  >(state) {
-                    if (businessUnitId) {
-                      state =
-                          state.withJoin(
-                                currentTable: table,
-                                currentColumn: table.businessUnitId,
-                                referencedTable:
-                                    $$RevenueCategoriesTableReferences
-                                        ._businessUnitIdTable(db),
-                                referencedColumn:
-                                    $$RevenueCategoriesTableReferences
-                                        ._businessUnitIdTable(db)
-                                        .id,
-                              )
-                              as T;
-                    }
+          prefetchHooksCallback:
+              ({businessUnitId = false, revenueTaxRatesRefs = false}) {
+                return PrefetchHooks(
+                  db: db,
+                  explicitlyWatchedTables: [
+                    if (revenueTaxRatesRefs) db.revenueTaxRates,
+                  ],
+                  addJoins:
+                      <
+                        T extends TableManagerState<
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic
+                        >
+                      >(state) {
+                        if (businessUnitId) {
+                          state =
+                              state.withJoin(
+                                    currentTable: table,
+                                    currentColumn: table.businessUnitId,
+                                    referencedTable:
+                                        $$RevenueCategoriesTableReferences
+                                            ._businessUnitIdTable(db),
+                                    referencedColumn:
+                                        $$RevenueCategoriesTableReferences
+                                            ._businessUnitIdTable(db)
+                                            .id,
+                                  )
+                                  as T;
+                        }
 
-                    return state;
+                        return state;
+                      },
+                  getPrefetchedDataCallback: (items) async {
+                    return [
+                      if (revenueTaxRatesRefs)
+                        await $_getPrefetchedData<
+                          RevenueCategoryRow,
+                          $RevenueCategoriesTable,
+                          RevenueTaxRateRow
+                        >(
+                          currentTable: table,
+                          referencedTable: $$RevenueCategoriesTableReferences
+                              ._revenueTaxRatesRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$RevenueCategoriesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).revenueTaxRatesRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.revenueCategoryId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                    ];
                   },
-              getPrefetchedDataCallback: (items) async {
-                return [];
+                );
               },
-            );
-          },
         ),
       );
 }
@@ -9670,7 +10718,7 @@ typedef $$RevenueCategoriesTableProcessedTableManager =
       $$RevenueCategoriesTableUpdateCompanionBuilder,
       (RevenueCategoryRow, $$RevenueCategoriesTableReferences),
       RevenueCategoryRow,
-      PrefetchHooks Function({bool businessUnitId})
+      PrefetchHooks Function({bool businessUnitId, bool revenueTaxRatesRefs})
     >;
 typedef $$VendorsTableCreateCompanionBuilder =
     VendorsCompanion Function({
@@ -9686,6 +10734,7 @@ typedef $$VendorsTableCreateCompanionBuilder =
       Value<String?> phone,
       Value<String?> address,
       Value<String?> defaultCategoryId,
+      Value<String?> defaultBusinessUnitId,
       Value<String?> notes,
       Value<int> rowid,
     });
@@ -9703,6 +10752,7 @@ typedef $$VendorsTableUpdateCompanionBuilder =
       Value<String?> phone,
       Value<String?> address,
       Value<String?> defaultCategoryId,
+      Value<String?> defaultBusinessUnitId,
       Value<String?> notes,
       Value<int> rowid,
     });
@@ -9723,6 +10773,26 @@ final class $$VendorsTableReferences
       $_db.expenseCategories,
     ).filter((f) => f.id.sqlEquals($_column));
     final item = $_typedResult.readTableOrNull(_defaultCategoryIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static $BusinessUnitsTable _defaultBusinessUnitIdTable(_$AppDatabase db) => db
+      .businessUnits
+      .createAlias('vendors__default_business_unit_id__business_units__id');
+
+  $$BusinessUnitsTableProcessedTableManager? get defaultBusinessUnitId {
+    final $_column = $_itemColumn<String>('default_business_unit_id');
+    if ($_column == null) return null;
+    final manager = $$BusinessUnitsTableTableManager(
+      $_db,
+      $_db.businessUnits,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(
+      _defaultBusinessUnitIdTable($_db),
+    );
     if (item == null) return manager;
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: [item]),
@@ -9813,6 +10883,29 @@ class $$VendorsTableFilterComposer
           }) => $$ExpenseCategoriesTableFilterComposer(
             $db: $db,
             $table: $db.expenseCategories,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$BusinessUnitsTableFilterComposer get defaultBusinessUnitId {
+    final $$BusinessUnitsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.defaultBusinessUnitId,
+      referencedTable: $db.businessUnits,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$BusinessUnitsTableFilterComposer(
+            $db: $db,
+            $table: $db.businessUnits,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -9914,6 +11007,29 @@ class $$VendorsTableOrderingComposer
     );
     return composer;
   }
+
+  $$BusinessUnitsTableOrderingComposer get defaultBusinessUnitId {
+    final $$BusinessUnitsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.defaultBusinessUnitId,
+      referencedTable: $db.businessUnits,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$BusinessUnitsTableOrderingComposer(
+            $db: $db,
+            $table: $db.businessUnits,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
 }
 
 class $$VendorsTableAnnotationComposer
@@ -9988,6 +11104,29 @@ class $$VendorsTableAnnotationComposer
         );
     return composer;
   }
+
+  $$BusinessUnitsTableAnnotationComposer get defaultBusinessUnitId {
+    final $$BusinessUnitsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.defaultBusinessUnitId,
+      referencedTable: $db.businessUnits,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$BusinessUnitsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.businessUnits,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
 }
 
 class $$VendorsTableTableManager
@@ -10003,7 +11142,10 @@ class $$VendorsTableTableManager
           $$VendorsTableUpdateCompanionBuilder,
           (VendorRow, $$VendorsTableReferences),
           VendorRow,
-          PrefetchHooks Function({bool defaultCategoryId})
+          PrefetchHooks Function({
+            bool defaultCategoryId,
+            bool defaultBusinessUnitId,
+          })
         > {
   $$VendorsTableTableManager(_$AppDatabase db, $VendorsTable table)
     : super(
@@ -10030,6 +11172,7 @@ class $$VendorsTableTableManager
                 Value<String?> phone = const Value.absent(),
                 Value<String?> address = const Value.absent(),
                 Value<String?> defaultCategoryId = const Value.absent(),
+                Value<String?> defaultBusinessUnitId = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => VendorsCompanion(
@@ -10045,6 +11188,7 @@ class $$VendorsTableTableManager
                 phone: phone,
                 address: address,
                 defaultCategoryId: defaultCategoryId,
+                defaultBusinessUnitId: defaultBusinessUnitId,
                 notes: notes,
                 rowid: rowid,
               ),
@@ -10062,6 +11206,7 @@ class $$VendorsTableTableManager
                 Value<String?> phone = const Value.absent(),
                 Value<String?> address = const Value.absent(),
                 Value<String?> defaultCategoryId = const Value.absent(),
+                Value<String?> defaultBusinessUnitId = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => VendorsCompanion.insert(
@@ -10077,6 +11222,7 @@ class $$VendorsTableTableManager
                 phone: phone,
                 address: address,
                 defaultCategoryId: defaultCategoryId,
+                defaultBusinessUnitId: defaultBusinessUnitId,
                 notes: notes,
                 rowid: rowid,
               ),
@@ -10088,47 +11234,61 @@ class $$VendorsTableTableManager
                 ),
               )
               .toList(),
-          prefetchHooksCallback: ({defaultCategoryId = false}) {
-            return PrefetchHooks(
-              db: db,
-              explicitlyWatchedTables: [],
-              addJoins:
-                  <
-                    T extends TableManagerState<
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic
-                    >
-                  >(state) {
-                    if (defaultCategoryId) {
-                      state =
-                          state.withJoin(
-                                currentTable: table,
-                                currentColumn: table.defaultCategoryId,
-                                referencedTable: $$VendorsTableReferences
-                                    ._defaultCategoryIdTable(db),
-                                referencedColumn: $$VendorsTableReferences
-                                    ._defaultCategoryIdTable(db)
-                                    .id,
-                              )
-                              as T;
-                    }
+          prefetchHooksCallback:
+              ({defaultCategoryId = false, defaultBusinessUnitId = false}) {
+                return PrefetchHooks(
+                  db: db,
+                  explicitlyWatchedTables: [],
+                  addJoins:
+                      <
+                        T extends TableManagerState<
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic
+                        >
+                      >(state) {
+                        if (defaultCategoryId) {
+                          state =
+                              state.withJoin(
+                                    currentTable: table,
+                                    currentColumn: table.defaultCategoryId,
+                                    referencedTable: $$VendorsTableReferences
+                                        ._defaultCategoryIdTable(db),
+                                    referencedColumn: $$VendorsTableReferences
+                                        ._defaultCategoryIdTable(db)
+                                        .id,
+                                  )
+                                  as T;
+                        }
+                        if (defaultBusinessUnitId) {
+                          state =
+                              state.withJoin(
+                                    currentTable: table,
+                                    currentColumn: table.defaultBusinessUnitId,
+                                    referencedTable: $$VendorsTableReferences
+                                        ._defaultBusinessUnitIdTable(db),
+                                    referencedColumn: $$VendorsTableReferences
+                                        ._defaultBusinessUnitIdTable(db)
+                                        .id,
+                                  )
+                                  as T;
+                        }
 
-                    return state;
+                        return state;
+                      },
+                  getPrefetchedDataCallback: (items) async {
+                    return [];
                   },
-              getPrefetchedDataCallback: (items) async {
-                return [];
+                );
               },
-            );
-          },
         ),
       );
 }
@@ -10145,7 +11305,10 @@ typedef $$VendorsTableProcessedTableManager =
       $$VendorsTableUpdateCompanionBuilder,
       (VendorRow, $$VendorsTableReferences),
       VendorRow,
-      PrefetchHooks Function({bool defaultCategoryId})
+      PrefetchHooks Function({
+        bool defaultCategoryId,
+        bool defaultBusinessUnitId,
+      })
     >;
 typedef $$PaymentMethodsTableCreateCompanionBuilder =
     PaymentMethodsCompanion Function({
@@ -11346,6 +12509,501 @@ typedef $$PeriodLockEventsTableProcessedTableManager =
       PeriodLockEventRow,
       PrefetchHooks Function({bool periodLockId})
     >;
+typedef $$RevenueTaxRatesTableCreateCompanionBuilder =
+    RevenueTaxRatesCompanion Function({
+      required String id,
+      required String orgId,
+      required String revenueCategoryId,
+      required int rateBasisPoints,
+      required String treatment,
+      required String effectiveFrom,
+      Value<String?> effectiveTo,
+      Value<String?> note,
+      Value<DateTime?> archivedAt,
+      required String createdBy,
+      required DateTime createdAt,
+      Value<int> rowVersion,
+      required DateTime updatedAt,
+      Value<int> rowid,
+    });
+typedef $$RevenueTaxRatesTableUpdateCompanionBuilder =
+    RevenueTaxRatesCompanion Function({
+      Value<String> id,
+      Value<String> orgId,
+      Value<String> revenueCategoryId,
+      Value<int> rateBasisPoints,
+      Value<String> treatment,
+      Value<String> effectiveFrom,
+      Value<String?> effectiveTo,
+      Value<String?> note,
+      Value<DateTime?> archivedAt,
+      Value<String> createdBy,
+      Value<DateTime> createdAt,
+      Value<int> rowVersion,
+      Value<DateTime> updatedAt,
+      Value<int> rowid,
+    });
+
+final class $$RevenueTaxRatesTableReferences
+    extends
+        BaseReferences<
+          _$AppDatabase,
+          $RevenueTaxRatesTable,
+          RevenueTaxRateRow
+        > {
+  $$RevenueTaxRatesTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $RevenueCategoriesTable _revenueCategoryIdTable(_$AppDatabase db) =>
+      db.revenueCategories.createAlias(
+        'revenue_tax_rates__revenue_category_id__revenue_categories__id',
+      );
+
+  $$RevenueCategoriesTableProcessedTableManager get revenueCategoryId {
+    final $_column = $_itemColumn<String>('revenue_category_id')!;
+
+    final manager = $$RevenueCategoriesTableTableManager(
+      $_db,
+      $_db.revenueCategories,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_revenueCategoryIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$RevenueTaxRatesTableFilterComposer
+    extends Composer<_$AppDatabase, $RevenueTaxRatesTable> {
+  $$RevenueTaxRatesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get orgId => $composableBuilder(
+    column: $table.orgId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get rateBasisPoints => $composableBuilder(
+    column: $table.rateBasisPoints,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get treatment => $composableBuilder(
+    column: $table.treatment,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get effectiveFrom => $composableBuilder(
+    column: $table.effectiveFrom,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get effectiveTo => $composableBuilder(
+    column: $table.effectiveTo,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get note => $composableBuilder(
+    column: $table.note,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get archivedAt => $composableBuilder(
+    column: $table.archivedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get createdBy => $composableBuilder(
+    column: $table.createdBy,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get rowVersion => $composableBuilder(
+    column: $table.rowVersion,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$RevenueCategoriesTableFilterComposer get revenueCategoryId {
+    final $$RevenueCategoriesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.revenueCategoryId,
+      referencedTable: $db.revenueCategories,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$RevenueCategoriesTableFilterComposer(
+            $db: $db,
+            $table: $db.revenueCategories,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$RevenueTaxRatesTableOrderingComposer
+    extends Composer<_$AppDatabase, $RevenueTaxRatesTable> {
+  $$RevenueTaxRatesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get orgId => $composableBuilder(
+    column: $table.orgId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get rateBasisPoints => $composableBuilder(
+    column: $table.rateBasisPoints,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get treatment => $composableBuilder(
+    column: $table.treatment,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get effectiveFrom => $composableBuilder(
+    column: $table.effectiveFrom,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get effectiveTo => $composableBuilder(
+    column: $table.effectiveTo,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get note => $composableBuilder(
+    column: $table.note,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get archivedAt => $composableBuilder(
+    column: $table.archivedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get createdBy => $composableBuilder(
+    column: $table.createdBy,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get rowVersion => $composableBuilder(
+    column: $table.rowVersion,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$RevenueCategoriesTableOrderingComposer get revenueCategoryId {
+    final $$RevenueCategoriesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.revenueCategoryId,
+      referencedTable: $db.revenueCategories,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$RevenueCategoriesTableOrderingComposer(
+            $db: $db,
+            $table: $db.revenueCategories,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$RevenueTaxRatesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $RevenueTaxRatesTable> {
+  $$RevenueTaxRatesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get orgId =>
+      $composableBuilder(column: $table.orgId, builder: (column) => column);
+
+  GeneratedColumn<int> get rateBasisPoints => $composableBuilder(
+    column: $table.rateBasisPoints,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get treatment =>
+      $composableBuilder(column: $table.treatment, builder: (column) => column);
+
+  GeneratedColumn<String> get effectiveFrom => $composableBuilder(
+    column: $table.effectiveFrom,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get effectiveTo => $composableBuilder(
+    column: $table.effectiveTo,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get note =>
+      $composableBuilder(column: $table.note, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get archivedAt => $composableBuilder(
+    column: $table.archivedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get createdBy =>
+      $composableBuilder(column: $table.createdBy, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<int> get rowVersion => $composableBuilder(
+    column: $table.rowVersion,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  $$RevenueCategoriesTableAnnotationComposer get revenueCategoryId {
+    final $$RevenueCategoriesTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.revenueCategoryId,
+          referencedTable: $db.revenueCategories,
+          getReferencedColumn: (t) => t.id,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$RevenueCategoriesTableAnnotationComposer(
+                $db: $db,
+                $table: $db.revenueCategories,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return composer;
+  }
+}
+
+class $$RevenueTaxRatesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $RevenueTaxRatesTable,
+          RevenueTaxRateRow,
+          $$RevenueTaxRatesTableFilterComposer,
+          $$RevenueTaxRatesTableOrderingComposer,
+          $$RevenueTaxRatesTableAnnotationComposer,
+          $$RevenueTaxRatesTableCreateCompanionBuilder,
+          $$RevenueTaxRatesTableUpdateCompanionBuilder,
+          (RevenueTaxRateRow, $$RevenueTaxRatesTableReferences),
+          RevenueTaxRateRow,
+          PrefetchHooks Function({bool revenueCategoryId})
+        > {
+  $$RevenueTaxRatesTableTableManager(
+    _$AppDatabase db,
+    $RevenueTaxRatesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$RevenueTaxRatesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$RevenueTaxRatesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$RevenueTaxRatesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> orgId = const Value.absent(),
+                Value<String> revenueCategoryId = const Value.absent(),
+                Value<int> rateBasisPoints = const Value.absent(),
+                Value<String> treatment = const Value.absent(),
+                Value<String> effectiveFrom = const Value.absent(),
+                Value<String?> effectiveTo = const Value.absent(),
+                Value<String?> note = const Value.absent(),
+                Value<DateTime?> archivedAt = const Value.absent(),
+                Value<String> createdBy = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<int> rowVersion = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => RevenueTaxRatesCompanion(
+                id: id,
+                orgId: orgId,
+                revenueCategoryId: revenueCategoryId,
+                rateBasisPoints: rateBasisPoints,
+                treatment: treatment,
+                effectiveFrom: effectiveFrom,
+                effectiveTo: effectiveTo,
+                note: note,
+                archivedAt: archivedAt,
+                createdBy: createdBy,
+                createdAt: createdAt,
+                rowVersion: rowVersion,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String orgId,
+                required String revenueCategoryId,
+                required int rateBasisPoints,
+                required String treatment,
+                required String effectiveFrom,
+                Value<String?> effectiveTo = const Value.absent(),
+                Value<String?> note = const Value.absent(),
+                Value<DateTime?> archivedAt = const Value.absent(),
+                required String createdBy,
+                required DateTime createdAt,
+                Value<int> rowVersion = const Value.absent(),
+                required DateTime updatedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => RevenueTaxRatesCompanion.insert(
+                id: id,
+                orgId: orgId,
+                revenueCategoryId: revenueCategoryId,
+                rateBasisPoints: rateBasisPoints,
+                treatment: treatment,
+                effectiveFrom: effectiveFrom,
+                effectiveTo: effectiveTo,
+                note: note,
+                archivedAt: archivedAt,
+                createdBy: createdBy,
+                createdAt: createdAt,
+                rowVersion: rowVersion,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$RevenueTaxRatesTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({revenueCategoryId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (revenueCategoryId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.revenueCategoryId,
+                                referencedTable:
+                                    $$RevenueTaxRatesTableReferences
+                                        ._revenueCategoryIdTable(db),
+                                referencedColumn:
+                                    $$RevenueTaxRatesTableReferences
+                                        ._revenueCategoryIdTable(db)
+                                        .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$RevenueTaxRatesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $RevenueTaxRatesTable,
+      RevenueTaxRateRow,
+      $$RevenueTaxRatesTableFilterComposer,
+      $$RevenueTaxRatesTableOrderingComposer,
+      $$RevenueTaxRatesTableAnnotationComposer,
+      $$RevenueTaxRatesTableCreateCompanionBuilder,
+      $$RevenueTaxRatesTableUpdateCompanionBuilder,
+      (RevenueTaxRateRow, $$RevenueTaxRatesTableReferences),
+      RevenueTaxRateRow,
+      PrefetchHooks Function({bool revenueCategoryId})
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -11372,4 +13030,6 @@ class $AppDatabaseManager {
       $$PeriodLocksTableTableManager(_db, _db.periodLocks);
   $$PeriodLockEventsTableTableManager get periodLockEvents =>
       $$PeriodLockEventsTableTableManager(_db, _db.periodLockEvents);
+  $$RevenueTaxRatesTableTableManager get revenueTaxRates =>
+      $$RevenueTaxRatesTableTableManager(_db, _db.revenueTaxRates);
 }

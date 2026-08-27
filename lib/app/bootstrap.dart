@@ -17,6 +17,7 @@ import 'package:krishna_mis/app/env/app_environment.dart';
 import 'package:krishna_mis/app/routing/app_router.dart';
 import 'package:krishna_mis/data/local/app_database.dart';
 import 'package:krishna_mis/data/local/encrypted_database.dart';
+import 'package:krishna_mis/data/local/seed/master_seed.dart';
 import 'package:krishna_mis/data/sync/outbox_repository.dart';
 import 'package:timezone/data/latest_all.dart' as tz_data;
 import 'package:timezone/timezone.dart' as tz;
@@ -58,6 +59,11 @@ Future<BootstrapResult> bootstrap() async {
   tz.setLocalLocation(tz.getLocation('Asia/Kolkata'));
 
   final database = await openEncryptedDatabase();
+
+  // Idempotent, and it never overwrites an edited label — safe to run on every launch
+  // until the backend becomes the source of master data (D-027).
+  await seedMasterData(database, now: DateTime.now().toUtc());
+
   final outbox = OutboxRepository(database);
   final recovered = await outbox.recoverStaleInFlight(now: DateTime.now());
 

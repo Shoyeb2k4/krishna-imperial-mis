@@ -8,17 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:krishna_mis/app/app.dart';
 import 'package:krishna_mis/app/bootstrap.dart';
 import 'package:krishna_mis/core/design/tokens/app_tokens.dart';
-import 'package:krishna_mis/data/local/app_database.dart';
-import 'package:krishna_mis/data/sync/outbox_repository.dart';
-
-/// Injected at the root so no layer below has to reach for a singleton.
-final databaseProvider = Provider<AppDatabase>(
-  (ref) => throw UnimplementedError('overridden in main()'),
-);
-
-final outboxProvider = Provider<OutboxRepository>(
-  (ref) => throw UnimplementedError('overridden in main()'),
-);
+import 'package:krishna_mis/app/providers.dart';
 
 Future<void> main() async {
   try {

@@ -9,13 +9,19 @@
 /// Run with: `flutter test integration_test/windows_shell_test.dart -d windows`
 library;
 
+import 'package:drift/drift.dart' show driftRuntimeOptions;
+import 'package:drift/native.dart';
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:krishna_mis/app/app.dart';
+import 'package:krishna_mis/app/providers.dart';
 import 'package:krishna_mis/app/routing/app_router.dart';
+import 'package:krishna_mis/data/local/app_database.dart';
+import 'package:krishna_mis/data/local/seed/master_seed.dart';
 
 /// Sizes a finance workstation actually gets used at, including this machine's screen
 /// (1536x864) and the smallest laptop worth supporting.
@@ -28,12 +34,20 @@ const List<Size> _windowSizes = [
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+  driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
 
   Future<void> pumpShell(WidgetTester tester, Size size) async {
     await tester.binding.setSurfaceSize(size);
     addTearDown(() => tester.binding.setSurfaceSize(null));
+    final db = AppDatabase(NativeDatabase.memory());
+    await seedMasterData(db, now: DateTime.utc(2026, 6, 15));
+    addTearDown(db.close);
+
     await tester.pumpWidget(
-      const KrishnaMisApp(shellKind: AppShellKind.desktop),
+      ProviderScope(
+        overrides: [databaseProvider.overrideWithValue(db)],
+        child: const KrishnaMisApp(shellKind: AppShellKind.desktop),
+      ),
     );
     await tester.pumpAndSettle();
   }
@@ -113,10 +127,7 @@ void main() {
 
       await tester.tap(find.text('Masters').first);
       await tester.pumpAndSettle();
-      expect(
-        find.textContaining('Business units, departments'),
-        findsOneWidget,
-      );
+      expect(find.text('Select a record'), findsOneWidget);
 
       await tester.tap(find.text('Analytics').first);
       await tester.pumpAndSettle();

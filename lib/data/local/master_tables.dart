@@ -136,6 +136,13 @@ class Vendors extends Table with MasterColumns {
     #id,
     onDelete: KeyAction.restrict,
   )();
+
+  /// Optional. Pre-selects the property when this vendor is chosen during entry.
+  TextColumn get defaultBusinessUnitId => text().nullable().references(
+    BusinessUnits,
+    #id,
+    onDelete: KeyAction.restrict,
+  )();
   TextColumn get notes => text().nullable()();
 
   @override
@@ -216,4 +223,50 @@ class PeriodLockEvents extends Table {
 
   @override
   Set<Column<Object>> get primaryKey => {id};
+}
+
+/// Date-effective tax configuration for revenue categories (D-017).
+///
+/// A rate change is a **new row for a new period**, never an edit to the old one, so a
+/// rate set next April cannot restate last year's Net Sales. The period is half-open —
+/// `[effective_from, effective_to)` — so a rule ending the day another starts is not an
+/// overlap and exactly one rule applies to any date.
+///
+/// Postgres enforces non-overlap with an exclusion constraint over a `daterange`. SQLite
+/// has none, so the repository enforces the same rule inside a transaction and the
+/// database keeps a unique index on `(category, effective_from)` as a backstop against
+/// the most obvious duplicate.
+@DataClassName('RevenueTaxRateRow')
+class RevenueTaxRates extends Table {
+  TextColumn get id => text()();
+  TextColumn get orgId => text()();
+  TextColumn get revenueCategoryId =>
+      text().references(RevenueCategories, #id, onDelete: KeyAction.restrict)();
+
+  /// Basis points: 1% = 100. Integers only — a rate never arrives as a float.
+  IntColumn get rateBasisPoints => integer()();
+
+  /// `inclusive` | `exclusive` | `none`
+  TextColumn get treatment => text()();
+
+  /// `YYYY-MM-DD`, inclusive lower bound.
+  TextColumn get effectiveFrom => text()();
+
+  /// `YYYY-MM-DD`, **exclusive** upper bound. Null means still in force.
+  TextColumn get effectiveTo => text().nullable()();
+
+  TextColumn get note => text().nullable()();
+  DateTimeColumn get archivedAt => dateTime().nullable()();
+  TextColumn get createdBy => text()();
+  DateTimeColumn get createdAt => dateTime()();
+  IntColumn get rowVersion => integer().withDefault(const Constant(1))();
+  DateTimeColumn get updatedAt => dateTime()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {id};
+
+  // No plain uniqueKeys here. A unique index over (category, effective_from) would also
+  // count archived rows, so archiving a rule would permanently block its period from
+  // being reused — which is exactly what archiving is supposed to allow. The backstop is
+  // a *partial* unique index over live rows only, created in the migration.
 }
