@@ -149,6 +149,7 @@ class Authorizer {
     required RecordContext record,
     required BusinessDate today,
     Capability? ownScopedCapability,
+    bool ignoreEditWindow = false,
   }) {
     final holdsAll = principal.can(capability, businessUnitId: businessUnitId);
     final holdsOwn =
@@ -179,6 +180,11 @@ class Authorizer {
       businessUnitId: businessUnitId,
     );
     if (period != null) return period;
+
+    // Voiding is the one mutation the window does not govern. It is deliberate,
+    // reasoned and audited, and the period lock — checked above, and never bypassed —
+    // is the constraint that belongs on it (VoidPolicy).
+    if (ignoreEditWindow) return const AuthorizationDecision.allowed();
 
     final daysElapsed = today.differenceInDays(record.businessDate);
     if (daysElapsed > editWindowDays &&

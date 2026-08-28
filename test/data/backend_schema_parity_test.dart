@@ -17,6 +17,26 @@ import 'package:krishna_mis/data/local/seed/master_seed.dart';
 import 'package:krishna_mis/domain/auth/capability.dart';
 import 'package:uuid/uuid.dart';
 
+/// Every migration, concatenated in the order Postgres applies them.
+///
+/// The catalogue and the bundles are not established once and left alone: a later
+/// migration adds a capability, or grants an existing one to a role. Reading only the
+/// original file made this comparison silently incomplete — it passed while Dart knew a
+/// capability Postgres had never heard of.
+String _allMigrations() {
+  final files =
+      Directory('supabase/migrations')
+          .listSync()
+          .whereType<File>()
+          .where((f) => f.path.endsWith('.sql'))
+          .toList()
+        ..sort((a, b) => a.path.compareTo(b.path));
+  if (files.isEmpty) {
+    throw StateError('no migrations to compare the domain against');
+  }
+  return files.map((f) => f.readAsStringSync()).join('\n');
+}
+
 String _migration(String name) {
   final file = File('supabase/migrations/$name');
   if (!file.existsSync()) {
@@ -27,20 +47,36 @@ String _migration(String name) {
   return file.readAsStringSync();
 }
 
-/// Capability codes from the `insert into public.capabilities` block.
+/// Capability codes from every `insert into public.capabilities` block.
 Set<String> _catalogueCodes(String sql) {
-  final block = RegExp(
+  final blocks = RegExp(
     r'insert into public\.capabilities[\s\S]*?on conflict',
-  ).firstMatch(sql);
+  ).allMatches(sql);
   expect(
-    block,
-    isNotNull,
-    reason: 'the capability catalogue insert was not found',
+    blocks,
+    isNotEmpty,
+    reason: 'no capability catalogue insert was found',
   );
-  return RegExp(
-    r"\('([a-z0-9_.]+)',\s*'[a-z_]+',",
-  ).allMatches(block!.group(0)!).map((m) => m.group(1)!).toSet();
+  return {
+    for (final block in blocks)
+      ...RegExp(
+        r"\('([a-z0-9_.]+)',\s*'[a-z_]+',",
+      ).allMatches(block.group(0)!).map((m) => m.group(1)!),
+  };
 }
+
+/// Capabilities granted to [roleCode] by any migration after the seed.
+///
+/// The seed states each bundle in full; a later migration adds one capability to some of
+/// them. Both count, and reading only the seed made this comparison quietly incomplete.
+/// Matched as one shape rather than by splitting into blocks, because the surrounding
+/// SQL is not reliably delimited.
+Set<String> _laterGrants(String sql, String roleCode) => {
+  for (final match in RegExp(
+    r"select r\.id, '([a-z0-9_.]+)'[\s\S]{0,200}?r\.code in \(([^)]*)\)",
+  ).allMatches(sql))
+    if (match.group(2)!.contains("'$roleCode'")) match.group(1)!,
+};
 
 /// The capability codes granted to one role in the seed migration.
 Set<String> _bundle(String sql, String roleCode) {
@@ -58,13 +94,14 @@ Set<String> _bundle(String sql, String roleCode) {
 }
 
 void main() {
-  final identity = _migration('20260827090100_identity.sql');
+  // The seed and the full corpus; the identity migration is read through the corpus.
   final seed = _migration('20260827091200_seed.sql');
+  final everything = _allMigrations();
 
   group('capability catalogue', () {
     test('Postgres knows exactly the capabilities the domain defines', () {
       final inDart = {for (final c in Capability.values) c.code};
-      final inSql = _catalogueCodes(identity);
+      final inSql = _catalogueCodes(everything);
 
       expect(
         inSql.difference(inDart),
@@ -82,9 +119,16 @@ void main() {
     });
 
     test('the catalogue has no duplicate codes', () {
-      final codes = RegExp(
-        r"\('([a-z0-9_.]+)',\s*'[a-z_]+',",
-      ).allMatches(identity).map((m) => m.group(1)!).toList();
+      // Only the catalogue inserts, not every parenthesised pair in every migration —
+      // `('x', 'y',` is a common enough shape in SQL to make a whole-file scan noise.
+      final codes = [
+        for (final block in RegExp(
+          r'insert into public\.capabilities[\s\S]*?on conflict',
+        ).allMatches(everything))
+          ...RegExp(
+            r"\('([a-z0-9_.]+)',\s*'[a-z_]+',",
+          ).allMatches(block.group(0)!).map((m) => m.group(1)!),
+      ];
       expect(codes.length, codes.toSet().length);
     });
   });
@@ -103,21 +147,30 @@ void main() {
     });
 
     test('Manager grants the same capabilities in Dart and in Postgres', () {
-      expect(_bundle(seed, 'manager'), {
-        for (final c in RoleTemplates.manager) c.code,
-      });
+      expect(
+        _bundle(seed, 'manager').union(_laterGrants(everything, 'manager')),
+        {for (final c in RoleTemplates.manager) c.code},
+      );
     });
 
     test('Accountant grants the same capabilities in Dart and in Postgres', () {
-      expect(_bundle(seed, 'accountant'), {
-        for (final c in RoleTemplates.accountant) c.code,
-      });
+      expect(
+        _bundle(
+          seed,
+          'accountant',
+        ).union(_laterGrants(everything, 'accountant')),
+        {for (final c in RoleTemplates.accountant) c.code},
+      );
     });
 
     test('Data Entry grants the same capabilities in Dart and in Postgres', () {
-      expect(_bundle(seed, 'data_entry'), {
-        for (final c in RoleTemplates.dataEntry) c.code,
-      });
+      expect(
+        _bundle(
+          seed,
+          'data_entry',
+        ).union(_laterGrants(everything, 'data_entry')),
+        {for (final c in RoleTemplates.dataEntry) c.code},
+      );
     });
 
     test('no non-Owner role can manage masters, tax, users, roles or periods', () {

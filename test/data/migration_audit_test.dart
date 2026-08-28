@@ -154,15 +154,19 @@ void main() {
   });
 
   group('scope', () {
-    test('no Phase 3 financial table is created', () {
+    test('the expense tables exist, and nothing beyond them does', () {
+      // This guard used to say "no Phase 3 table is created early", which was right
+      // while Phase 3 was a plan. Phase 3 is approved and under way, so the guard is
+      // inverted rather than deleted: the expense tables are now expected, and the ones
+      // belonging to later phases still must not appear before their phase does.
       const phase3 = {
         'expenses',
         'expense_allocations',
         'expense_period_allocations',
         'expense_attachments',
-        'revenue_entries',
-        'approval_requests',
       };
+      const laterPhases = {'revenue_entries', 'approval_requests'};
+
       final created = <String>{};
       for (final m in _migrations()) {
         created.addAll(
@@ -171,12 +175,18 @@ void main() {
           ).allMatches(m.sql).map((match) => match.group(1)!),
         );
       }
+
       expect(
-        created.intersection(phase3),
+        phase3.difference(created),
+        isEmpty,
+        reason: 'the Phase 3 expense schema is incomplete',
+      );
+      expect(
+        created.intersection(laterPhases),
         isEmpty,
         reason:
-            'Phase 3 tables must not be created early merely because they are known '
-            'future requirements',
+            'a table belonging to a later phase must not be created early merely '
+            'because it is a known future requirement',
       );
     });
 

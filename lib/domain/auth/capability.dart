@@ -22,6 +22,15 @@ enum Capability {
   /// Split one expense across accounting periods (D-034). Finance and owner only.
   expenseAllocatePeriods('expense.allocate_periods'),
 
+  /// Charge one expense to more than one business unit (D-061).
+  ///
+  /// Scope over every unit named is necessary and deliberately not sufficient. A
+  /// cross-unit split decides how a shared cost is apportioned between two businesses,
+  /// which moves both properties' profitability — it is an act of finance, not of data
+  /// entry, and somebody who happens to hold both properties operationally should not
+  /// acquire it as a side effect.
+  expenseAllocateCrossUnit('expense.allocate_cross_unit'),
+
   // ── Revenue ───────────────────────────────────────────────────────────────
   revenueView('revenue.view'),
   revenueCreate('revenue.create'),
@@ -173,6 +182,7 @@ abstract final class RoleTemplates {
     Capability.expenseEditAll,
     Capability.expenseVoid,
     Capability.expenseAllocatePeriods,
+    Capability.expenseAllocateCrossUnit,
     Capability.revenueView,
     Capability.revenueCreate,
     Capability.revenueEdit,

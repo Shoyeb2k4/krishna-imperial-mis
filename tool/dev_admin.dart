@@ -18,6 +18,8 @@
 ///     dart run tool/dev_admin.dart reactivate    <actor-email> <target-email>
 ///     dart run tool/dev_admin.dart rename        <actor-email> <entity-type> <entity-id> <name> <base-version>
 ///     dart run tool/dev_admin.dart masters       <email>
+///     dart run tool/dev_admin.dart rpc           <email> <function> <json-args>
+///     dart run tool/dev_admin.dart get           <email> <table> <query>
 library;
 
 import 'dart:convert';
@@ -89,6 +91,20 @@ Future<void> main(List<String> args) async {
           'p_base_row_version': int.parse(rest[4]),
         }),
       );
+    case 'rpc':
+      final token = await _signIn(rest[0]);
+      _show(
+        await _rpc(
+          token,
+          rest[1],
+          rest.length > 2
+              ? jsonDecode(rest[2]) as Map<String, Object?>
+              : const {},
+        ),
+      );
+    case 'get':
+      final token = await _signIn(rest[0]);
+      _show(await _get(token, rest[1], rest.length > 2 ? rest[2] : 'select=*'));
     case 'masters':
       final token = await _signIn(rest[0]);
       for (final table in [
@@ -227,7 +243,9 @@ Future<Object?> _post(
       ..set('apikey', _config['SUPABASE_ANON_KEY'] as String)
       ..set('Content-Type', 'application/json');
     if (token != null) request.headers.set('Authorization', 'Bearer $token');
-    request.write(jsonEncode(body));
+    // Bytes, not `write`: an IOSink defaults to latin1, so a rupee sign or an em dash in
+    // a note would throw rather than being sent.
+    request.add(utf8.encode(jsonEncode(body)));
     final response = await request.close();
     final text = await response.transform(utf8.decoder).join();
     if (response.statusCode >= 400) {
