@@ -22,6 +22,9 @@ import 'package:krishna_mis/app/providers.dart';
 import 'package:krishna_mis/app/routing/app_router.dart';
 import 'package:krishna_mis/data/local/app_database.dart';
 import 'package:krishna_mis/data/local/seed/master_seed.dart';
+import 'package:krishna_mis/data/sync/outbox_repository.dart';
+
+import '../test/support/test_session.dart';
 
 /// Sizes a finance workstation actually gets used at, including this machine's screen
 /// (1536x864) and the smallest laptop worth supporting.
@@ -45,7 +48,15 @@ void main() {
 
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [databaseProvider.overrideWithValue(db)],
+        overrides: [
+          databaseProvider.overrideWithValue(db),
+          outboxProvider.overrideWithValue(OutboxRepository(db)),
+          // The shell is only ever built for a session the server vouched for, and the
+          // sidebar's account block reads it. This suite is about layout, focus and
+          // overflow, so it states the session it renders under rather than reaching a
+          // server it has no business reaching.
+          sessionProvider.overrideWith(() => StubSession(readySession())),
+        ],
         child: const KrishnaMisApp(shellKind: AppShellKind.desktop),
       ),
     );

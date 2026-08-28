@@ -80,6 +80,7 @@ sealed class SessionState {
   const factory SessionState.ready({
     required AuthoritySnapshot authority,
     required AuthorityFreshness freshness,
+    required String email,
   }) = SessionReady;
 
   /// The session expired and could not be renewed. Queued work is untouched.
@@ -144,9 +145,17 @@ final class AuthorityUnverified extends SessionState {
 }
 
 final class SessionReady extends SessionState {
-  const SessionReady({required this.authority, required this.freshness});
+  const SessionReady({
+    required this.authority,
+    required this.freshness,
+    required this.email,
+  });
   final AuthoritySnapshot authority;
   final AuthorityFreshness freshness;
+
+  /// Who is signed in, as they typed it. Shown in the shell so a shared workstation
+  /// always says whose session is open before anybody enters anything under it.
+  final String email;
 
   bool get isStale => freshness != AuthorityFreshness.confirmed;
 

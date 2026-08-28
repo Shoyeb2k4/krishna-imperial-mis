@@ -40,25 +40,36 @@ class OutboxRepository {
             nextAttemptAt: now,
             status: OutboxStatus.pending.name,
             createdAt: mutation.createdAt,
+            actorUserId: Value(mutation.actorUserId),
           ),
           mode: InsertMode.insertOrIgnore,
         );
   }
 
-  /// Entries the worker may pick up now: retryable status, attempt window elapsed.
+  /// Entries the worker may pick up now: retryable status, attempt window elapsed, and
+  /// — when an actor is named — queued by that actor.
+  ///
+  /// The actor filter is the enforcement half of D-050. Without it, whoever happens to be
+  /// signed in when connectivity returns would push somebody else's queued financial
+  /// intent under their own session, and the server would attribute it to them. Passing
+  /// no actor is reserved for maintenance and for tests that are about the queue itself.
   ///
   /// Ordered by creation so a device that has been offline replays its work in the
   /// order the user did it.
   Future<List<PendingMutation>> dueEntries({
     required DateTime now,
     int limit = 25,
+    String? actorUserId,
   }) async {
     final rows =
         await (_db.select(_db.syncOutbox)
               ..where(
                 (t) =>
                     t.status.isIn(const ['pending', 'failed']) &
-                    t.nextAttemptAt.isSmallerOrEqualValue(now),
+                    t.nextAttemptAt.isSmallerOrEqualValue(now) &
+                    (actorUserId == null
+                        ? const CustomExpression<bool>('1')
+                        : t.actorUserId.equals(actorUserId)),
               )
               ..orderBy([(t) => OrderingTerm.asc(t.createdAt)])
               ..limit(limit))
@@ -217,5 +228,6 @@ class OutboxRepository {
     createdAt: row.createdAt,
     baseRowVersion: row.baseRowVersion,
     attemptCount: row.attemptCount,
+    actorUserId: row.actorUserId,
   );
 }

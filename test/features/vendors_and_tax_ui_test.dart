@@ -12,9 +12,12 @@ import 'package:krishna_mis/app/routing/app_router.dart';
 import 'package:krishna_mis/core/design/app_theme.dart';
 import 'package:krishna_mis/data/local/app_database.dart';
 import 'package:krishna_mis/data/local/seed/master_seed.dart';
+import 'package:krishna_mis/data/sync/outbox_repository.dart';
 import 'package:krishna_mis/features/masters/presentation/masters_page.dart';
 import 'package:krishna_mis/features/tax/presentation/tax_rates_view.dart';
 import 'package:krishna_mis/features/vendors/presentation/vendors_view.dart';
+
+import '../support/test_session.dart';
 
 /// A fully-capable principal, for exercising screens that assume the user may act.
 ///
@@ -73,7 +76,10 @@ void main() {
       ProviderScope(
         overrides: [
           databaseProvider.overrideWithValue(db),
+          outboxProvider.overrideWithValue(OutboxRepository(db)),
           principalProvider.overrideWithValue(testOwnerPrincipal()),
+          // The "More" screen now carries the account block, so it needs a session.
+          sessionProvider.overrideWith(() => StubSession(readySession())),
         ],
         child: MaterialApp(
           theme: size.width > 900 ? AppTheme.desktop : AppTheme.mobile,

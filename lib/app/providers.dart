@@ -97,9 +97,17 @@ final authorizerProvider = Provider<Authorizer>(
 // ── Master data ─────────────────────────────────────────────────────────────
 
 /// The whole master hierarchy as one snapshot.
-final masterGraphProvider = FutureProvider<MasterGraph>(
-  (ref) => ref.watch(masterRepositoryProvider).loadGraph(),
-);
+///
+/// It watches the session deliberately. The reference sync runs as part of establishing
+/// authority, so the rows this reads only exist *after* a session becomes ready — and
+/// they are removed again when a scope is revoked or a user switches (D-048, D-051).
+/// Without this dependency the hierarchy is whatever happened to be on disk the first
+/// time a screen asked, which showed up as an empty Masters panel immediately after
+/// signing in, and as a stale one immediately after a purge.
+final masterGraphProvider = FutureProvider<MasterGraph>((ref) {
+  ref.watch(sessionProvider);
+  return ref.watch(masterRepositoryProvider).loadGraph();
+});
 
 /// Vendors and tax rules are read as explicit snapshots and refreshed after a write,
 /// rather than as live query streams.
@@ -108,15 +116,20 @@ final masterGraphProvider = FutureProvider<MasterGraph>(
 /// but a screen that changes only when *this* user changes it does not need a permanently
 /// open query stream, and each one carries a keep-alive timer that makes the surface
 /// impossible to settle deterministically.
-final vendorListProvider = FutureProvider.family<List<Vendor>, bool>(
-  (ref, includeArchived) => ref
+final vendorListProvider = FutureProvider.family<List<Vendor>, bool>((
+  ref,
+  includeArchived,
+) {
+  ref.watch(sessionProvider);
+  return ref
       .watch(vendorRepositoryProvider)
-      .list(includeArchived: includeArchived),
-);
+      .list(includeArchived: includeArchived);
+});
 
-final taxRulesProvider = FutureProvider<Map<String, TaxRuleSet>>(
-  (ref) => ref.watch(taxRepositoryProvider).allRules(),
-);
+final taxRulesProvider = FutureProvider<Map<String, TaxRuleSet>>((ref) {
+  ref.watch(sessionProvider);
+  return ref.watch(taxRepositoryProvider).allRules();
+});
 
 /// Usage for one master. Kept out of [masterGraphProvider] because it may reach the
 /// network, and the hierarchy must render instantly and offline regardless.

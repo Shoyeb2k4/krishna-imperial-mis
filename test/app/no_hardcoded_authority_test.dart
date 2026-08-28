@@ -124,6 +124,7 @@ void main() {
           ],
         ),
         freshness: AuthorityFreshness.confirmed,
+        email: 'user-1@example.test',
       );
 
       expect(state.grantsAccess, isTrue);
@@ -153,10 +154,53 @@ void main() {
           ],
         ),
         freshness: AuthorityFreshness.stale,
+        email: 'user-1@example.test',
       );
       expect(state.grantsAccess, isTrue);
       expect((state as SessionReady).isStale, isTrue);
       expect(state.principal.grants, hasLength(1));
+    });
+  });
+
+  group('the shipped seed is not a source of other properties data', () {
+    // Found on a real Android device. The local seed contains **both** properties, and
+    // start-up applied it unconditionally — so a fresh installation held a browsable
+    // Hotel Krishna Imperial hierarchy before anybody signed in, and a Crystal
+    // Canopy-scoped Manager signing in afterwards inherited it. Their own pull was
+    // correctly scoped; the seed was sitting underneath it.
+    test('seedMasterData runs only when no backend is configured', () {
+      final bootstrap = File('lib/app/bootstrap.dart').readAsStringSync();
+      expect(
+        bootstrap.contains('seedMasterData('),
+        isTrue,
+        reason: 'the no-backend path still needs it',
+      );
+
+      final call = bootstrap.indexOf('await seedMasterData(');
+      final guard = bootstrap.lastIndexOf('if (!config.hasBackend)', call);
+      expect(
+        guard,
+        greaterThan(-1),
+        reason:
+            'with a backend the server decides which properties this user may cache; '
+            'seeding locally hands them one the server never granted',
+      );
+      expect(
+        call - guard,
+        lessThan(200),
+        reason: 'the guard must be the one immediately around the seed call',
+      );
+    });
+
+    test('nothing else in lib/ applies the seed', () {
+      final offenders = [
+        for (final file in _shippedSources())
+          if (file.source.contains('seedMasterData(') &&
+              file.path != 'lib/app/bootstrap.dart' &&
+              file.path != 'lib/data/local/seed/master_seed.dart')
+            file.path,
+      ];
+      expect(offenders, isEmpty);
     });
   });
 }

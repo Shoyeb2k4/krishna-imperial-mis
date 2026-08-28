@@ -620,4 +620,96 @@ void main() {
       expect(await outbox.statusOf(mid('stuck')), OutboxStatus.conflict);
     });
   });
+
+  group('an outbox entry belongs to whoever queued it (D-050)', () {
+    // The column existed from the first migration and nothing ever wrote it, so every
+    // queued intent was anonymous and the rule could not be enforced at all. Found while
+    // running the user-switch acceptance on a real device.
+    test('the actor is recorded on the entry', () async {
+      final db = AppDatabase(NativeDatabase.memory());
+      addTearDown(db.close);
+      final outbox = OutboxRepository(db);
+
+      await outbox.enqueue(
+        PendingMutation(
+          mutationId: const Uuid().v4(),
+          entityType: 'vendor',
+          entityId: 'v1',
+          op: MutationOp.create,
+          payload: const {'name': 'Sharma Traders'},
+          createdAt: DateTime.utc(2026, 8, 28),
+          actorUserId: 'user-a',
+        ),
+        now: DateTime.utc(2026, 8, 28),
+      );
+
+      final row = (await db.select(db.syncOutbox).get()).single;
+      expect(row.actorUserId, 'user-a');
+    });
+
+    test("a different user is never handed the previous one's queue", () async {
+      final db = AppDatabase(NativeDatabase.memory());
+      addTearDown(db.close);
+      final outbox = OutboxRepository(db);
+      final now = DateTime.utc(2026, 8, 28);
+
+      for (final actor in ['user-a', 'user-b']) {
+        await outbox.enqueue(
+          PendingMutation(
+            mutationId: const Uuid().v4(),
+            entityType: 'vendor',
+            entityId: 'v-$actor',
+            op: MutationOp.create,
+            payload: {'name': actor},
+            createdAt: now,
+            actorUserId: actor,
+          ),
+          now: now,
+        );
+      }
+
+      final forA = await outbox.dueEntries(now: now, actorUserId: 'user-a');
+      expect(forA, hasLength(1));
+      expect(forA.single.actorUserId, 'user-a');
+      expect(
+        forA.single.payload['name'],
+        'user-a',
+        reason: "one user must never submit another user's queued mutation",
+      );
+
+      // And nothing is lost: the other user's entry is still there, waiting for them.
+      final all = await outbox.dueEntries(now: now);
+      expect(all, hasLength(2));
+    });
+
+    test("a signed-out user's work waits, it is not discarded", () async {
+      final db = AppDatabase(NativeDatabase.memory());
+      addTearDown(db.close);
+      final outbox = OutboxRepository(db);
+      final now = DateTime.utc(2026, 8, 28);
+
+      await outbox.enqueue(
+        PendingMutation(
+          mutationId: const Uuid().v4(),
+          entityType: 'vendor',
+          entityId: 'v1',
+          op: MutationOp.create,
+          payload: const {'name': 'Queued by the previous user'},
+          createdAt: now,
+          actorUserId: 'user-a',
+        ),
+        now: now,
+      );
+
+      // Somebody else is signed in: they see none of it to push.
+      expect(await outbox.dueEntries(now: now, actorUserId: 'user-b'), isEmpty);
+      // It is still on the device, and becomes processable again when its own
+      // actor signs back in.
+      expect(await db.select(db.syncOutbox).get(), hasLength(1));
+      expect(
+        await outbox.dueEntries(now: now, actorUserId: 'user-a'),
+        hasLength(1),
+      );
+    });
+  });
 }

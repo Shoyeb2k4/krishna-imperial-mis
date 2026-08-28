@@ -10,6 +10,7 @@ import 'package:go_router/go_router.dart';
 import 'package:krishna_mis/app/providers.dart';
 import 'package:krishna_mis/core/design/tokens/app_tokens.dart';
 import 'package:krishna_mis/domain/auth/capability.dart';
+import 'package:krishna_mis/features/auth/presentation/account_control.dart';
 
 class DesktopShell extends ConsumerWidget {
   const DesktopShell({required this.navigationShell, super.key});
@@ -195,13 +196,9 @@ class _Sidebar extends StatelessWidget {
               ),
             ),
             const Divider(),
-            const Padding(
-              padding: EdgeInsets.all(AppSpacing.lg),
-              child: Text(
-                'Phase 1 — Foundation\nNo financial data yet',
-                style: AppTypography.caption,
-              ),
-            ),
+            // Whose session this is, and the way out of it. A finance workstation
+            // is shared; the identity has to be visible without hunting for it.
+            const AccountControl(),
           ],
         ),
       ),

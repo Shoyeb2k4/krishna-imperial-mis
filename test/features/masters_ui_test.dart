@@ -19,6 +19,8 @@ import 'package:krishna_mis/features/masters/presentation/android_masters_view.d
 import 'package:krishna_mis/features/masters/presentation/widgets/master_chrome.dart';
 import 'package:krishna_mis/features/masters/presentation/windows_masters_view.dart';
 
+import '../support/test_session.dart';
+
 /// A fully-capable principal, for exercising screens that assume the user may act.
 ///
 /// This is a **test fixture**, not a runtime fallback. Shipped code has no way to build
@@ -61,6 +63,10 @@ void main() {
           principalProvider.overrideWithValue(
             principal ?? testOwnerPrincipal(),
           ),
+          // The master data providers watch the session deliberately: the rows only
+          // exist once a session has synchronised them, and they are removed again on a
+          // purge or a user switch.
+          sessionProvider.overrideWith(() => StubSession(readySession())),
         ],
         child: MaterialApp(
           theme: size.width > 900 ? AppTheme.desktop : AppTheme.mobile,

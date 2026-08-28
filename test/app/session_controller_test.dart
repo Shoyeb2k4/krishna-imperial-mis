@@ -366,6 +366,49 @@ void main() {
         reason: 'signing out is not the destructive erase action',
       );
     });
+
+    test('signing out takes the downloaded hierarchy with it, so the next user '
+        'cannot browse it', () async {
+      // Found on a real Android device: the Owner signed out, a Crystal
+      // Canopy-only Manager signed in, and Hotel Krishna Imperial was still
+      // sitting in the local database. The isolation check on sign-in looks up
+      // *whose* cache it is — and sign-out had already erased that record, so it
+      // found no previous owner and purged nothing. The purge has to happen while
+      // the device still knows the answer.
+      await build();
+      final notifier = container.read(sessionProviderForTest.notifier);
+      await notifier.signIn(email: 'a@b.c', password: 'x');
+      expect(await db.select(db.businessUnits).get(), isNotEmpty);
+
+      await notifier.signOut();
+
+      expect(
+        await db.select(db.businessUnits).get(),
+        isEmpty,
+        reason: "the previous session's downloaded scope must not outlive it",
+      );
+      expect(await db.select(db.departments).get(), isEmpty);
+      expect(await store.ownerUserId(), isNull);
+    });
+
+    test('a signed-out cache leaves the next user nothing to inherit', () async {
+      await build();
+      final notifier = container.read(sessionProviderForTest.notifier);
+      await notifier.signIn(email: 'a@b.c', password: 'x');
+      await notifier.signOut();
+
+      // The second user cannot reach the server at all, so anything they can see
+      // came from the previous user.
+      auth.user = const AuthenticatedUser(id: 'u2', email: 'other@b.c');
+      authority.answer = const AuthorityRefresh.unavailable(
+        AuthorityUnavailableReason.offline,
+      );
+      await notifier.signIn(email: 'other@b.c', password: 'x');
+
+      expect(currentState(), isA<AuthorityUnverified>());
+      expect(await db.select(db.businessUnits).get(), isEmpty);
+      expect(await db.select(db.expenseCategories).get(), isEmpty);
+    });
   });
 
   group('a confirmed session', () {

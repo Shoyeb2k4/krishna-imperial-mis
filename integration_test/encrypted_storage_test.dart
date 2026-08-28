@@ -200,7 +200,13 @@ void main() {
         expect(await outbox.unsyncedCount(), 1);
 
         // With the queue drained, erasure destroys the database and the key.
-        await outbox.updateStatus('lifecycle-mut-1', status: OutboxStatus.done);
+        // The same derived UUID the entry was queued under. Passing the bare label here
+        // updated nothing, so the queue stayed non-empty and the erase below refused —
+        // which looked like a lifecycle defect and was a test using two different ids.
+        await outbox.updateStatus(
+          mid('lifecycle-mut-1'),
+          status: OutboxStatus.done,
+        );
         await lifecycle.eraseLocalData(
           database: db,
           clearSession: clearSession,

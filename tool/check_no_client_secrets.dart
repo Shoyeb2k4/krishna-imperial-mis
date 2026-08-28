@@ -5,8 +5,17 @@
 // `docs/ARCHITECTURE.md` §8.1 promises "a CI grep ... rather than by discipline". This
 // is that grep. It is deliberately a build-failing check and not a warning.
 //
-//   dart run tool/check_no_client_secrets.dart              # working tree + artefacts
+//   dart run tool/check_no_client_secrets.dart              # working tree
 //   dart run tool/check_no_client_secrets.dart --history    # also every committed blob
+//   dart run tool/check_no_client_secrets.dart --artefacts  # also the built binaries
+//
+// `--artefacts` scans what is actually distributed — the Android package and its
+// contents, the Windows executable and everything beside it in its bundle — as raw
+// bytes, because a compiled asset or a `--dart-define` ends up as a plain string inside a
+// binary and a source-only scan would never see it. It additionally refuses any literal
+// listed in a git-ignored `config/*-forbidden.local.json`, which is how a development
+// identity's password is proven absent from a build without the password itself ever
+// entering this file, the repository, or a report.
 //
 // It looks for credential *material*, not for the word "service_role" appearing in prose
 // or in the classifier that exists to reject it — a check that cries wolf gets muted, and
@@ -14,25 +23,51 @@
 import 'dart:convert';
 import 'dart:io';
 
+/// Whether a candidate match is really key material.
+///
+/// Needed because a compiled binary is not text. Dart's kernel packs every string
+/// constant into one table with no separators, so `sb_secret_` — a literal in the
+/// classifier that exists to *reject* secret keys — sits directly against whatever
+/// literal was interned next to it, and any "prefix plus N characters" pattern matches
+/// it. Length cannot separate the two; the shape of the material can.
+typedef _Verifier = bool Function(RegExpMatch match);
+
+/// Real key material is high-entropy: random base64url of that length reliably carries
+/// several digits. Concatenated English identifiers carry none.
+bool _looksLikeKeyMaterial(RegExpMatch match) {
+  final body = match.group(1) ?? '';
+  final head = body.length > 30 ? body.substring(0, 30) : body;
+  final digits = RegExp(r'[0-9]').allMatches(head).length;
+  return head.length >= 30 && digits >= 4;
+}
+
 /// Patterns that can only be real credential material.
-final _patterns = <({String label, RegExp pattern})>[
+final _patterns = <({String label, RegExp pattern, _Verifier? verify})>[
   (
     label: 'modern Supabase secret key',
-    pattern: RegExp(r'sb_secret_[A-Za-z0-9_\-]{8,}'),
+    pattern: RegExp(r'sb_secret_([A-Za-z0-9_\-]{30,})'),
+    verify: _looksLikeKeyMaterial,
   ),
   (
     label: 'Postgres connection string with a password',
     pattern: RegExp(r'postgres(?:ql)?://[^\s:/@]+:[^\s@]+@'),
+    verify: null,
   ),
   (
+    // The header *and* a body. Several dependencies declare the PEM delimiters as
+    // constants — `crypto_keys` does — and a header on its own is a parser, not a key.
     label: 'PEM private key block',
-    pattern: RegExp(r'-----BEGIN [A-Z ]*PRIVATE KEY-----'),
+    pattern: RegExp(
+      r'-----BEGIN [A-Z ]*PRIVATE KEY-----\s*[A-Za-z0-9+/=]{40,}',
+    ),
+    verify: null,
   ),
   (
     label: 'Supabase JWT secret / signing secret assignment',
     pattern: RegExp(
       r'(JWT_SECRET|SIGNING_SECRET)\s*[:=]\s*["\x27]?[A-Za-z0-9/+=_\-]{16,}',
     ),
+    verify: null,
   ),
 ];
 
@@ -108,10 +143,15 @@ Future<int> main(List<String> args) async {
     findings.addAll(await _scanHistory());
   }
 
+  if (args.contains('--artefacts')) {
+    findings.addAll(await _scanArtefacts());
+  }
+
   if (findings.isEmpty) {
     stdout.writeln(
-      'No privileged credential material found. '
-      '${args.contains('--history') ? 'Working tree and git history clean.' : 'Working tree clean.'}',
+      'No privileged credential material found. Working tree clean'
+      '${args.contains('--history') ? ', git history clean' : ''}'
+      '${args.contains('--artefacts') ? ', built artefacts clean' : ''}.',
     );
     return 0;
   }
@@ -130,6 +170,70 @@ Future<int> main(List<String> args) async {
   return 1;
 }
 
+/// Literals that must not appear in a build, supplied out of band.
+///
+/// The file is git-ignored and holds the development identities' passwords. They are read
+/// only to be searched for; no finding ever prints one.
+List<String> _forbiddenLiterals() {
+  final file = File('config/dev-identities.local.json');
+  if (!file.existsSync()) return const [];
+  final decoded = jsonDecode(file.readAsStringSync());
+  if (decoded is! Map) return const [];
+  return [
+    for (final entry in decoded.values)
+      if (entry is Map && entry['password'] is String)
+        entry['password'] as String,
+  ];
+}
+
+/// The built Android and Windows artefacts, scanned as bytes.
+Future<List<String>> _scanArtefacts() async {
+  final findings = <String>[];
+  final forbidden = _forbiddenLiterals();
+
+  final artefacts = <String>[
+    'build/app/outputs/flutter-apk/app-dev-debug.apk',
+    'build/app/outputs/flutter-apk/app-dev-release.apk',
+  ];
+  for (final dir in const [
+    'build/windows/x64/runner/Debug',
+    'build/windows/x64/runner/Release',
+    'build/app/intermediates/assets',
+    'build/flutter_assets',
+    // The unpacked Android package. A `.apk` is a zip, so searching it as bytes only
+    // finds what happens to be stored uncompressed; the extracted tree is what actually
+    // has to be clean.
+    'build/_apk_extract',
+  ]) {
+    final directory = Directory(dir);
+    if (!directory.existsSync()) continue;
+    for (final file in directory.listSync(recursive: true).whereType<File>()) {
+      artefacts.add(file.path);
+    }
+  }
+
+  for (final path in artefacts) {
+    final file = File(path);
+    if (!file.existsSync()) continue;
+    // latin1 keeps every byte addressable as a character, so an embedded ASCII
+    // credential is found wherever it sits in a compiled binary.
+    final content = latin1.decode(await file.readAsBytes(), allowInvalid: true);
+    findings.addAll(_scan(content, 'artefact: $path'));
+    for (final literal in forbidden) {
+      if (content.contains(literal)) {
+        findings.add('artefact: $path — a development identity password');
+      }
+    }
+  }
+
+  if (artefacts.isEmpty) {
+    findings.add(
+      'no built artefact was found to scan — build before claiming a clean binary',
+    );
+  }
+  return findings.toSet().toList();
+}
+
 bool _looksTextual(String path) {
   final dot = path.lastIndexOf('.');
   if (dot < 0) return false;
@@ -140,8 +244,10 @@ bool _looksTextual(String path) {
 List<String> _scan(String content, String where) {
   final findings = <String>[];
   for (final entry in _patterns) {
-    if (entry.pattern.hasMatch(content)) {
+    for (final match in entry.pattern.allMatches(content)) {
+      if (entry.verify != null && !entry.verify!(match)) continue;
       findings.add('$where — ${entry.label}');
+      break;
     }
   }
   for (final match in _jwt.allMatches(content)) {

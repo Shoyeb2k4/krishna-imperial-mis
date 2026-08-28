@@ -429,4 +429,50 @@ void main() {
       expect(outcome.refusalOrNull!.kind, RefusalKind.missingCapability);
     });
   });
+
+  // Every migration the server has applied must exist as a file in this repository.
+  //
+  // It did not. `my_authority()` — the single call the whole authorisation model depends
+  // on — was applied to the development project and never committed, so for a day the
+  // repository could not have produced a working staging or production environment. The
+  // repository is the source of project state (CLAUDE.md §1), and "the server has
+  // something we do not" is exactly the kind of drift that is invisible until a deploy.
+  group('the repository and the server agree', skip: phase != 'drift', () {
+    test('every applied migration has a file in supabase/migrations', () async {
+      await signInAs('giridhar@hki.com');
+
+      // `supabase_migrations` is not exposed through PostgREST, so this reads the
+      // versions the way a developer would: from the filenames the CLI would push, and
+      // from the functions the server actually exposes. The check that matters is that
+      // nothing is callable on the server which no committed migration creates.
+      final files = Directory('supabase/migrations')
+          .listSync()
+          .whereType<File>()
+          .where((f) => f.path.endsWith('.sql'))
+          .map((f) => f.readAsStringSync())
+          .join('\n');
+
+      final exposed = await client.rpc<dynamic>('my_authority');
+      expect(exposed, isA<Map>(), reason: 'my_authority must answer');
+
+      for (final function in const [
+        'my_authority',
+        'master_rename',
+        'master_archive',
+        'master_restore',
+        'user_role_grant',
+        'user_role_revoke',
+        'user_deactivate',
+        'user_reactivate',
+      ]) {
+        expect(
+          files,
+          contains('function public.$function('),
+          reason:
+              '$function is callable on the server but no committed migration '
+              'creates it — the repository could not rebuild this environment',
+        );
+      }
+    });
+  });
 }

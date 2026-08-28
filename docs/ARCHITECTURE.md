@@ -1,9 +1,10 @@
 # Architecture
 
 Directive: SHOYEB-HOSPITALITY-MIS · Spec **v1.1**
-Status: **Proposed — Phase 0 revised.** Sections 6, 5.3 and 8 carry the owner's mandated
-corrections. Implementation status is tracked in `PROJECT_STATUS.md`.
-Last updated: 2026-08-26
+Status: **Sections 1–12 proposed (Phase 0, revised); section 13 describes what is built
+and verified.** Sections 6, 5.3 and 8 carry the owner's mandated corrections.
+Implementation status is tracked in `PROJECT_STATUS.md`.
+Last updated: 2026-08-28
 
 ---
 
@@ -537,5 +538,169 @@ transaction detail → audit history.
 4. Windows local-key protection relies on DPAPI, which is user-account-bound rather than
    hardware-bound (§8.1).
 5. Approvals are modelled but not enabled in V1 (spec §26).
-6. Until the backend is provisioned, engine parity is asserted against a naive reference
-   implementation rather than live Postgres (§6.3).
+6. Until the reporting engines exist, engine parity is asserted against a naive reference
+   implementation rather than live Postgres (§6.3). The backend itself is now provisioned
+   (§13); the parity suite arrives with Phase 5.
+7. The offline half of the session lifecycle (§13.6) is proven on Android, where the
+   device's network can be taken away deterministically. On Windows it rests on the same
+   shared Dart code plus Phase 1's on-device proof of the encrypted store; taking the
+   build machine's network away is not a step this project automates.
+
+---
+
+## 13. The backend half of Phase 2, as built (2026-08-28)
+
+Sections 1–12 were written before a backend existed. This section describes what is
+actually running, verified against `krishna-mis-dev` from both the Android application and
+the Windows executable.
+
+### 13.1 Remote gateway layout
+
+`data/remote/` is a thin, typed boundary. Nothing above it ever sees a
+`PostgrestException`, a SQLSTATE, or a Supabase type.
+
+```
+data/remote/
+  supabase_gateway.dart          base: holds the client, wraps every call in guard()
+  remote_outcome.dart            RemoteOk | RemoteRefused | RemoteUnreachable
+  auth_gateway.dart              sign in / sign out / current user, SecureSessionStorage
+  authority_gateway.dart         my_authority() → AuthorityRefresh
+  master_gateway.dart            pullAll, master_create/rename/archive/restore, usage
+  vendor_tax_period_gateways.dart vendor_*, tax_rule_*, period_state/close/reopen
+```
+
+Every call returns a `RemoteOutcome`, and the three arms mean three different things that
+must never be conflated:
+
+| Arm | Meaning | What the application may conclude |
+|---|---|---|
+| `RemoteOk` | the server answered and did the thing | apply it |
+| `RemoteRefused` | the server **decided** not to | show the reason; never retry blindly |
+| `RemoteUnreachable` | no answer | nothing about authority or scope |
+
+A refusal carries a `ServerRefusal`: a stable server code (`KM001` … `KM017`), a
+`RefusalKind` the client can branch on, plain-language text aimed at the person who hit it,
+and a structured detail payload so a screen can say something specific. **No refusal
+message ever contains SQL, a SQLSTATE, a table name or a constraint name** — asserted on
+both platforms in the acceptance suite.
+
+`RefusalKind.versionConflict` (`KM003`) is deliberately *not* an authority refusal: a
+conflict is about the record and a person resolves it; a missing capability is about the
+person and no retry will change it. They surface as two different sync states, `Conflict`
+and `Rejected`, and only the latter is terminal.
+
+### 13.2 Authority, and the one call it rests on
+
+`public.my_authority()` returns the caller's organisation, capabilities and business-unit
+scopes as **one atomic answer**, derived entirely from `auth.uid()`. It accepts nothing
+from the request.
+
+That atomicity is load-bearing. D-048 permits a destructive local purge only on a positive
+statement of current scope, so that statement must be one response — not something the
+client assembles from several queries, any one of which might have failed. A malformed or
+partial payload is therefore treated as **unavailable**, never as "an empty set of grants":
+the difference between "the server says you have nothing" and "we could not tell" is the
+difference between a correct purge and wiping a manager's cache because a proxy truncated a
+response.
+
+### 13.3 ReferenceSync
+
+One pull, in one order, every time authority is established or refreshed:
+
+1. **Refresh authority.** Nothing else happens first. A queued privileged mutation is never
+   pushed through a window in which the client is acting on scope the server has already
+   withdrawn. The server remains the protection regardless; this removes an avoidable gap.
+2. **Purge, only on `AuthorityConfirmed`.** `ScopeCachePurge` compares the confirmed scope
+   against the previous snapshot and deletes server-owned reference data for any unit that
+   has gone — in one transaction, children before parents. It takes an `AuthorityRefresh`,
+   not a list of unit ids, so there is no signature that lets a caller purge on a timeout.
+3. **Pull what RLS returns.** Business units, departments, sections, expense and revenue
+   categories, vendors, payment methods, tax rules, period locks. The client asks for
+   everything and the server decides what that means for this user.
+4. **Write it into the local read model**, keyed by id, so a re-pull updates rather than
+   duplicates. Seeded ids are derived (D-040), so a restored scope returns the same rows
+   under the same ids and nothing is duplicated.
+5. **Save the confirmed snapshot** to `AuthorityStore`, keyed by user id.
+
+The outbox is never read or written by any of this.
+
+### 13.4 Session lifecycle
+
+```
+                 ┌─────────────────┐
+                 │ unauthenticated │◄───────── signOut()
+                 └────────┬────────┘
+                   signIn │
+                 ┌────────▼────────┐
+                 │  authenticating │
+                 └────────┬────────┘
+              credentials │ accepted
+                 ┌────────▼────────┐
+                 │    verifying    │  ← my_authority()
+                 └───┬─────────┬───┘
+       confirmed     │         │   never verified here, and unreachable
+                 ┌───▼───┐ ┌───▼──────────┐
+                 │ ready │ │  unverified  │  ← no access at all
+                 └───┬───┘ └──────────────┘
+       server says   │
+       "not an actor"│
+                 ┌───▼─────┐
+                 │ expired │
+                 └─────────┘
+```
+
+`ready` carries a freshness: `confirmed` (just asked) or `stale` (asked before, cannot ask
+now). Only `ready` yields real grants; every other state yields `Principal.anonymous`,
+which holds nothing, so a screen that forgets to check the state and asks the authoriser
+directly still gets "no".
+
+Four rules are load-bearing, and each is exercised on both platforms:
+
+- **Fail closed.** Authenticating establishes *who* somebody is. It establishes nothing
+  about what they may do. A user whose device has never received an authoritative snapshot
+  gets no operational access — not a reduced menu, not a read-only view. The screen says
+  *"Unable to verify your access. Connect to the internet and try again."*
+- **Cached authority is per user.** `AuthorityStore.loadFor(userId)` returns nothing for
+  anybody else. There is no method that loads cached authority without naming whose it
+  should be, so the check cannot be forgotten.
+- **Deactivation is a statement, not an outage.** The server declining to treat somebody as
+  an actor clears the stored authority and expires the session. It never falls back to
+  cache — otherwise a withdrawn account keeps working indefinitely.
+- **A user switch isolates before it shows anything.** The previous user's scoped cache is
+  purged and their cached authority cleared before navigation opens. Because sign-out
+  erases the record of *whose* cache it is, the purge happens at sign-out, while that is
+  still known (D-053).
+
+### 13.5 The outbox belongs to people, not to installations
+
+`sync_outbox.actor_user_id` records who queued each intent, and `dueEntries` filters by the
+signed-in actor. One person can never submit, edit, retry or inherit another's queued
+financial intent, and a signed-out user's work is preserved untouched — it becomes
+processable again when that same user signs back in, and at no other time.
+
+### 13.6 What is offline, and what is not
+
+| Concern | Offline behaviour |
+|---|---|
+| Reading permitted cached reference data | works, marked *Using last verified access* |
+| Queuing a privileged mutation | works, stays `Pending Sync`, never shown as accepted |
+| Establishing a session for the first time | impossible — authentication needs the server |
+| Working on a device that never verified this user | refused, with the message above |
+| Purging anything | never — `unknown ≠ revoked` |
+
+### 13.7 Server authority, restated
+
+Every rule the Dart `Authorizer` decides is re-decided in Postgres, and the server's answer
+is final (D-037). Three invariants are asserted by migrations rather than by review:
+
+- nothing in `public` or `app` is executable by `anon`;
+- `authenticated` may execute exactly one reviewed list of functions, and every function on
+  that list is still callable — the assertion fails in both directions, because a policy
+  that silently stops working breaks the application just as completely as one that is too
+  permissive;
+- no RLS policy references the internal `app` schema, which `authenticated` cannot reach.
+
+A `SECURITY DEFINER` RPC checks organisation-wide capability **before** it loads the target
+row (D-046), so an unauthorised caller cannot use "unknown entity" versus "no permission"
+to discover whether a record exists. The unit-scoped check still runs afterwards, because
+it has to know which property the row belongs to.

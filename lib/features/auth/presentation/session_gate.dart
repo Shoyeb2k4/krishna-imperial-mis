@@ -26,6 +26,22 @@ class SessionGate extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final session = ref.watch(sessionProvider);
 
+    if (session is SessionReady) return child;
+
+    // The gate's own screens are built by `MaterialApp.builder`, which sits *above* the
+    // router's Navigator — so there is no Overlay in scope. Without one, a tooltip and a
+    // text field's selection handles both throw rather than render, which is precisely
+    // what an on-device run caught and a widget test wrapped in its own MaterialApp did
+    // not. One Overlay here restores the ancestor those widgets need, without giving the
+    // pre-session screens a Navigator and the back-button behaviour that comes with it.
+    return Overlay(
+      initialEntries: [
+        OverlayEntry(builder: (context) => _screenFor(context, ref, session)),
+      ],
+    );
+  }
+
+  Widget _screenFor(BuildContext context, WidgetRef ref, SessionState session) {
     return switch (session) {
       Unauthenticated() ||
       Authenticating() => SignInScreen(shellKind: shellKind),
@@ -52,6 +68,7 @@ class SessionGate extends ConsumerWidget {
         onAction: () => ref.read(sessionProvider.notifier).signOut(),
       ),
 
+      // Handled above, before the Overlay is built.
       SessionReady() => child,
     };
   }

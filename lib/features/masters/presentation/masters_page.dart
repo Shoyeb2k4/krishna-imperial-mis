@@ -12,6 +12,7 @@ import 'package:krishna_mis/app/routing/app_router.dart';
 import 'package:krishna_mis/core/design/tokens/app_tokens.dart';
 import 'package:krishna_mis/features/masters/presentation/android_masters_view.dart';
 import 'package:krishna_mis/features/masters/presentation/windows_masters_view.dart';
+import 'package:krishna_mis/features/auth/presentation/account_control.dart';
 import 'package:krishna_mis/features/tax/presentation/tax_rates_view.dart';
 import 'package:krishna_mis/features/vendors/presentation/vendors_view.dart';
 
@@ -203,6 +204,11 @@ class _AndroidMasters extends ConsumerWidget {
                 ),
               ),
             ),
+          const SizedBox(height: AppSpacing.lg),
+          const Divider(height: 1),
+          // "More" is where a phone user manages their own session (master spec §18).
+          // Without it there is no way to sign out on Android at all.
+          const AccountControl(dense: true),
         ],
       );
     }

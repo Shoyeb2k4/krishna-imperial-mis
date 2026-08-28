@@ -145,3 +145,25 @@ anything (D-037). The advisor flags the pattern, not a flaw in any particular fu
 application, the second breaks the enforcement.
 
 There are no ERROR-level advisories.
+
+
+## Development identities for repeatable acceptance
+
+The acceptance suites sign in as real development identities in `krishna-mis-dev`. Their
+passwords live in **`config/dev-identities.local.json`**, which is git-ignored and exists
+on developer machines only:
+
+```json
+{ "giridhar@hki.com": { "password": "..." }, "ccr.manager@example.com": { "password": "..." } }
+```
+
+Nothing else reads it. `tool/dev_admin.dart` uses it to act as the Owner over the ordinary
+public API, and the acceptance suites receive it as `--dart-define-from-file` through a
+*flattened* copy written outside the repository, so no password is ever typed on a command
+line, rendered on screen, or captured in a screenshot.
+
+**A build made with those defines must never be distributed.** They are compiled into
+`kernel_blob.bin` like any other constant. `dart run tool/check_no_client_secrets.dart
+--artefacts` refuses exactly that, and it is the check that proves a release build is clean.
+
+No password appears in this repository, in a fixture, in a document or in a migration.

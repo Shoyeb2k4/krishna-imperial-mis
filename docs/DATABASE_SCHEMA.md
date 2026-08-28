@@ -445,17 +445,25 @@ create index on revenue_entries (org_id, business_unit_id, revenue_category_id, 
 
 ## 7. Period control
 
+**Corrected by D-042 (2026-08-28).** The sketch below keyed a lock by a `period_start` /
+`period_end` date pair. What is built keys it by `period_key text` in `'YYYY-MM'` form,
+matching `BusinessDate.periodKey`, the local SQLite mirror and `PeriodRegistry`. Two
+representations of one concept have to be converted at every boundary, and a conversion is
+a place to be wrong; the key is also what the authoriser actually asks for, so keying on it
+removes a translation from the hot path of every financial write. A month is the only
+granularity V1 closes. A non-monthly close would be a new column and a migration, not a
+redesign — the lock is still one row per (org, unit, period).
+
 ```sql
 period_locks (
   id uuid pk, org_id uuid not null,
   business_unit_id uuid null references business_units(id),  -- null = all units
-  period_start date not null, period_end date not null,
+  period_key text not null check (period_key ~ '^[0-9]{4}-[0-9]{2}$'),
   state text not null check (state in ('open','closed')),
   closed_by uuid, closed_at timestamptz,
   reopened_by uuid, reopened_at timestamptz, reopen_reason text,
   row_version int not null default 1, change_seq bigint not null,
-  unique nulls not distinct (org_id, business_unit_id, period_start, period_end),
-  check (period_start <= period_end),
+  unique nulls not distinct (org_id, business_unit_id, period_key),
   check (state = 'open' or (closed_by is not null and closed_at is not null))
 )
 
@@ -613,11 +621,103 @@ Drill-down is always `aggregate → v_expense_lines / v_revenue_lines → source
 
 Seeded at first run: the organisation, two business units (with timezone and 05:00
 cut-off), their departments/sections/categories, revenue categories including Nandbhog
-under Crystal Canopy, standard payment methods, initial tax configuration rows, and the
-four system roles with their capability grants and `requires_unit_scope` flags. Seeds are
-idempotent, re-runnable, and carry no credentials.
+under Crystal Canopy, standard payment methods, and the four system roles with their
+capability grants and `requires_unit_scope` flags. Seeds are idempotent, re-runnable, and
+carry no credentials.
+
+**No tax configuration row is seeded (D-043, owner decision).** No default rate, no assumed
+5%, no assumed 18%, no inheritance from another category, property or period, and no fake
+production rule. Each revenue category's timeline starts empty and the Tax screen says so
+explicitly — *"No rule in force today"* against the category, and *"No tax rule configured.
+Revenue recorded for this category will have no tax extracted until one is set."* A
+configured zero rate and no configured rule are different facts and are kept apart.
+
+**The client-side seed does not run against a configured backend (D-052).** It exists so
+the application is usable with no server at all. With a server, the server is the source of
+master data and RLS decides what each user may hold locally.
 
 **No production financial history is seeded, imported, or committed to source control**
 (spec §32). Development and tests use sanitised, anonymised fixtures only. A future
 Excel/CSV import is a separate controlled workflow writing through the same integrity
 rules, marked `entry_kind = 'import'` so it is distinguishable in the audit trail forever.
+
+---
+
+## 13. The API surface, and the boundary around it (as built, 2026-08-28)
+
+### 13.1 What a signed-in client may call
+
+Direct table writes are granted to nobody. Every mutation goes through a
+`SECURITY DEFINER` RPC that re-checks capability, unit scope, period state, edit window and
+row version, in a transaction. Twenty-four functions are callable by `authenticated`, and
+**nothing at all is callable by `anon`**:
+
+| Group | Functions |
+|---|---|
+| Authority | `my_authority`, `current_org_id`, `has_capability`, `has_capability_anywhere`, `scoped_units_for` |
+| Masters | `master_create`, `master_rename`, `master_archive`, `master_restore`, `master_usage` |
+| Vendors | `vendor_create`, `vendor_update` |
+| Tax | `tax_rule_create`, `tax_rule_supersede`, `tax_rule_archive`, `tax_rule_for` |
+| Periods | `period_state`, `period_close`, `period_reopen` |
+| Users | `user_provision`, `user_deactivate`, `user_reactivate`, `user_role_grant`, `user_role_revoke` |
+
+The list is declared in exactly one migration and **asserted in both directions**: nothing
+unreviewed may be callable, and nothing reviewed may have quietly stopped being callable.
+A function that becomes reachable when it should not be is a security defect; one that
+silently stops working breaks the application just as completely and is far easier to ship
+unnoticed. Adding a function fails the migration until the list names it (D-044).
+
+`app.bootstrap_owner` is checked by name: it hands out ownership, and it must never be
+client-reachable.
+
+### 13.2 The RLS helper boundary (D-045)
+
+A policy expression is evaluated with the **querying user's** privileges. `authenticated`
+has no `USAGE` on the `app` schema — that is the point of the schema — so a policy calling
+`app.current_org_id()` fails for every signed-in user and every table returns 403. It did.
+No data was exposed; the application was simply unusable, and no static review had shown
+it.
+
+So: `public.current_org_id()` is published and granted to `authenticated`, and policies use
+it. `app.current_org_id()` remains for use *inside* `SECURITY DEFINER` functions, which run
+as the owner. A migration asserts that no policy references `app.`.
+
+### 13.3 Refusal codes
+
+Every refusal carries a stable code, a machine-readable kind and plain language. The client
+maps the kind; it never parses the message, and the message never contains SQL.
+
+| Code | Kind | Meaning |
+|---|---|---|
+| `KM001` | `missingCapability` | no permission at all |
+| `KM002` | `outOfUnitScope` | not for this property |
+| `KM003` | `versionConflict` | the record moved — a person resolves this |
+| `KM004` | `periodClosed` | the period is closed |
+| `KM005` | `editWindowExpired` | beyond the edit window |
+| `KM015` | `unknownEntity` | no such record *in this organisation* |
+| `KM016` | `appendOnly` | audit and event rows are written once |
+| `KM017` | `acknowledgementRequired` | D-038: the rename touches recorded history |
+
+`KM003` is the only one a person can resolve by looking at the record; every other refusal
+needs permission, acknowledgement, or abandonment. None is automatically retried — a
+refusal is the server's considered answer, and repeating the identical request can only
+spin.
+
+### 13.4 Ordering: permission before existence (D-046)
+
+A mutation RPC checks organisation-wide capability **before** it loads the target row.
+Seeded master ids are UUID v5 values derived from public code paths (D-040), so anyone can
+compute them; loading first would have let an unauthorised caller distinguish
+"unknown entity" from "no permission" and enumerate what exists. The precise unit-scoped
+check still runs afterwards, because it has to know which property the row belongs to — so
+an administrator can still tell the two apart, which is appropriate.
+
+This is the same order the Dart `Authorizer` has always used: permission, then ownership,
+then state. The two layers give the same answer for the same reason.
+
+### 13.5 Migration integrity
+
+Every migration the server has applied must exist as a committed file (D-056). This is not
+a convention: `my_authority()` was applied to the development project and never committed,
+and for a day the repository could not have rebuilt the environment. The live suite now
+asserts that every RPC the server exposes is created by a file in `supabase/migrations/`.

@@ -86,9 +86,20 @@ Future<BootstrapResult> bootstrap() async {
 
   final database = await openEncryptedDatabase();
 
-  // Idempotent, and it never overwrites an edited label — safe to run on every launch
-  // until the backend becomes the source of master data (D-027).
-  await seedMasterData(database, now: DateTime.now().toUtc());
+  // The shipped seed exists so the application is usable with no backend at all — the
+  // state Phase 1 shipped in. **It must not run once a backend is configured.** The seed
+  // contains both properties, and writing it locally would hand every installation a
+  // browsable Hotel Krishna Imperial hierarchy before anybody had signed in, and leave it
+  // there for a Crystal Canopy-scoped Manager who signs in afterwards. Caught on a real
+  // device: the Manager's own pull was correctly scoped, and the seed was sitting
+  // underneath it.
+  //
+  // With a backend, the server is the source of master data and RLS decides what this
+  // user may cache. With no backend, nothing can authenticate anyway, so seeded masters
+  // are development scaffolding rather than somebody else's property (D-027).
+  if (!config.hasBackend) {
+    await seedMasterData(database, now: DateTime.now().toUtc());
+  }
 
   final outbox = OutboxRepository(database);
   final recovered = await outbox.recoverStaleInFlight(now: DateTime.now());

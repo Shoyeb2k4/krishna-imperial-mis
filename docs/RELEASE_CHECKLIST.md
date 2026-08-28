@@ -1,7 +1,8 @@
 # Release Checklist
 
 Directive: SHOYEB-HOSPITALITY-MIS · Spec **v1.1**
-Status: **Prepared in Phase 0.** No release has been produced.
+Status: **Prepared in Phase 0; section H added at the end of Phase 2.** No release has
+been produced.
 
 Every box must be genuinely verified, not assumed. Anything unverified is reported as
 *Not tested* — never as done.
@@ -15,6 +16,9 @@ Every box must be genuinely verified, not assumed. Anything unverified is report
 - [ ] No `TODO`/`FIXME` left on a financial code path
 - [ ] No `double`/`num` anywhere in currency handling (grep-verified)
 - [ ] No `print()`; structured logging only, no financial data in logs
+- [ ] `dart run tool/check_no_client_secrets.dart --history --artefacts` clean — working
+      tree, every committed blob, **and the built binaries**
+- [ ] `dart run tool/check_config.dart` clean for the flavour being built
 - [ ] Generated files (`build_runner`) regenerated and committed
 - [ ] Dependency licence review; every package confirmed to support Android **and** Windows
 
@@ -35,6 +39,10 @@ Every box must be genuinely verified, not assumed. Anything unverified is report
 - [ ] Repository/data: CRUD, filtering, keyset pagination, transactional integrity
 - [ ] Database: constraints, deferred allocation-sum trigger, hierarchy-consistency trigger
 - [ ] Database: RLS allow **and** deny per role, including unit-scoped managers
+- [ ] Migration audit: every `SECURITY DEFINER` function fixes `search_path`; the API
+      surface invariant passes in both directions; no policy references the `app` schema
+- [ ] Migration integrity: every migration applied to the target project exists as a
+      committed file (D-056) — run the live suite's `drift` phase against that project
 - [ ] Widget: forms, validation, error states, all five sync states
 - [ ] Integration (spec §27): login · create expense · offline expense · sync expense ·
       create revenue · dashboard · report drill-down · export P&L · permission refusal
@@ -154,3 +162,84 @@ Host tests do not exercise the Windows runtime. The executable must actually run
 - [ ] Artefacts archived with their version, build date and commit hash
 - [ ] Known issues stated openly to the owner — nothing buried
 - [ ] Rollback plan documented for both platforms
+
+---
+
+## K. Backend and identity gate (added end of Phase 2)
+
+Everything here is verified **against the environment being released to**, not against
+development. A staging or production release repeats every line.
+
+### K.1 Environment
+
+- [ ] `config/<flavour>.json` points at the correct project — never at development
+- [ ] The configured key is a publishable/anon key. `AppConfig` refuses a secret key, a
+      service-role JWT and a connection string at start-up; confirm the build starts
+- [ ] No service-role key, database password, JWT signing secret or connection string
+      exists on the build machine's project configuration
+- [ ] Storage buckets private; signed URLs scoped and expiring
+
+### K.2 Migrations
+
+- [ ] Every migration in `supabase/migrations/` is applied, in order, with no manual step
+- [ ] Every migration applied to the project exists as a committed file (D-056)
+- [ ] The API surface invariant passes: nothing callable by `anon`, exactly the reviewed
+      list callable by `authenticated`, and every reviewed function still callable
+- [ ] No RLS policy references the `app` schema (D-045)
+- [ ] No tax rule is seeded (D-043) — the owner supplies the first rule per revenue
+      category, with its rate, treatment and effective date
+
+### K.3 Identity
+
+- [ ] Production accounts are created through the ordinary sign-up path and enrolled with
+      `user_provision`. No profile is ever inserted behind the authorisation model
+- [ ] Every non-Owner grant names a business unit (D-025), enforced by the database
+- [ ] Exactly one Owner grant is unscoped, and it belongs to the owner
+- [ ] No development identity exists in the target project
+- [ ] No password is committed, in a fixture, in a document, in a screenshot, or in a
+      distributable asset. Repeatable device acceptance uses a git-ignored
+      `config/dev-identities.local.json`, which exists on developer machines only
+
+### K.4 Session and authority behaviour, on the real build
+
+Each verified in the installed application, not in a test harness:
+
+- [ ] Sign in succeeds; a wrong password is refused in plain language with no SQLSTATE,
+      no HTTP status and no provider error text
+- [ ] Keyboard alone drives the login form on Windows: Tab, Shift-Tab, visible focus,
+      Enter submits; the password is obscured until the user asks
+- [ ] Real authority is fetched and the shell reflects it — a scoped user sees their
+      property only, and administration is absent where the capability is absent
+- [ ] Closing and relaunching the application restores the session without credentials
+- [ ] Sign out works from the account control and leaves the outbox intact
+- [ ] Signing in as a second user on the same installation shows nothing of the first
+      user's data, and their queued work is preserved and still theirs (D-050, D-053)
+- [ ] Offline: permitted cached data remains readable, marked *Using last verified
+      access*; nothing is purged; a privileged mutation stays `Pending Sync`
+- [ ] A user who has never verified on this installation, offline, gets no access at all
+      and the message *"Unable to verify your access. Connect to the internet and try
+      again."*
+- [ ] Revoking a scope, then reconnecting: authority refreshes first, the server-owned
+      cache for that property is purged, organisation-global data and the outbox survive,
+      the queued mutation is refused and recorded as terminal `Rejected`, and the property
+      disappears from navigation
+- [ ] Deactivating an account expires its session at the next refresh, with no fallback to
+      cached authority
+- [ ] `Rejected` and `Conflict` read as visibly different states
+
+### K.5 Two-client agreement
+
+- [ ] A cosmetic rename on one platform reaches the other with the same id, the same
+      immutable code, an incremented row version and no duplicate record
+- [ ] An archive reaches the other client, disappears from new-use pickers, and leaves
+      historical references intact
+- [ ] A mutation submitted on a stale row version is refused as `Conflict`, not `Rejected`,
+      and the canonical server state is preserved
+
+### K.6 Leaving the environment as it was found
+
+- [ ] Any fixture changed during acceptance is restored, and the restoration is verified
+      by reading it back
+- [ ] Any grant revoked during acceptance is re-granted
+- [ ] Any account deactivated during acceptance is reactivated
+- [ ] The project is not left in an unexplained modified state

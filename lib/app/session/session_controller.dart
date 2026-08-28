@@ -98,7 +98,7 @@ class SessionController extends SessionNotifier {
       state = const SessionState.unauthenticated();
       return;
     }
-    await _establishAuthority(user.id);
+    await _establishAuthority(user.id, user.email);
   }
 
   @override
@@ -111,19 +111,32 @@ class SessionController extends SessionNotifier {
         state = SessionState.unauthenticated(failure: failure);
       case SignedIn(:final user):
         await _isolateFromPreviousUser(user.id);
-        await _establishAuthority(user.id);
+        await _establishAuthority(user.id, user.email);
     }
   }
 
   /// Ends the session without taking anybody's unsent work with it.
   ///
-  /// Tokens go; the cached authority goes, so it cannot leak into whoever signs in next;
-  /// the local database and the outbox stay. Erasing local data is a separate, explicit,
-  /// destructive action, and conflating the two would quietly destroy entries that exist
-  /// nowhere else (`ARCHITECTURE.md` §8.2).
+  /// Tokens go; the **downloaded scope cache** goes; the cached authority goes, so it
+  /// cannot leak into whoever signs in next. The local database itself and the outbox
+  /// stay. Erasing local data is a separate, explicit, destructive action, and conflating
+  /// the two would quietly destroy entries that exist nowhere else
+  /// (`ARCHITECTURE.md` §8.2).
+  ///
+  /// The scope purge has to happen **here**, not on the next sign-in. Sign-out is the
+  /// last moment at which the device still knows whose cached hierarchy this is: clearing
+  /// the authority record erases that fact, so [_isolateFromPreviousUser] would find no
+  /// previous owner and leave the whole of the previous user's downloaded hierarchy
+  /// readable to whoever signs in next. On a shared back-office workstation that is the
+  /// normal sequence, not an edge case — it was caught on a real device, with the Owner's
+  /// Hotel Krishna Imperial data still browsable by a Crystal Canopy-only Manager.
+  ///
+  /// Nothing is lost by purging: the same user signing back in re-pulls what they are
+  /// entitled to, and offline they would have no cached authority to work under anyway.
   @override
   Future<void> signOut() async {
     await _deps.auth.signOut();
+    await _deps.purge.purgeAllScopedCache();
     await _deps.store.clear();
     state = const SessionState.unauthenticated();
   }
@@ -138,12 +151,17 @@ class SessionController extends SessionNotifier {
   Future<void> refreshAuthority() async {
     final userId = state.userId;
     if (userId == null) return;
-    await _establishAuthority(userId, keepingCurrentStateWhileWorking: true);
+    await _establishAuthority(
+      userId,
+      _deps.auth.currentUser?.email ?? '',
+      keepingCurrentStateWhileWorking: true,
+    );
   }
 
   /// The core transition: signed in → what may they do?
   Future<void> _establishAuthority(
-    String userId, {
+    String userId,
+    String email, {
     bool keepingCurrentStateWhileWorking = false,
   }) async {
     if (!keepingCurrentStateWhileWorking) {
@@ -170,6 +188,7 @@ class SessionController extends SessionNotifier {
       state = SessionState.ready(
         authority: refresh.snapshot,
         freshness: AuthorityFreshness.confirmed,
+        email: email,
       );
       return;
     }
@@ -193,6 +212,7 @@ class SessionController extends SessionNotifier {
       state = SessionState.ready(
         authority: cached,
         freshness: AuthorityFreshness.stale,
+        email: email,
       );
       return;
     }

@@ -62,7 +62,9 @@ AuthoritySnapshot fullAuthority({String userId = 'test-owner'}) =>
 SessionState readySession({
   AuthoritySnapshot? authority,
   AuthorityFreshness freshness = AuthorityFreshness.confirmed,
+  String email = 'owner@example.test',
 }) => SessionState.ready(
   authority: authority ?? fullAuthority(),
   freshness: freshness,
+  email: email,
 );

@@ -133,11 +133,16 @@ class _HierarchyTree extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     if (tree.units.isEmpty) {
+      // Deliberately names no property. What is here depends entirely on what the
+      // server has granted this user, and an empty list is far more likely to mean
+      // "nothing has been synchronised yet" than "the company has no properties" —
+      // naming one they may have no scope for would be both wrong and a small leak.
       return const MasterEmptyState(
         icon: Icons.account_tree_outlined,
-        title: 'No business units yet',
+        title: 'Nothing to show yet',
         message:
-            'Seed data creates Crystal Canopy Rooftop and Hotel Krishna Imperial.',
+            'Business units appear here once your access has been confirmed and the '
+            'set-up data has been synchronised.',
       );
     }
 

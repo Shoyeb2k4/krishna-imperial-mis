@@ -60,6 +60,7 @@ final class PendingMutation {
     required this.createdAt,
     this.baseRowVersion,
     this.attemptCount = 0,
+    this.actorUserId,
   }) {
     if (!_uuid.hasMatch(mutationId)) {
       // The server types `mutation_id` as `uuid`, so a malformed one is refused by
@@ -105,6 +106,14 @@ final class PendingMutation {
 
   final DateTime createdAt;
   final int attemptCount;
+
+  /// Who queued this intent (D-050).
+  ///
+  /// An outbox entry belongs to the person who created it, not to the installation. On a
+  /// shared workstation somebody else signs in minutes later; their session must not
+  /// push, edit or inherit this work. Null only for an entry queued before a session
+  /// existed, which no application path produces.
+  final String? actorUserId;
 
   PendingMutation copyWith({int? attemptCount}) => PendingMutation(
     mutationId: mutationId,
