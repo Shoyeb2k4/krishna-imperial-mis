@@ -12,6 +12,8 @@ import 'package:krishna_mis/data/repositories/master_repository.dart';
 import 'package:krishna_mis/data/repositories/tax_repository.dart';
 import 'package:krishna_mis/data/repositories/vendor_repository.dart';
 import 'package:krishna_mis/data/sync/outbox_repository.dart';
+import 'package:krishna_mis/data/sync/sync_engine.dart';
+import 'package:krishna_mis/domain/sync/pending_mutation.dart';
 import 'package:krishna_mis/domain/auth/authorizer.dart';
 import 'package:krishna_mis/app/session/session_controller.dart';
 import 'package:krishna_mis/domain/auth/capability.dart';
@@ -31,6 +33,29 @@ final outboxProvider = Provider<OutboxRepository>(
   (ref) =>
       throw UnimplementedError('outboxProvider must be overridden in main()'),
 );
+
+/// How queued work reaches the server. Null when no backend is configured.
+final mutationEndpointProvider = Provider<RemoteMutationEndpoint?>(
+  (ref) => null,
+);
+
+/// The push worker, bound to whoever is signed in.
+///
+/// It is rebuilt whenever the session changes, and it carries that user's id, so a
+/// second person signing in on the same installation gets an engine that can see only
+/// their own queued work (D-050). Null when there is no session or no backend: there is
+/// then nothing to push and nobody to attribute it to.
+final syncEngineProvider = Provider<SyncEngine?>((ref) {
+  final session = ref.watch(sessionProvider);
+  final endpoint = ref.watch(mutationEndpointProvider);
+  final actor = session is SessionReady ? session.authority.userId : null;
+  if (endpoint == null || actor == null) return null;
+  return SyncEngine(
+    outbox: ref.watch(outboxProvider),
+    endpoint: endpoint,
+    actorUserId: actor,
+  );
+});
 
 // ── Repositories ────────────────────────────────────────────────────────────
 

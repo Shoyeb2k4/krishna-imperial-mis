@@ -1,6 +1,10 @@
 # Release Checklist
 
 Directive: SHOYEB-HOSPITALITY-MIS · Spec **v1.1**
+Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
+Domain: hotelkrishnaimperial.in
+Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
+the application role named **Owner** is a separate concept — D-057)
 Status: **Prepared in Phase 0; section H added at the end of Phase 2.** No release has
 been produced.
 
@@ -97,12 +101,12 @@ Every box must be genuinely verified, not assumed. Anything unverified is report
 - [ ] Android and Windows show identical figures after convergence
 - [ ] Device clock set wrong → server timestamps still authoritative
 
-## F. Functional acceptance (with the owner)
+## F. Functional acceptance (with the project lead)
 
-- [ ] P&L for a chosen historical period matches the owner's own figures
+- [ ] P&L for a chosen historical period matches the project lead's own figures
 - [ ] Every dashboard total drills down to its source transactions
 - [ ] Split electricity bill appears correctly in both business units and in consolidated
-- [ ] Excel and PDF exports reviewed and approved by the owner
+- [ ] Excel and PDF exports reviewed and approved by the project lead
 - [ ] Windows printing produces a correct, well-laid-out page
 - [ ] Indian number formatting correct everywhere (₹12,36,420)
 
@@ -116,7 +120,7 @@ Every box must be genuinely verified, not assumed. Anything unverified is report
 ## H. Android release
 
 - [ ] `applicationId` final; version name and code bumped
-- [ ] Release keystore generated and stored **only** by the owner, backed up offline
+- [ ] Release keystore generated and stored **only** by the project lead, backed up offline
       (losing it means no future update can be installed over the existing app)
 - [ ] Signing configured via a git-ignored properties file — never committed
 - [ ] `flutter build apk --release --flavor prod` succeeds
@@ -158,9 +162,9 @@ Host tests do not exercise the Windows runtime. The executable must actually run
 
 - [ ] `PROJECT_STATUS.md` updated: phase, verified items, known issues, test totals
 - [ ] `DECISIONS.md` updated with any decision taken during the release
-- [ ] Release notes written in plain language for the owner
+- [ ] Release notes written in plain language for the project lead
 - [ ] Artefacts archived with their version, build date and commit hash
-- [ ] Known issues stated openly to the owner — nothing buried
+- [ ] Known issues stated openly to the project lead — nothing buried
 - [ ] Rollback plan documented for both platforms
 
 ---
@@ -186,7 +190,7 @@ development. A staging or production release repeats every line.
 - [ ] The API surface invariant passes: nothing callable by `anon`, exactly the reviewed
       list callable by `authenticated`, and every reviewed function still callable
 - [ ] No RLS policy references the `app` schema (D-045)
-- [ ] No tax rule is seeded (D-043) — the owner supplies the first rule per revenue
+- [ ] No tax rule is seeded (D-043) — the project lead supplies the first rule per revenue
       category, with its rate, treatment and effective date
 
 ### K.3 Identity
@@ -194,7 +198,7 @@ development. A staging or production release repeats every line.
 - [ ] Production accounts are created through the ordinary sign-up path and enrolled with
       `user_provision`. No profile is ever inserted behind the authorisation model
 - [ ] Every non-Owner grant names a business unit (D-025), enforced by the database
-- [ ] Exactly one Owner grant is unscoped, and it belongs to the owner
+- [ ] Exactly one Owner grant is unscoped, and it belongs to the project lead
 - [ ] No development identity exists in the target project
 - [ ] No password is committed, in a fixture, in a document, in a screenshot, or in a
       distributable asset. Repeatable device acceptance uses a git-ignored

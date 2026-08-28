@@ -1,6 +1,10 @@
 # Database Schema (Proposal)
 
 Directive: SHOYEB-HOSPITALITY-MIS · Spec **v1.1**
+Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
+Domain: hotelkrishnaimperial.in
+Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
+the application role named **Owner** is a separate concept — D-057)
 Status: **Proposed — Phase 0 revised.** No migration has been written or applied.
 Last updated: 2026-08-26
 
@@ -625,7 +629,7 @@ under Crystal Canopy, standard payment methods, and the four system roles with t
 capability grants and `requires_unit_scope` flags. Seeds are idempotent, re-runnable, and
 carry no credentials.
 
-**No tax configuration row is seeded (D-043, owner decision).** No default rate, no assumed
+**No tax configuration row is seeded (D-043, project-lead decision).** No default rate, no assumed
 5%, no assumed 18%, no inheritance from another category, property or period, and no fake
 production rule. Each revenue category's timeline starts empty and the Tax screen says so
 explicitly — *"No rule in force today"* against the category, and *"No tax rule configured.

@@ -203,4 +203,48 @@ void main() {
       expect(offenders, isEmpty);
     });
   });
+
+  group('the acceptance transport is not reachable from a shipped build', () {
+    // `bootstrap({http.Client? transport})` lets the acceptance suite make the real
+    // Windows executable's network genuinely fail, without touching machine security
+    // settings. It is a parameter, not a switch — no environment variable, no registry,
+    // no debug menu — so the only way to reach it is to call bootstrap with an argument.
+    // These tests hold that true: if shipped code ever passes one, this fails.
+    test('nothing in lib/ calls bootstrap with a transport', () {
+      final offenders = [
+        for (final file in _shippedSources())
+          if (file.path != 'lib/app/bootstrap.dart' &&
+              RegExp(r'bootstrap\s*\(\s*[^)]').hasMatch(file.source))
+            file.path,
+      ];
+      expect(
+        offenders,
+        isEmpty,
+        reason:
+            'a shipped caller passing a transport would make the fault injector '
+            'reachable in a real build, which is exactly what it must never be',
+      );
+    });
+
+    test('main() starts the application with no arguments at all', () {
+      final main = File('lib/main.dart').readAsStringSync();
+      expect(main, contains('await bootstrap()'));
+      expect(main, isNot(contains('transport')));
+    });
+
+    test('lib/ contains no fault-injection switch of its own', () {
+      for (final file in _shippedSources()) {
+        expect(
+          file.source,
+          isNot(contains("fromEnvironment('KRISHNA_ACCEPTANCE")),
+          reason: '${file.path} carries a compiled-in acceptance flag',
+        );
+        expect(
+          file.source,
+          isNot(contains('simulateOffline')),
+          reason: '${file.path} carries a runtime offline switch',
+        );
+      }
+    });
+  });
 }

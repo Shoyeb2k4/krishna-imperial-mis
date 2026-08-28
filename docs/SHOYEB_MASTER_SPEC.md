@@ -1,15 +1,22 @@
 # Master Specification — Hospitality Management MIS
 
-Owner: Shoyeb Akhtar
+Project Lead / Product Decision-Maker: Shoyeb Akhtar
+Business: Hotel Krishna Imperial
+Project: Krishna Imperial MIS
+Domain: hotelkrishnaimperial.in
 Directive ID: SHOYEB-HOSPITALITY-MIS
 Master Spec Version: **1.1**
 Status: Active — binding
-Last updated: 2026-08-26
+Last updated: 2026-08-28
+
+The project lead directs this work and makes every product decision in it. He is not
+stated or implied to be the proprietor of Hotel Krishna Imperial. The application role
+named **Owner** (§13.2) is a permission level in the software and is unchanged (D-057).
 
 This document is the detailed, binding product specification. `CLAUDE.md` imports it.
 Where this document and the code disagree, investigate; do not assume either is right.
 
-**Version 1.1** records the owner's decisions on accounting basis, tax configuration,
+**Version 1.1** records the project lead's decisions on accounting basis, tax configuration,
 business-day cut-off, revenue granularity, permission scoping and period close, plus three
 architectural corrections (offline reporting parity, void concurrency, encryption key
 management). Change log in §30.
@@ -79,7 +86,7 @@ Expense concepts (from the existing management P&L): Kirana & Pulses; Vegetables
 Fruits; Milk & Dahi; Cylinder & Coal; Water; Paneer / Dairy; Kitchen / F&B payroll;
 Other wages; Incentives; Electricity; Other operating expenses.
 
-**Nandbhog (owner decision, V1):** Nandbhog is a **revenue category under Crystal Canopy
+**Nandbhog (project-lead decision, V1):** Nandbhog is a **revenue category under Crystal Canopy
 Rooftop**, not a separate business unit. It does not receive an independent P&L hierarchy
 in V1. Master data is modelled so that promoting it to a business unit later is a
 deliberate, auditable migration rather than a schema rewrite — see §31.
@@ -90,10 +97,10 @@ Expense concepts: Housekeeping Salary; Front Office Salary; Water; Tanker; Water
 Diesel; Building Expenses; Electricity; Housekeeping Expenses; Maintenance; Payroll;
 Other operating expenses.
 
-The owner can add, archive, safely rename, and reorganise masters, subject to the
+The project lead can add, archive, safely rename, and reorganise masters, subject to the
 historical-integrity rules in §10.
 
-## 5. Accounting basis — management accrual (owner decision)
+## 5. Accounting basis — management accrual (project-lead decision)
 
 **The P&L is prepared on a management accrual basis.** An expense belongs to the period in
 which it was economically incurred, not the period in which cash happened to leave the
@@ -129,7 +136,7 @@ The June salary example: `business_date = 2026-06-30`,
 `accounting_period = 2026-06-01 … 2026-06-30`, `pnl_date = 2026-06-30` → June P&L;
 `payment_status = paid`, `payment_date = 2026-07-05` → July cash outflow.
 
-### 5.2.1 Cross-period allocation (owner decision, D-034)
+### 5.2.1 Cross-period allocation (project-lead decision, D-034)
 
 There is **no universal closing-month rule.** By default the full amount belongs to the
 one accounting period above, and that stays the fast, normal workflow — an expense dated
@@ -199,7 +206,7 @@ split live on **allocation lines**, not on the document header. See §7.
 
 Indian currency formatting is first class: `₹12,36,420`, never `₹1,236,420`.
 
-### 6.1 GST on expenses (owner decision)
+### 6.1 GST on expenses (project-lead decision)
 
 The operating expense is the **gross amount actually incurred or paid to the supplier,
 including GST**. There is no input-tax-credit accounting, no GST ledger and no statutory
@@ -247,7 +254,7 @@ source / reference; entry kind; entered by; audit history.
 
 `net = gross − tax` is enforced by a database check constraint.
 
-### 8.1 Tax configuration (owner decision)
+### 8.1 Tax configuration (project-lead decision)
 
 Sales figures are normally recorded **tax-inclusive** (the gross figure the guest paid).
 **No rate is hard-coded anywhere in the application.** Tax is resolved from configuration
@@ -279,7 +286,7 @@ default baked into code. Seeded configuration rows are editable master data.
 
 V1 builds **no statutory GST filing engine**.
 
-### 8.2 Revenue entry granularity (owner decision)
+### 8.2 Revenue entry granularity (project-lead decision)
 
 The routine V1 workflow is a simple **Daily Sales Summary**: one figure per revenue
 category per business date. The UI does not force shift-level entry.
@@ -295,7 +302,7 @@ normal workflow expects one summary per day, the entry screen detects an existin
 for that unit/category/date and asks the user explicitly whether to **edit the existing
 entry** or **add another entry** — it never silently creates a duplicate.
 
-## 9. Business date and the business-day cut-off (owner decision)
+## 9. Business date and the business-day cut-off (project-lead decision)
 
 **Business date is a first-class derived concept and is never the raw device timestamp.**
 
@@ -398,7 +405,7 @@ backend. Enforcement is server-authoritative: Postgres RLS plus server-side vali
 RPCs. The client's permission model exists only to shape the UI, and is treated as
 untrusted by the backend.
 
-### 13.2 Roles (owner decision)
+### 13.2 Roles (project-lead decision)
 
 | Role | Scope | Capability shape |
 |---|---|---|
@@ -414,7 +421,7 @@ convention.
 
 No real production user accounts are created during design phases.
 
-### 13.3 Edit window while a period is open (owner decision)
+### 13.3 Edit window while a period is open (project-lead decision)
 
 | Actor | Rule |
 |---|---|
@@ -426,7 +433,7 @@ The window length is configuration (`edit_window_days`, default 7), not a consta
 code. Editing beyond the window requires a distinct capability
 (`transaction.correct.beyond_window`). Every correction is audited.
 
-### 13.4 Period close (owner decision)
+### 13.4 Period close (project-lead decision)
 
 A period may be **closed**. Once closed:
 
@@ -678,8 +685,8 @@ AI is never part of the canonical financial calculation engine.
 ## 26. Optional approval framework
 
 Architect so expense approval can be switched on later — e.g. expenses above a
-configurable amount require owner approval. Keep it modular. Do not let it delay V1
-unless the owner requires it.
+configurable amount require approval. Keep it modular. Do not let it delay V1
+unless the project lead requires it.
 
 ## 27. Performance
 
@@ -735,7 +742,7 @@ Designed for, but not implemented in V1:
   reference business unit and revenue category as separate columns, and allocation lines
   carry their own business unit, so promotion is a controlled data migration plus a
   documented restatement decision — never a schema rewrite. Whether historical figures are
-  restated or split from a cut-over date is an owner decision at that time.
+  restated or split from a cut-over date is an project-lead decision at that time.
 - **Partial payments / payables ageing** (§5.4).
 - **Proration of costs across accounting periods** (§5.2, open question Q10).
 - **Input tax credit** (§6.1).

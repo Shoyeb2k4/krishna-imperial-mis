@@ -712,4 +712,51 @@ void main() {
       );
     });
   });
+
+  group("the sync engine only sends the signed-in actor's work", () {
+    // The actor filter existed on the repository and the engine did not pass it, so the
+    // rule was written down and not enforced. Whoever happened to be signed in when
+    // connectivity returned would have pushed somebody else's queued financial intent
+    // under their own session, and the server would have attributed it to them.
+    test("another user's queued intent is never pushed", () async {
+      final db = AppDatabase(NativeDatabase.memory());
+      addTearDown(db.close);
+      final outbox = OutboxRepository(db);
+      final endpoint = FakeRemoteEndpoint();
+      final now = DateTime.utc(2026, 8, 28);
+
+      for (final actor in ['user-a', 'user-b']) {
+        await outbox.enqueue(
+          PendingMutation(
+            mutationId: const Uuid().v4(),
+            entityType: 'vendor',
+            entityId: 'v-$actor',
+            op: MutationOp.create,
+            payload: {'name': actor},
+            createdAt: now,
+            actorUserId: actor,
+          ),
+          now: now,
+        );
+      }
+
+      final engine = SyncEngine(
+        outbox: outbox,
+        endpoint: endpoint,
+        clock: () => now,
+        actorUserId: 'user-a',
+      );
+      final report = await engine.pushOnce();
+
+      expect(report.attempted, 1);
+      expect(endpoint.receivedBatches.single.single.entityId, 'v-user-a');
+
+      // The other user's entry is untouched — still pending, still theirs.
+      final other = (await db.select(db.syncOutbox).get()).firstWhere(
+        (r) => r.entityId == 'v-user-b',
+      );
+      expect(other.status, OutboxStatus.pending.name);
+      expect(other.actorUserId, 'user-b');
+    });
+  });
 }

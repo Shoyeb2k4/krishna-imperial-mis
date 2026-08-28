@@ -36,6 +36,8 @@
 ///   propagate-b      client B: the change arrives; a stale intent conflicts
 ///   propagate-restore  put the development fixtures back
 ///   login-ux         keyboard, focus, obscured password, refusal wording
+///   offline-transport  the Phase 2 addendum: the real transport made to fail, offline
+///                    working, reconnect, authority-first, and reconciliation
 ///
 /// Three phases need something to happen on the *host* while the phase is running — the
 /// device's network taken away, a grant revoked, an account deactivated — because the
@@ -57,6 +59,7 @@ import 'package:krishna_mis/app/app.dart';
 import 'package:krishna_mis/app/bootstrap.dart';
 import 'package:krishna_mis/app/providers.dart';
 import 'package:krishna_mis/app/session/session_controller.dart';
+import 'package:krishna_mis/domain/auth/authority.dart';
 import 'package:krishna_mis/data/local/authority_store.dart';
 import 'package:krishna_mis/data/remote/master_gateway.dart';
 import 'package:krishna_mis/domain/auth/session_state.dart';
@@ -65,6 +68,8 @@ import 'package:krishna_mis/domain/sync/server_refusal.dart';
 import 'package:krishna_mis/domain/sync/sync_state.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
+
+import 'support/controllable_transport.dart';
 
 const _phase = String.fromEnvironment('PHASE');
 
@@ -97,6 +102,11 @@ const _paneerRenamed = 'Paneer / Dairy (cosmetic)';
 /// A fixed id, so the queued intent survives from one phase's process into the next.
 const _queuedMutationId = '8c41b7d2-63ae-4f0b-9d55-2e7a1c4f8b60';
 
+/// The acceptance transport. Constructed unconditionally and handed to `bootstrap`, but
+/// only ever *taken* offline by the phase that is about being offline; every other phase
+/// runs with it fully online, so it changes nothing for them.
+final _transport = ControllableTransport();
+
 /// A second fixed id, for work the *Owner* queues before a user switch.
 const _ownerQueuedMutationId = 'b5d0e91a-7c34-4a68-8e2f-19b7d3c05a44';
 
@@ -107,7 +117,7 @@ void main() {
   late BootstrapResult boot;
 
   setUpAll(() async {
-    boot = await bootstrap();
+    boot = await bootstrap(transport: _transport);
   });
 
   // ── Driving the real application ──────────────────────────────────────────
@@ -119,6 +129,7 @@ void main() {
         overrides: [
           databaseProvider.overrideWithValue(boot.database),
           outboxProvider.overrideWithValue(boot.outbox),
+          mutationEndpointProvider.overrideWithValue(boot.mutationEndpoint),
           sessionProvider.overrideWith(() => SessionController(boot.session!)),
         ],
         child: KrishnaMisApp(shellKind: boot.shellKind),
@@ -1113,6 +1124,303 @@ void main() {
         findsOneWidget,
         reason: 'a refusal leaves the user on the form, able to try again',
       );
+    });
+  });
+
+  // ── Phase 2 acceptance addendum: the offline transport path ────────────────
+  //
+  // The one gap the Phase 2 report recorded as NOT TESTED. It runs on either platform,
+  // and its point is Windows: the real executable, with its network genuinely failing at
+  // the transport, driven end to end through going offline, working offline, coming back,
+  // and reconciling under whatever authority the server states at that moment.
+  //
+  // Nothing here fakes an answer. `ControllableTransport` throws the same SocketException
+  // the platform throws for an unreachable host, from inside the Supabase client's own
+  // send, so every decision downstream is made by the real code for the real reason.
+  group('offline-transport', skip: _phase != 'offline-transport', () {
+    testWidgets('offline, then back, with authority first and no false success', (
+      tester,
+    ) async {
+      // 1 · A previously verified user signs in online.
+      await launch(tester);
+      await signIn(tester, 'giridhar@hki.com');
+      await expectSignedIn(tester, 'giridhar@hki.com');
+
+      final db = boot.database;
+      final store = AuthorityStore(db);
+      final userId = await store.ownerUserId();
+      expect(userId, isNotNull);
+
+      // Fresh ids each run. A fixed one would be *replayed* by the server on the second
+      // run rather than applied — the idempotency guarantee working exactly as designed,
+      // and a guarantee this phase is not about.
+      final acceptedId = const Uuid().v4();
+      final refusedId = const Uuid().v4();
+
+      // 2 · Authority and permitted reference data are cached.
+      final cachedAuthority = await store.loadFor(userId!);
+      expect(cachedAuthority, isNotNull);
+      expect(cachedAuthority!.holdsOrgWideGrant, isTrue);
+      final unitsBefore = await db.select(db.businessUnits).get();
+      final departmentsBefore = await db.select(db.departments).get();
+      final categoriesBefore = await db.select(db.expenseCategories).get();
+      expect(unitsBefore, isNotEmpty);
+      expect(departmentsBefore, isNotEmpty);
+      expect(categoriesBefore, isNotEmpty);
+
+      // The running application's own container, not a parallel one. Everything below
+      // is therefore asserted about the interface the user is looking at.
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(KrishnaMisApp)),
+      );
+      expect(container.read(sessionProvider), isA<SessionReady>());
+
+      // Two intents queued while authorised and online: one the Owner may do, and one
+      // the server will refuse for a reason that is not a version conflict.
+      //
+      // The fixture is normalised first, so the phase can be re-run: renaming a record to
+      // the name it already has is not a change, and the server correctly declines to
+      // move its version for it — which would make the assertion below fail for a reason
+      // that has nothing to do with the transport.
+      final gateway = MasterGateway(Supabase.instance.client);
+      var current = await _row('expense_categories', _paneer);
+      if (current['name'] != _paneerOriginalName) {
+        final reset = await gateway.rename(
+          entityType: 'expense_category',
+          entityId: _paneer,
+          newName: _paneerOriginalName,
+          baseRowVersion: current['row_version'] as int,
+          acknowledged: true,
+        );
+        expect(reset.isOk, isTrue, reason: '${reset.refusalOrNull?.message}');
+        current = await _row('expense_categories', _paneer);
+      }
+      final paneer = current;
+      final section = _seedId('sec:CCR/FB/FOOD_PROD');
+      final sectionRow = await _row('sections', section);
+
+      // 3 · The network goes away. From here nothing reaches the server.
+      _transport.online = false;
+
+      // 4 · Permitted cached data remains usable — reads never touch the network.
+      expect(
+        (await db.select(db.businessUnits).get()).length,
+        unitsBefore.length,
+      );
+      expect(
+        (await db.select(db.expenseCategories).get()).length,
+        categoriesBefore.length,
+      );
+
+      // 6 · Authority refresh becomes *unavailable*, never Confirmed with no grants.
+      final refresh = await boot.session!.authority.refresh();
+      expect(
+        refresh,
+        isA<AuthorityUnavailable>(),
+        reason: 'a failed request is not a statement that the user has nothing',
+      );
+      expect(
+        (refresh as AuthorityUnavailable).reason,
+        AuthorityUnavailableReason.offline,
+      );
+      expect(
+        _transport.refusedWhileOffline,
+        isNotEmpty,
+        reason: 'the application really did try to reach the server',
+      );
+
+      await container.read(sessionProvider.notifier).refreshAuthority();
+      final offlineState = container.read(sessionProvider);
+      expect(offlineState, isA<SessionReady>());
+      expect(
+        (offlineState as SessionReady).isStale,
+        isTrue,
+        reason: 'access is shown as last verified, not as current',
+      );
+      expect(offlineState.authority.userId, userId);
+
+      // 5 · And the interface says so, in the words a user reads.
+      await tester.pump(const Duration(milliseconds: 400));
+      await openSetUp(tester);
+      await pumpUntil(
+        tester,
+        'the offline marker',
+        () => showsText('Using last verified access'),
+      );
+
+      // 7 · Nothing was purged. A network failure is not a statement of scope.
+      expect(
+        (await db.select(db.businessUnits).get()).length,
+        unitsBefore.length,
+      );
+      expect(
+        (await db.select(db.departments).get()).length,
+        departmentsBefore.length,
+      );
+      expect(await store.loadFor(userId), isNotNull);
+
+      // 8 · Privileged mutations created offline are queued, and only queued.
+      await boot.outbox.enqueue(
+        PendingMutation(
+          mutationId: acceptedId,
+          entityType: 'expense_category',
+          entityId: _paneer,
+          op: MutationOp.update,
+          payload: {'name': _paneerRenamed, 'acknowledged': true},
+          baseRowVersion: paneer['row_version'] as int,
+          createdAt: DateTime.now().toUtc(),
+          actorUserId: userId,
+        ),
+        now: DateTime.now().toUtc(),
+      );
+      await boot.outbox.enqueue(
+        PendingMutation(
+          mutationId: refusedId,
+          entityType: 'section',
+          entityId: section,
+          op: MutationOp.archive,
+          payload: const {},
+          baseRowVersion: sectionRow['row_version'] as int,
+          createdAt: DateTime.now().toUtc(),
+          actorUserId: userId,
+        ),
+        now: DateTime.now().toUtc(),
+      );
+
+      for (final id in [acceptedId, refusedId]) {
+        final status = await boot.outbox.statusOf(id);
+        expect(status, OutboxStatus.pending);
+        // 9 · Never shown as server-approved.
+        expect(status!.userVisibleState, SyncState.pendingSync);
+        expect(status.userVisibleState.isOnServer, isFalse);
+        expect(status, isNot(OutboxStatus.done));
+      }
+
+      // A push attempted while offline must change nothing and claim nothing.
+      final engineOffline = container.read(syncEngineProvider);
+      expect(engineOffline, isNotNull, reason: 'the push worker exists');
+      expect(
+        await boot.outbox.dueEntries(now: DateTime.now(), actorUserId: userId),
+        hasLength(2),
+        reason: 'both intents are due, and both belong to this user',
+      );
+      expect(
+        engineOffline!.actorUserId,
+        userId,
+        reason: 'the worker sends only the signed-in user work',
+      );
+      final offlineReport = await engineOffline.pushOnce();
+      expect(offlineReport.applied, 0);
+      expect(offlineReport.rejected, 0);
+      expect(
+        offlineReport.transientFailures,
+        2,
+        reason: 'unreachable is transient — never a refusal, never a success',
+      );
+      for (final id in [acceptedId, refusedId]) {
+        final status = await boot.outbox.statusOf(id);
+        expect(status!.isAutomaticallyRetryable, isTrue);
+        expect(status.userVisibleState.isOnServer, isFalse);
+      }
+
+      // 10 · Connectivity returns.
+      _transport.online = true;
+
+      // 11 · Authority is refreshed *before* anything privileged is pushed.
+      await container.read(sessionProvider.notifier).refreshAuthority();
+      final backOnline = container.read(sessionProvider);
+      expect(backOnline, isA<SessionReady>());
+      expect(
+        (backOnline as SessionReady).isStale,
+        isFalse,
+        reason: 'reconnecting re-establishes current authority first',
+      );
+
+      // 12 · Only then does the queue go, under that current authority.
+      //
+      // The failed attempts are in backoff, which is the real product behaviour and not
+      // something to step over: the engine's clock is genuine, so the test waits for it
+      // rather than pretending time has passed.
+      final engine = container.read(syncEngineProvider);
+      final ready = DateTime.now().add(const Duration(seconds: 90));
+      var due = <PendingMutation>[];
+      while (DateTime.now().isBefore(ready)) {
+        due = await boot.outbox.dueEntries(
+          now: DateTime.now(),
+          actorUserId: userId,
+        );
+        if (due.length == 2) break;
+        await tester.pump(const Duration(seconds: 1));
+      }
+      expect(
+        due,
+        hasLength(2),
+        reason: 'both entries become due again once their backoff elapses',
+      );
+
+      final report = await engine!.pushOnce();
+      expect(report.attempted, 2);
+
+      // 13 · The permitted mutation reconciles: applied, versioned, marked synced.
+      final accepted = await boot.outbox.statusOf(acceptedId);
+      expect(accepted, OutboxStatus.done);
+      expect(accepted!.userVisibleState, SyncState.synced);
+      expect(accepted.userVisibleState.isOnServer, isTrue);
+      final server = await _row('expense_categories', _paneer);
+      expect(server['name'], _paneerRenamed);
+      expect(
+        server['row_version'],
+        greaterThan(paneer['row_version'] as int),
+        reason: 'the server moved the version, and exactly once',
+      );
+
+      // 14 · The refused one is Rejected — terminal — and never Conflict.
+      final refused = await boot.outbox.statusOf(refusedId);
+      expect(refused, OutboxStatus.rejected);
+      expect(refused!.userVisibleState, SyncState.rejected);
+      expect(
+        refused,
+        isNot(OutboxStatus.conflict),
+        reason:
+            'the record did not move — the server declined the act itself, and '
+            'telling the user somebody edited it would be a lie',
+      );
+      expect(refused.isAutomaticallyRetryable, isFalse);
+      expect(
+        SyncState.rejected.label,
+        isNot(SyncState.conflict.label),
+        reason: 'the two states must read differently to a user',
+      );
+
+      // The attempt stays inspectable, with the server's own reason on it.
+      final rows = await db.select(db.syncOutbox).get();
+      final row = rows.singleWhere((r) => r.mutationId == refusedId);
+      expect(row.lastError, isNotNull);
+      expect(row.lastError, isNot(contains('SQLSTATE')));
+
+      // A second push must not resurrect either of them.
+      final again = await engine.pushOnce();
+      expect(again.attempted, 0, reason: 'neither is due any more');
+
+      // Leave the development fixture as it was found.
+      final applied = await _row('expense_categories', _paneer);
+      final restored = await gateway.rename(
+        entityType: 'expense_category',
+        entityId: _paneer,
+        newName: _paneerOriginalName,
+        baseRowVersion: applied['row_version'] as int,
+        acknowledged: true,
+      );
+      expect(
+        restored.isOk,
+        isTrue,
+        reason: '${restored.refusalOrNull?.message}',
+      );
+      expect(
+        (await _row('expense_categories', _paneer))['name'],
+        _paneerOriginalName,
+      );
+      expect((await _row('sections', section))['archived_at'], isNull);
     });
   });
 

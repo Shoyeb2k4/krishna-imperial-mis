@@ -22,10 +22,14 @@ import 'package:krishna_mis/data/local/authority_store.dart';
 import 'package:krishna_mis/data/remote/auth_gateway.dart';
 import 'package:krishna_mis/data/remote/authority_gateway.dart';
 import 'package:krishna_mis/data/remote/master_gateway.dart';
+import 'package:krishna_mis/data/remote/vendor_tax_period_gateways.dart';
+import 'package:krishna_mis/data/sync/master_mutation_endpoint.dart';
 import 'package:krishna_mis/data/sync/outbox_repository.dart';
+import 'package:krishna_mis/domain/sync/pending_mutation.dart';
 import 'package:krishna_mis/data/sync/reference_sync.dart';
 import 'package:krishna_mis/data/sync/scope_cache_purge.dart';
 import 'package:krishna_mis/app/session/session_controller.dart';
+import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:timezone/data/latest_all.dart' as tz_data;
 import 'package:timezone/timezone.dart' as tz;
@@ -52,6 +56,7 @@ class BootstrapResult {
     required this.outbox,
     required this.recoveredInFlightEntries,
     required this.session,
+    required this.mutationEndpoint,
   });
 
   final AppConfig config;
@@ -67,9 +72,30 @@ class BootstrapResult {
   /// configured, in which case the application cannot authenticate at all — and says so
   /// rather than inventing a user.
   final SessionDependencies? session;
+
+  /// How queued work reaches the server. Null when no backend is configured, in which
+  /// case there is nothing to reach and the queue simply waits.
+  final RemoteMutationEndpoint? mutationEndpoint;
 }
 
-Future<BootstrapResult> bootstrap() async {
+/// Starts the application.
+///
+/// [transport] exists for **acceptance only**, and is deliberately a parameter rather
+/// than a switch. There is no environment variable, no global registry, no debug menu and
+/// no compiled-in flag that can turn it on: the only way to supply one is to call
+/// `bootstrap` with an argument, and the only caller that does is
+/// `integration_test/device_acceptance_test.dart`. `main()` calls `bootstrap()` with no
+/// arguments, so a shipped binary has no reachable path to it — which is what makes this
+/// an injection point and not a backdoor. `test/app/no_hardcoded_authority_test.dart`
+/// asserts that nothing in `lib/` ever passes one.
+///
+/// It exists because the Windows offline behaviour cannot otherwise be proven on the real
+/// executable: removing the build machine's network would break the tooling driving the
+/// run, and a firewall rule is a machine security setting this project will not change
+/// unattended. Injecting the transport exercises the genuine path instead — real request
+/// construction, a real `SocketException`, the real classification in `SupabaseGateway`
+/// and the real session and sync decisions that follow from it.
+Future<BootstrapResult> bootstrap({http.Client? transport}) async {
   WidgetsFlutterBinding.ensureInitialized();
 
   final config = AppConfig.fromEnvironment();
@@ -108,10 +134,12 @@ Future<BootstrapResult> bootstrap() async {
   // the platform-secure store rather than shared preferences: a refresh token is a bearer
   // credential for company financial data (D-022).
   SessionDependencies? session;
+  RemoteMutationEndpoint? mutationEndpoint;
   if (config.hasBackend) {
     await Supabase.initialize(
       url: config.supabaseUrl,
       publishableKey: config.supabaseAnonKey,
+      httpClient: transport,
       authOptions: FlutterAuthClientOptions(
         localStorage: SecureSessionStorage(),
         authFlowType: AuthFlowType.pkce,
@@ -120,6 +148,10 @@ Future<BootstrapResult> bootstrap() async {
     final client = Supabase.instance.client;
     final authorityGateway = AuthorityGateway(client);
     final masterGateway = MasterGateway(client);
+    mutationEndpoint = MasterMutationEndpoint(
+      masters: masterGateway,
+      vendors: VendorGateway(client),
+    );
     session = SessionDependencies(
       auth: AuthGateway(client),
       authority: authorityGateway,
@@ -138,6 +170,7 @@ Future<BootstrapResult> bootstrap() async {
     shellKind: resolveShellKind(),
     database: database,
     outbox: outbox,
+    mutationEndpoint: mutationEndpoint,
     recoveredInFlightEntries: recovered,
     session: session,
   );

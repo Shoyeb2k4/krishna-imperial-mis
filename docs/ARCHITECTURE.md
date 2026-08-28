@@ -1,8 +1,12 @@
 # Architecture
 
 Directive: SHOYEB-HOSPITALITY-MIS · Spec **v1.1**
+Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
+Domain: hotelkrishnaimperial.in
+Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
+the application role named **Owner** is a separate concept — D-057)
 Status: **Sections 1–12 proposed (Phase 0, revised); section 13 describes what is built
-and verified.** Sections 6, 5.3 and 8 carry the owner's mandated corrections.
+and verified.** Sections 6, 5.3 and 8 carry the project lead's mandated corrections.
 Implementation status is tracked in `PROJECT_STATUS.md`.
 Last updated: 2026-08-28
 
@@ -458,7 +462,7 @@ Encrypted open, persistence and platform-secure key handling were required to be
   pointer navigation, keyboard focus and overflow at four window sizes.
 
 Two build-machine findings were recorded rather than worked around: the package pin in
-D-031, and the Visual Studio ATL requirement, which the owner resolved.
+D-031, and the Visual Studio ATL requirement, which the project lead resolved.
 
 ### 8.4 Server authority (D-037)
 
@@ -541,10 +545,11 @@ transaction detail → audit history.
 6. Until the reporting engines exist, engine parity is asserted against a naive reference
    implementation rather than live Postgres (§6.3). The backend itself is now provisioned
    (§13); the parity suite arrives with Phase 5.
-7. The offline half of the session lifecycle (§13.6) is proven on Android, where the
-   device's network can be taken away deterministically. On Windows it rests on the same
-   shared Dart code plus Phase 1's on-device proof of the encrypted store; taking the
-   build machine's network away is not a step this project automates.
+7. ~~The offline half of the session lifecycle is proven on Android only.~~
+   **Withdrawn 2026-08-28** by D-058: `bootstrap({http.Client? transport})` lets the
+   acceptance suite make the real executable's transport fail on either platform, and the
+   full offline round trip — go offline, work offline, reconnect, refresh authority first,
+   reconcile — is now proven inside the real Windows binary as well as on Android.
 
 ---
 

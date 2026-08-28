@@ -3,7 +3,10 @@
 Management MIS and profitability system for **Crystal Canopy Rooftop** and
 **Hotel Krishna Imperial**.
 
-Owner: Shoyeb Akhtar · Directive: `SHOYEB-HOSPITALITY-MIS` · Master Spec **v1.1**
+Business: **Hotel Krishna Imperial** · Project: **Krishna Imperial MIS** ·
+Domain: **hotelkrishnaimperial.in**
+Project Lead / Product Decision-Maker: **Shoyeb Akhtar**
+Directive: `SHOYEB-HOSPITALITY-MIS` · Master Spec **v1.1**
 
 A genuine installable **Android** app and a compiled **Windows** desktop app built from
 one Flutter codebase. Not a web app, not a PWA. Offline-first: every entry saves locally

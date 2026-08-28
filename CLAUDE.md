@@ -1,13 +1,26 @@
 # CLAUDE.md — Project Directive
 
-Owner: Shoyeb Akhtar
-Project: Hospitality Management MIS
+Project Lead / Product Decision-Maker: Shoyeb Akhtar
+Business: Hotel Krishna Imperial
+Project: Krishna Imperial MIS
+Domain: hotelkrishnaimperial.in
 Directive ID: SHOYEB-HOSPITALITY-MIS
 Master Spec Version: 1.1
 
-These four values are governance metadata. Do not silently change them. If the Master
-Spec version changes, update it here and in `docs/SHOYEB_MASTER_SPEC.md` in the same
-change, and record the reason in `docs/DECISIONS.md`.
+These values are governance metadata. Do not silently change them. If the Master Spec
+version changes, update it here and in `docs/SHOYEB_MASTER_SPEC.md` in the same change,
+and record the reason in `docs/DECISIONS.md`.
+
+**Two distinct meanings of "owner", kept apart deliberately (D-057).**
+
+* **Shoyeb Akhtar is the project lead and the product decision-maker.** He directs this
+  work and every product decision recorded in `docs/DECISIONS.md` is his. Nothing in this
+  repository states or implies that he owns Hotel Krishna Imperial, and nothing should.
+* **`Owner` with a capital O is an application role**, the unscoped RBAC grant defined in
+  §13.2. It is a permission level inside the software and says nothing about anybody's
+  relationship to the business. It is unchanged.
+
+Where earlier records say "the owner" in lower case, they mean the project lead.
 
 ---
 
@@ -111,7 +124,7 @@ platform builds that the phase touches. Report status honestly using exactly the
 labels: **Implemented / Tested / Partially tested / Not tested / Blocked**.
 Never claim something works that has not been verified.
 
-## Communication with the owner
+## Communication with the project lead
 
 Shoyeb is the product decision-maker, not a code reviewer. Lead with the plain-language
 outcome, then technical evidence. State what changed, what was tested, what is blocked,

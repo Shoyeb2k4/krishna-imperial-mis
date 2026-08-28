@@ -1,6 +1,10 @@
 # Project Status
 
 Directive: SHOYEB-HOSPITALITY-MIS · **Master Spec v1.1**
+Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
+Domain: hotelkrishnaimperial.in
+Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
+the application role named **Owner** is a separate concept — D-057)
 Last updated: **2026-08-28**
 
 > A new session should be able to read this file and know exactly where work stopped.
@@ -10,14 +14,17 @@ Last updated: **2026-08-28**
 
 ## Current phase
 
-**Phase 2 — Masters & Permissions: COMPLETE.**
+**Phase 2 — Masters & Permissions: COMPLETE**, plus one acceptance addendum accepted
+afterwards (D-058, D-059) that closed the single gap the completion report recorded as
+*Not tested*: the Windows offline transport path. The Phase 2 commit `1ba1e3a` is not
+rewritten; the addendum is its own commit.
 
 Every gate passed, including the ones that can only be passed by running the real signed
 application: the Android package on a device, and the compiled Windows executable, both
 against the real `krishna-mis-dev` project, with the real development identities.
 
 **Phase 3 — Expense Engine: proposed, not started.** No Phase 3 code exists. The plan is
-with the owner.
+with the project lead.
 
 Phase 0 complete and committed (`3a4502f`). Phase 1 complete. Phase 2 backend integration
 checkpointed at `58526c0` and completed at the Phase 2 commit recorded below.
@@ -25,7 +32,7 @@ checkpointed at `58526c0` and completed at the Phase 2 commit recorded below.
 ## Completed
 
 **Phase 0 — Discovery & Architecture.** Governance documents, 15 decisions (D-001 …
-D-015), the owner's decisions (D-016 … D-019, D-023 … D-027) and three architectural
+D-015), the project lead's decisions (D-016 … D-019, D-023 … D-027) and three architectural
 corrections (D-020 … D-022). Master spec bumped to v1.1 (D-028).
 
 **Phase 1 — Foundation.** Flutter project for Android and Windows only; three environment
@@ -85,11 +92,12 @@ Blocked.**
 | Windows shell: render, pointer, keyboard focus, overflow | **Tested** | 15 tests inside the real `.exe` |
 | Local database encryption + platform key handling | **Tested** | 8 on Android, 8 on Windows |
 | Login UX: keyboard, focus, Enter, obscured password, refusal wording | **Tested** | 3 tests on each platform |
-| Tax "no rule configured" on both platforms | **Tested** | owner phase, both platforms |
+| Tax "no rule configured" on both platforms | **Tested** | the `owner` acceptance phase, both platforms |
 | Android debug build (dev flavour) | **Tested** | `app-dev-debug.apk` built, installed, driven |
 | Windows debug build | **Tested** | `krishna_mis.exe` built, launched, driven |
-| Windows offline/cached-authority behaviour | **Not tested** | see Known issues 1 |
-| Android release APK / AAB, Windows installer | **Not tested** | Phase 9, needs the owner's keystore |
+| Windows offline/cached-authority behaviour | **Tested** | Phase 2 addendum — 14-point offline round trip inside the real `.exe` (D-058) |
+| Android offline behaviour via the same injected transport | **Tested** | the same phase, on the real APK |
+| Android release APK / AAB, Windows installer | **Not tested** | Phase 9, needs the project lead's keystore |
 | Reporting engines and parity suite | **Not implemented** | Phase 5, by design |
 | Financial tables, expenses, revenue | **Not implemented** | Phase 3+, by design |
 
@@ -147,22 +155,16 @@ only by running the real application.
 
 ## Known issues
 
-1. **Windows offline behaviour is not separately proven on Windows.** The offline session
-   rules — cached authority, staleness, no purge on failure, pending privileged mutations,
-   fail-closed for a never-verified user — are proven on Android, where the device's
-   network can be removed deterministically. On Windows they rest on the same shared Dart
-   code plus Phase 1's on-device proof of the encrypted store. Removing the build
-   machine's network is not something this project automates.
-2. **`flutter_secure_storage` pinned to 9.2.4.** 11.x requires `compileSdk 37`; this
+1. **`flutter_secure_storage` pinned to 9.2.4.** 11.x requires `compileSdk 37`; this
    toolchain has Android SDK 36 (D-031). Revisit when the SDK moves.
-3. **`riverpod_lint` / `custom_lint` deferred** — analyzer conflict with `drift_dev`
+2. **`riverpod_lint` / `custom_lint` deferred** — analyzer conflict with `drift_dev`
    (D-032). Revisit at Phase 3.
-4. **The Windows Overview placeholder names both properties in its description copy.** A
+3. **The Windows Overview placeholder names both properties in its description copy.** A
    scoped Manager therefore sees the words "Hotel Krishna Imperial" on a screen that holds
    none of that property's data. Not a data leak — business unit names are not secret — but
    it is a small scope-hygiene wrinkle, and it briefly confused an acceptance assertion.
    Worth revisiting when the Overview becomes a real dashboard in Phase 6.
-5. **Windows local-key protection relies on user-scoped DPAPI**, not hardware (D-036).
+4. **Windows local-key protection relies on user-scoped DPAPI**, not hardware (D-036).
    Accepted for V1, mitigated as recorded.
 
 ## Blockers
@@ -183,19 +185,20 @@ platforms run against it.
 
 ## Next exact task
 
-**Phase 3 — Expense Engine.** The proposal is with the owner and no code has been written.
+**Phase 3 — Expense Engine.** The proposal is with the project lead and no code has been
+written.
 It covers the expense document, allocation lines with exact reconciliation, optional
 cross-period allocation (D-034), attachments with deferred upload, offline creation with an
 atomic outbox write, the Phase 3 Postgres schema with its RLS and RPC boundary, correction
 and void semantics, and the Android and Windows entry surfaces.
 
-Four owner decisions are needed before implementation begins — see the proposal.
+Four project-lead decisions are needed before implementation begins — see the proposal.
 
-## Open questions for Shoyeb
+## Open questions for the project lead
 
 **None outstanding from Phase 2.** The Phase 3 proposal raises four new ones.
 
-## Owner actions required
+## Project lead actions required
 
 1. **Read the Phase 3 proposal and answer its four questions.** Nothing else blocks work.
 2. **Supply the first tax rule per revenue category** — Restaurant, Nandbhog, Room,
@@ -213,7 +216,7 @@ password, service-role key, database password, private key or signing password i
 | Target | Status |
 |---|---|
 | Android (debug, dev flavour) | **Built, installed, and driven on an emulator against the real backend** |
-| Android (release APK / AAB) | Not attempted — Phase 9, needs the owner's keystore |
+| Android (release APK / AAB) | Not attempted — Phase 9, needs the project lead's keystore |
 | Windows (debug) | **Built, launched, and driven against the real backend** |
 | Windows (release + installer) | Not attempted — Phase 9 |
 
@@ -230,9 +233,10 @@ suite asserts the repository and the server agree (D-056).
 
 ## Last important decision
 
-**D-056 — every migration the server has applied must exist in the repository.** Recorded
-because it did not: `my_authority()` ran in the development project for a day without
-being committed, and nothing would have said so until a deploy failed.
+**D-059 — the outbox has a real transport, and it sends only its owner's work.** Building
+the offline addendum exposed that `SyncEngine` had never had a real endpoint — nothing
+joined the durable queue to the gateways — and that D-050's actor filter was written down
+but never passed. Both are closed, and the round trip is proven on both platforms.
 
 ## Master Spec version
 

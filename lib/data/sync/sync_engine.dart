@@ -51,6 +51,7 @@ class SyncEngine {
     this.clock = DateTime.now,
     this.batchSize = 25,
     this.inFlightTimeout = const Duration(minutes: 2),
+    this.actorUserId,
   });
 
   final OutboxRepository outbox;
@@ -61,6 +62,15 @@ class SyncEngine {
   final DateTime Function() clock;
   final int batchSize;
   final Duration inFlightTimeout;
+
+  /// Whose queued work this engine may send (D-050).
+  ///
+  /// An outbox entry belongs to the person who created it, not to the installation. On a
+  /// shared workstation somebody else signs in minutes later, and their session must not
+  /// push, retry or be credited with work they did not do. Null is for maintenance and
+  /// for the tests that are about the queue mechanics themselves; the application always
+  /// supplies the signed-in user.
+  final String? actorUserId;
 
   bool _cycleInProgress = false;
 
@@ -83,7 +93,11 @@ class SyncEngine {
 
   Future<SyncCycleReport> _pushOnce() async {
     final now = clock();
-    final due = await outbox.dueEntries(now: now, limit: batchSize);
+    final due = await outbox.dueEntries(
+      now: now,
+      limit: batchSize,
+      actorUserId: actorUserId,
+    );
     if (due.isEmpty) return const SyncCycleReport();
 
     await outbox.markInFlight(

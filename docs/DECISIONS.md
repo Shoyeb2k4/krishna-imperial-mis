@@ -1,6 +1,10 @@
 # Decision Log
 
 Directive: SHOYEB-HOSPITALITY-MIS · Spec **v1.1**
+Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
+Domain: hotelkrishnaimperial.in
+Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
+the application role named **Owner** is a separate concept — D-057)
 
 Material architecture and product decisions. Append new entries; do not rewrite history.
 Settled decisions are not reopened without new evidence — record the evidence if they are.
@@ -1169,3 +1173,101 @@ what must not be in the repository; this covers what must.
 **Consequences:** Applying a migration through any route other than a committed file is
 now a failing test rather than an invisible divergence. The API surface invariant is
 restated to include `my_authority`, which the earlier restatement had silently dropped.
+
+---
+
+# Phase 2 acceptance addendum and governance correction (2026-08-28)
+
+## D-057 — Project lead, business, project and domain, stated precisely
+**Date:** 2026-08-28 · **Status:** Accepted (project-lead instruction)
+**Context:** The governance header of every canonical document read `Owner: Shoyeb
+Akhtar`. That is wrong in a way that matters: it reads as a statement about who owns
+Hotel Krishna Imperial, which this repository has no business asserting. It also collided
+with `Owner`, the unscoped RBAC grant in spec §13.2, so one word carried two unrelated
+meanings across a body of security-sensitive documentation.
+**Decision:** The canonical facts are:
+
+| | |
+|---|---|
+| Project Lead / Product Decision-Maker | Shoyeb Akhtar |
+| Business | Hotel Krishna Imperial |
+| Project | Krishna Imperial MIS |
+| Domain | hotelkrishnaimperial.in |
+
+No document states or implies that the project lead is the proprietor of the business.
+The **application role named `Owner`** — capitalised, the unscoped grant only that role
+may hold (D-025) — is untouched: it is a permission level in the software and says nothing
+about anyone's relationship to the business. The `owner` role code, `RoleTemplates.owner`,
+`app.bootstrap_owner` and every capability grant keep their names.
+
+The application id **`in.krishnaimperial.mis`** is unchanged (D-029), and the product
+remains native Android and Windows (spec §2). A domain is not a deployment target: nothing
+about `hotelkrishnaimperial.in` implies a web build, and none is produced.
+**Consequences:** Forward-looking prose — `CLAUDE.md`, the master spec, `PROJECT_STATUS`,
+`ARCHITECTURE`, `DATABASE_SCHEMA`, `RELEASE_CHECKLIST`, `README` — now says "the project
+lead". Historical decision entries in this log are **not** rewritten, because this log is
+append-only by governance; where an older entry says "the owner" in lower case it means
+the project lead, and `CLAUDE.md` says so explicitly. Three lower-case uses of "owner"
+survive on purpose and mean something else entirely: the role code in a schema comment,
+the Postgres object owner a `SECURITY DEFINER` function runs as, and the user a cached
+authority snapshot belongs to.
+
+## D-058 — Offline behaviour is proven by injecting the transport, not by changing the machine
+**Date:** 2026-08-28 · **Status:** Accepted — closes the one gap the Phase 2 report left open
+**Context:** The Phase 2 completion report recorded Windows offline acceptance as **Not
+tested**, honestly and deliberately: on Android the emulator's radios can be switched off
+from the host, and on Windows the equivalent is either removing the build machine's own
+network — which severs the tooling driving the run — or adding a firewall rule, which is a
+machine security setting this project will not change unattended.
+**Decision:** `bootstrap({http.Client? transport})`. The acceptance suite passes an
+`http.Client` that throws the platform's own `SocketException` from inside `send`; nothing
+else in the repository ever passes one.
+
+**Why this is an injection point and not a backdoor.** It is a *parameter*. There is no
+environment variable, no `bool.fromEnvironment`, no global registry, no debug menu and no
+runtime switch: the only way to reach it is to call `bootstrap` with an argument, and the
+only caller that does lives in `integration_test/`, which is not compiled into the
+application. `main()` calls `bootstrap()` with none. Three tests in
+`test/app/no_hardcoded_authority_test.dart` hold that closed — nothing in `lib/` passes a
+transport, `main()` passes no arguments at all, and `lib/` contains no acceptance flag or
+offline switch of its own.
+
+**Why it is honest.** Nothing is faked above the cable. The real Supabase client builds the
+real request, the throw is the same exception an unreachable host produces, and every
+decision after it is made by the shipped code for the shipped reason: the real
+classification in `SupabaseGateway`, the real `AuthorityRefresh.unavailable`, the real
+"unknown ≠ revoked" branch in `ScopeCachePurge`, the real backoff, the real refusal
+mapping. The alternative — asserting Windows offline behaviour from Android and shared
+code — would have been an argument, not a test.
+**Consequences:** The addendum runs on both platforms and proves the same fourteen points
+on each. `ARCHITECTURE.md` §12 limitation 7 is withdrawn.
+
+## D-059 — The outbox has a real transport, and it sends only its owner's work
+**Date:** 2026-08-28 · **Status:** Accepted — completes D-050
+**Context:** Two gaps surfaced while building the addendum, both invisible while every
+master mutation was made online by a person watching the result.
+
+First, `SyncEngine` had **no real `RemoteMutationEndpoint`** — only a fake used by tests.
+Nothing joined the durable outbox to the gateways, so work queued offline would have sat
+there forever. That is survivable in an online-only workflow and indefensible in an
+offline-first one.
+
+Second, D-050's actor filter existed on `OutboxRepository.dueEntries` and the engine never
+passed it. The rule was written down and not enforced: whoever happened to be signed in
+when connectivity returned would have pushed somebody else's queued financial intent under
+their own session, and the server would have attributed it to them.
+**Decision:** `MasterMutationEndpoint` dispatches one queued intent to the RPC that
+corresponds to it, passing the intent's own `mutation_id` (so a redelivery replays rather
+than applying twice) and its `base_row_version` (so a stale intent is a conflict rather
+than an overwrite). It performs no business arithmetic and invents no retry. Its whole
+substance is one translation table, and the security-relevant row is the last one: an
+**unreachable** transport is a transient failure, never a refusal, because "we could not
+tell" must never look like the server saying no (D-048 §1).
+
+`SyncEngine.actorUserId` is now supplied from the session, and `syncEngineProvider` rebuilds
+whenever the session changes, so a second person signing in on the same installation gets a
+worker that can see only their own queued work.
+**Consequences:** A queued mutation now genuinely reaches the server, and the addendum
+proves the whole round trip on both platforms: refused while offline as transient, retried
+after its real backoff elapses, applied once when permitted, and recorded as terminal
+`Rejected` — never `Conflict` — when the server declines the act itself.
