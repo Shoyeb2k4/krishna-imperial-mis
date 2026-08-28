@@ -22,6 +22,9 @@ class SyncStateChip extends StatelessWidget {
       SyncState.syncing => (AppColors.neutral, Icons.sync),
       SyncState.syncFailed => (AppColors.syncFailed, Icons.error_outline),
       SyncState.conflict => (AppColors.syncConflict, Icons.priority_high),
+      // Refused outright rather than contested. A distinct glyph, because a user who
+      // has lost a permission is not being asked to choose between two versions.
+      SyncState.rejected => (AppColors.syncConflict, Icons.block_outlined),
     };
 
     return Semantics(

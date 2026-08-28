@@ -34,8 +34,29 @@ void main() {
 
   Future<void> seed() => seedMasterData(db, now: now);
 
+  /// Which department each seeded section sits under. A seed id now carries the whole
+  /// path — unit / department / section / category — so a test that names a category has
+  /// to name it the same way, which is exactly the point: the id is the path.
+  const departmentOf = {
+    'FOOD_PROD': 'FB',
+    'KITCHEN_FUEL': 'FB',
+    'CCR_WAGES': 'CCR_PAYROLL',
+    'CCR_UTIL_SVC': 'CCR_UTIL',
+    'CCR_OTHER_OPS': 'CCR_OTHER',
+    'HK_OPS': 'HK',
+    'FO_OPS': 'FO',
+    'HKI_WATER': 'HKI_UTIL',
+    'HKI_POWER': 'HKI_UTIL',
+    'HKI_BUILDING': 'HKI_MAINT',
+    'HKI_WAGES': 'HKI_PAYROLL',
+    'HKI_OTHER_OPS': 'HKI_OTHER',
+  };
+
+  String sec(String unit, String section) =>
+      seedId('sec:$unit/${departmentOf[section]}/$section');
+
   String cat(String unit, String section, String code) =>
-      seedId('cat', '$unit-$section-$code');
+      seedId('cat:$unit/${departmentOf[section]}/$section/$code');
 
   group('seed data', () {
     test(
@@ -46,7 +67,7 @@ void main() {
 
         expect(graph.businessUnits().map((u) => u.code), ['CCR', 'HKI']);
 
-        final ccrRevenue = graph.revenueCategoriesOf(seedId('bu', 'CCR'));
+        final ccrRevenue = graph.revenueCategoriesOf(seedId('bu:CCR'));
         expect(
           ccrRevenue.map((c) => c.code),
           containsAll(['RESTAURANT', 'NANDBHOG']),
@@ -58,7 +79,7 @@ void main() {
         );
 
         expect(
-          graph.revenueCategoriesOf(seedId('bu', 'HKI')).map((c) => c.name),
+          graph.revenueCategoriesOf(seedId('bu:HKI')).map((c) => c.name),
           containsAll(['Room', 'Banquet']),
         );
       },
@@ -74,8 +95,8 @@ void main() {
 
       expect(second.businessUnits().length, firstCount);
       expect(
-        second.categoriesOf(seedId('sec', 'CCR-FOOD_PROD')).length,
-        first.categoriesOf(seedId('sec', 'CCR-FOOD_PROD')).length,
+        second.categoriesOf(sec('CCR', 'FOOD_PROD')).length,
+        first.categoriesOf(sec('CCR', 'FOOD_PROD')).length,
       );
     });
 
@@ -117,9 +138,9 @@ void main() {
       await seed();
       final result = await masters.validatePath(
         HierarchyPath(
-          businessUnitId: seedId('bu', 'CCR'),
-          departmentId: seedId('dept', 'CCR-FB'),
-          sectionId: seedId('sec', 'CCR-FOOD_PROD'),
+          businessUnitId: seedId('bu:CCR'),
+          departmentId: seedId('dept:CCR/FB'),
+          sectionId: sec('CCR', 'FOOD_PROD'),
           categoryId: cat('CCR', 'FOOD_PROD', 'KIRANA'),
         ),
         forNewEntry: true,
@@ -133,9 +154,9 @@ void main() {
         await seed();
         final result = await masters.validatePath(
           HierarchyPath(
-            businessUnitId: seedId('bu', 'CCR'),
-            departmentId: seedId('dept', 'CCR-FB'),
-            sectionId: seedId('sec', 'HKI-HKI_POWER'),
+            businessUnitId: seedId('bu:CCR'),
+            departmentId: seedId('dept:CCR/FB'),
+            sectionId: sec('HKI', 'HKI_POWER'),
             categoryId: cat('HKI', 'HKI_POWER', 'DIESEL'),
           ),
           forNewEntry: true,
@@ -154,9 +175,9 @@ void main() {
         await seed();
         final result = await masters.validatePath(
           HierarchyPath(
-            businessUnitId: seedId('bu', 'HKI'),
-            departmentId: seedId('dept', 'HKI-HKI_UTIL'),
-            sectionId: seedId('sec', 'HKI-HKI_POWER'),
+            businessUnitId: seedId('bu:HKI'),
+            departmentId: seedId('dept:HKI/HKI_UTIL'),
+            sectionId: sec('HKI', 'HKI_POWER'),
             categoryId: cat('CCR', 'CCR_UTIL_SVC', 'ELECTRICITY'),
           ),
           forNewEntry: true,
@@ -174,8 +195,8 @@ void main() {
         await seed();
         final result = await masters.validatePath(
           HierarchyPath(
-            businessUnitId: seedId('bu', 'CCR'),
-            departmentId: seedId('dept', 'CCR-FB'),
+            businessUnitId: seedId('bu:CCR'),
+            departmentId: seedId('dept:CCR/FB'),
             sectionId: cat(
               'CCR',
               'FOOD_PROD',
@@ -193,9 +214,9 @@ void main() {
       await seed();
       final graph = await masters.loadGraph();
       final path = graph.pathForCategory(cat('HKI', 'HKI_POWER', 'DIESEL'));
-      expect(path!.businessUnitId, seedId('bu', 'HKI'));
-      expect(path.departmentId, seedId('dept', 'HKI-HKI_UTIL'));
-      expect(path.sectionId, seedId('sec', 'HKI-HKI_POWER'));
+      expect(path!.businessUnitId, seedId('bu:HKI'));
+      expect(path.departmentId, seedId('dept:HKI/HKI_UTIL'));
+      expect(path.sectionId, sec('HKI', 'HKI_POWER'));
     });
   });
 
@@ -220,7 +241,7 @@ void main() {
 
     test('a child cannot be created under an archived parent', () async {
       await seed();
-      final department = seedId('dept', 'CCR-CCR_OTHER');
+      final department = seedId('dept:CCR/CCR_OTHER');
       // Archive bottom-up: category, then section, then department.
       await masters.archive(
         kind: MasterKind.expenseCategory,
@@ -229,7 +250,7 @@ void main() {
       );
       await masters.archive(
         kind: MasterKind.section,
-        id: seedId('sec', 'CCR-CCR_OTHER_OPS'),
+        id: sec('CCR', 'CCR_OTHER_OPS'),
         now: now,
       );
       await masters.archive(
@@ -259,7 +280,7 @@ void main() {
           masters.createExpenseCategory(
             id: 'duplicate',
             orgId: seedOrgId,
-            sectionId: seedId('sec', 'CCR-FOOD_PROD'),
+            sectionId: sec('CCR', 'FOOD_PROD'),
             code: 'KIRANA',
             name: 'Kirana again',
             now: now,
@@ -282,17 +303,14 @@ void main() {
       await seed();
       final decision = await masters.archive(
         kind: MasterKind.section,
-        id: seedId('sec', 'CCR-FOOD_PROD'),
+        id: sec('CCR', 'FOOD_PROD'),
         now: now,
       );
       expect(decision.isAllowed, isFalse);
       expect(decision.refusal, ArchiveRefusal.hasActiveChildren);
 
       final graph = await masters.loadGraph();
-      expect(
-        graph.section(seedId('sec', 'CCR-FOOD_PROD'))!.isArchived,
-        isFalse,
-      );
+      expect(graph.section(sec('CCR', 'FOOD_PROD'))!.isArchived, isFalse);
     });
 
     test(
@@ -308,7 +326,7 @@ void main() {
         expect(decision.isAllowed, isTrue);
 
         final graph = await masters.loadGraph();
-        final section = seedId('sec', 'CCR-FOOD_PROD');
+        final section = sec('CCR', 'FOOD_PROD');
         expect(
           graph.categoriesOf(section).map((c) => c.id),
           isNot(contains(kirana)),
@@ -336,9 +354,9 @@ void main() {
     test('an archived master stays valid for existing history', () async {
       await seed();
       final path = HierarchyPath(
-        businessUnitId: seedId('bu', 'CCR'),
-        departmentId: seedId('dept', 'CCR-FB'),
-        sectionId: seedId('sec', 'CCR-FOOD_PROD'),
+        businessUnitId: seedId('bu:CCR'),
+        departmentId: seedId('dept:CCR/FB'),
+        sectionId: sec('CCR', 'FOOD_PROD'),
         categoryId: cat('CCR', 'FOOD_PROD', 'KIRANA'),
       );
       await masters.archive(

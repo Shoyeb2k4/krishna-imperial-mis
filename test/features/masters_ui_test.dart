@@ -19,6 +19,16 @@ import 'package:krishna_mis/features/masters/presentation/android_masters_view.d
 import 'package:krishna_mis/features/masters/presentation/widgets/master_chrome.dart';
 import 'package:krishna_mis/features/masters/presentation/windows_masters_view.dart';
 
+/// A fully-capable principal, for exercising screens that assume the user may act.
+///
+/// This is a **test fixture**, not a runtime fallback. Shipped code has no way to build
+/// one — `test/app/no_hardcoded_authority_test.dart` asserts that over `lib/`, which is
+/// what actually reaches an Android or Windows binary.
+Principal testOwnerPrincipal() => Principal(
+  userId: 'test-owner',
+  grants: [for (final c in RoleTemplates.owner) CapabilityGrant(c)],
+);
+
 void main() {
   late AppDatabase db;
   final now = DateTime.utc(2026, 6, 15, 9);
@@ -46,7 +56,11 @@ void main() {
       ProviderScope(
         overrides: [
           databaseProvider.overrideWithValue(db),
-          if (principal != null) principalProvider.overrideWithValue(principal),
+          // Always overridden: the runtime provider derives from a real session, and
+          // a widget test has no server to establish one.
+          principalProvider.overrideWithValue(
+            principal ?? testOwnerPrincipal(),
+          ),
         ],
         child: MaterialApp(
           theme: size.width > 900 ? AppTheme.desktop : AppTheme.mobile,
@@ -126,7 +140,7 @@ void main() {
       expect(find.byType(CodeBadge), findsOneWidget);
       expect(find.text('CCR'), findsOneWidget);
       // The internal id must not be on screen.
-      expect(find.textContaining(seedId('bu', 'CCR')), findsNothing);
+      expect(find.textContaining(seedId('bu:CCR')), findsNothing);
     });
 
     testWidgets('usage is shown, and labelled as non-authoritative', (
@@ -238,7 +252,7 @@ void main() {
       expect(find.text('Crystal Canopy Terrace'), findsWidgets);
       // The code did not move.
       final row = (await db.select(db.businessUnits).get()).firstWhere(
-        (r) => r.id == seedId('bu', 'CCR'),
+        (r) => r.id == seedId('bu:CCR'),
       );
       expect(row.name, 'Crystal Canopy Terrace');
       expect(row.code, 'CCR');
@@ -256,7 +270,7 @@ void main() {
       await tester.pumpAndSettle();
 
       final row = (await db.select(db.businessUnits).get()).firstWhere(
-        (r) => r.id == seedId('bu', 'CCR'),
+        (r) => r.id == seedId('bu:CCR'),
       );
       expect(row.name, 'Crystal Canopy Rooftop');
     });
@@ -276,7 +290,7 @@ void main() {
       expect(find.textContaining('underneath this one first'), findsOneWidget);
       // Nothing changed.
       final row = (await db.select(db.businessUnits).get()).firstWhere(
-        (r) => r.id == seedId('bu', 'CCR'),
+        (r) => r.id == seedId('bu:CCR'),
       );
       expect(row.archivedAt, isNull);
     });
@@ -308,7 +322,7 @@ void main() {
           findsNothing,
         );
         final row = (await db.select(db.expenseCategories).get()).firstWhere(
-          (r) => r.id == seedId('cat', 'CCR-FOOD_PROD-KIRANA'),
+          (r) => r.id == seedId('cat:CCR/FB/FOOD_PROD/KIRANA'),
         );
         expect(row.archivedAt, isNotNull);
 
@@ -335,7 +349,7 @@ void main() {
         userId: 'u-de',
         grants: [
           for (final c in RoleTemplates.dataEntry)
-            CapabilityGrant(c, businessUnitId: seedId('bu', 'CCR')),
+            CapabilityGrant(c, businessUnitId: seedId('bu:CCR')),
         ],
       );
       await pumpWindows(tester, principal: dataEntry);

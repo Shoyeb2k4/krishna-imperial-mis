@@ -48,6 +48,35 @@ final class Vendor {
 
   bool get isArchived => archivedAt != null;
 
+  /// The default business unit *this user* may actually act on (D-049).
+  ///
+  /// [defaultBusinessUnitId] is canonical server data and an operational convenience —
+  /// it pre-selects a property on the entry form. It is **not** ownership, visibility,
+  /// authorisation or accounting scope: a grocery supplier serving both properties is
+  /// one vendor, and which property happens to be pre-selected says nothing about who
+  /// may see it.
+  ///
+  /// So the constraint is applied here, as a derivation over the caller's current
+  /// scope, rather than by editing the record. Nothing is written, no row version
+  /// moves, no audit event is raised, and when the scope comes back the configured
+  /// default becomes usable again on its own.
+  ///
+  /// [scopedUnits] is null for an org-wide holder, for whom every default is reachable.
+  String? effectiveDefaultBusinessUnitId(Set<String>? scopedUnits) {
+    final configured = defaultBusinessUnitId;
+    if (configured == null || scopedUnits == null) return configured;
+    return scopedUnits.contains(configured) ? configured : null;
+  }
+
+  /// Whether this vendor carries a default the current user cannot use.
+  ///
+  /// Worth surfacing quietly on the detail panel — "the usual property for this
+  /// supplier is one you do not have access to" is useful context, and silently
+  /// showing no default at all would look like a data problem.
+  bool hasUnreachableDefault(Set<String>? scopedUnits) =>
+      defaultBusinessUnitId != null &&
+      effectiveDefaultBusinessUnitId(scopedUnits) == null;
+
   /// Whether anything beyond the name was recorded. Drives whether the detail panel
   /// shows a contact block at all, rather than a column of empty labels.
   bool get hasContactDetails =>

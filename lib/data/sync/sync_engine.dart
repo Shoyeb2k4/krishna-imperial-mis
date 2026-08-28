@@ -160,11 +160,18 @@ class SyncEngine {
 
         case MutationOutcome.periodClosed:
         case MutationOutcome.notPermitted:
-          // A retry cannot fix either of these. Surfaced with the real reason instead
-          // of being disguised as a sync failure.
+          // Terminal, and not a conflict. A conflict means the *record* moved and a
+          // human must choose between two versions; these mean the server has declined
+          // outright on its current authority or state, and there is nothing to choose
+          // between. Filing them as conflicts would have told the user the wrong story
+          // and put them in a resolution flow with no second version to resolve against.
+          //
+          // The entry is kept exactly as attempted, carrying the server's own reason. It
+          // is never dropped, never marked synced, and never retried automatically —
+          // repeating a refused request cannot change the answer (D-048 §2).
           await outbox.updateStatus(
             mutation.mutationId,
-            status: OutboxStatus.conflict,
+            status: OutboxStatus.rejected,
             lastError: result.message ?? _rejectionMessage(result.outcome),
           );
           rejected++;

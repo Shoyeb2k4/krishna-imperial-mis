@@ -131,18 +131,25 @@ class Vendors extends Table with MasterColumns {
   TextColumn get gstin => text().nullable()();
   TextColumn get phone => text().nullable()();
   TextColumn get address => text().nullable()();
-  TextColumn get defaultCategoryId => text().nullable().references(
-    ExpenseCategories,
-    #id,
-    onDelete: KeyAction.restrict,
-  )();
 
-  /// Optional. Pre-selects the property when this vendor is chosen during entry.
-  TextColumn get defaultBusinessUnitId => text().nullable().references(
-    BusinessUnits,
-    #id,
-    onDelete: KeyAction.restrict,
-  )();
+  /// Optional. Pre-selects a category when this vendor is chosen during entry.
+  ///
+  /// Deliberately **not** a foreign key (D-049). A vendor is an organisation-global
+  /// master; these two columns are operational conveniences, not ownership, visibility
+  /// or authorisation. A foreign key would assert "the target must exist in this
+  /// database", and on a per-user cache that is simply false: a manager scoped to one
+  /// property legitimately holds vendors whose usual category belongs to the other. It
+  /// also made the revoked-scope purge impossible without rewriting canonical vendor
+  /// data, which D-049 §2 forbids.
+  ///
+  /// A dangling pointer here is therefore expected and harmless. It is resolved at the
+  /// point of use by `Vendor.effectiveDefaultBusinessUnitId`, which filters through the
+  /// caller's current authoritative scope and owns nothing.
+  TextColumn get defaultCategoryId => text().nullable()();
+
+  /// Optional. Pre-selects the property when this vendor is chosen during entry. Soft
+  /// pointer, for the reasons above.
+  TextColumn get defaultBusinessUnitId => text().nullable()();
   TextColumn get notes => text().nullable()();
 
   @override

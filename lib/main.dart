@@ -9,6 +9,7 @@ import 'package:krishna_mis/app/app.dart';
 import 'package:krishna_mis/app/bootstrap.dart';
 import 'package:krishna_mis/core/design/tokens/app_tokens.dart';
 import 'package:krishna_mis/app/providers.dart';
+import 'package:krishna_mis/app/session/session_controller.dart';
 
 Future<void> main() async {
   try {
@@ -18,6 +19,8 @@ Future<void> main() async {
         overrides: [
           databaseProvider.overrideWithValue(boot.database),
           outboxProvider.overrideWithValue(boot.outbox),
+          if (boot.session case final session?)
+            sessionProvider.overrideWith(() => SessionController(session)),
         ],
         child: KrishnaMisApp(shellKind: boot.shellKind),
       ),
@@ -53,14 +56,20 @@ class _StartupFailureApp extends StatelessWidget {
                   const Icon(Icons.lock_outline, color: AppColors.negative),
                   const SizedBox(height: AppSpacing.lg),
                   Text(
-                    'The application could not start',
+                    error is ConfigurationRefused
+                        ? 'This build is not configured safely'
+                        : 'The application could not start',
                     style: AppTypography.heading,
                   ),
                   const SizedBox(height: AppSpacing.sm),
-                  const Text(
-                    'The secure local database could not be opened on this device. '
-                    'Nothing has been changed or deleted. Please report this message '
-                    'exactly as shown.',
+                  Text(
+                    error is ConfigurationRefused
+                        ? 'This build is configured incorrectly and has been stopped '
+                              'before it could connect to anything. Nothing has been '
+                              'changed or deleted. The message below says what to fix.'
+                        : 'The secure local database could not be opened on this '
+                              'device. Nothing has been changed or deleted. Please '
+                              'report this message exactly as shown.',
                     style: AppTypography.bodyMuted,
                   ),
                   const SizedBox(height: AppSpacing.lg),

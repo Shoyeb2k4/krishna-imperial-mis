@@ -13,7 +13,9 @@ import 'package:krishna_mis/data/repositories/tax_repository.dart';
 import 'package:krishna_mis/data/repositories/vendor_repository.dart';
 import 'package:krishna_mis/data/sync/outbox_repository.dart';
 import 'package:krishna_mis/domain/auth/authorizer.dart';
+import 'package:krishna_mis/app/session/session_controller.dart';
 import 'package:krishna_mis/domain/auth/capability.dart';
+import 'package:krishna_mis/domain/auth/session_state.dart';
 import 'package:krishna_mis/domain/masters/master_graph.dart';
 import 'package:krishna_mis/domain/masters/master_usage.dart';
 import 'package:krishna_mis/domain/period/period_state.dart';
@@ -55,16 +57,30 @@ final masterUsageReaderProvider = Provider<MasterUsageReader>(
 
 // ── Authorisation ───────────────────────────────────────────────────────────
 
-/// The signed-in user.
+/// The signed-in user's authority, derived entirely from the server.
 ///
-/// **Phase 2 placeholder.** No authentication exists yet, so development runs as an
-/// Owner holding every capability org-wide. Authentication replaces this override in
-/// Phase 2's backend slice; nothing downstream changes, because every screen already
-/// asks the [Authorizer] rather than assuming.
+/// **There is no development fallback here, and there must never be one again.** The
+/// Phase 1 placeholder returned an Owner holding every capability, which was correct
+/// while no backend existed and is a security defect the moment one does. Every path
+/// that cannot establish authority now yields [Principal.anonymous], which holds nothing:
+///
+///   * not signed in            → anonymous
+///   * signing in               → anonymous
+///   * authority never verified → anonymous  (fails closed — §8)
+///   * session expired          → anonymous
+///
+/// Only [SessionReady] produces real grants, and those come from `my_authority()`. Owner
+/// is never inferred from an email address, a display name, local configuration or any
+/// other client-side signal.
 final principalProvider = Provider<Principal>(
-  (ref) => Principal(
-    userId: 'dev-owner',
-    grants: [for (final c in RoleTemplates.owner) CapabilityGrant(c)],
+  (ref) => ref.watch(sessionProvider).principal,
+);
+
+/// The session state machine. Overridden in `main()` with the wired dependencies.
+final sessionProvider = NotifierProvider<SessionNotifier, SessionState>(
+  () => throw UnimplementedError(
+    'sessionProvider must be overridden in main() with real gateways. Constructing a '
+    'session without them would mean inventing authority.',
   ),
 );
 

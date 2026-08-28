@@ -9,6 +9,7 @@ library;
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uuid/uuid.dart';
 import 'package:krishna_mis/data/local/app_database.dart';
 import 'package:krishna_mis/data/local/encrypted_database.dart';
 import 'package:krishna_mis/domain/sync/pending_mutation.dart';
@@ -21,6 +22,12 @@ const String keyA =
 const String keyB =
     'ffffffffffffffffffffffffffffffff'
     'ffffffffffffffffffffffffffffffff';
+
+/// Mutation ids are UUIDs — the server stores `mutation_id` as `uuid`, so a fixture
+/// using a short label would be refused as a malformed argument before any business rule
+/// ran. Derived from a name to stay readable and deterministic.
+String mid(String name) =>
+    const Uuid().v5('c0ffee00-0000-4000-8000-000000000000', name);
 
 void main() {
   late Directory workspace;
@@ -62,7 +69,7 @@ void main() {
     final db = openEncryptedDatabaseAt(file, keyA);
     await OutboxRepository(db).enqueue(
       PendingMutation(
-        mutationId: 'mut-secret',
+        mutationId: mid('mut-secret'),
         entityType: 'expense',
         entityId: 'exp-secret',
         op: MutationOp.create,
@@ -82,7 +89,7 @@ void main() {
     final db = openEncryptedDatabaseAt(file, keyA);
     await OutboxRepository(db).enqueue(
       PendingMutation(
-        mutationId: 'mut-1',
+        mutationId: mid('mut-1'),
         entityType: 'expense',
         entityId: 'exp-1',
         op: MutationOp.create,
@@ -159,7 +166,7 @@ void main() {
       final first = openEncryptedDatabaseAt(file, keyA);
       await OutboxRepository(first).enqueue(
         PendingMutation(
-          mutationId: 'mut-offline',
+          mutationId: mid('mut-offline'),
           entityType: 'expense',
           entityId: 'exp-offline',
           op: MutationOp.create,

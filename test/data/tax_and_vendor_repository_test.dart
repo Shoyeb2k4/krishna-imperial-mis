@@ -21,8 +21,8 @@ void main() {
   late TaxRepository tax;
   late VendorRepository vendors;
   final now = DateTime.utc(2026, 6, 15, 9);
-  final restaurant = seedId('rev', 'CCR-RESTAURANT');
-  final room = seedId('rev', 'HKI-ROOM');
+  final restaurant = seedId('rev:CCR/RESTAURANT');
+  final room = seedId('rev:HKI/ROOM');
 
   setUpAll(() => driftRuntimeOptions.dontWarnAboutMultipleDatabases = true);
   tearDownAll(() => driftRuntimeOptions.dontWarnAboutMultipleDatabases = false);
@@ -394,7 +394,7 @@ void main() {
   group('usage authority', () {
     test('a local count never claims to be authoritative', () async {
       final reader = LocalMasterUsageReader(db);
-      final usage = await reader.usageForMaster(seedId('bu', 'CCR'));
+      final usage = await reader.usageForMaster(seedId('bu:CCR'));
 
       expect(usage.isAuthoritative, isFalse);
       expect(usage.mayHaveMoreElsewhere, isTrue);
@@ -416,7 +416,7 @@ void main() {
         server: const UnavailableServerUsageReader(),
         local: LocalMasterUsageReader(db),
       );
-      final usage = await reader.usageForMaster(seedId('bu', 'CCR'));
+      final usage = await reader.usageForMaster(seedId('bu:CCR'));
 
       // It fell back to local, and local is still local.
       expect(usage, isA<UsageCounted>());

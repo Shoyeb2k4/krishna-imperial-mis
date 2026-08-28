@@ -6,6 +6,7 @@ library;
 
 import 'package:drift/drift.dart';
 import 'package:krishna_mis/data/local/master_tables.dart';
+import 'package:krishna_mis/data/local/seed/master_seed.dart';
 import 'package:krishna_mis/data/local/tables.dart';
 
 part 'app_database.g.dart';
@@ -32,11 +33,20 @@ class AppDatabase extends _$AppDatabase {
   /// v1 — Phase 1 foundation: `app_meta`, `sync_outbox`.
   /// v2 — Phase 2 masters and period locks.
   /// v3 — date-effective tax configuration; vendors gain a default business unit.
+  /// v4 — seeded master ids move to the derived UUIDs the server also derives, so a
+  ///      device that seeded itself offline agrees with Postgres on identity rather than
+  ///      having to be reconciled by name.
+  /// v5 — a vendor's default business unit and default category become soft pointers
+  ///      rather than foreign keys (D-049): they are operational conveniences on an
+  ///      organisation-global record, and a per-user cache legitimately holds vendors
+  ///      whose default target it cannot see.
+  /// v6 — the outbox records which user queued each intent, so a shared installation
+  ///      never lets one person's device push another person's work (D-050).
   ///
   /// Financial tables raise this number as they land, each with a migration step and a
   /// migration test (docs/RELEASE_CHECKLIST.md §C).
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 6;
 
   /// Timestamps are stored as ISO-8601 **UTC text**, not as unix seconds.
   ///
@@ -74,6 +84,22 @@ class AppDatabase extends _$AppDatabase {
         await m.createTable(revenueTaxRates);
         await m.addColumn(vendors, vendors.defaultBusinessUnitId);
         await _createTaxRateUniqueIndex();
+      }
+      if (from < 4) {
+        // Foreign keys are still off at this point — `PRAGMA foreign_keys = ON` is set in
+        // `beforeOpen`, which runs after migrations — so parent ids and the columns that
+        // reference them can be rewritten without SQLite rejecting the intermediate
+        // state. `_masterIdColumns` lists every such column explicitly for that reason.
+        await remapSeedIds(this);
+      }
+      if (from < 5) {
+        // Recreating the table is the only way SQLite drops a foreign key. No data is
+        // transformed: the same values are carried across, they simply stop being
+        // structurally enforced.
+        await m.alterTable(TableMigration(vendors));
+      }
+      if (from < 6) {
+        await m.addColumn(syncOutbox, syncOutbox.actorUserId);
       }
     },
     beforeOpen: (details) async {

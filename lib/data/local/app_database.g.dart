@@ -281,6 +281,17 @@ class $SyncOutboxTable extends SyncOutbox
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _actorUserIdMeta = const VerificationMeta(
+    'actorUserId',
+  );
+  @override
+  late final GeneratedColumn<String> actorUserId = GeneratedColumn<String>(
+    'actor_user_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _entityTypeMeta = const VerificationMeta(
     'entityType',
   );
@@ -404,6 +415,7 @@ class $SyncOutboxTable extends SyncOutbox
   @override
   List<GeneratedColumn> get $columns => [
     mutationId,
+    actorUserId,
     entityType,
     entityId,
     op,
@@ -435,6 +447,15 @@ class $SyncOutboxTable extends SyncOutbox
       );
     } else if (isInserting) {
       context.missing(_mutationIdMeta);
+    }
+    if (data.containsKey('actor_user_id')) {
+      context.handle(
+        _actorUserIdMeta,
+        actorUserId.isAcceptableOrUnknown(
+          data['actor_user_id']!,
+          _actorUserIdMeta,
+        ),
+      );
     }
     if (data.containsKey('entity_type')) {
       context.handle(
@@ -538,6 +559,10 @@ class $SyncOutboxTable extends SyncOutbox
         DriftSqlType.string,
         data['${effectivePrefix}mutation_id'],
       )!,
+      actorUserId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}actor_user_id'],
+      ),
       entityType: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}entity_type'],
@@ -595,6 +620,20 @@ class SyncOutboxRow extends DataClass implements Insertable<SyncOutboxRow> {
   /// Generated once per intent and reused for every retry. This is the primary key
   /// precisely so the same intent can never be enqueued twice.
   final String mutationId;
+
+  /// Who queued this intent.
+  ///
+  /// A shared Windows workstation in a hotel back office will see several people sign
+  /// in and out of one installation. Without this column the queue is anonymous, and
+  /// one user's device could push work another user created under authority they no
+  /// longer hold — or never held. Sync only ever sends entries belonging to the signed-in
+  /// user, and one user's queued work is never shown to, retried by or attributed to
+  /// another (D-050).
+  ///
+  /// Nullable only for rows written before this column existed. Those are treated as
+  /// unattributed and are never sent by anyone; they are surfaced for a human instead of
+  /// being guessed at or quietly discarded.
+  final String? actorUserId;
   final String entityType;
   final String entityId;
 
@@ -622,6 +661,7 @@ class SyncOutboxRow extends DataClass implements Insertable<SyncOutboxRow> {
   final DateTime? inFlightSince;
   const SyncOutboxRow({
     required this.mutationId,
+    this.actorUserId,
     required this.entityType,
     required this.entityId,
     required this.op,
@@ -638,6 +678,9 @@ class SyncOutboxRow extends DataClass implements Insertable<SyncOutboxRow> {
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['mutation_id'] = Variable<String>(mutationId);
+    if (!nullToAbsent || actorUserId != null) {
+      map['actor_user_id'] = Variable<String>(actorUserId);
+    }
     map['entity_type'] = Variable<String>(entityType);
     map['entity_id'] = Variable<String>(entityId);
     map['op'] = Variable<String>(op);
@@ -661,6 +704,9 @@ class SyncOutboxRow extends DataClass implements Insertable<SyncOutboxRow> {
   SyncOutboxCompanion toCompanion(bool nullToAbsent) {
     return SyncOutboxCompanion(
       mutationId: Value(mutationId),
+      actorUserId: actorUserId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(actorUserId),
       entityType: Value(entityType),
       entityId: Value(entityId),
       op: Value(op),
@@ -688,6 +734,7 @@ class SyncOutboxRow extends DataClass implements Insertable<SyncOutboxRow> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return SyncOutboxRow(
       mutationId: serializer.fromJson<String>(json['mutationId']),
+      actorUserId: serializer.fromJson<String?>(json['actorUserId']),
       entityType: serializer.fromJson<String>(json['entityType']),
       entityId: serializer.fromJson<String>(json['entityId']),
       op: serializer.fromJson<String>(json['op']),
@@ -706,6 +753,7 @@ class SyncOutboxRow extends DataClass implements Insertable<SyncOutboxRow> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
       'mutationId': serializer.toJson<String>(mutationId),
+      'actorUserId': serializer.toJson<String?>(actorUserId),
       'entityType': serializer.toJson<String>(entityType),
       'entityId': serializer.toJson<String>(entityId),
       'op': serializer.toJson<String>(op),
@@ -722,6 +770,7 @@ class SyncOutboxRow extends DataClass implements Insertable<SyncOutboxRow> {
 
   SyncOutboxRow copyWith({
     String? mutationId,
+    Value<String?> actorUserId = const Value.absent(),
     String? entityType,
     String? entityId,
     String? op,
@@ -735,6 +784,7 @@ class SyncOutboxRow extends DataClass implements Insertable<SyncOutboxRow> {
     Value<DateTime?> inFlightSince = const Value.absent(),
   }) => SyncOutboxRow(
     mutationId: mutationId ?? this.mutationId,
+    actorUserId: actorUserId.present ? actorUserId.value : this.actorUserId,
     entityType: entityType ?? this.entityType,
     entityId: entityId ?? this.entityId,
     op: op ?? this.op,
@@ -756,6 +806,9 @@ class SyncOutboxRow extends DataClass implements Insertable<SyncOutboxRow> {
       mutationId: data.mutationId.present
           ? data.mutationId.value
           : this.mutationId,
+      actorUserId: data.actorUserId.present
+          ? data.actorUserId.value
+          : this.actorUserId,
       entityType: data.entityType.present
           ? data.entityType.value
           : this.entityType,
@@ -784,6 +837,7 @@ class SyncOutboxRow extends DataClass implements Insertable<SyncOutboxRow> {
   String toString() {
     return (StringBuffer('SyncOutboxRow(')
           ..write('mutationId: $mutationId, ')
+          ..write('actorUserId: $actorUserId, ')
           ..write('entityType: $entityType, ')
           ..write('entityId: $entityId, ')
           ..write('op: $op, ')
@@ -802,6 +856,7 @@ class SyncOutboxRow extends DataClass implements Insertable<SyncOutboxRow> {
   @override
   int get hashCode => Object.hash(
     mutationId,
+    actorUserId,
     entityType,
     entityId,
     op,
@@ -819,6 +874,7 @@ class SyncOutboxRow extends DataClass implements Insertable<SyncOutboxRow> {
       identical(this, other) ||
       (other is SyncOutboxRow &&
           other.mutationId == this.mutationId &&
+          other.actorUserId == this.actorUserId &&
           other.entityType == this.entityType &&
           other.entityId == this.entityId &&
           other.op == this.op &&
@@ -834,6 +890,7 @@ class SyncOutboxRow extends DataClass implements Insertable<SyncOutboxRow> {
 
 class SyncOutboxCompanion extends UpdateCompanion<SyncOutboxRow> {
   final Value<String> mutationId;
+  final Value<String?> actorUserId;
   final Value<String> entityType;
   final Value<String> entityId;
   final Value<String> op;
@@ -848,6 +905,7 @@ class SyncOutboxCompanion extends UpdateCompanion<SyncOutboxRow> {
   final Value<int> rowid;
   const SyncOutboxCompanion({
     this.mutationId = const Value.absent(),
+    this.actorUserId = const Value.absent(),
     this.entityType = const Value.absent(),
     this.entityId = const Value.absent(),
     this.op = const Value.absent(),
@@ -863,6 +921,7 @@ class SyncOutboxCompanion extends UpdateCompanion<SyncOutboxRow> {
   });
   SyncOutboxCompanion.insert({
     required String mutationId,
+    this.actorUserId = const Value.absent(),
     required String entityType,
     required String entityId,
     required String op,
@@ -885,6 +944,7 @@ class SyncOutboxCompanion extends UpdateCompanion<SyncOutboxRow> {
        createdAt = Value(createdAt);
   static Insertable<SyncOutboxRow> custom({
     Expression<String>? mutationId,
+    Expression<String>? actorUserId,
     Expression<String>? entityType,
     Expression<String>? entityId,
     Expression<String>? op,
@@ -900,6 +960,7 @@ class SyncOutboxCompanion extends UpdateCompanion<SyncOutboxRow> {
   }) {
     return RawValuesInsertable({
       if (mutationId != null) 'mutation_id': mutationId,
+      if (actorUserId != null) 'actor_user_id': actorUserId,
       if (entityType != null) 'entity_type': entityType,
       if (entityId != null) 'entity_id': entityId,
       if (op != null) 'op': op,
@@ -917,6 +978,7 @@ class SyncOutboxCompanion extends UpdateCompanion<SyncOutboxRow> {
 
   SyncOutboxCompanion copyWith({
     Value<String>? mutationId,
+    Value<String?>? actorUserId,
     Value<String>? entityType,
     Value<String>? entityId,
     Value<String>? op,
@@ -932,6 +994,7 @@ class SyncOutboxCompanion extends UpdateCompanion<SyncOutboxRow> {
   }) {
     return SyncOutboxCompanion(
       mutationId: mutationId ?? this.mutationId,
+      actorUserId: actorUserId ?? this.actorUserId,
       entityType: entityType ?? this.entityType,
       entityId: entityId ?? this.entityId,
       op: op ?? this.op,
@@ -952,6 +1015,9 @@ class SyncOutboxCompanion extends UpdateCompanion<SyncOutboxRow> {
     final map = <String, Expression>{};
     if (mutationId.present) {
       map['mutation_id'] = Variable<String>(mutationId.value);
+    }
+    if (actorUserId.present) {
+      map['actor_user_id'] = Variable<String>(actorUserId.value);
     }
     if (entityType.present) {
       map['entity_type'] = Variable<String>(entityType.value);
@@ -996,6 +1062,7 @@ class SyncOutboxCompanion extends UpdateCompanion<SyncOutboxRow> {
   String toString() {
     return (StringBuffer('SyncOutboxCompanion(')
           ..write('mutationId: $mutationId, ')
+          ..write('actorUserId: $actorUserId, ')
           ..write('entityType: $entityType, ')
           ..write('entityId: $entityId, ')
           ..write('op: $op, ')
@@ -4200,9 +4267,6 @@ class $VendorsTable extends Vendors with TableInfo<$VendorsTable, VendorRow> {
         true,
         type: DriftSqlType.string,
         requiredDuringInsert: false,
-        defaultConstraints: GeneratedColumn.constraintIsAlways(
-          'REFERENCES expense_categories (id) ON DELETE RESTRICT',
-        ),
       );
   static const VerificationMeta _defaultBusinessUnitIdMeta =
       const VerificationMeta('defaultBusinessUnitId');
@@ -4214,9 +4278,6 @@ class $VendorsTable extends Vendors with TableInfo<$VendorsTable, VendorRow> {
         true,
         type: DriftSqlType.string,
         requiredDuringInsert: false,
-        defaultConstraints: GeneratedColumn.constraintIsAlways(
-          'REFERENCES business_units (id) ON DELETE RESTRICT',
-        ),
       );
   static const VerificationMeta _notesMeta = const VerificationMeta('notes');
   @override
@@ -4449,9 +4510,24 @@ class VendorRow extends DataClass implements Insertable<VendorRow> {
   final String? gstin;
   final String? phone;
   final String? address;
+
+  /// Optional. Pre-selects a category when this vendor is chosen during entry.
+  ///
+  /// Deliberately **not** a foreign key (D-049). A vendor is an organisation-global
+  /// master; these two columns are operational conveniences, not ownership, visibility
+  /// or authorisation. A foreign key would assert "the target must exist in this
+  /// database", and on a per-user cache that is simply false: a manager scoped to one
+  /// property legitimately holds vendors whose usual category belongs to the other. It
+  /// also made the revoked-scope purge impossible without rewriting canonical vendor
+  /// data, which D-049 §2 forbids.
+  ///
+  /// A dangling pointer here is therefore expected and harmless. It is resolved at the
+  /// point of use by `Vendor.effectiveDefaultBusinessUnitId`, which filters through the
+  /// caller's current authoritative scope and owns nothing.
   final String? defaultCategoryId;
 
-  /// Optional. Pre-selects the property when this vendor is chosen during entry.
+  /// Optional. Pre-selects the property when this vendor is chosen during entry. Soft
+  /// pointer, for the reasons above.
   final String? defaultBusinessUnitId;
   final String? notes;
   const VendorRow({
@@ -7615,6 +7691,7 @@ typedef $$AppMetaTableProcessedTableManager =
 typedef $$SyncOutboxTableCreateCompanionBuilder =
     SyncOutboxCompanion Function({
       required String mutationId,
+      Value<String?> actorUserId,
       required String entityType,
       required String entityId,
       required String op,
@@ -7631,6 +7708,7 @@ typedef $$SyncOutboxTableCreateCompanionBuilder =
 typedef $$SyncOutboxTableUpdateCompanionBuilder =
     SyncOutboxCompanion Function({
       Value<String> mutationId,
+      Value<String?> actorUserId,
       Value<String> entityType,
       Value<String> entityId,
       Value<String> op,
@@ -7656,6 +7734,11 @@ class $$SyncOutboxTableFilterComposer
   });
   ColumnFilters<String> get mutationId => $composableBuilder(
     column: $table.mutationId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get actorUserId => $composableBuilder(
+    column: $table.actorUserId,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -7729,6 +7812,11 @@ class $$SyncOutboxTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get actorUserId => $composableBuilder(
+    column: $table.actorUserId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get entityType => $composableBuilder(
     column: $table.entityType,
     builder: (column) => ColumnOrderings(column),
@@ -7796,6 +7884,11 @@ class $$SyncOutboxTableAnnotationComposer
   });
   GeneratedColumn<String> get mutationId => $composableBuilder(
     column: $table.mutationId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get actorUserId => $composableBuilder(
+    column: $table.actorUserId,
     builder: (column) => column,
   );
 
@@ -7875,6 +7968,7 @@ class $$SyncOutboxTableTableManager
           updateCompanionCallback:
               ({
                 Value<String> mutationId = const Value.absent(),
+                Value<String?> actorUserId = const Value.absent(),
                 Value<String> entityType = const Value.absent(),
                 Value<String> entityId = const Value.absent(),
                 Value<String> op = const Value.absent(),
@@ -7889,6 +7983,7 @@ class $$SyncOutboxTableTableManager
                 Value<int> rowid = const Value.absent(),
               }) => SyncOutboxCompanion(
                 mutationId: mutationId,
+                actorUserId: actorUserId,
                 entityType: entityType,
                 entityId: entityId,
                 op: op,
@@ -7905,6 +8000,7 @@ class $$SyncOutboxTableTableManager
           createCompanionCallback:
               ({
                 required String mutationId,
+                Value<String?> actorUserId = const Value.absent(),
                 required String entityType,
                 required String entityId,
                 required String op,
@@ -7919,6 +8015,7 @@ class $$SyncOutboxTableTableManager
                 Value<int> rowid = const Value.absent(),
               }) => SyncOutboxCompanion.insert(
                 mutationId: mutationId,
+                actorUserId: actorUserId,
                 entityType: entityType,
                 entityId: entityId,
                 op: op,
@@ -8031,24 +8128,6 @@ final class $$BusinessUnitsTableReferences
     final cache = $_typedResult.readTableOrNull(
       _revenueCategoriesRefsTable($_db),
     );
-    return ProcessedTableManager(
-      manager.$state.copyWith(prefetchedData: cache),
-    );
-  }
-
-  static MultiTypedResultKey<$VendorsTable, List<VendorRow>> _vendorsRefsTable(
-    _$AppDatabase db,
-  ) => MultiTypedResultKey.fromTable(
-    db.vendors,
-    aliasName: 'business_units__id__vendors__default_business_unit_id',
-  );
-
-  $$VendorsTableProcessedTableManager get vendorsRefs {
-    final manager = $$VendorsTableTableManager($_db, $_db.vendors).filter(
-      (f) => f.defaultBusinessUnitId.id.sqlEquals($_itemColumn<String>('id')!),
-    );
-
-    final cache = $_typedResult.readTableOrNull(_vendorsRefsTable($_db));
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: cache),
     );
@@ -8178,31 +8257,6 @@ class $$BusinessUnitsTableFilterComposer
           }) => $$RevenueCategoriesTableFilterComposer(
             $db: $db,
             $table: $db.revenueCategories,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
-    );
-    return f(composer);
-  }
-
-  Expression<bool> vendorsRefs(
-    Expression<bool> Function($$VendorsTableFilterComposer f) f,
-  ) {
-    final $$VendorsTableFilterComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.id,
-      referencedTable: $db.vendors,
-      getReferencedColumn: (t) => t.defaultBusinessUnitId,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$VendorsTableFilterComposer(
-            $db: $db,
-            $table: $db.vendors,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -8402,31 +8456,6 @@ class $$BusinessUnitsTableAnnotationComposer
     return f(composer);
   }
 
-  Expression<T> vendorsRefs<T extends Object>(
-    Expression<T> Function($$VendorsTableAnnotationComposer a) f,
-  ) {
-    final $$VendorsTableAnnotationComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.id,
-      referencedTable: $db.vendors,
-      getReferencedColumn: (t) => t.defaultBusinessUnitId,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$VendorsTableAnnotationComposer(
-            $db: $db,
-            $table: $db.vendors,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
-    );
-    return f(composer);
-  }
-
   Expression<T> periodLocksRefs<T extends Object>(
     Expression<T> Function($$PeriodLocksTableAnnotationComposer a) f,
   ) {
@@ -8469,7 +8498,6 @@ class $$BusinessUnitsTableTableManager
           PrefetchHooks Function({
             bool departmentsRefs,
             bool revenueCategoriesRefs,
-            bool vendorsRefs,
             bool periodLocksRefs,
           })
         > {
@@ -8552,7 +8580,6 @@ class $$BusinessUnitsTableTableManager
               ({
                 departmentsRefs = false,
                 revenueCategoriesRefs = false,
-                vendorsRefs = false,
                 periodLocksRefs = false,
               }) {
                 return PrefetchHooks(
@@ -8560,7 +8587,6 @@ class $$BusinessUnitsTableTableManager
                   explicitlyWatchedTables: [
                     if (departmentsRefs) db.departments,
                     if (revenueCategoriesRefs) db.revenueCategories,
-                    if (vendorsRefs) db.vendors,
                     if (periodLocksRefs) db.periodLocks,
                   ],
                   addJoins: null,
@@ -8608,27 +8634,6 @@ class $$BusinessUnitsTableTableManager
                               ),
                           typedResults: items,
                         ),
-                      if (vendorsRefs)
-                        await $_getPrefetchedData<
-                          BusinessUnitRow,
-                          $BusinessUnitsTable,
-                          VendorRow
-                        >(
-                          currentTable: table,
-                          referencedTable: $$BusinessUnitsTableReferences
-                              ._vendorsRefsTable(db),
-                          managerFromTypedResult: (p0) =>
-                              $$BusinessUnitsTableReferences(
-                                db,
-                                table,
-                                p0,
-                              ).vendorsRefs,
-                          referencedItemsForCurrentItem:
-                              (item, referencedItems) => referencedItems.where(
-                                (e) => e.defaultBusinessUnitId == item.id,
-                              ),
-                          typedResults: items,
-                        ),
                       if (periodLocksRefs)
                         await $_getPrefetchedData<
                           BusinessUnitRow,
@@ -8673,7 +8678,6 @@ typedef $$BusinessUnitsTableProcessedTableManager =
       PrefetchHooks Function({
         bool departmentsRefs,
         bool revenueCategoriesRefs,
-        bool vendorsRefs,
         bool periodLocksRefs,
       })
     >;
@@ -9725,24 +9729,6 @@ final class $$ExpenseCategoriesTableReferences
       manager.$state.copyWith(prefetchedData: [item]),
     );
   }
-
-  static MultiTypedResultKey<$VendorsTable, List<VendorRow>> _vendorsRefsTable(
-    _$AppDatabase db,
-  ) => MultiTypedResultKey.fromTable(
-    db.vendors,
-    aliasName: 'expense_categories__id__vendors__default_category_id',
-  );
-
-  $$VendorsTableProcessedTableManager get vendorsRefs {
-    final manager = $$VendorsTableTableManager($_db, $_db.vendors).filter(
-      (f) => f.defaultCategoryId.id.sqlEquals($_itemColumn<String>('id')!),
-    );
-
-    final cache = $_typedResult.readTableOrNull(_vendorsRefsTable($_db));
-    return ProcessedTableManager(
-      manager.$state.copyWith(prefetchedData: cache),
-    );
-  }
 }
 
 class $$ExpenseCategoriesTableFilterComposer
@@ -9825,31 +9811,6 @@ class $$ExpenseCategoriesTableFilterComposer
           ),
     );
     return composer;
-  }
-
-  Expression<bool> vendorsRefs(
-    Expression<bool> Function($$VendorsTableFilterComposer f) f,
-  ) {
-    final $$VendorsTableFilterComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.id,
-      referencedTable: $db.vendors,
-      getReferencedColumn: (t) => t.defaultCategoryId,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$VendorsTableFilterComposer(
-            $db: $db,
-            $table: $db.vendors,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
-    );
-    return f(composer);
   }
 }
 
@@ -10003,31 +9964,6 @@ class $$ExpenseCategoriesTableAnnotationComposer
     );
     return composer;
   }
-
-  Expression<T> vendorsRefs<T extends Object>(
-    Expression<T> Function($$VendorsTableAnnotationComposer a) f,
-  ) {
-    final $$VendorsTableAnnotationComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.id,
-      referencedTable: $db.vendors,
-      getReferencedColumn: (t) => t.defaultCategoryId,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$VendorsTableAnnotationComposer(
-            $db: $db,
-            $table: $db.vendors,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
-    );
-    return f(composer);
-  }
 }
 
 class $$ExpenseCategoriesTableTableManager
@@ -10043,7 +9979,7 @@ class $$ExpenseCategoriesTableTableManager
           $$ExpenseCategoriesTableUpdateCompanionBuilder,
           (ExpenseCategoryRow, $$ExpenseCategoriesTableReferences),
           ExpenseCategoryRow,
-          PrefetchHooks Function({bool sectionId, bool vendorsRefs})
+          PrefetchHooks Function({bool sectionId})
         > {
   $$ExpenseCategoriesTableTableManager(
     _$AppDatabase db,
@@ -10125,10 +10061,10 @@ class $$ExpenseCategoriesTableTableManager
                 ),
               )
               .toList(),
-          prefetchHooksCallback: ({sectionId = false, vendorsRefs = false}) {
+          prefetchHooksCallback: ({sectionId = false}) {
             return PrefetchHooks(
               db: db,
-              explicitlyWatchedTables: [if (vendorsRefs) db.vendors],
+              explicitlyWatchedTables: [],
               addJoins:
                   <
                     T extends TableManagerState<
@@ -10164,29 +10100,7 @@ class $$ExpenseCategoriesTableTableManager
                     return state;
                   },
               getPrefetchedDataCallback: (items) async {
-                return [
-                  if (vendorsRefs)
-                    await $_getPrefetchedData<
-                      ExpenseCategoryRow,
-                      $ExpenseCategoriesTable,
-                      VendorRow
-                    >(
-                      currentTable: table,
-                      referencedTable: $$ExpenseCategoriesTableReferences
-                          ._vendorsRefsTable(db),
-                      managerFromTypedResult: (p0) =>
-                          $$ExpenseCategoriesTableReferences(
-                            db,
-                            table,
-                            p0,
-                          ).vendorsRefs,
-                      referencedItemsForCurrentItem: (item, referencedItems) =>
-                          referencedItems.where(
-                            (e) => e.defaultCategoryId == item.id,
-                          ),
-                      typedResults: items,
-                    ),
-                ];
+                return [];
               },
             );
           },
@@ -10206,7 +10120,7 @@ typedef $$ExpenseCategoriesTableProcessedTableManager =
       $$ExpenseCategoriesTableUpdateCompanionBuilder,
       (ExpenseCategoryRow, $$ExpenseCategoriesTableReferences),
       ExpenseCategoryRow,
-      PrefetchHooks Function({bool sectionId, bool vendorsRefs})
+      PrefetchHooks Function({bool sectionId})
     >;
 typedef $$RevenueCategoriesTableCreateCompanionBuilder =
     RevenueCategoriesCompanion Function({
@@ -10757,49 +10671,6 @@ typedef $$VendorsTableUpdateCompanionBuilder =
       Value<int> rowid,
     });
 
-final class $$VendorsTableReferences
-    extends BaseReferences<_$AppDatabase, $VendorsTable, VendorRow> {
-  $$VendorsTableReferences(super.$_db, super.$_table, super.$_typedResult);
-
-  static $ExpenseCategoriesTable _defaultCategoryIdTable(_$AppDatabase db) => db
-      .expenseCategories
-      .createAlias('vendors__default_category_id__expense_categories__id');
-
-  $$ExpenseCategoriesTableProcessedTableManager? get defaultCategoryId {
-    final $_column = $_itemColumn<String>('default_category_id');
-    if ($_column == null) return null;
-    final manager = $$ExpenseCategoriesTableTableManager(
-      $_db,
-      $_db.expenseCategories,
-    ).filter((f) => f.id.sqlEquals($_column));
-    final item = $_typedResult.readTableOrNull(_defaultCategoryIdTable($_db));
-    if (item == null) return manager;
-    return ProcessedTableManager(
-      manager.$state.copyWith(prefetchedData: [item]),
-    );
-  }
-
-  static $BusinessUnitsTable _defaultBusinessUnitIdTable(_$AppDatabase db) => db
-      .businessUnits
-      .createAlias('vendors__default_business_unit_id__business_units__id');
-
-  $$BusinessUnitsTableProcessedTableManager? get defaultBusinessUnitId {
-    final $_column = $_itemColumn<String>('default_business_unit_id');
-    if ($_column == null) return null;
-    final manager = $$BusinessUnitsTableTableManager(
-      $_db,
-      $_db.businessUnits,
-    ).filter((f) => f.id.sqlEquals($_column));
-    final item = $_typedResult.readTableOrNull(
-      _defaultBusinessUnitIdTable($_db),
-    );
-    if (item == null) return manager;
-    return ProcessedTableManager(
-      manager.$state.copyWith(prefetchedData: [item]),
-    );
-  }
-}
-
 class $$VendorsTableFilterComposer
     extends Composer<_$AppDatabase, $VendorsTable> {
   $$VendorsTableFilterComposer({
@@ -10864,56 +10735,20 @@ class $$VendorsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<String> get defaultCategoryId => $composableBuilder(
+    column: $table.defaultCategoryId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get defaultBusinessUnitId => $composableBuilder(
+    column: $table.defaultBusinessUnitId,
+    builder: (column) => ColumnFilters(column),
+  );
+
   ColumnFilters<String> get notes => $composableBuilder(
     column: $table.notes,
     builder: (column) => ColumnFilters(column),
   );
-
-  $$ExpenseCategoriesTableFilterComposer get defaultCategoryId {
-    final $$ExpenseCategoriesTableFilterComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.defaultCategoryId,
-      referencedTable: $db.expenseCategories,
-      getReferencedColumn: (t) => t.id,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$ExpenseCategoriesTableFilterComposer(
-            $db: $db,
-            $table: $db.expenseCategories,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
-    );
-    return composer;
-  }
-
-  $$BusinessUnitsTableFilterComposer get defaultBusinessUnitId {
-    final $$BusinessUnitsTableFilterComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.defaultBusinessUnitId,
-      referencedTable: $db.businessUnits,
-      getReferencedColumn: (t) => t.id,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$BusinessUnitsTableFilterComposer(
-            $db: $db,
-            $table: $db.businessUnits,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
-    );
-    return composer;
-  }
 }
 
 class $$VendorsTableOrderingComposer
@@ -10980,56 +10815,20 @@ class $$VendorsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get defaultCategoryId => $composableBuilder(
+    column: $table.defaultCategoryId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get defaultBusinessUnitId => $composableBuilder(
+    column: $table.defaultBusinessUnitId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get notes => $composableBuilder(
     column: $table.notes,
     builder: (column) => ColumnOrderings(column),
   );
-
-  $$ExpenseCategoriesTableOrderingComposer get defaultCategoryId {
-    final $$ExpenseCategoriesTableOrderingComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.defaultCategoryId,
-      referencedTable: $db.expenseCategories,
-      getReferencedColumn: (t) => t.id,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$ExpenseCategoriesTableOrderingComposer(
-            $db: $db,
-            $table: $db.expenseCategories,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
-    );
-    return composer;
-  }
-
-  $$BusinessUnitsTableOrderingComposer get defaultBusinessUnitId {
-    final $$BusinessUnitsTableOrderingComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.defaultBusinessUnitId,
-      referencedTable: $db.businessUnits,
-      getReferencedColumn: (t) => t.id,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$BusinessUnitsTableOrderingComposer(
-            $db: $db,
-            $table: $db.businessUnits,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
-    );
-    return composer;
-  }
 }
 
 class $$VendorsTableAnnotationComposer
@@ -11078,55 +10877,18 @@ class $$VendorsTableAnnotationComposer
   GeneratedColumn<String> get address =>
       $composableBuilder(column: $table.address, builder: (column) => column);
 
+  GeneratedColumn<String> get defaultCategoryId => $composableBuilder(
+    column: $table.defaultCategoryId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get defaultBusinessUnitId => $composableBuilder(
+    column: $table.defaultBusinessUnitId,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<String> get notes =>
       $composableBuilder(column: $table.notes, builder: (column) => column);
-
-  $$ExpenseCategoriesTableAnnotationComposer get defaultCategoryId {
-    final $$ExpenseCategoriesTableAnnotationComposer composer =
-        $composerBuilder(
-          composer: this,
-          getCurrentColumn: (t) => t.defaultCategoryId,
-          referencedTable: $db.expenseCategories,
-          getReferencedColumn: (t) => t.id,
-          builder:
-              (
-                joinBuilder, {
-                $addJoinBuilderToRootComposer,
-                $removeJoinBuilderFromRootComposer,
-              }) => $$ExpenseCategoriesTableAnnotationComposer(
-                $db: $db,
-                $table: $db.expenseCategories,
-                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-                joinBuilder: joinBuilder,
-                $removeJoinBuilderFromRootComposer:
-                    $removeJoinBuilderFromRootComposer,
-              ),
-        );
-    return composer;
-  }
-
-  $$BusinessUnitsTableAnnotationComposer get defaultBusinessUnitId {
-    final $$BusinessUnitsTableAnnotationComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.defaultBusinessUnitId,
-      referencedTable: $db.businessUnits,
-      getReferencedColumn: (t) => t.id,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$BusinessUnitsTableAnnotationComposer(
-            $db: $db,
-            $table: $db.businessUnits,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
-    );
-    return composer;
-  }
 }
 
 class $$VendorsTableTableManager
@@ -11140,12 +10902,9 @@ class $$VendorsTableTableManager
           $$VendorsTableAnnotationComposer,
           $$VendorsTableCreateCompanionBuilder,
           $$VendorsTableUpdateCompanionBuilder,
-          (VendorRow, $$VendorsTableReferences),
+          (VendorRow, BaseReferences<_$AppDatabase, $VendorsTable, VendorRow>),
           VendorRow,
-          PrefetchHooks Function({
-            bool defaultCategoryId,
-            bool defaultBusinessUnitId,
-          })
+          PrefetchHooks Function()
         > {
   $$VendorsTableTableManager(_$AppDatabase db, $VendorsTable table)
     : super(
@@ -11227,68 +10986,9 @@ class $$VendorsTableTableManager
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
-              .map(
-                (e) => (
-                  e.readTable(table),
-                  $$VendorsTableReferences(db, table, e),
-                ),
-              )
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
               .toList(),
-          prefetchHooksCallback:
-              ({defaultCategoryId = false, defaultBusinessUnitId = false}) {
-                return PrefetchHooks(
-                  db: db,
-                  explicitlyWatchedTables: [],
-                  addJoins:
-                      <
-                        T extends TableManagerState<
-                          dynamic,
-                          dynamic,
-                          dynamic,
-                          dynamic,
-                          dynamic,
-                          dynamic,
-                          dynamic,
-                          dynamic,
-                          dynamic,
-                          dynamic,
-                          dynamic
-                        >
-                      >(state) {
-                        if (defaultCategoryId) {
-                          state =
-                              state.withJoin(
-                                    currentTable: table,
-                                    currentColumn: table.defaultCategoryId,
-                                    referencedTable: $$VendorsTableReferences
-                                        ._defaultCategoryIdTable(db),
-                                    referencedColumn: $$VendorsTableReferences
-                                        ._defaultCategoryIdTable(db)
-                                        .id,
-                                  )
-                                  as T;
-                        }
-                        if (defaultBusinessUnitId) {
-                          state =
-                              state.withJoin(
-                                    currentTable: table,
-                                    currentColumn: table.defaultBusinessUnitId,
-                                    referencedTable: $$VendorsTableReferences
-                                        ._defaultBusinessUnitIdTable(db),
-                                    referencedColumn: $$VendorsTableReferences
-                                        ._defaultBusinessUnitIdTable(db)
-                                        .id,
-                                  )
-                                  as T;
-                        }
-
-                        return state;
-                      },
-                  getPrefetchedDataCallback: (items) async {
-                    return [];
-                  },
-                );
-              },
+          prefetchHooksCallback: null,
         ),
       );
 }
@@ -11303,12 +11003,9 @@ typedef $$VendorsTableProcessedTableManager =
       $$VendorsTableAnnotationComposer,
       $$VendorsTableCreateCompanionBuilder,
       $$VendorsTableUpdateCompanionBuilder,
-      (VendorRow, $$VendorsTableReferences),
+      (VendorRow, BaseReferences<_$AppDatabase, $VendorsTable, VendorRow>),
       VendorRow,
-      PrefetchHooks Function({
-        bool defaultCategoryId,
-        bool defaultBusinessUnitId,
-      })
+      PrefetchHooks Function()
     >;
 typedef $$PaymentMethodsTableCreateCompanionBuilder =
     PaymentMethodsCompanion Function({

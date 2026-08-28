@@ -6,6 +6,7 @@ import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:krishna_mis/domain/auth/capability.dart';
 import 'package:krishna_mis/app/providers.dart';
 import 'package:krishna_mis/app/routing/app_router.dart';
 import 'package:krishna_mis/core/design/app_theme.dart';
@@ -14,6 +15,16 @@ import 'package:krishna_mis/data/local/seed/master_seed.dart';
 import 'package:krishna_mis/features/masters/presentation/masters_page.dart';
 import 'package:krishna_mis/features/tax/presentation/tax_rates_view.dart';
 import 'package:krishna_mis/features/vendors/presentation/vendors_view.dart';
+
+/// A fully-capable principal, for exercising screens that assume the user may act.
+///
+/// This is a **test fixture**, not a runtime fallback. Shipped code has no way to build
+/// one — `test/app/no_hardcoded_authority_test.dart` asserts that over `lib/`, which is
+/// what actually reaches an Android or Windows binary.
+Principal testOwnerPrincipal() => Principal(
+  userId: 'test-owner',
+  grants: [for (final c in RoleTemplates.owner) CapabilityGrant(c)],
+);
 
 void main() {
   late AppDatabase db;
@@ -60,7 +71,10 @@ void main() {
 
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [databaseProvider.overrideWithValue(db)],
+        overrides: [
+          databaseProvider.overrideWithValue(db),
+          principalProvider.overrideWithValue(testOwnerPrincipal()),
+        ],
         child: MaterialApp(
           theme: size.width > 900 ? AppTheme.desktop : AppTheme.mobile,
           home: Scaffold(body: view),

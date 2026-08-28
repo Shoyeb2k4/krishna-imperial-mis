@@ -13,11 +13,27 @@ library;
 
 import 'package:drift/drift.dart';
 import 'package:krishna_mis/data/local/app_database.dart';
+import 'package:uuid/uuid.dart';
 
-/// Deterministic ids so a re-run matches what is already there.
-String seedId(String kind, String path) => 'seed-$kind-$path';
+/// The namespace the seed ids are derived in.
+///
+/// Duplicated, deliberately and identically, in
+/// `supabase/migrations/20260827091200_seed.sql`. It is a fixed, arbitrary, non-secret
+/// constant whose only job is to make the derivation reproducible.
+const String seedNamespace = 'd9d3f0a6-4c2b-5f7e-9a10-6b1e2c8f4a70';
 
-const String seedOrgId = 'seed-org-krishna';
+/// A stable id derived from a record's permanent code path — `bu:CCR`,
+/// `cat:CCR/FB/FOOD_PROD/KIRANA`.
+///
+/// UUID v5, so **the server derives exactly the same id for the same record**. That is
+/// the point. Without it a device that seeded itself offline would later meet a server
+/// holding the identical hierarchy under different ids, and the two could only be
+/// reconciled by matching on names — precisely the rename-sensitive matching that the
+/// master-identity design exists to make unnecessary (D-035).
+String seedId(String path) => const Uuid().v5(seedNamespace, path);
+
+/// The seeded organisation.
+final String seedOrgId = seedId('org:KRISHNA');
 
 class _Category {
   const _Category(
@@ -183,18 +199,19 @@ const List<(String, String, bool)> _seedPaymentMethods = [
 Future<void> seedMasterData(
   AppDatabase db, {
   required DateTime now,
-  String orgId = seedOrgId,
+  String? orgId,
 }) async {
+  final org = orgId ?? seedOrgId;
   await db.transaction(() async {
     var unitOrder = 0;
     for (final unit in _seedUnits) {
-      final unitId = seedId('bu', unit.code);
+      final unitId = seedId('bu:${unit.code}');
       await db
           .into(db.businessUnits)
           .insert(
             BusinessUnitsCompanion.insert(
               id: unitId,
-              orgId: orgId,
+              orgId: org,
               code: unit.code,
               name: unit.name,
               kind: unit.kind,
@@ -210,8 +227,8 @@ Future<void> seedMasterData(
             .into(db.revenueCategories)
             .insert(
               RevenueCategoriesCompanion.insert(
-                id: seedId('rev', '${unit.code}-$code'),
-                orgId: orgId,
+                id: seedId('rev:${unit.code}/$code'),
+                orgId: org,
                 businessUnitId: unitId,
                 code: code,
                 name: name,
@@ -224,13 +241,13 @@ Future<void> seedMasterData(
 
       var departmentOrder = 0;
       for (final department in unit.departments) {
-        final departmentId = seedId('dept', '${unit.code}-${department.code}');
+        final departmentId = seedId('dept:${unit.code}/${department.code}');
         await db
             .into(db.departments)
             .insert(
               DepartmentsCompanion.insert(
                 id: departmentId,
-                orgId: orgId,
+                orgId: org,
                 businessUnitId: unitId,
                 code: department.code,
                 name: department.name,
@@ -242,13 +259,15 @@ Future<void> seedMasterData(
 
         var sectionOrder = 0;
         for (final section in department.sections) {
-          final sectionId = seedId('sec', '${unit.code}-${section.code}');
+          final sectionId = seedId(
+            'sec:${unit.code}/${department.code}/${section.code}',
+          );
           await db
               .into(db.sections)
               .insert(
                 SectionsCompanion.insert(
                   id: sectionId,
-                  orgId: orgId,
+                  orgId: org,
                   departmentId: departmentId,
                   code: section.code,
                   name: section.name,
@@ -265,10 +284,10 @@ Future<void> seedMasterData(
                 .insert(
                   ExpenseCategoriesCompanion.insert(
                     id: seedId(
-                      'cat',
-                      '${unit.code}-${section.code}-${category.code}',
+                      'cat:${unit.code}/${department.code}/'
+                      '${section.code}/${category.code}',
                     ),
-                    orgId: orgId,
+                    orgId: org,
                     sectionId: sectionId,
                     code: category.code,
                     name: category.name,
@@ -290,8 +309,8 @@ Future<void> seedMasterData(
           .into(db.paymentMethods)
           .insert(
             PaymentMethodsCompanion.insert(
-              id: seedId('pm', code),
-              orgId: orgId,
+              id: seedId('pm:$code'),
+              orgId: org,
               code: code,
               name: name,
               requiresReference: Value(needsReference),
@@ -302,4 +321,178 @@ Future<void> seedMasterData(
           );
     }
   });
+}
+
+/// Every seeded record's id under the original scheme, paired with its id under the
+/// derived-UUID scheme.
+///
+/// The first scheme produced strings like `seed-cat-CCR-FOOD_PROD-KIRANA`, which are
+/// perfectly stable but have no counterpart on the server — Postgres keys masters on
+/// `uuid`. Rather than reconcile two id spaces forever, the local ids move once, to the
+/// same UUID v5 values the server derives.
+Map<String, String> seedIdRemapping() {
+  final map = <String, String>{'seed-org-krishna': seedId('org:KRISHNA')};
+
+  for (final unit in _seedUnits) {
+    map['seed-bu-${unit.code}'] = seedId('bu:${unit.code}');
+
+    for (final (code, _) in unit.revenueCategories) {
+      map['seed-rev-${unit.code}-$code'] = seedId('rev:${unit.code}/$code');
+    }
+
+    for (final department in unit.departments) {
+      map['seed-dept-${unit.code}-${department.code}'] = seedId(
+        'dept:${unit.code}/${department.code}',
+      );
+
+      for (final section in department.sections) {
+        // The old section id omitted the department. It happened to be unique in the
+        // seeded tree; the new one carries the full path so it cannot stop being.
+        map['seed-sec-${unit.code}-${section.code}'] = seedId(
+          'sec:${unit.code}/${department.code}/${section.code}',
+        );
+
+        for (final category in section.categories) {
+          map['seed-cat-${unit.code}-${section.code}-${category.code}'] =
+              seedId(
+                'cat:${unit.code}/${department.code}/'
+                '${section.code}/${category.code}',
+              );
+        }
+      }
+    }
+  }
+
+  for (final (code, _, _) in _seedPaymentMethods) {
+    map['seed-pm-$code'] = seedId('pm:$code');
+  }
+
+  return map;
+}
+
+/// Every column anywhere in the local schema that holds a master id.
+///
+/// Listed explicitly rather than discovered, because a column missed here would leave a
+/// dangling reference that foreign keys — switched off during a migration — would not
+/// catch until much later.
+const List<(String table, String column)> _masterIdColumns = [
+  ('business_units', 'org_id'),
+  ('business_units', 'id'),
+  ('departments', 'org_id'),
+  ('departments', 'business_unit_id'),
+  ('departments', 'id'),
+  ('sections', 'org_id'),
+  ('sections', 'department_id'),
+  ('sections', 'id'),
+  ('expense_categories', 'org_id'),
+  ('expense_categories', 'section_id'),
+  ('expense_categories', 'id'),
+  ('revenue_categories', 'org_id'),
+  ('revenue_categories', 'business_unit_id'),
+  ('revenue_categories', 'id'),
+  ('vendors', 'org_id'),
+  ('vendors', 'default_business_unit_id'),
+  ('vendors', 'default_category_id'),
+  ('payment_methods', 'org_id'),
+  ('payment_methods', 'id'),
+  ('period_locks', 'org_id'),
+  ('period_locks', 'business_unit_id'),
+  ('period_lock_events', 'org_id'),
+  ('revenue_tax_rates', 'org_id'),
+  ('revenue_tax_rates', 'revenue_category_id'),
+];
+
+/// Moves any rows still carrying the original seed ids onto the derived UUIDs.
+///
+/// Renames survive: this rewrites identity, never labels. A master the owner renamed to
+/// `VEGETABLES & FRUITS` keeps that name and simply acquires the id the server will use
+/// for it (D-038).
+///
+/// Safe to run when there is nothing to move — it is a no-op then, which is what makes it
+/// safe to call from a migration that may already have run on some devices.
+Future<int> remapSeedIds(AppDatabase db) async {
+  final remapping = seedIdRemapping();
+
+  // Rewriting a parent's id and its children's references cannot be ordered so that
+  // referential integrity holds at every intermediate step: parent-first orphans the
+  // children, child-first points them at a row that does not exist yet. The operation is
+  // therefore only correct with enforcement suspended — which is exactly the state during
+  // a Drift migration, since `PRAGMA foreign_keys = ON` is set in `beforeOpen` and that
+  // runs afterwards.
+  //
+  // Refusing outright is better than trusting the caller to know that. Called with
+  // enforcement on, this would fail partway and leave the hierarchy in pieces.
+  final enforcing = await db
+      .customSelect('PRAGMA foreign_keys')
+      .getSingle()
+      .then((row) => row.data.values.first == 1);
+  if (enforcing) {
+    throw StateError(
+      'remapSeedIds must run with foreign key enforcement suspended. It rewrites parent '
+      'ids and the columns referencing them, which has no valid intermediate state.',
+    );
+  }
+
+  return db.transaction(() async {
+    await db.customStatement(
+      'CREATE TEMP TABLE IF NOT EXISTS seed_id_remap '
+      '(old_id TEXT PRIMARY KEY, new_id TEXT NOT NULL)',
+    );
+    await db.customStatement('DELETE FROM seed_id_remap');
+    for (final entry in remapping.entries) {
+      await db.customStatement(
+        'INSERT INTO seed_id_remap (old_id, new_id) VALUES (?, ?)',
+        [entry.key, entry.value],
+      );
+    }
+
+    var updated = 0;
+    for (final (table, column) in _masterIdColumns) {
+      final result = await db.customUpdate(
+        'UPDATE $table SET $column = '
+        '(SELECT new_id FROM seed_id_remap WHERE old_id = $table.$column) '
+        'WHERE $column IN (SELECT old_id FROM seed_id_remap)',
+        updates: const {},
+      );
+      updated += result;
+    }
+
+    await db.customStatement('DROP TABLE seed_id_remap');
+    return updated;
+  });
+}
+
+/// Every path the seed derives an id from, in the same form the Postgres seed uses.
+///
+/// Exposed so a test can assert that the local seed and
+/// `supabase/migrations/20260827091200_seed.sql` describe the *same* hierarchy. Two
+/// seeds that quietly disagree would produce two organisations with the same names and
+/// different ids, which is the failure this whole derivation exists to prevent.
+Set<String> seedPaths() {
+  final paths = <String>{'org:KRISHNA'};
+
+  for (final unit in _seedUnits) {
+    paths.add('bu:${unit.code}');
+    for (final (code, _) in unit.revenueCategories) {
+      paths.add('rev:${unit.code}/$code');
+    }
+    for (final department in unit.departments) {
+      paths.add('dept:${unit.code}/${department.code}');
+      for (final section in department.sections) {
+        paths.add('sec:${unit.code}/${department.code}/${section.code}');
+        for (final category in section.categories) {
+          paths.add(
+            'cat:${unit.code}/${department.code}/'
+            '${section.code}/${category.code}',
+          );
+        }
+      }
+    }
+  }
+
+  for (final (code, _, _) in _seedPaymentMethods) {
+    paths.add('pm:$code');
+  }
+
+  return paths;
 }

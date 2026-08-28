@@ -7,6 +7,7 @@ library;
 import 'package:drift/drift.dart' show DatabaseConnection, driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uuid/uuid.dart';
 import 'package:krishna_mis/data/local/app_database.dart';
 import 'package:krishna_mis/data/sync/outbox_repository.dart';
 import 'package:krishna_mis/data/sync/sync_engine.dart';
@@ -15,6 +16,12 @@ import 'package:krishna_mis/domain/sync/retry_policy.dart';
 import 'package:krishna_mis/domain/sync/sync_state.dart';
 
 import '../support/fake_remote_endpoint.dart';
+
+/// Mutation ids are UUIDs — the server stores `mutation_id` as `uuid`, and a fixture
+/// that used a short label would be refused as a malformed argument long before any
+/// business rule ran. Derived from a name so the tests stay readable and deterministic.
+String mid(String name) =>
+    const Uuid().v5('c0ffee00-0000-4000-8000-000000000000', name);
 
 void main() {
   late AppDatabase db;
@@ -42,13 +49,13 @@ void main() {
   );
 
   PendingMutation expense({
-    String mutationId = 'mut-1',
+    String? mutationId,
     String entityId = 'exp-1',
     MutationOp op = MutationOp.create,
     int? baseRowVersion,
     int amountMinor = 845000,
   }) => PendingMutation(
-    mutationId: mutationId,
+    mutationId: mutationId ?? mid('mut-1'),
     entityType: 'expense',
     entityId: entityId,
     op: op,
@@ -68,7 +75,7 @@ void main() {
     test('a save queues exactly one pending entry', () async {
       await outbox.enqueue(expense(), now: now);
 
-      expect(await outbox.statusOf('mut-1'), OutboxStatus.pending);
+      expect(await outbox.statusOf(mid('mut-1')), OutboxStatus.pending);
       expect(await outbox.unsyncedCount(), 1);
       // Nothing has reached the server; the save stands on its own.
       expect(server.pushCallCount, 0);
@@ -76,7 +83,7 @@ void main() {
 
     test('the user-visible state of a queued save is Pending Sync', () async {
       await outbox.enqueue(expense(), now: now);
-      final status = await outbox.statusOf('mut-1');
+      final status = await outbox.statusOf(mid('mut-1'));
       expect(status!.userVisibleState, SyncState.pendingSync);
       expect(status.userVisibleState.label, 'Pending Sync');
     });
@@ -115,7 +122,7 @@ void main() {
         final secondRun = AppDatabase(connection);
         final recovered = OutboxRepository(secondRun);
 
-        expect(await recovered.statusOf('mut-1'), OutboxStatus.pending);
+        expect(await recovered.statusOf(mid('mut-1')), OutboxStatus.pending);
         expect(await recovered.unsyncedCount(), 1);
         await secondRun.close();
       } finally {
@@ -127,25 +134,25 @@ void main() {
       'an entry stranded in flight by a crash is reclaimed on startup',
       () async {
         await outbox.enqueue(expense(), now: now);
-        await outbox.markInFlight(['mut-1'], now: now);
-        expect(await outbox.statusOf('mut-1'), OutboxStatus.inFlight);
+        await outbox.markInFlight([mid('mut-1')], now: now);
+        expect(await outbox.statusOf(mid('mut-1')), OutboxStatus.inFlight);
 
         // The process dies here. Next launch, three minutes later.
         now = now.add(const Duration(minutes: 3));
         final reclaimed = await engineFor(outbox).recoverAfterRestart();
 
         expect(reclaimed, 1);
-        expect(await outbox.statusOf('mut-1'), OutboxStatus.pending);
+        expect(await outbox.statusOf(mid('mut-1')), OutboxStatus.pending);
       },
     );
 
     test('an entry only just sent is left alone by crash recovery', () async {
       await outbox.enqueue(expense(), now: now);
-      await outbox.markInFlight(['mut-1'], now: now);
+      await outbox.markInFlight([mid('mut-1')], now: now);
 
       now = now.add(const Duration(seconds: 20));
       expect(await engineFor(outbox).recoverAfterRestart(), 0);
-      expect(await outbox.statusOf('mut-1'), OutboxStatus.inFlight);
+      expect(await outbox.statusOf(mid('mut-1')), OutboxStatus.inFlight);
     });
   });
 
@@ -155,9 +162,9 @@ void main() {
       final report = await engineFor(outbox).pushOnce();
 
       expect(report.applied, 1);
-      expect(await outbox.statusOf('mut-1'), OutboxStatus.done);
+      expect(await outbox.statusOf(mid('mut-1')), OutboxStatus.done);
       expect(
-        (await outbox.statusOf('mut-1'))!.userVisibleState,
+        (await outbox.statusOf(mid('mut-1')))!.userVisibleState,
         SyncState.synced,
       );
       expect(server.storedRecords.length, 1);
@@ -178,25 +185,25 @@ void main() {
 
     test('offline work replays in the order the user did it', () async {
       await outbox.enqueue(
-        expense(mutationId: 'a', entityId: 'e1'),
+        expense(mutationId: mid('a'), entityId: 'e1'),
         now: now,
       );
       now = now.add(const Duration(minutes: 1));
       await outbox.enqueue(
-        expense(mutationId: 'b', entityId: 'e2'),
+        expense(mutationId: mid('b'), entityId: 'e2'),
         now: now,
       );
       now = now.add(const Duration(minutes: 1));
       await outbox.enqueue(
-        expense(mutationId: 'c', entityId: 'e3'),
+        expense(mutationId: mid('c'), entityId: 'e3'),
         now: now,
       );
 
       await engineFor(outbox).pushOnce();
       expect(server.allReceivedMutations.map((m) => m.mutationId), [
-        'a',
-        'b',
-        'c',
+        mid('a'),
+        mid('b'),
+        mid('c'),
       ]);
     });
   });
@@ -212,7 +219,7 @@ void main() {
         server.throwOnNextPush = true;
         final first = await engine.pushOnce();
         expect(first.transientFailures, 1);
-        expect(await outbox.statusOf('mut-1'), OutboxStatus.failed);
+        expect(await outbox.statusOf(mid('mut-1')), OutboxStatus.failed);
         expect(server.storedRecords.length, 1);
 
         // The client retries with the SAME mutation id.
@@ -221,7 +228,7 @@ void main() {
 
         expect(second.duplicatesReplayed, 1);
         expect(second.applied, 0);
-        expect(await outbox.statusOf('mut-1'), OutboxStatus.done);
+        expect(await outbox.statusOf(mid('mut-1')), OutboxStatus.done);
 
         // The assertion that matters.
         expect(
@@ -230,7 +237,7 @@ void main() {
           reason: 'a duplicate record was created',
         );
         expect(
-          server.receivedCountFor('mut-1'),
+          server.receivedCountFor(mid('mut-1')),
           2,
           reason: 'it really was sent twice',
         );
@@ -255,7 +262,7 @@ void main() {
       await engine.pushOnce();
 
       final ids = server.allReceivedMutations.map((m) => m.mutationId).toSet();
-      expect(ids, {'mut-1'});
+      expect(ids, {mid('mut-1')});
       expect(server.pushCallCount, 3);
       expect(server.storedRecords.length, 1);
     });
@@ -288,7 +295,7 @@ void main() {
 
         await engineFor(outbox).pushOnce();
 
-        final entry = await outbox.entry('mut-1');
+        final entry = await outbox.entry(mid('mut-1'));
         expect(entry!.status, OutboxStatus.failed.name);
         expect(entry.attemptCount, 1);
         expect(entry.lastError, isNotNull);
@@ -315,7 +322,7 @@ void main() {
       for (var attempt = 0; attempt < expected.length; attempt++) {
         server.forcedOutcome = MutationOutcome.transientFailure;
         await engine.pushOnce();
-        final entry = await outbox.entry('mut-1');
+        final entry = await outbox.entry(mid('mut-1'));
         expect(
           entry!.nextAttemptAt,
           now.add(expected[attempt]),
@@ -348,7 +355,7 @@ void main() {
         // Window elapsed — it goes again, and succeeds.
         now = now.add(const Duration(seconds: 10));
         expect((await engine.pushOnce()).applied, 1);
-        expect(await outbox.statusOf('mut-1'), OutboxStatus.done);
+        expect(await outbox.statusOf(mid('mut-1')), OutboxStatus.done);
       },
     );
   });
@@ -367,7 +374,7 @@ void main() {
         // This device edits from its stale v1 view.
         await outbox.enqueue(
           expense(
-            mutationId: 'mut-2',
+            mutationId: mid('mut-2'),
             op: MutationOp.update,
             baseRowVersion: 1,
           ),
@@ -377,7 +384,7 @@ void main() {
 
         expect(report.conflicts, 1);
         expect(report.applied, 0);
-        final entry = await outbox.entry('mut-2');
+        final entry = await outbox.entry(mid('mut-2'));
         expect(entry!.status, OutboxStatus.conflict.name);
         expect(entry.lastError, contains('stale intent'));
         expect(
@@ -409,7 +416,7 @@ void main() {
 
         await outbox.enqueue(
           expense(
-            mutationId: 'void-1',
+            mutationId: mid('void-1'),
             op: MutationOp.void_,
             baseRowVersion: 1,
           ),
@@ -418,7 +425,7 @@ void main() {
         final report = await engineFor(outbox).pushOnce();
 
         expect(report.conflicts, 1);
-        expect(await outbox.statusOf('void-1'), OutboxStatus.conflict);
+        expect(await outbox.statusOf(mid('void-1')), OutboxStatus.conflict);
         expect(
           server.storedRecords['exp-1'],
           beforeVoid,
@@ -433,7 +440,11 @@ void main() {
       await engineFor(outbox).pushOnce();
 
       await outbox.enqueue(
-        expense(mutationId: 'void-1', op: MutationOp.void_, baseRowVersion: 1),
+        expense(
+          mutationId: mid('void-1'),
+          op: MutationOp.void_,
+          baseRowVersion: 1,
+        ),
         now: now,
       );
       final report = await engineFor(outbox).pushOnce();
@@ -449,7 +460,7 @@ void main() {
         await engineFor(outbox).pushOnce();
         await outbox.enqueue(
           expense(
-            mutationId: 'void-1',
+            mutationId: mid('void-1'),
             op: MutationOp.void_,
             baseRowVersion: 1,
           ),
@@ -466,18 +477,22 @@ void main() {
         // Same intent, delivered twice: idempotent success, not a conflict.
         expect(second.duplicatesReplayed, 1);
         expect(second.conflicts, 0);
-        expect(await outbox.statusOf('void-1'), OutboxStatus.done);
+        expect(await outbox.statusOf(mid('void-1')), OutboxStatus.done);
       },
     );
 
     test('a conflict is never retried automatically', () async {
       await outbox.enqueue(
-        expense(mutationId: 'mut-2', op: MutationOp.update, baseRowVersion: 9),
+        expense(
+          mutationId: mid('mut-2'),
+          op: MutationOp.update,
+          baseRowVersion: 9,
+        ),
         now: now,
       );
       final engine = engineFor(outbox);
       await engine.pushOnce();
-      expect(await outbox.statusOf('mut-2'), OutboxStatus.conflict);
+      expect(await outbox.statusOf(mid('mut-2')), OutboxStatus.conflict);
 
       now = now.add(const Duration(hours: 6));
       final report = await engine.pushOnce();
@@ -498,7 +513,7 @@ void main() {
 
       expect(report.rejected, 1);
       expect(report.conflicts, 0);
-      final entry = await outbox.entry('mut-1');
+      final entry = await outbox.entry(mid('mut-1'));
       expect(entry!.lastError, contains('period has been closed'));
       expect(entry.lastError, contains('reopen'));
     });
@@ -508,7 +523,10 @@ void main() {
       server.forcedOutcome = MutationOutcome.notPermitted;
 
       await engineFor(outbox).pushOnce();
-      expect((await outbox.entry('mut-1'))!.lastError, contains('permission'));
+      expect(
+        (await outbox.entry(mid('mut-1')))!.lastError,
+        contains('permission'),
+      );
     });
   });
 
@@ -517,11 +535,11 @@ void main() {
       'the queue pauses without dropping entries or burning attempts',
       () async {
         await outbox.enqueue(
-          expense(mutationId: 'a', entityId: 'e1'),
+          expense(mutationId: mid('a'), entityId: 'e1'),
           now: now,
         );
         await outbox.enqueue(
-          expense(mutationId: 'b', entityId: 'e2'),
+          expense(mutationId: mid('b'), entityId: 'e2'),
           now: now,
         );
         server.forcedOutcome = MutationOutcome.authExpired;
@@ -530,11 +548,11 @@ void main() {
         final report = await engine.pushOnce();
 
         expect(report.authBlocked, isTrue);
-        expect(await outbox.statusOf('a'), OutboxStatus.blockedAuth);
-        expect(await outbox.statusOf('b'), OutboxStatus.blockedAuth);
+        expect(await outbox.statusOf(mid('a')), OutboxStatus.blockedAuth);
+        expect(await outbox.statusOf(mid('b')), OutboxStatus.blockedAuth);
         expect(await outbox.unsyncedCount(), 2, reason: 'entries were dropped');
         expect(
-          (await outbox.entry('a'))!.attemptCount,
+          (await outbox.entry(mid('a')))!.attemptCount,
           0,
           reason: 'attempts burned',
         );
@@ -556,11 +574,11 @@ void main() {
     test('counts everything the server has not confirmed', () async {
       expect(await outbox.unsyncedCount(), 0);
       await outbox.enqueue(
-        expense(mutationId: 'a', entityId: 'e1'),
+        expense(mutationId: mid('a'), entityId: 'e1'),
         now: now,
       );
       await outbox.enqueue(
-        expense(mutationId: 'b', entityId: 'e2'),
+        expense(mutationId: mid('b'), entityId: 'e2'),
         now: now,
       );
       expect(await outbox.unsyncedCount(), 2);
@@ -571,21 +589,25 @@ void main() {
 
     test('a conflicted entry still counts as unsynced', () async {
       await outbox.enqueue(
-        expense(mutationId: 'x', op: MutationOp.update, baseRowVersion: 5),
+        expense(mutationId: mid('x'), op: MutationOp.update, baseRowVersion: 5),
         now: now,
       );
       await engineFor(outbox).pushOnce();
-      expect(await outbox.statusOf('x'), OutboxStatus.conflict);
+      expect(await outbox.statusOf(mid('x')), OutboxStatus.conflict);
       expect(await outbox.unsyncedCount(), 1);
     });
 
     test('only confirmed entries are ever purged', () async {
       await outbox.enqueue(
-        expense(mutationId: 'done', entityId: 'e1'),
+        expense(mutationId: mid('done'), entityId: 'e1'),
         now: now,
       );
       await outbox.enqueue(
-        expense(mutationId: 'stuck', op: MutationOp.update, baseRowVersion: 7),
+        expense(
+          mutationId: mid('stuck'),
+          op: MutationOp.update,
+          baseRowVersion: 7,
+        ),
         now: now,
       );
       await engineFor(outbox).pushOnce();
@@ -594,8 +616,8 @@ void main() {
         before: now.add(const Duration(days: 1)),
       );
       expect(purged, 1);
-      expect(await outbox.statusOf('done'), isNull);
-      expect(await outbox.statusOf('stuck'), OutboxStatus.conflict);
+      expect(await outbox.statusOf(mid('done')), isNull);
+      expect(await outbox.statusOf(mid('stuck')), OutboxStatus.conflict);
     });
   });
 }

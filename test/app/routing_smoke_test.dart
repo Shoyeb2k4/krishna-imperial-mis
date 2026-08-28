@@ -15,6 +15,8 @@ import 'package:krishna_mis/app/routing/app_router.dart';
 import 'package:krishna_mis/data/local/app_database.dart';
 import 'package:krishna_mis/data/local/seed/master_seed.dart';
 
+import '../support/test_session.dart';
+
 Future<void> pumpApp(WidgetTester tester, AppShellKind shellKind) async {
   await tester.binding.setSurfaceSize(
     shellKind == AppShellKind.desktop
@@ -31,7 +33,10 @@ Future<void> pumpApp(WidgetTester tester, AppShellKind shellKind) async {
 
   await tester.pumpWidget(
     ProviderScope(
-      overrides: [databaseProvider.overrideWithValue(db)],
+      overrides: [
+        databaseProvider.overrideWithValue(db),
+        sessionProvider.overrideWith(() => StubSession(readySession())),
+      ],
       child: KrishnaMisApp(shellKind: shellKind),
     ),
   );

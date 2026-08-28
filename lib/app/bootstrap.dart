@@ -18,9 +18,30 @@ import 'package:krishna_mis/app/routing/app_router.dart';
 import 'package:krishna_mis/data/local/app_database.dart';
 import 'package:krishna_mis/data/local/encrypted_database.dart';
 import 'package:krishna_mis/data/local/seed/master_seed.dart';
+import 'package:krishna_mis/data/local/authority_store.dart';
+import 'package:krishna_mis/data/remote/auth_gateway.dart';
+import 'package:krishna_mis/data/remote/authority_gateway.dart';
+import 'package:krishna_mis/data/remote/master_gateway.dart';
 import 'package:krishna_mis/data/sync/outbox_repository.dart';
+import 'package:krishna_mis/data/sync/reference_sync.dart';
+import 'package:krishna_mis/data/sync/scope_cache_purge.dart';
+import 'package:krishna_mis/app/session/session_controller.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:timezone/data/latest_all.dart' as tz_data;
 import 'package:timezone/timezone.dart' as tz;
+
+/// Start-up refused because the compiled-in configuration is unsafe or incomplete.
+///
+/// Separate from every other start-up failure so the user is told the real cause: a
+/// rejected key is a build/configuration mistake, not a damaged database.
+class ConfigurationRefused implements Exception {
+  const ConfigurationRefused(this.problem);
+
+  final ConfigurationProblem problem;
+
+  @override
+  String toString() => problem.toString();
+}
 
 /// What a successful start-up produced.
 class BootstrapResult {
@@ -30,6 +51,7 @@ class BootstrapResult {
     required this.database,
     required this.outbox,
     required this.recoveredInFlightEntries,
+    required this.session,
   });
 
   final AppConfig config;
@@ -40,19 +62,23 @@ class BootstrapResult {
   /// How many queued mutations were reclaimed from a previous crash. Reported rather
   /// than hidden — it is a useful signal in sync health.
   final int recoveredInFlightEntries;
+
+  /// Everything the session state machine needs. Null only when no backend is
+  /// configured, in which case the application cannot authenticate at all — and says so
+  /// rather than inventing a user.
+  final SessionDependencies? session;
 }
 
 Future<BootstrapResult> bootstrap() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   final config = AppConfig.fromEnvironment();
-  if (config.looksLikeServiceRoleKey) {
-    // A service-role key in a client binary is a security incident, not a warning.
-    // Failing loudly at start-up is the only responsible behaviour.
-    throw StateError(
-      'Refusing to start: the configured key looks like a service-role key. '
-      'Only the publishable/anon key may ship in a client binary.',
-    );
+  final problem = config.problem;
+  if (problem != null) {
+    // A privileged credential in a client binary is a security incident, not a warning,
+    // and a half-configured backend is a confusing failure deferred to later. Both stop
+    // start-up here, loudly, naming the fix and never echoing the value.
+    throw ConfigurationRefused(problem);
   }
 
   tz_data.initializeTimeZones();
@@ -67,12 +93,42 @@ Future<BootstrapResult> bootstrap() async {
   final outbox = OutboxRepository(database);
   final recovered = await outbox.recoverStaleInFlight(now: DateTime.now());
 
+  // The backend is initialised only when it is actually configured. Session tokens go to
+  // the platform-secure store rather than shared preferences: a refresh token is a bearer
+  // credential for company financial data (D-022).
+  SessionDependencies? session;
+  if (config.hasBackend) {
+    await Supabase.initialize(
+      url: config.supabaseUrl,
+      publishableKey: config.supabaseAnonKey,
+      authOptions: FlutterAuthClientOptions(
+        localStorage: SecureSessionStorage(),
+        authFlowType: AuthFlowType.pkce,
+      ),
+    );
+    final client = Supabase.instance.client;
+    final authorityGateway = AuthorityGateway(client);
+    final masterGateway = MasterGateway(client);
+    session = SessionDependencies(
+      auth: AuthGateway(client),
+      authority: authorityGateway,
+      store: AuthorityStore(database),
+      purge: ScopeCachePurge(database),
+      referenceSync: ReferenceSync(
+        db: database,
+        authorityGateway: authorityGateway,
+        masterGateway: masterGateway,
+      ),
+    );
+  }
+
   return BootstrapResult(
     config: config,
     shellKind: resolveShellKind(),
     database: database,
     outbox: outbox,
     recoveredInFlightEntries: recovered,
+    session: session,
   );
 }
 

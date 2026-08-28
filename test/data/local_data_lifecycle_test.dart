@@ -8,6 +8,7 @@ import 'dart:io';
 
 import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uuid/uuid.dart';
 import 'package:krishna_mis/data/local/app_database.dart';
 import 'package:krishna_mis/data/local/database_key_manager.dart';
 import 'package:krishna_mis/data/local/encrypted_database.dart';
@@ -19,6 +20,12 @@ import '../support/in_memory_secret_storage.dart';
 
 const String testKey =
     'a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90';
+
+/// Mutation ids are UUIDs — the server stores `mutation_id` as `uuid`, so a fixture
+/// using a short label would be refused as a malformed argument before any business rule
+/// ran. Derived from a name to stay readable and deterministic.
+String mid(String name) =>
+    const Uuid().v5('c0ffee00-0000-4000-8000-000000000000', name);
 
 void main() {
   late Directory workspace;
@@ -68,7 +75,7 @@ void main() {
 
   Future<void> queueOne(String id) => outbox.enqueue(
     PendingMutation(
-      mutationId: id,
+      mutationId: mid(id),
       entityType: 'expense',
       entityId: 'exp-$id',
       op: MutationOp.create,

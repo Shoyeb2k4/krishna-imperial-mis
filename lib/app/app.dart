@@ -6,6 +6,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:krishna_mis/app/routing/app_router.dart';
 import 'package:krishna_mis/core/design/app_theme.dart';
+import 'package:krishna_mis/features/auth/presentation/session_gate.dart';
 
 class KrishnaMisApp extends StatefulWidget {
   const KrishnaMisApp({required this.shellKind, super.key});
@@ -28,6 +29,13 @@ class _KrishnaMisAppState extends State<KrishnaMisApp> {
           ? AppTheme.desktop
           : AppTheme.mobile,
       routerConfig: _router,
+      // One gate decides what the application is allowed to show. Wrapping the router's
+      // output rather than guarding each route keeps the decision in a single place, and
+      // means a route added later cannot forget to make it.
+      builder: (context, child) => SessionGate(
+        shellKind: widget.shellKind,
+        child: child ?? const SizedBox(),
+      ),
     );
   }
 }

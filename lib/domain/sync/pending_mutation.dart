@@ -43,6 +43,12 @@ enum MutationOp {
 }
 
 /// One queued intent, exactly as it will be sent to the server.
+/// Client-generated ids are UUIDs, and the server's column type agrees.
+final _uuid = RegExp(
+  r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-'
+  r'[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
+);
+
 @immutable
 final class PendingMutation {
   PendingMutation({
@@ -55,6 +61,18 @@ final class PendingMutation {
     this.baseRowVersion,
     this.attemptCount = 0,
   }) {
+    if (!_uuid.hasMatch(mutationId)) {
+      // The server types `mutation_id` as `uuid`, so a malformed one is refused by
+      // Postgres as a bad *argument* — `22P02`, raised before any authority or version
+      // check runs. That surfaces at sync time as an unrecognised refusal, a long way
+      // from the code that queued it. Failing here instead keeps the cause next to the
+      // mistake (D-008: ids are client-generated UUID v7).
+      throw ArgumentError.value(
+        mutationId,
+        'mutationId',
+        'must be a UUID: it is the idempotency key the server stores and matches on',
+      );
+    }
     if (op.requiresBaseRowVersion && baseRowVersion == null) {
       throw ArgumentError(
         'A ${op.name} mutation must carry baseRowVersion: without it the server '

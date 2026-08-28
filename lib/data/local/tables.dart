@@ -29,6 +29,20 @@ class SyncOutbox extends Table {
   /// precisely so the same intent can never be enqueued twice.
   TextColumn get mutationId => text()();
 
+  /// Who queued this intent.
+  ///
+  /// A shared Windows workstation in a hotel back office will see several people sign
+  /// in and out of one installation. Without this column the queue is anonymous, and
+  /// one user's device could push work another user created under authority they no
+  /// longer hold — or never held. Sync only ever sends entries belonging to the signed-in
+  /// user, and one user's queued work is never shown to, retried by or attributed to
+  /// another (D-050).
+  ///
+  /// Nullable only for rows written before this column existed. Those are treated as
+  /// unattributed and are never sent by anyone; they are surfaced for a human instead of
+  /// being guessed at or quietly discarded.
+  TextColumn get actorUserId => text().nullable()();
+
   TextColumn get entityType => text()();
   TextColumn get entityId => text()();
 

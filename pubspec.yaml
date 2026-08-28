@@ -35,6 +35,10 @@ dependencies:
   # Platform-secure key storage: Android Keystore / Windows DPAPI
   flutter_secure_storage: 9.2.4
 
+  # Backend SDK. Only ever configured with the project URL and the publishable key —
+  # a privileged credential must never reach a client binary (D-022, D-044).
+  supabase_flutter: ^2.8.0
+
   # Domain support
   uuid: ^4.6.0 # UUID v7, client-generated, time-ordered (D-008)
   timezone: ^0.11.1 # IANA zones for DST-safe business-date derivation (D-019)

@@ -14,6 +14,7 @@ library;
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uuid/uuid.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:krishna_mis/data/local/app_database.dart';
 import 'package:krishna_mis/data/local/database_key_manager.dart';
@@ -22,6 +23,12 @@ import 'package:krishna_mis/data/local/local_data_lifecycle.dart';
 import 'package:krishna_mis/data/sync/outbox_repository.dart';
 import 'package:krishna_mis/domain/sync/pending_mutation.dart';
 import 'package:krishna_mis/domain/sync/sync_state.dart';
+
+/// Mutation ids are UUIDs — the server stores `mutation_id` as `uuid`, so a fixture
+/// using a short label would be refused as a malformed argument before any business rule
+/// ran. Derived from a name to stay readable and deterministic.
+String mid(String name) =>
+    const Uuid().v5('c0ffee00-0000-4000-8000-000000000000', name);
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
@@ -71,7 +78,7 @@ void main() {
 
       await outbox.enqueue(
         PendingMutation(
-          mutationId: 'integration-mut-1',
+          mutationId: mid('integration-mut-1'),
           entityType: 'expense',
           entityId: 'integration-exp-1',
           op: MutationOp.create,
@@ -92,7 +99,7 @@ void main() {
       final recovered = OutboxRepository(reopened);
       expect(await recovered.unsyncedCount(), 1);
       expect(
-        await recovered.statusOf('integration-mut-1'),
+        await recovered.statusOf(mid('integration-mut-1')),
         OutboxStatus.pending,
         reason: 'a queued offline save must survive an app restart',
       );
@@ -165,7 +172,7 @@ void main() {
 
         await outbox.enqueue(
           PendingMutation(
-            mutationId: 'lifecycle-mut-1',
+            mutationId: mid('lifecycle-mut-1'),
             entityType: 'expense',
             entityId: 'lifecycle-exp-1',
             op: MutationOp.create,
