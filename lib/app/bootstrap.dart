@@ -15,6 +15,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:krishna_mis/app/env/app_environment.dart';
 import 'package:krishna_mis/app/routing/app_router.dart';
+import 'package:krishna_mis/data/attachments/attachment_staging.dart';
 import 'package:krishna_mis/data/local/app_database.dart';
 import 'package:krishna_mis/data/local/encrypted_database.dart';
 import 'package:krishna_mis/data/local/seed/master_seed.dart';
@@ -169,15 +170,27 @@ Future<BootstrapResult> bootstrap({http.Client? transport}) async {
       ExpenseRepository(database),
       expenseGateway,
     );
+    // One purge, shared by the session lifecycle and by reference sync, so a revocation
+    // and a sign-out remove the same things by the same code. It can reclaim staged
+    // attachment bytes: since D-068 a revoked document's original bill goes with it, and
+    // deleting the row while leaving the JPEG in app-private storage would retain
+    // precisely the thing D-063 says a scoped user may not have.
+    final purge = ScopeCachePurge(
+      database,
+      reclaimStaging: (expenseId) => AttachmentStagingService(
+        resolveStagingDirectory: resolveAttachmentStagingDirectory,
+      ).discardExpense(expenseId),
+    );
     session = SessionDependencies(
       auth: AuthGateway(client),
       authority: authorityGateway,
       store: AuthorityStore(database),
-      purge: ScopeCachePurge(database),
+      purge: purge,
       referenceSync: ReferenceSync(
         db: database,
         authorityGateway: authorityGateway,
         masterGateway: masterGateway,
+        purge: purge,
       ),
     );
   }

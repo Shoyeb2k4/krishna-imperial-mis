@@ -428,9 +428,15 @@ class ExpenseRepository {
   }
 
   /// The ledger, most recent business date first.
+  ///
+  /// Excludes documents retained through a revocation (D-068). Those rows exist only so
+  /// the actor can inspect and reconcile their own unsent intent; they are not authorised
+  /// financial data and must never appear in a ledger. [listRetainedAfterRevocation] is
+  /// the one way to reach them.
   Future<List<LocalExpense>> list({int limit = 50, int offset = 0}) async {
     final rows =
         await (_db.select(_db.expenses)
+              ..where((t) => t.scopeRevokedAt.isNull())
               ..orderBy([
                 (t) => OrderingTerm(
                   expression: t.businessDate,
@@ -492,6 +498,10 @@ class ExpenseRepository {
     int offset = 0,
   }) async {
     final select = _db.select(_db.expenses);
+
+    // D-068: never browsable, whatever the filter asks for. First predicate rather than
+    // last, so a future filter branch cannot be written that forgets it.
+    select.where((t) => t.scopeRevokedAt.isNull());
 
     if (!filter.includeVoided) {
       select.where((t) => t.voidedAt.isNull());
@@ -579,6 +589,33 @@ class ExpenseRepository {
     syncState: await _syncStateFor(row),
   );
 
+  /// Documents kept through a confirmed scope revocation because they still carry this
+  /// actor's own unsynced intent (D-068).
+  ///
+  /// The dedicated pending / rejected / conflict workflow, and the only read that returns
+  /// them. They are deliberately absent from [list], [query] and [contributionTotal]:
+  /// authority over the property is gone, so presenting these as ledger rows or letting
+  /// them move a total would be exactly the leak the purge exists to close. What they
+  /// remain is *evidence* — what this person submitted, and what became of it.
+  ///
+  /// Ownership is the outbox's, not this table's: `dueEntries` filters by
+  /// `actor_user_id` (D-050), so another user signing in on the same installation can
+  /// neither push nor inherit this work, and the session's own scope decides what they
+  /// are shown.
+  Future<List<LocalExpense>> listRetainedAfterRevocation() async {
+    final rows =
+        await (_db.select(_db.expenses)
+              ..where((t) => t.scopeRevokedAt.isNotNull())
+              ..orderBy([
+                (t) => OrderingTerm(
+                  expression: t.scopeRevokedAt,
+                  mode: OrderingMode.desc,
+                ),
+              ]))
+            .get();
+    return [for (final row in rows) await _hydrate(row)];
+  }
+
   /// Everything this device holds for a business unit's contributions in one period.
   ///
   /// Reads `expense_period_allocations` and nothing else — the one reporting source
@@ -596,7 +633,10 @@ class ExpenseRepository {
           ),
         ])..where(
           _db.expensePeriodAllocations.pnlPeriodKey.equals(periodKey) &
-              _db.expenses.voidedAt.isNull(),
+              _db.expenses.voidedAt.isNull() &
+              // A retained document contributes nothing to any figure. It is somebody's
+              // unsent attempt over a property they no longer hold (D-068).
+              _db.expenses.scopeRevokedAt.isNull(),
         );
     if (businessUnitId != null) {
       query.where(

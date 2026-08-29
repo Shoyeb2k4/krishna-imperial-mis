@@ -5,7 +5,7 @@ Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
-Last updated: **2026-08-30**
+Last updated: **2026-08-30** (second checkpoint)
 
 > A new session should be able to read this file and know exactly where work stopped.
 > This file — not chat history — is the checkpoint.
@@ -23,7 +23,8 @@ Every gate passed, including the ones that can only be passed by running the rea
 application: the Android package on a device, and the compiled Windows executable, both
 against the real `krishna-mis-dev` project, with the real development identities.
 
-**Phase 3 — Expense Engine: in progress. NOT complete.** Slices 1–7 are approved and
+**Phase 3 — Expense Engine: in progress. NOT complete, and one requested surface turns
+out not to exist (D-072).** Slices 1–7 are approved and
 committed (`81ef239`, `03e8b93`); slices 8–13 — the Android entry surface, the Windows
 ledger and detail, edit/void, cross-business and cross-period allocation, and the audit
 presentation — are built and committed (`3871b9f`) and covered by host tests.
@@ -102,7 +103,7 @@ Blocked.**
 |---|---|---|
 | `dart format --set-exit-if-changed` | **Tested** | clean (140 files) |
 | `flutter analyze` | **Tested** | **No issues found** |
-| Host test suite | **Tested** | **578 tests, all passing** |
+| Host test suite | **Tested** | **616 tests, all passing** |
 | Secret scan — tree, git history, built binaries | **Tested** | clean — tree, history and rebuilt distributables; the scan now proves its own controls every run (D-069) |
 | Migration audit (search_path, API surface, policy boundary) | **Tested** | 14 host tests |
 | Backend schema parity (migrations vs the claims made about them) | **Tested** | 18 host tests |
@@ -133,17 +134,20 @@ Blocked.**
 | Edit window under the property's business date (D-067) | **Tested** | migration 0033 asserts 04:59 / 05:00 / 05:15 / 23:59 / 00:01; live suite re-run green |
 | Device timezone cannot influence a business date | **Tested** | `business_date_test.dart`, pinned to the same instant the server asserts |
 | Secret scan — tree, history, **rebuilt distributable** APK + Windows Release | **Tested** | clean; scanner self-test proves its own controls, verified by breaking it |
-| Android cross-period entry through the UI | **Not tested** | no acceptance phase written |
+| Android cross-period entry through the UI | **Tested** | `cross-period`: ₹60,000 → May ₹30,000 / June ₹30,000, plus an odd-paise split reconciling exactly |
 | Attachments on either platform, end to end | **Not tested** | no acceptance phase written; host coverage only (18 tests) |
 | Windows ledger: filters, paging, detail projection | **Not tested** | no acceptance phase written; widget coverage only |
-| Two-device Android ⇄ Windows expense propagation | **Not tested** | no acceptance phase written |
-| Payment-date accrual through the application | **Not tested** | domain rule covered; no client-path acceptance |
+| Two-device Android ⇄ Windows expense propagation | **Not tested** | create/refresh/void legs schedulable; edit and conflict legs blocked by D-072 |
+| Expense **edit** through the UI | **Blocked** | the surface does not exist in `lib/` (D-072); the server rule is proven |
+| D-068 financial cache retention | **Tested** | 3 tests on the real APK and 3 inside the real `.exe` |
+| Client and server agree on a business date at one instant | **Tested** | 10 host tests reading migration 0033's own assertion table |
+| Payment-date accrual through the application | **Tested** | `payment-accrual`: ₹80,000 to June, ₹0 to July, paid 5 July |
 
 ### Test totals
 
 | Suite | Count | Result |
 |---|---|---|
-| Host (`flutter test`) | 578 | all passing |
+| Host (`flutter test`) | 616 | all passing |
 | Live backend against `krishna-mis-dev` (opt-in) | 19 | all passing |
 | Live expense suite against `krishna-mis-dev` (opt-in) | 16 | all passing |
 | Android Phase 2 device acceptance (real APK) | 19 | all passing |
@@ -152,7 +156,12 @@ Blocked.**
 | Encryption on device — Android 8, Windows 8 | 16 | all passing |
 | **Android Phase 3 expense acceptance (real APK)** | **4** | **all passing** |
 | **Windows Phase 3 expense acceptance (real executable)** | **4** | **all passing** |
-| **Total** | **689** | **0 failing, 0 skipped-and-counted** |
+| **D-068 retention, Android (`d068-switch`, `d068-revoke`)** | **3** | **all passing** |
+| **D-068 retention, Windows (`d068-switch`, `d068-revoke`)** | **3** | **all passing** |
+| **Android cross-period (`cross-period`)** | **2** | **all passing** |
+| **Android payment-date accrual (`payment-accrual`)** | **1** | **all passing** |
+| **Acceptance fixture reversal (`expense-cleanup`, both platforms)** | **2** | **all passing** |
+| **Total** | **735** | **0 failing, 0 skipped-and-counted** |
 
 The Phase 3 acceptance figures are four phases per platform — `expense-simple`,
 `expense-offline`, `expense-shared`, `expense-refusals` — each one process launch against
@@ -235,24 +244,51 @@ to. Full reasoning in `DECISIONS.md` D-067 … D-069.
 
 ## Acceptance still outstanding
 
-Written down rather than glossed. None of these has an acceptance phase yet, so none of
-them has passed; each is host- or widget-tested only.
+Written down rather than glossed. **A phase that has not run is not a phase that passed**,
+and one of the items below cannot run at all because the surface it would exercise is not
+built.
 
-1. **Cross-period allocation through the Android UI** — the ₹60,000 → May ₹30,000 / June
-   ₹30,000 split, and an uneven minor-unit split reconciling to the paisa. The *server*
-   half is proven by the live suite (`shared and cross-period at once reconciles on both
-   dimensions`); the entry surface is not.
-2. **Attachments end to end on either platform** — staging, independent upload, hash
-   confirmation, transient-failure retry that leaves the expense `Synced`, and a scoped
-   manager being refused the complete-document object by Storage rather than by a hidden
-   button. Host coverage is 18 tests; the live suite proves the Storage refusal.
-3. **The Windows ledger** — filters, keyset paging against SQL rather than an in-memory
-   future, and the detail panel never labelling a scoped share as `TOTAL`.
-4. **Two-device propagation**, Android ⇄ Windows simultaneously, for expenses.
-5. **Payment-date accrual through the application** — a June salary paid 5 July
-   contributing ₹80,000 to June and ₹0 to July.
-6. **Void through the UI** — mandatory reason, blank reason refused, control absent for a
-   Manager. The *server* refusals are proven on both platforms; the surface is not.
+### Closed since the last checkpoint
+
+| Surface | Status | Evidence |
+|---|---|---|
+| D-068 financial cache retention, user switch | **Tested** | `d068-switch`, 2 tests, Android **and** Windows |
+| D-068 partial revocation (CCR+HKI → lose CCR) | **Tested** | `d068-revoke`, 1 test, Android **and** Windows |
+| Android cross-period entry through the UI | **Tested** | `cross-period`, 2 tests on the real APK |
+| Payment-date accrual through the UI | **Tested** | `payment-accrual`, 1 test on the real APK |
+| Client/server business-date agreement (D-067) | **Tested** | 10 host tests, reading migration 0033's own assertion table |
+| Acceptance fixture reversal | **Tested** | `expense-cleanup` now reverses and asserts; was a no-op (D-071) |
+
+### Still outstanding
+
+1. **Attachments end to end on either platform** — *Not tested.* Staging, independent
+   upload, hash confirmation, transient-failure retry leaving the expense `Synced`, and a
+   scoped manager refused the complete-document object by Storage. Host coverage is 18
+   tests and the live suite proves the Storage refusal. **A note on what is provable:** the
+   OS file picker and the Android photo picker are separate activities/dialogs and cannot
+   be driven by the Flutter test harness. Everything *after* the picker returns a file can
+   be proven on device, by injecting at that boundary exactly as D-058 injects the
+   transport — and the limitation must be stated rather than papered over.
+2. **The Windows ledger** — *Not tested.* Filters, keyset paging against SQL rather than
+   an in-memory future, and the detail panel never labelling a scoped share as `TOTAL`.
+   Widget coverage only.
+3. **Void through the UI** — *Not tested.* Mandatory reason, blank reason refused, control
+   absent for a Manager. The server refusals are proven on both platforms; the surface is
+   not. The surface **does** exist, so this is schedulable work.
+4. **Two-device propagation**, Android ⇄ Windows, for expenses — *Not tested.* The create,
+   refresh and void legs are schedulable. The **edit** and **stale-conflict** legs are
+   blocked by item 5.
+5. **Expense edit through the UI — BLOCKED, the surface does not exist (D-072).** The
+   server RPC, its edit window, its beyond-window capability and its closed-period refusal
+   are all implemented and proven against `krishna-mis-dev`. What is missing is any client
+   path that can issue an update: `ExpenseRepository` has no update method, the detail
+   panel renders Void alone, and `ExpenseGateway.update` is called only from tests. The
+   earlier claim that slices 8–13 delivered "edit/void" is wrong about edit. **This needs
+   the project lead's decision** — build the slice, or descope it and stop claiming it.
+6. **Final distributable rebuild and binary secret scan** — *Not tested this checkpoint.*
+   Tree and git history are scanned clean, with the scanner's own controls passing on
+   every run; the APK and Windows bundle have not been rebuilt clean and rescanned since
+   these changes.
 
 ## Known issues
 
@@ -286,34 +322,43 @@ platforms run against it.
 
 ## Next exact task
 
-**Finish the Phase 3 acceptance.** Write and run the six phases listed under *Acceptance
-still outstanding*, then re-run the full gate set and close the phase. Nothing is blocked;
-this is remaining work, not an obstacle.
+**Settle D-072 first**, because it decides how much of the rest there is. If the expense
+edit surface is to be built, it is a Phase 3 slice with its own design — draft loading from
+a possibly-scoped projection, allocation and period editing under the entry screen's
+reconciliation rules, `base_row_version` carried from load to submission, conflict
+presentation, and outbox reconciliation — and the two-device edit and conflict legs follow
+from it. If it is to be descoped, this document and the client-side edit-window rules must
+say so plainly.
 
-The order that costs least: cross-period entry and payment-date accrual share the entry
-surface and should be one phase each on Android; attachments need a phase on each platform
-because the pickers differ; the Windows ledger needs one; two-device propagation needs two
-halves like `propagate-a` / `propagate-b`.
+Then, in the order that costs least:
 
-**Do not mark Phase 3 complete until those have run.** Four of the requested surfaces are
-covered today only by host and widget tests, and Phase 2 established — five times over —
-that a green host suite is not evidence about the real application.
+1. Void through the Windows UI (the surface exists; one phase).
+2. The Windows ledger phase — filters, paging, and the scoped detail caption.
+3. Attachments: one phase per platform, injecting at the picker boundary and saying so.
+4. Two-device `propagate-expense-a` / `-b` for create, refresh and void.
+5. Rebuild clean distributables and scan the binaries.
+6. Re-run the whole gate set and close the phase.
 
 ## Open questions for the project lead
 
-1. **Does a revoked scope take that property's cached expense history with it?** (D-068.)
-   Today it does not: the scope purge is limited to server-owned *reference* data, so a
-   manager who loses Crystal Canopy keeps its cached expense amounts on their device until
-   they sign out. That follows from D-048 as written — "nothing a person typed is ever in
-   scope" — and the opposite reading is defensible on exactly the security grounds that
-   made D-048 choose Option A in the first place. It is a retention decision about
-   financial data, so it is yours rather than an implementer's. If you want it purged it is
-   one line in `CacheClassification` plus a delete step; nothing else changes either way.
+1. **Does a revoked scope take that property's cached expense history with it?**
+   **Answered 2026-08-30 — yes.** Recorded as D-070 and implemented: the purge runs at the
+   confirmed authority refresh and covers synced headers, allocations, contributions,
+   attachment metadata and the staged files, sparing only the actor's own unsent work.
+   Proven on both platforms.
+
+2. **Should the expense edit surface be built, or descoped? (D-072.)** New, and the more
+   consequential of the two. The server's `expense_update` — with the seven-day window,
+   the beyond-window capability and the closed-period refusal — is implemented and proven.
+   The client has no way to issue an edit: no repository method, no control, no route. So
+   D-026, D-065 and D-067 currently govern an operation a user cannot perform. Building it
+   is a Phase 3 slice, not a button, which is why it is being asked rather than assumed.
 
 ## Project lead actions required
 
-1. **Answer the D-068 retention question above.** It does not block finishing the
-   acceptance, and it should be settled before Phase 3 closes.
+1. **Decide D-072 — build the expense edit surface, or descope it.** This one *does*
+   block: two of the acceptance surfaces you asked for exercise a client path that does
+   not exist, and no amount of test-writing can make them pass until it does.
 2. **Supply the first tax rule per revenue category** — Restaurant, Nandbhog, Room,
    Banquet — when the real treatment has been verified (D-043). Both applications
    currently show "No rule configured", which is correct and honest until then. This does
@@ -341,14 +386,19 @@ and re-scanned before anything is called distributable.
 
 ## Database migration status
 
-**Local Drift schema v8.** v1 `app_meta` and `sync_outbox`; v2 masters and period locks;
+**Local Drift schema v9.** v1 `app_meta` and `sync_outbox`; v2 masters and period locks;
 v3–v4 the Phase 2 master refinements; v5 makes `vendors.default_business_unit_id` and
 `default_category_id` soft pointers rather than foreign keys, because a per-user cache
 legitimately holds a vendor whose usual property is one this user cannot see (D-049); v6
 adds `sync_outbox.actor_user_id` (D-050); v7 adds the four expense tables; **v8 makes
 `expense_allocations.business_unit_id` a soft pointer** for the same reason v5 existed —
 the scope purge legitimately removes a unit while synced history stays, and the foreign key
-made sign-out throw (D-068).
+made sign-out throw (D-068); **v9 adds `expenses.scope_revoked_at`**, because a confirmed
+revocation now purges synced financial cache (D-070) and the one thing that must survive —
+a document still carrying the actor's own unsent intent — needs somewhere to say it is
+retained for that reason and is not browsable financial data. The local database now also
+sets `PRAGMA secure_delete = ON`, so a purge does not leave the revoked property's figures
+legible in freed pages.
 
 **Postgres: 32 migrations, all applied to `krishna-mis-dev` and all committed.** 0033
 measures the edit window under the property's business date instead of the database
@@ -357,13 +407,19 @@ session's calendar date (D-067). The live suite asserts the repository and the s
 
 ## Last important decision
 
-**D-067 — the edit window counts days under the property's date, not the server's.** The
-seven-day boundary was already correct and tested; what nobody had asked was what
-`current_date` meant. It meant UTC, and the properties do not keep UTC time, so for half an
-hour every night the server granted an eighth day it had not been asked to grant. The rule
-now derives "today" the same way the client derives a business date for a new entry —
-`now()` in the unit's timezone, stepped back before the cut-off — so the two layers agree
-by construction rather than by coincidence.
+**D-070 — a confirmed revocation now takes the revoked property's figures with it.** The
+open question D-068 left for the project lead is answered, and answered the other way:
+synced financial data for a revoked unit leaves the browsable local cache at the authority
+refresh, not at the next sign-out. What survives is narrower and sharper — the actor's own
+unsent, rejected or conflicted intent, retained whole, stamped, and excluded from every
+canonical financial read, because it exists nowhere else.
+
+Two things fell out of implementing it. A partially revoked shared bill has to be
+*downgraded*, not merely trimmed: a complete header beside one surviving line publishes the
+share that was just revoked. And the purge was, as first written, weaker than the
+projection it protects — SQLite left the deleted figures legible in freed pages until
+`PRAGMA secure_delete` was turned on, which a byte-level test found and a deliberate
+un-fix confirmed.
 
 ## Master Spec version
 

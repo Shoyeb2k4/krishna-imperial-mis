@@ -7804,6 +7804,18 @@ class $ExpensesTable extends Expenses
     type: DriftSqlType.dateTime,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _scopeRevokedAtMeta = const VerificationMeta(
+    'scopeRevokedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> scopeRevokedAt =
+      GeneratedColumn<DateTime>(
+        'scope_revoked_at',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -7834,6 +7846,7 @@ class $ExpensesTable extends Expenses
     rowVersion,
     serverUpdatedAt,
     updatedAt,
+    scopeRevokedAt,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -8068,6 +8081,15 @@ class $ExpensesTable extends Expenses
     } else if (isInserting) {
       context.missing(_updatedAtMeta);
     }
+    if (data.containsKey('scope_revoked_at')) {
+      context.handle(
+        _scopeRevokedAtMeta,
+        scopeRevokedAt.isAcceptableOrUnknown(
+          data['scope_revoked_at']!,
+          _scopeRevokedAtMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -8189,6 +8211,10 @@ class $ExpensesTable extends Expenses
         DriftSqlType.dateTime,
         data['${effectivePrefix}updated_at'],
       )!,
+      scopeRevokedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}scope_revoked_at'],
+      ),
     );
   }
 
@@ -8254,6 +8280,24 @@ class ExpenseRow extends DataClass implements Insertable<ExpenseRow> {
   final int rowVersion;
   final DateTime? serverUpdatedAt;
   final DateTime updatedAt;
+
+  /// When a confirmed revocation removed this user's authority over every unit this
+  /// document charges, and the row was kept anyway (D-068).
+  ///
+  /// Null on everything a user may browse. Non-null on exactly one kind of row: a
+  /// document that still carries **unsynced work of its own** — a queued, failed,
+  /// rejected or conflicted intent — at the moment its business unit was revoked.
+  ///
+  /// The purge deletes synced financial cache for a revoked unit; it does not delete
+  /// somebody's unsent attempt, because that attempt exists nowhere else and the person
+  /// who made it has to be able to see what happened to it. So the row survives, stamped
+  /// with this, and is excluded from every canonical financial read — the ledger, the
+  /// filtered query, the contribution totals. It remains reachable only through the
+  /// pending / rejected / conflict workflow, for the actor who queued it.
+  ///
+  /// It is a **timestamp rather than a flag** so the retention is dateable: "kept since"
+  /// is a fact about the row, and a bare boolean would not say when authority changed.
+  final DateTime? scopeRevokedAt;
   const ExpenseRow({
     required this.id,
     required this.orgId,
@@ -8283,6 +8327,7 @@ class ExpenseRow extends DataClass implements Insertable<ExpenseRow> {
     required this.rowVersion,
     this.serverUpdatedAt,
     required this.updatedAt,
+    this.scopeRevokedAt,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -8347,6 +8392,9 @@ class ExpenseRow extends DataClass implements Insertable<ExpenseRow> {
       map['server_updated_at'] = Variable<DateTime>(serverUpdatedAt);
     }
     map['updated_at'] = Variable<DateTime>(updatedAt);
+    if (!nullToAbsent || scopeRevokedAt != null) {
+      map['scope_revoked_at'] = Variable<DateTime>(scopeRevokedAt);
+    }
     return map;
   }
 
@@ -8412,6 +8460,9 @@ class ExpenseRow extends DataClass implements Insertable<ExpenseRow> {
           ? const Value.absent()
           : Value(serverUpdatedAt),
       updatedAt: Value(updatedAt),
+      scopeRevokedAt: scopeRevokedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(scopeRevokedAt),
     );
   }
 
@@ -8457,6 +8508,7 @@ class ExpenseRow extends DataClass implements Insertable<ExpenseRow> {
       rowVersion: serializer.fromJson<int>(json['rowVersion']),
       serverUpdatedAt: serializer.fromJson<DateTime?>(json['serverUpdatedAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+      scopeRevokedAt: serializer.fromJson<DateTime?>(json['scopeRevokedAt']),
     );
   }
   @override
@@ -8493,6 +8545,7 @@ class ExpenseRow extends DataClass implements Insertable<ExpenseRow> {
       'rowVersion': serializer.toJson<int>(rowVersion),
       'serverUpdatedAt': serializer.toJson<DateTime?>(serverUpdatedAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
+      'scopeRevokedAt': serializer.toJson<DateTime?>(scopeRevokedAt),
     };
   }
 
@@ -8525,6 +8578,7 @@ class ExpenseRow extends DataClass implements Insertable<ExpenseRow> {
     int? rowVersion,
     Value<DateTime?> serverUpdatedAt = const Value.absent(),
     DateTime? updatedAt,
+    Value<DateTime?> scopeRevokedAt = const Value.absent(),
   }) => ExpenseRow(
     id: id ?? this.id,
     orgId: orgId ?? this.orgId,
@@ -8572,6 +8626,9 @@ class ExpenseRow extends DataClass implements Insertable<ExpenseRow> {
         ? serverUpdatedAt.value
         : this.serverUpdatedAt,
     updatedAt: updatedAt ?? this.updatedAt,
+    scopeRevokedAt: scopeRevokedAt.present
+        ? scopeRevokedAt.value
+        : this.scopeRevokedAt,
   );
   ExpenseRow copyWithCompanion(ExpensesCompanion data) {
     return ExpenseRow(
@@ -8639,6 +8696,9 @@ class ExpenseRow extends DataClass implements Insertable<ExpenseRow> {
           ? data.serverUpdatedAt.value
           : this.serverUpdatedAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      scopeRevokedAt: data.scopeRevokedAt.present
+          ? data.scopeRevokedAt.value
+          : this.scopeRevokedAt,
     );
   }
 
@@ -8672,7 +8732,8 @@ class ExpenseRow extends DataClass implements Insertable<ExpenseRow> {
           ..write('pendingMutationId: $pendingMutationId, ')
           ..write('rowVersion: $rowVersion, ')
           ..write('serverUpdatedAt: $serverUpdatedAt, ')
-          ..write('updatedAt: $updatedAt')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('scopeRevokedAt: $scopeRevokedAt')
           ..write(')'))
         .toString();
   }
@@ -8707,6 +8768,7 @@ class ExpenseRow extends DataClass implements Insertable<ExpenseRow> {
     rowVersion,
     serverUpdatedAt,
     updatedAt,
+    scopeRevokedAt,
   ]);
   @override
   bool operator ==(Object other) =>
@@ -8739,7 +8801,8 @@ class ExpenseRow extends DataClass implements Insertable<ExpenseRow> {
           other.pendingMutationId == this.pendingMutationId &&
           other.rowVersion == this.rowVersion &&
           other.serverUpdatedAt == this.serverUpdatedAt &&
-          other.updatedAt == this.updatedAt);
+          other.updatedAt == this.updatedAt &&
+          other.scopeRevokedAt == this.scopeRevokedAt);
 }
 
 class ExpensesCompanion extends UpdateCompanion<ExpenseRow> {
@@ -8771,6 +8834,7 @@ class ExpensesCompanion extends UpdateCompanion<ExpenseRow> {
   final Value<int> rowVersion;
   final Value<DateTime?> serverUpdatedAt;
   final Value<DateTime> updatedAt;
+  final Value<DateTime?> scopeRevokedAt;
   final Value<int> rowid;
   const ExpensesCompanion({
     this.id = const Value.absent(),
@@ -8801,6 +8865,7 @@ class ExpensesCompanion extends UpdateCompanion<ExpenseRow> {
     this.rowVersion = const Value.absent(),
     this.serverUpdatedAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
+    this.scopeRevokedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   ExpensesCompanion.insert({
@@ -8832,6 +8897,7 @@ class ExpensesCompanion extends UpdateCompanion<ExpenseRow> {
     this.rowVersion = const Value.absent(),
     this.serverUpdatedAt = const Value.absent(),
     required DateTime updatedAt,
+    this.scopeRevokedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        orgId = Value(orgId),
@@ -8869,6 +8935,7 @@ class ExpensesCompanion extends UpdateCompanion<ExpenseRow> {
     Expression<int>? rowVersion,
     Expression<DateTime>? serverUpdatedAt,
     Expression<DateTime>? updatedAt,
+    Expression<DateTime>? scopeRevokedAt,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -8905,6 +8972,7 @@ class ExpensesCompanion extends UpdateCompanion<ExpenseRow> {
       if (rowVersion != null) 'row_version': rowVersion,
       if (serverUpdatedAt != null) 'server_updated_at': serverUpdatedAt,
       if (updatedAt != null) 'updated_at': updatedAt,
+      if (scopeRevokedAt != null) 'scope_revoked_at': scopeRevokedAt,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -8938,6 +9006,7 @@ class ExpensesCompanion extends UpdateCompanion<ExpenseRow> {
     Value<int>? rowVersion,
     Value<DateTime?>? serverUpdatedAt,
     Value<DateTime>? updatedAt,
+    Value<DateTime?>? scopeRevokedAt,
     Value<int>? rowid,
   }) {
     return ExpensesCompanion(
@@ -8970,6 +9039,7 @@ class ExpensesCompanion extends UpdateCompanion<ExpenseRow> {
       rowVersion: rowVersion ?? this.rowVersion,
       serverUpdatedAt: serverUpdatedAt ?? this.serverUpdatedAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      scopeRevokedAt: scopeRevokedAt ?? this.scopeRevokedAt,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -9065,6 +9135,9 @@ class ExpensesCompanion extends UpdateCompanion<ExpenseRow> {
     if (updatedAt.present) {
       map['updated_at'] = Variable<DateTime>(updatedAt.value);
     }
+    if (scopeRevokedAt.present) {
+      map['scope_revoked_at'] = Variable<DateTime>(scopeRevokedAt.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -9102,6 +9175,7 @@ class ExpensesCompanion extends UpdateCompanion<ExpenseRow> {
           ..write('rowVersion: $rowVersion, ')
           ..write('serverUpdatedAt: $serverUpdatedAt, ')
           ..write('updatedAt: $updatedAt, ')
+          ..write('scopeRevokedAt: $scopeRevokedAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -17015,6 +17089,7 @@ typedef $$ExpensesTableCreateCompanionBuilder =
       Value<int> rowVersion,
       Value<DateTime?> serverUpdatedAt,
       required DateTime updatedAt,
+      Value<DateTime?> scopeRevokedAt,
       Value<int> rowid,
     });
 typedef $$ExpensesTableUpdateCompanionBuilder =
@@ -17047,6 +17122,7 @@ typedef $$ExpensesTableUpdateCompanionBuilder =
       Value<int> rowVersion,
       Value<DateTime?> serverUpdatedAt,
       Value<DateTime> updatedAt,
+      Value<DateTime?> scopeRevokedAt,
       Value<int> rowid,
     });
 
@@ -17277,6 +17353,11 @@ class $$ExpensesTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<DateTime> get scopeRevokedAt => $composableBuilder(
+    column: $table.scopeRevokedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
   Expression<bool> expenseAllocationsRefs(
     Expression<bool> Function($$ExpenseAllocationsTableFilterComposer f) f,
   ) {
@@ -17503,6 +17584,11 @@ class $$ExpensesTableOrderingComposer
     column: $table.updatedAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<DateTime> get scopeRevokedAt => $composableBuilder(
+    column: $table.scopeRevokedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$ExpensesTableAnnotationComposer
@@ -17633,6 +17719,11 @@ class $$ExpensesTableAnnotationComposer
 
   GeneratedColumn<DateTime> get updatedAt =>
       $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get scopeRevokedAt => $composableBuilder(
+    column: $table.scopeRevokedAt,
+    builder: (column) => column,
+  );
 
   Expression<T> expenseAllocationsRefs<T extends Object>(
     Expression<T> Function($$ExpenseAllocationsTableAnnotationComposer a) f,
@@ -17774,6 +17865,7 @@ class $$ExpensesTableTableManager
                 Value<int> rowVersion = const Value.absent(),
                 Value<DateTime?> serverUpdatedAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
+                Value<DateTime?> scopeRevokedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ExpensesCompanion(
                 id: id,
@@ -17804,6 +17896,7 @@ class $$ExpensesTableTableManager
                 rowVersion: rowVersion,
                 serverUpdatedAt: serverUpdatedAt,
                 updatedAt: updatedAt,
+                scopeRevokedAt: scopeRevokedAt,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -17836,6 +17929,7 @@ class $$ExpensesTableTableManager
                 Value<int> rowVersion = const Value.absent(),
                 Value<DateTime?> serverUpdatedAt = const Value.absent(),
                 required DateTime updatedAt,
+                Value<DateTime?> scopeRevokedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ExpensesCompanion.insert(
                 id: id,
@@ -17866,6 +17960,7 @@ class $$ExpensesTableTableManager
                 rowVersion: rowVersion,
                 serverUpdatedAt: serverUpdatedAt,
                 updatedAt: updatedAt,
+                scopeRevokedAt: scopeRevokedAt,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

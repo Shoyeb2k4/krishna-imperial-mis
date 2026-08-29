@@ -1531,8 +1531,11 @@ four expense tables, none of them was classified, and the suite went on passing.
    set with `AppDatabase.allTables` in both directions. A promise nothing evaluates is a
    comment.
 
-**A question left open for the project lead.** This retains a revoked manager's cached
-expense amounts for the property they have lost. It follows from D-048 as written, and the
+**A question left open for the project lead.** *(Answered 2026-08-30 by D-070, which
+reverses the retention below: synced financial data for a revoked unit is now purged at
+the confirmed authority refresh, and only the actor's own unsent work is kept. This
+paragraph is left as written, because this log is append-only.)* This retains a revoked
+manager's cached expense amounts for the property they have lost. It follows from D-048 as written, and the
 alternative — purging scoped financial history too — is defensible on the same security
 reasoning that chose Option A. It is a retention decision about financial data, so it is
 his to make, not one to be settled by an implementer reading between two documents. If he
@@ -1572,3 +1575,157 @@ verifier and watching the run refuse itself.
 past the real thing without saying so. Acceptance builds carry the development identity
 passwords in `kernel_blob.bin` and are still proven non-distributable by the same tool;
 the distributable artefacts are rebuilt without the identity defines and scanned clean.
+
+---
+
+# Phase 3 — the project lead's retention decision, and what closing it found (2026-08-30)
+
+## D-070 — Financial cache retention: synced financial data is purged on revocation
+**Date:** 2026-08-30 · **Status:** Accepted (project-lead decision) — **answers the open
+question D-068 left for him, and reverses what the Phase 3 checkpoint shipped**
+**Context:** D-068 classified synced expense documents as retained through a confirmed
+scope revocation, on the reading that the purge covered server-owned *reference* data and
+that "nothing a person typed is ever in scope" (D-048). It said plainly that the opposite
+reading was defensible on the same security grounds, that it was a retention decision
+about company financial data, and that it was therefore the project lead's to make rather
+than an implementer's.
+
+**He decided the other way.**
+
+**Decision.** After a **confirmed** authoritative scope revocation, server-owned synced
+financial data for the revoked business unit no longer remains in that user's normal
+browsable local cache. This happens at the authority refresh — **not** deferred to
+sign-out. The sequence is unchanged in shape and stricter in effect:
+
+```
+authority refresh confirmed
+  -> determine revoked scopes
+  -> purge the unauthorised canonical financial cache
+  -> render only what is currently authorised
+```
+
+In scope: synced expense headers, allocation rows, period-contribution rows, attachment
+metadata, the locally cached attachment **files** the user may no longer retrieve, and any
+future server-owned financial read model. `unknown != revoked` is unchanged and remains
+enforced by the type system: `applyTo` takes an `AuthorityRefresh`, whose only purging
+branch is `AuthorityConfirmed`, so a timeout still deletes nothing.
+
+**What is preserved, and why it is a different kind of thing.** Pending, rejected and
+conflicted mutations — and the locally authored document rows needed to inspect and
+reconcile them — are **not** destroyed because access changed. They are user-owned
+attempt state, not canonical server-owned read data: the server hands a synced expense
+straight back when authority returns, and it can never hand back an intent it never
+received. Such a document is:
+
+* retained **whole**, because a half-deleted document cannot be inspected or reconciled,
+  which is the only reason it was kept;
+* stamped `expenses.scope_revoked_at` (local schema **v9**);
+* removed from **every** canonical financial read — the ledger, the filtered query, the
+  contribution totals — so it is never browsable as though it were still authorised;
+* still tied to its original `actor_user_id`, so another user signing in on the same
+  installation can neither see it in their ledger nor push it (D-050);
+* reachable only through `listRetainedAfterRevocation`, the dedicated
+  pending / rejected / conflict workflow.
+
+A mutation refused after its permission was withdrawn still becomes terminal `Rejected`
+and is still not deleted. Restoring the scope clears the stamp and the document becomes
+browsable again; a shared document becomes browsable only when **every** property it
+charges is reachable, which is the strict reading.
+
+**The partially revoked shared bill.** A manager losing Crystal Canopy while keeping Hotel
+Krishna keeps the Hotel Krishna share and loses everything else — and the header is
+**downgraded from `complete` to `scoped` with its document total nulled**. This is not
+tidiness. A complete header of ₹58,000 beside a single surviving line of ₹33,000 publishes
+₹25,000, which is precisely the share just revoked and precisely the arithmetic the local
+read model exists to make impossible (D-062). Attachments go with the downgrade, on the
+predicate they already had: complete-document-only (D-063).
+
+**Alternatives:** purging at sign-out only (leaves the revoked property's figures
+browsable for as long as the session lasts — the thing the decision rejects); deleting the
+unsent work too (destroys the only copy of something a person did, and D-048 §2 has never
+allowed it); filtering at query time instead of stamping (every future query must
+remember, and one that forgets is a silent leak).
+
+**Consequences.**
+* `CacheOwnership.scopedFinancialHistory` now means *purged, sparing unsynced work*. It
+  keeps its own name rather than folding into `businessUnitScoped`, because the exception
+  is the whole policy.
+* Local schema **v9** adds `expenses.scope_revoked_at`.
+* `PRAGMA secure_delete = ON` is now set on the local database. Without it the purge was
+  **weaker than the projection it protects**: the deleted rows stayed legible in freed
+  pages, and D-062's argument was explicitly about what a raw database file reveals. Found
+  by writing the byte-level test, and confirmed by breaking the pragma and watching the
+  revoked ₹25,000 reappear in the file.
+* Staged attachment bytes are reclaimed **after** the transaction commits, because a
+  rollback cannot put a deleted file back.
+* Proven on both real clients against `krishna-mis-dev`: the Owner's complete ₹58,000
+  invoice does not survive into a scoped manager's session, and a manager holding both
+  properties who loses one keeps ₹33,000, loses the ₹25,000 and the ₹58,000, keeps their
+  own unsent intent, and sees no foreign-key failure on the way through.
+
+## D-071 — Acceptance fixtures are reversed, and the phase proves it
+**Date:** 2026-08-30 · **Status:** Accepted
+**Context:** D-066 and `PROJECT_STATUS.md` both stated that the expense documents an
+acceptance run creates "are removed afterwards". They were not. The `expense-cleanup`
+phase signed in and ran `expect(true, isTrue)`; the list it was meant to consume,
+`_createdExpenses`, is populated per process, and **each phase is its own process
+launch**, so by the time cleanup started that list was always empty. The documentation
+described an intention that nothing carried out — the same shape of finding as D-059 and
+D-068's classification guard: *a rule that nothing evaluates is a comment*.
+**Decision:** Every document an acceptance run creates carries a marker in its notes, and
+the cleanup phase finds them by that marker — the one identifier that survives a process
+boundary — and **voids** them, then asserts none remain open. Void rather than delete,
+because financial history is corrected by void plus audit and never by deleting rows
+(spec §14, D-006); the reason text names the run, which is exactly the identification
+D-066 specifies. A document a closed period refuses is reported by id and reason rather
+than swallowed or failed on.
+**Consequences:** The phase reads through `expense_document`, never `expenses` — no client
+role holds SELECT on the base table, and the first version of this fix was refused
+`42501`, which is the D-062 boundary working. The append-only audit rows remain, and that
+asymmetry is the point of the guard. The entry form's notes and reference fields gained
+keys so the marker can be typed through the real field rather than injected behind it.
+Verified: a run ends with `reversed N of N`, and the assertion that none remain open is
+what would fail if it ever stopped working.
+
+## D-072 — The expense **edit** surface does not exist, and that is a Phase 3 gap
+**Date:** 2026-08-30 · **Status:** **Open — requires the project lead's decision**
+**Context:** `PROJECT_STATUS.md` records Phase 3 slices 8–13 as "the Android entry
+surface, the Windows ledger and detail, **edit/void**, cross-business and cross-period
+allocation, and the audit presentation … built and committed (`3871b9f`)". Writing the
+Windows edit/void acceptance found that the edit half is not built.
+
+What exists: `public.expense_update` on the server, fully implemented and proven — the
+live suite exercises the D+7 / D+8 boundary, the beyond-window capability and the closed
+period against `krishna-mis-dev`, and migration 0033 pins its date basis (D-067).
+`ExpenseGateway.update` exists. `ExpenseMutationEndpoint` can dispatch a
+`MutationOp.update` intent.
+
+What does not exist, anywhere in `lib/`: any way to *produce* that intent.
+`ExpenseRepository` has `createLocally`, `voidLocally`, `load`, `list`, `query`,
+`listRetainedAfterRevocation` and `contributionTotal` — and no update. The detail panel's
+`_Actions` renders **Void alone**, under a comment that says "Edit and Void". No route, no
+control, no draft-loading path, no `base_row_version` plumbing from a client.
+`ExpenseGateway.update` is called only from the live suite and one acceptance assertion.
+
+So a user cannot edit an expense on either platform, and the seven-day edit window — the
+subject of D-026, D-065 and D-067 — governs a client operation that has never been built.
+
+**Why this is recorded rather than fixed in passing.** An expense edit is not a missing
+button. It needs a draft loaded from a possibly-scoped projection, allocation and
+period-contribution editing under the same reconciliation rules as entry,
+`base_row_version` carried from load to submission, conflict presentation when it is
+stale, period-lock and edit-window prediction, an outbox intent, and reconciliation of the
+server's answer — in a financial system, under D-021's concurrency semantics. Building
+that unreviewed, inside a task the project lead scoped as *verification of an existing
+surface*, would be a large unilateral change to how company financial records are
+corrected.
+
+**What is blocked by it:** the edit half of the Windows edit/void acceptance, and the
+"Windows updates it / Android submits a stale mutation" steps of the two-device acceptance
+**as specified through the UI**. The server-side equivalents of all of these are already
+proven; what cannot be proven is a client path that does not exist.
+
+**The decision required:** whether to build the expense edit surface as the Phase 3 slice
+it was recorded as, or to descope it explicitly — in which case `PROJECT_STATUS.md` must
+stop claiming it, and the edit window's client-side rules should say plainly that they
+predict a server operation the client cannot yet issue.

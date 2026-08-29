@@ -56,6 +56,7 @@ class ExpenseOptionalDetails extends ConsumerWidget {
           _PaymentSection(draft: draft, onChanged: onChanged),
           const SizedBox(height: AppSpacing.lg),
           _TextRow(
+            fieldKey: const Key('expense-reference'),
             label: 'Invoice / reference number',
             initial: draft.referenceNumber,
             onChanged: (value) => onChanged(
@@ -64,6 +65,7 @@ class ExpenseOptionalDetails extends ConsumerWidget {
           ),
           const SizedBox(height: AppSpacing.lg),
           _TextRow(
+            fieldKey: const Key('expense-notes'),
             label: 'Notes',
             initial: draft.notes,
             maxLines: 3,
@@ -232,6 +234,7 @@ class _TextRow extends StatelessWidget {
     required this.onChanged,
     this.initial,
     this.maxLines = 1,
+    this.fieldKey,
   });
 
   final String label;
@@ -239,8 +242,16 @@ class _TextRow extends StatelessWidget {
   final int maxLines;
   final ValueChanged<String> onChanged;
 
+  /// Addresses this field by name rather than by position.
+  ///
+  /// The optional-details section is progressive disclosure whose contents grow, so a
+  /// test that reached the notes field by index would silently start editing something
+  /// else the day a field is inserted above it.
+  final Key? fieldKey;
+
   @override
   Widget build(BuildContext context) => TextFormField(
+    key: fieldKey,
     initialValue: initial,
     maxLines: maxLines,
     decoration: InputDecoration(

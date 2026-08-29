@@ -144,11 +144,10 @@ void main() {
       );
     });
 
-    test('financial documents are retained, not purged', () {
-      // The purge is limited to server-owned *reference* data (D-048). An expense is
-      // something a person typed, so it is outside that limit — and its lines carry a
-      // soft `business_unit_id` precisely so a retained line may outlive the cached unit
-      // it names.
+    test('financial documents are purged, sparing unsynced work', () {
+      // D-068, the project lead's final policy, reversing what the Phase 3 checkpoint
+      // shipped. A confirmed revocation must not leave the revoked property's figures
+      // in a browsable cache; what it must not destroy is the actor's own unsent work.
       final purged = CacheClassification.purgedOnRevocation.map((t) => t.name);
       for (final table in const [
         'expenses',
@@ -161,8 +160,44 @@ void main() {
           CacheOwnership.scopedFinancialHistory,
           reason: '$table holds documents, not reference data',
         );
-        expect(purged, isNot(contains(table)));
+        expect(
+          purged,
+          contains(table),
+          reason: 'a revoked unit\'s synced financial cache goes (D-068)',
+        );
       }
+
+      // The exception is a property of the *kind*, so it cannot be lost by editing one
+      // row of the table list.
+      for (final table in CacheClassification.tables) {
+        expect(
+          table.retainsUnsyncedWork,
+          table.ownership == CacheOwnership.scopedFinancialHistory,
+          reason:
+              'only financial documents have unsent work to spare; reference data '
+              'has none, and nothing else is purged at all',
+        );
+      }
+    });
+
+    test('financial tables are deleted children-first, expenses last', () {
+      // The purge deletes explicitly at every level rather than leaning on the cascade,
+      // so the order in this list is the order it runs in and has to be safe on its own.
+      final order = [
+        for (final t in CacheClassification.purgedOnRevocation) t.name,
+      ];
+      expect(
+        order.indexOf('expense_period_allocations'),
+        lessThan(order.indexOf('expense_allocations')),
+      );
+      expect(
+        order.indexOf('expense_allocations'),
+        lessThan(order.indexOf('expenses')),
+      );
+      expect(
+        order.indexOf('expense_attachments'),
+        lessThan(order.indexOf('expenses')),
+      );
     });
 
     test('the outbox is never in the purged set', () {

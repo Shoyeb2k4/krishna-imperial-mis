@@ -9,13 +9,41 @@
 /// |---|---|
 /// | Organisation-global server cache | Retained while the user still has organisation access |
 /// | Business-unit scoped server cache | **Purged** for the revoked unit |
-/// | Scoped financial history | Retained — the purge covers reference data, not documents |
+/// | Scoped financial history | **Purged** for the revoked unit, except rows carrying the actor's own unsynced work |
 /// | User-local and outbox data | **Never** purged. Not for this, not for anything |
 /// | Authentication / session | Separate lifecycle entirely (`ARCHITECTURE.md` §8.2) |
 ///
-/// The purge is safe precisely because of what it is limited to: server-owned reference
-/// data, which the server will hand back the moment authority is restored. Nothing a
-/// person typed is ever in scope.
+/// ## Why financial history moved (D-068, final policy)
+///
+/// The Phase 3 checkpoint retained synced financial documents through a revocation, on
+/// the reading that the purge covered server-owned *reference* data and that "nothing a
+/// person typed is ever in scope". That reading was put to the project lead as an open
+/// question, because it is a retention decision about company financial data and not an
+/// implementer's call. **He decided the other way**, and the reasoning is the one that
+/// chose Option A for reference data in the first place: encryption at rest is not a
+/// reason to keep newly unauthorised financial information in somebody's browsable
+/// cache, and a revocation that leaves the numbers on the device has not revoked much.
+///
+/// The distinction that survives is not "typed versus downloaded". It is **canonical
+/// server-owned read data versus the actor's own attempt**:
+///
+/// * A synced expense is a *projection of server state*. The server hands it straight
+///   back if authority returns, exactly like a department does. It is purged.
+/// * A queued, failed, rejected or conflicted intent — and the document rows needed to
+///   inspect and reconcile it — exists nowhere else. It is the user's own work, it is
+///   tied to `actor_user_id` (D-050), and losing access to a property is not a reason to
+///   destroy it. It is **retained**, stamped `expenses.scope_revoked_at`, and taken out
+///   of every canonical financial read so it can never be browsed as though it were
+///   still authorised.
+///
+/// A partially revoked shared bill is the interesting case, and it is handled rather
+/// than avoided: the revoked property's lines and contributions go, the retained
+/// property's stay, and the header is **downgraded to `scoped` with its document total
+/// nulled**. It has to be. A complete header beside one remaining line is
+/// `total − own share`, which is precisely the other property's share — the exact
+/// arithmetic `expense_tables.dart` exists to prevent. Attachments follow the predicate
+/// they always have (D-063): complete-document-only, so a downgrade takes the attachment
+/// rows and the staged bytes with it.
 library;
 
 /// What owns a piece of locally cached data.
@@ -41,15 +69,15 @@ enum CacheOwnership {
   /// Financial documents this device has synced: expenses, their allocation lines,
   /// their period contributions and their attachment records.
   ///
-  /// Business-unit scoped in the sense that every line names one property — but **not**
-  /// [businessUnitScoped], because that value means *purged*, and these are retained.
-  /// The purge is deliberately limited to server-owned **reference** data, which the
-  /// server hands straight back when authority returns; nothing a person typed is ever
-  /// in its scope (D-048). An expense is something a person typed.
+  /// **Purged** for a revoked unit, like [businessUnitScoped] — but kept as its own kind
+  /// because it is not the same deletion. Reference data for a revoked unit goes
+  /// unconditionally. A financial document goes *unless it still carries the actor's own
+  /// unsynced intent*, in which case it is retained and marked, because that intent
+  /// exists nowhere else (D-068).
   ///
-  /// Named as its own kind rather than filed under [organizationGlobal], because that
-  /// would be untrue — these rows *are* scoped — and the next person to read this list
-  /// would be misled about what a revocation does to them.
+  /// Filing these under [businessUnitScoped] would lose exactly that exception; filing
+  /// them under [organizationGlobal] would be untrue. The difference is two lines long
+  /// and it is the whole policy, so it gets its own name.
   scopedFinancialHistory,
 }
 
@@ -67,8 +95,17 @@ final class CachedTable {
   /// The column naming the owning business unit, for [CacheOwnership.businessUnitScoped].
   final String? unitColumn;
 
+  /// Whether a confirmed revocation removes rows of this table for the revoked unit.
   bool get isPurgedOnRevocation =>
-      ownership == CacheOwnership.businessUnitScoped;
+      ownership == CacheOwnership.businessUnitScoped ||
+      ownership == CacheOwnership.scopedFinancialHistory;
+
+  /// Whether that removal must spare rows carrying the actor's own unsynced work.
+  ///
+  /// True only for financial documents. Reference data has no such exception: there is
+  /// no sense in which a cached department is somebody's unsent attempt.
+  bool get retainsUnsyncedWork =>
+      ownership == CacheOwnership.scopedFinancialHistory;
 }
 
 abstract final class CacheClassification {
@@ -137,20 +174,23 @@ abstract final class CacheClassification {
     CachedTable('payment_methods', CacheOwnership.organizationGlobal),
     CachedTable('period_lock_events', CacheOwnership.organizationGlobal),
 
-    // ── Scoped financial history: retained ──────────────────────────────────
+    // ── Scoped financial history: purged, sparing unsynced work ─────
     //
-    // Present here because a table that is absent from this list is a table nobody has
-    // decided anything about. All four were missing until the Phase 3 acceptance found
-    // sign-out throwing a foreign-key error on a device that had synced an expense: the
-    // guard "every table must be classified" was written down but never run against the
-    // real schema, so Phase 3 added four tables and nothing objected. It is enforced now
-    // (see the cache-classification test).
+    // Present here because a table absent from this list is a table nobody has decided
+    // anything about. All four were missing until the Phase 3 acceptance found sign-out
+    // throwing a foreign-key error on a device that had synced an expense: the guard
+    // "every table must be classified" was written down but never run against the real
+    // schema, so Phase 3 added four tables and nothing objected. It is enforced now
+    // against `AppDatabase.allTables`, in both directions.
     //
-    // They are **retained** through a revocation. The purge covers server-owned
-    // reference data, which the server returns the instant authority does; an expense is
-    // something a person typed, and D-048 puts that outside the purge entirely. Their
-    // `business_unit_id` is a soft pointer for the same reason, so a retained line may
-    // legitimately outlive the cached unit it names.
+    // They are **purged** for a revoked unit (D-068, the project lead's final policy),
+    // except where a document still carries the actor's own queued, failed, rejected or
+    // conflicted intent — see the library comment for why the line falls there.
+    //
+    // Deletion order below is children before parents, with `expenses` last, so no step
+    // ever leaves an orphan and the cascade never has to be relied on. Their
+    // `business_unit_id` stays a soft pointer: a retained row may outlive the cached
+    // unit it names, and on the retention path above it does exactly that.
     CachedTable('expense_attachments', CacheOwnership.scopedFinancialHistory),
     CachedTable(
       'expense_period_allocations',
@@ -174,8 +214,9 @@ abstract final class CacheClassification {
       if (table.isPurgedOnRevocation) table,
   ];
 
-  /// Tables that must survive a purge untouched. Asserted by the tests, because "we did
-  /// not mean to delete that" is not a property anybody should be trusting to review.
+  /// Tables no revocation removes a row from, for any unit. Asserted by the tests,
+  /// because "we did not mean to delete that" is not a property anybody should be
+  /// trusting to review.
   static List<CachedTable> get neverPurged => [
     for (final table in tables)
       if (!table.isPurgedOnRevocation) table,

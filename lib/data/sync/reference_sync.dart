@@ -61,7 +61,8 @@ class ReferenceSync implements ReferenceSynchroniser {
     required this.authorityGateway,
     required this.masterGateway,
     AuthorityStore? authorityStore,
-  }) : _purge = ScopeCachePurge(db),
+    ScopeCachePurge? purge,
+  }) : _purge = purge ?? ScopeCachePurge(db),
        _store = authorityStore ?? AuthorityStore(db);
 
   final AppDatabase db;

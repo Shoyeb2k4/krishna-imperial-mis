@@ -136,6 +136,24 @@ class Expenses extends Table {
   DateTimeColumn get serverUpdatedAt => dateTime().nullable()();
   DateTimeColumn get updatedAt => dateTime()();
 
+  /// When a confirmed revocation removed this user's authority over every unit this
+  /// document charges, and the row was kept anyway (D-068).
+  ///
+  /// Null on everything a user may browse. Non-null on exactly one kind of row: a
+  /// document that still carries **unsynced work of its own** — a queued, failed,
+  /// rejected or conflicted intent — at the moment its business unit was revoked.
+  ///
+  /// The purge deletes synced financial cache for a revoked unit; it does not delete
+  /// somebody's unsent attempt, because that attempt exists nowhere else and the person
+  /// who made it has to be able to see what happened to it. So the row survives, stamped
+  /// with this, and is excluded from every canonical financial read — the ledger, the
+  /// filtered query, the contribution totals. It remains reachable only through the
+  /// pending / rejected / conflict workflow, for the actor who queued it.
+  ///
+  /// It is a **timestamp rather than a flag** so the retention is dateable: "kept since"
+  /// is a fact about the row, and a bare boolean would not say when authority changed.
+  DateTimeColumn get scopeRevokedAt => dateTime().nullable()();
+
   @override
   Set<Column<Object>> get primaryKey => {id};
 

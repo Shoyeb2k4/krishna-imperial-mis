@@ -42,6 +42,10 @@
 ///   expense-refusals closed period, stale edit, and who may void
 ///   offline-transport  the Phase 2 addendum: the real transport made to fail, offline
 ///                    working, reconnect, authority-first, and reconciliation
+///   d068-switch      signing out and switching users leaves no financial figure behind
+///   d068-revoke      losing one property of two: partial purge, downgrade, retention
+///   cross-period     the ₹60,000 May/June split, entered through the real UI
+///   payment-accrual  a June salary paid in July is June's cost and July's cash
 ///
 /// Three phases need something to happen on the *host* while the phase is running — the
 /// device's network taken away, a grant revoked, an account deactivated — because the
@@ -54,9 +58,12 @@
 ///     after_app_starts.sh 45 deactivate_only.sh     # deactivated
 library;
 
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:http/http.dart' as http;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:krishna_mis/app/app.dart';
@@ -70,6 +77,8 @@ import 'package:krishna_mis/data/sync/expense_pull.dart';
 import 'package:krishna_mis/data/sync/sync_engine.dart';
 import 'package:krishna_mis/domain/expenses/expense_number.dart';
 import 'package:krishna_mis/domain/auth/authority.dart';
+import 'package:krishna_mis/domain/expenses/expense.dart';
+import 'package:krishna_mis/domain/value_objects/business_date.dart';
 import 'package:krishna_mis/domain/value_objects/money.dart';
 import 'package:krishna_mis/data/local/authority_store.dart';
 import 'package:krishna_mis/data/remote/master_gateway.dart';
@@ -95,6 +104,168 @@ const _identities = <String, String>{
   'unassigned@example.com': String.fromEnvironment('PW_UNASSIGNED'),
 };
 
+/// The host, acting as the Owner, over the ordinary public API.
+///
+/// A phase cannot revoke its own signed-in user's grant — that is the point of the rule
+/// being tested — so something else has to. Phase 2 did it with shell scripts driven from
+/// the build machine; this does the same work in-process, which removes a moving part
+/// without changing what is being proven.
+///
+/// It is **not** a privileged back door. It holds no service-role key, signs in with a
+/// development password from the same git-ignored file every other identity comes from,
+/// and calls the same `SECURITY DEFINER` RPCs a client calls. It gets exactly the answers
+/// the server would give anyone: the Owner may revoke a grant, and a manager may not.
+/// Nothing here bypasses RLS, a capability check, a period lock or an audit row.
+final class _AdminClient {
+  const _AdminClient();
+
+  static const _owner = 'giridhar@hki.com';
+
+  Future<String> _token() async {
+    final response = await http.post(
+      Uri.parse('$_supabaseUrl/auth/v1/token?grant_type=password'),
+      headers: {'apikey': _supabaseAnonKey, 'Content-Type': 'application/json'},
+      body: jsonEncode({'email': _owner, 'password': _identities[_owner]}),
+    );
+    if (response.statusCode != 200) {
+      throw StateError('the acceptance Owner could not sign in to administer');
+    }
+    return jsonDecode(response.body)['access_token'] as String;
+  }
+
+  Future<Map<String, dynamic>> _rpc(
+    String function,
+    Map<String, dynamic> args,
+  ) async {
+    final response = await http.post(
+      Uri.parse('$_supabaseUrl/rest/v1/rpc/$function'),
+      headers: {
+        'apikey': _supabaseAnonKey,
+        'Authorization': 'Bearer ${await _token()}',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode(args),
+    );
+    if (response.statusCode >= 300) {
+      throw StateError('$function refused: ${response.body}');
+    }
+    final decoded = jsonDecode(response.body);
+    return decoded is Map<String, dynamic> ? decoded : {'result': decoded};
+  }
+
+  Future<List<dynamic>> _select(String table, String query) async {
+    final response = await http.get(
+      Uri.parse('$_supabaseUrl/rest/v1/$table?$query'),
+      headers: {
+        'apikey': _supabaseAnonKey,
+        'Authorization': 'Bearer ${await _token()}',
+      },
+    );
+    return jsonDecode(response.body) as List<dynamic>;
+  }
+
+  Future<String> _userIdOf(String email) async {
+    final rows = await _select('profiles', 'select=id&email=eq.$email');
+    if (rows.isEmpty) throw StateError('no profile for $email');
+    return (rows.first as Map<String, dynamic>)['id'] as String;
+  }
+
+  /// The live grant id for one person on one property, or null if there is none.
+  ///
+  /// `user_role_revoke` takes a **grant** id, not a (user, unit) pair — grants are the
+  /// records, and revoking one is a statement about that record.
+  Future<String?> _liveGrantId(String email, String unitId) async {
+    final rows = await _select(
+      'user_roles',
+      'select=id&user_id=eq.${await _userIdOf(email)}'
+          '&business_unit_id=eq.$unitId&revoked_at=is.null',
+    );
+    return rows.isEmpty
+        ? null
+        : (rows.first as Map<String, dynamic>)['id'] as String;
+  }
+
+  Future<void> grantScope(String email, String role, String unitCode) async {
+    final unit = unitCode == 'CCR' ? _ccr : _hki;
+    if (await _liveGrantId(email, unit) != null) return;
+    await _rpc('user_role_grant', {
+      'p_user_id': await _userIdOf(email),
+      'p_role_code': role,
+      'p_business_unit_id': unit,
+      'p_mutation_id': const Uuid().v4(),
+    });
+  }
+
+  Future<void> revokeScope(String email, String unitCode) async {
+    final unit = unitCode == 'CCR' ? _ccr : _hki;
+    final grantId = await _liveGrantId(email, unit);
+    // The tear-down runs whether or not the phase reached the revocation itself, so
+    // "there is nothing to revoke" is a normal outcome and not a failure.
+    if (grantId == null) return;
+    await _rpc('user_role_revoke', {
+      'p_grant_id': grantId,
+      'p_mutation_id': const Uuid().v4(),
+    });
+  }
+
+  /// The spec's shared electricity bill, recorded by the Owner: ₹58,000 across both
+  /// properties as ₹25,000 + ₹33,000.
+  Future<String> createSharedExpense({required String notes}) async {
+    final id = const Uuid().v4();
+    await _rpc('expense_create', {
+      'p_id': id,
+      'p_business_date': '2026-06-15',
+      'p_total_minor': 5800000,
+      'p_notes': notes,
+      'p_allocations': [
+        {
+          'business_unit_id': _ccr,
+          'department_id': _seedId('dept:CCR/FB'),
+          'section_id': _seedId('sec:CCR/FB/FOOD_PROD'),
+          'category_id': _kirana,
+          'amount_minor': 2500000,
+        },
+        {
+          'business_unit_id': _hki,
+          'department_id': _seedId('dept:HKI/HKI_UTIL'),
+          'section_id': _seedId('sec:HKI/HKI_UTIL/HKI_POWER'),
+          'category_id': _seedId('cat:HKI/HKI_UTIL/HKI_POWER/ELECTRICITY'),
+          'amount_minor': 3300000,
+        },
+      ],
+      'p_mutation_id': const Uuid().v4(),
+    });
+    return id;
+  }
+
+  /// ₹4,000 charged entirely to Crystal Canopy.
+  Future<String> createCcrExpense({required String notes}) async {
+    final id = const Uuid().v4();
+    await _rpc('expense_create', {
+      'p_id': id,
+      'p_business_date': '2026-06-15',
+      'p_total_minor': 400000,
+      'p_notes': notes,
+      'p_allocations': [
+        {
+          'business_unit_id': _ccr,
+          'department_id': _seedId('dept:CCR/FB'),
+          'section_id': _seedId('sec:CCR/FB/FOOD_PROD'),
+          'category_id': _kirana,
+          'amount_minor': 400000,
+        },
+      ],
+      'p_mutation_id': const Uuid().v4(),
+    });
+    return id;
+  }
+}
+
+const _admin = _AdminClient();
+
+const _supabaseUrl = String.fromEnvironment('SUPABASE_URL');
+const _supabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
+
 /// The seeded master ids, derived the same way the migration derives them.
 String _seedId(String path) =>
     const Uuid().v5('d9d3f0a6-4c2b-5f7e-9a10-6b1e2c8f4a70', path);
@@ -118,8 +289,22 @@ const _queuedMutationId = '8c41b7d2-63ae-4f0b-9d55-2e7a1c4f8b60';
 /// runs with it fully online, so it changes nothing for them.
 final _transport = ControllableTransport();
 
-/// Everything a Phase 3 phase created on the server, so the run can clean up after
-/// itself rather than leaving the development project in an unexplained state.
+/// The prefix every document an acceptance run creates carries in its notes.
+///
+/// The list below cannot do the job on its own, and that is not a detail: **each phase
+/// is its own process launch**, so a list populated while `expense-shared` runs is empty
+/// by the time `expense-cleanup` starts. The marker is what survives the process
+/// boundary, and it is what the cleanup actually matches on.
+///
+/// It sits in the notes rather than in a column, because adding an `is_test` flag to
+/// financial rows is precisely what D-066 refuses: a mutable "ignore me" marker on
+/// financial data is a liability, and the honest identifiers are the ones already
+/// recorded — the `@example.com` actors, the development project, and the reason text.
+const _acceptanceMarker = 'Device acceptance';
+
+/// Documents created by the phase currently running, for its own assertions.
+///
+/// Deliberately **not** the cleanup mechanism: see [_acceptanceMarker].
 final List<String> _createdExpenses = [];
 
 /// A second fixed id, for work the *Owner* queues before a user switch.
@@ -295,6 +480,18 @@ void main() {
       );
     }
   }
+
+  /// Finds widgets whose key is a `Key('<prefix>…')`.
+  ///
+  /// The split editor keys its fields by the *draft line's* generated id, so a test
+  /// cannot name them in advance. Matching the stable prefix addresses them by role
+  /// rather than by position, which is what keeps this from silently editing the wrong
+  /// field the day another row is inserted above.
+  Finder byKeyPrefix(String prefix) => find.byWidgetPredicate(
+    (widget) =>
+        widget.key is ValueKey<String> &&
+        (widget.key! as ValueKey<String>).value.startsWith(prefix),
+  );
 
   /// The shell is only ever reached through a session the server vouched for.
   Future<void> expectSignedIn(WidgetTester tester, String email) async {
@@ -1450,12 +1647,12 @@ void main() {
   // the interface does not make.
 
   /// Records an expense through the real entry screen, and returns its local id.
-  Future<String> recordExpense(
-    WidgetTester tester, {
-    required String amount,
-    required List<String> classification,
-  }) async {
-    // Open the entry screen the way a user does.
+  /// Opens the expense entry screen the way a user does, on either shell.
+  ///
+  /// Extracted from [recordExpense] so a phase that needs to *stop part way* — to open
+  /// the period split, or to fill in payment details — drives the same navigation the
+  /// routine path drives, rather than a second copy of it that could drift.
+  Future<void> openExpenseEntry(WidgetTester tester) async {
     if (boot.shellKind.name == 'mobile') {
       await pumpUntil(
         tester,
@@ -1487,28 +1684,21 @@ void main() {
       'the expense entry screen',
       () => find.byKey(const Key('expense-amount')).evaluate().isNotEmpty,
     );
+  }
 
-    await tester.enterText(find.byKey(const Key('expense-amount')), amount);
-    await tester.pump(const Duration(milliseconds: 300));
-
+  /// Walks the classification picker down the hierarchy, one rung at a time.
+  Future<void> classify(WidgetTester tester, List<String> rungs) async {
     await tester.tap(find.byKey(const Key('classification-summary')));
     await tester.pump(const Duration(milliseconds: 600));
-    for (final rung in classification) {
+    for (final rung in rungs) {
       await pumpUntil(tester, 'the option "$rung"', () => visible(rung));
       await tester.tap(find.text(rung).last);
       await tester.pump(const Duration(milliseconds: 500));
     }
+  }
 
-    await pumpUntil(
-      tester,
-      'Save to become available',
-      () =>
-          tester
-              .widget<FilledButton>(find.byKey(const Key('save-expense')))
-              .onPressed !=
-          null,
-    );
-
+  /// Presses Save and waits for exactly one new local row, or says what the screen said.
+  Future<String> tapSaveAndAwaitRow(WidgetTester tester) async {
     // The id the local row will carry, read before saving so the assertions afterwards
     // can find it without guessing.
     final before = (await boot.database.select(boot.database.expenses).get())
@@ -1561,6 +1751,257 @@ void main() {
   }
 
   /// Pushes whatever is queued and waits for the row to learn its number.
+
+  /// Whether the Save control is currently pressable.
+  ///
+  /// The distinction matters to more than one phase: a document that does not reconcile
+  /// is not saveable, and the screen expresses that by *disabling* the control rather
+  /// than by accepting the tap and complaining afterwards.
+  bool saveEnabled(WidgetTester tester) =>
+      tester
+          .widget<FilledButton>(find.byKey(const Key('save-expense')))
+          .onPressed !=
+      null;
+
+  /// Every formatted money string currently on screen.
+  ///
+  /// Reads what a manager reads, including the Indian digit grouping, rather than the
+  /// integer behind it (`₹12,36,420`, never `₹1,236,420` — spec §20).
+  List<String> moneyTextsOnScreen(WidgetTester tester) => find
+      .byType(Text)
+      .evaluate()
+      .map((e) => (e.widget as Text).data)
+      .whereType<String>()
+      .where((t) => t.contains('₹'))
+      .toList();
+
+  /// Scrolls [key] into view if it is not already built, then taps it.
+  ///
+  /// The entry screen grows as a document does — opening a split adds rows above the
+  /// optional-details section — so a control that is on screen for a routine expense is
+  /// below the fold for a split one. A plain `tap` there fails with "found 0 widgets",
+  /// which reads like the control is missing rather than merely out of view.
+  Future<void> revealAndTap(WidgetTester tester, Key key) async {
+    if (find.byKey(key).evaluate().isEmpty) {
+      await tester.scrollUntilVisible(
+        find.byKey(key),
+        200,
+        scrollable: find.byType(Scrollable).first,
+        maxScrolls: 40,
+      );
+      await tester.pump(const Duration(milliseconds: 400));
+    }
+    await tester.ensureVisible(find.byKey(key));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.byKey(key));
+  }
+
+  /// The raw text currently in each accounting-period amount field, in screen order.
+  ///
+  /// These are inputs, not labels, so the figure lives in the field's controller rather
+  /// than in a `Text` — reading the rendered money strings finds the totals and misses
+  /// the very numbers the split is about.
+  List<String> periodAmountsOnScreen(WidgetTester tester) => find
+      .descendant(
+        of: byKeyPrefix('period-amount-'),
+        matching: find.byType(TextField),
+      )
+      .evaluate()
+      .map((e) => (e.widget as TextField).controller?.text ?? '')
+      .toList();
+
+  /// The money string rendered inside the widget carrying [key].
+  String amountShownFor(WidgetTester tester, Key key) {
+    final texts = find
+        .descendant(of: find.byKey(key), matching: find.byType(Text))
+        .evaluate()
+        .map((e) => (e.widget as Text).data)
+        .whereType<String>()
+        .where((t) => t.contains('₹'));
+    if (texts.isEmpty) {
+      final self = find.byKey(key).evaluate();
+      if (self.isNotEmpty && self.first.widget is Text) {
+        return (self.first.widget as Text).data ?? '';
+      }
+      fail('no money text under $key');
+    }
+    return texts.first;
+  }
+
+  /// Sets a Material date field to [isoDate].
+  ///
+  /// The control opens `showDatePicker`, so this drives the real dialog rather than
+  /// writing to the draft behind it — the point of a device acceptance is that the path
+  /// a user takes works. It prefers the picker's **input mode**, because typing a date
+  /// is stable regardless of which month the calendar happens to open on; if that
+  /// toggle is not offered it falls back to stepping the calendar and tapping the day.
+  Future<void> setDateField(
+    WidgetTester tester,
+    Key field,
+    String isoDate,
+  ) async {
+    final target = DateTime.parse(isoDate);
+
+    await tester.tap(find.byKey(field));
+    await tester.pump(const Duration(milliseconds: 900));
+    await pumpUntil(
+      tester,
+      'the date picker dialog',
+      () => find.byType(DatePickerDialog).evaluate().isNotEmpty,
+    );
+
+    // Scoped to the dialog. The entry screen behind it has its own edit affordance on
+    // the business-date row, and an unscoped `byIcon` finds that one first — which taps
+    // the row underneath the barrier instead of switching the picker to input mode.
+    Finder inDialog(Finder matching) =>
+        find.descendant(of: find.byType(DatePickerDialog), matching: matching);
+
+    var entryToggle = inDialog(find.byIcon(Icons.edit_outlined));
+    if (entryToggle.evaluate().isEmpty) {
+      entryToggle = inDialog(find.byIcon(Icons.edit));
+    }
+
+    if (entryToggle.evaluate().isNotEmpty) {
+      await tester.tap(entryToggle.first);
+      await tester.pump(const Duration(milliseconds: 700));
+
+      await pumpUntil(
+        tester,
+        'the picker s text field after switching to input mode',
+        () => inDialog(find.byType(TextField)).evaluate().isNotEmpty,
+      );
+      final input = inDialog(find.byType(TextField));
+      expect(
+        input,
+        findsWidgets,
+        reason: 'the picker offered input mode but no field appeared',
+      );
+      // The dialog's own hint states the order it expects, so it is read rather than
+      // assumed — a locale change must not silently enter the wrong date.
+      final decoration = tester.widget<TextField>(input.first).decoration;
+      final hint = (decoration?.hintText ?? 'mm/dd/yyyy').toLowerCase();
+      final typed = hint.startsWith('dd')
+          ? '${_two(target.day)}/${_two(target.month)}/${target.year}'
+          : '${_two(target.month)}/${_two(target.day)}/${target.year}';
+
+      await tester.enterText(input.first, typed);
+      await tester.pump(const Duration(milliseconds: 500));
+    } else {
+      // Calendar mode: step to the right month, then tap the day.
+      final now = DateTime.now();
+      var months = (target.year - now.year) * 12 + (target.month - now.month);
+      final forward = months > 0;
+      final arrow = inDialog(
+        find.byIcon(forward ? Icons.chevron_right : Icons.chevron_left),
+      );
+      for (var i = 0; i < months.abs(); i++) {
+        await tester.tap(arrow.first);
+        await tester.pump(const Duration(milliseconds: 400));
+      }
+      await tester.tap(inDialog(find.text('${target.day}')).first);
+      await tester.pump(const Duration(milliseconds: 400));
+    }
+
+    await pumpUntil(
+      tester,
+      'the picker s OK action',
+      () => inDialog(find.text('OK')).evaluate().isNotEmpty,
+    );
+    await tester.tap(inDialog(find.text('OK')).first);
+    await tester.pump(const Duration(milliseconds: 800));
+  }
+
+  /// Marks the draft paid, on [isoDate], with the first payment method offered.
+  ///
+  /// `paid` requires both a date and a method (spec §5.4), and the form enforces that
+  /// pairing — so this sets both or the document would not be saveable.
+  Future<void> markPaidOn(WidgetTester tester, String isoDate) async {
+    await pumpUntil(
+      tester,
+      'the payment status control',
+      () => visible('Paid'),
+    );
+    await tester.ensureVisible(find.text('Paid').last);
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.text('Paid').last);
+    await tester.pump(const Duration(milliseconds: 800));
+
+    await pumpUntil(
+      tester,
+      'the payment method control',
+      () => find.byKey(const Key('payment-method')).evaluate().isNotEmpty,
+    );
+    await revealAndTap(tester, const Key('payment-method'));
+    await tester.pump(const Duration(milliseconds: 700));
+    await pumpUntil(
+      tester,
+      'a payment method to choose',
+      () => visible('Cash'),
+    );
+    await tester.tap(find.text('Cash').last);
+    await tester.pump(const Duration(milliseconds: 600));
+
+    await pumpUntil(
+      tester,
+      'the payment date control',
+      () => find.byKey(const Key('payment-date')).evaluate().isNotEmpty,
+    );
+    await setDateField(tester, const Key('payment-date'), isoDate);
+  }
+
+  /// Taps Save and waits for the local row, returning its id.
+  Future<String> saveExpense(WidgetTester tester) async {
+    await pumpUntil(
+      tester,
+      'Save to become available',
+      () => saveEnabled(tester),
+    );
+    return tapSaveAndAwaitRow(tester);
+  }
+
+  Future<String> recordExpense(
+    WidgetTester tester, {
+    required String amount,
+    required List<String> classification,
+    String notes = 'routine entry',
+  }) async {
+    await openExpenseEntry(tester);
+
+    await tester.enterText(find.byKey(const Key('expense-amount')), amount);
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // Every document a run creates says so, in its notes.
+    //
+    // Without this the cleanup phase cannot find what the UI phases made: phases are
+    // separate process launches, so an in-memory list of created ids is empty by the
+    // time cleanup starts. Typing it through the real field also exercises the
+    // progressive-disclosure section on the way past, which is where notes live
+    // (spec §18 — accrual and metadata fields stay out of the fast path).
+    await tester.tap(find.byKey(const Key('more-details')));
+    await tester.pump(const Duration(milliseconds: 600));
+    await pumpUntil(
+      tester,
+      'the notes field inside More details',
+      () => find.byKey(const Key('expense-notes')).evaluate().isNotEmpty,
+    );
+    await tester.enterText(
+      find.byKey(const Key('expense-notes')),
+      '$_acceptanceMarker: $notes',
+    );
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.byKey(const Key('more-details')));
+    await tester.pump(const Duration(milliseconds: 500));
+
+    await classify(tester, classification);
+
+    await pumpUntil(
+      tester,
+      'Save to become available',
+      () => saveEnabled(tester),
+    );
+    return tapSaveAndAwaitRow(tester);
+  }
+
   Future<void> syncAndAwaitNumber(
     WidgetTester tester,
     String expenseId, {
@@ -1806,7 +2247,7 @@ void main() {
           'p_id': id,
           'p_business_date': '2026-06-15',
           'p_total_minor': 5800000,
-          'p_notes': 'Device acceptance: shared electricity',
+          'p_notes': '$_acceptanceMarker: shared electricity',
           'p_allocations': [
             {
               'business_unit_id': _ccr,
@@ -1936,6 +2377,7 @@ void main() {
           'p_id': conflictId,
           'p_business_date': '2026-06-15',
           'p_total_minor': 4200,
+          'p_notes': '$_acceptanceMarker: stale-edit conflict',
           'p_allocations': [
             {...ccrKirana, 'amount_minor': 4200},
           ],
@@ -1994,15 +2436,776 @@ void main() {
     });
   });
 
-  group('expense-cleanup', skip: _phase != 'expense-cleanup', () {
-    testWidgets('the development fixtures are removed', (tester) async {
-      // Deliberately its own phase: acceptance leaves real rows behind, and the dev
-      // project should end a run in the state it started in. The append-only audit rows
-      // correctly remain — they are how a test-generated event is recognised.
+  // ── D-034 / D-060 · cross-period allocation, through the real entry screen ──
+
+  group('cross-period', skip: _phase != 'cross-period', () {
+    testWidgets('₹60,000 split May ₹30,000 / June ₹30,000, and nothing else', (
+      tester,
+    ) async {
       await launch(tester);
       await signIn(tester, 'giridhar@hki.com');
       await expectSignedIn(tester, 'giridhar@hki.com');
-      expect(true, isTrue);
+
+      await openExpenseEntry(tester);
+      await tester.enterText(find.byKey(const Key('expense-amount')), '60000');
+      await tester.pump(const Duration(milliseconds: 300));
+      await classify(tester, const [
+        'Crystal Canopy Rooftop',
+        'F&B / Kitchen',
+        'Food Production',
+        'Kirana & Pulses',
+      ]);
+
+      // The bill covers 15 May – 14 June, so it is recorded on a June business date.
+      // The proposal anchors on that date, which is the point: the split it offers is
+      // derived from the document, not from when the clerk happened to type it.
+      await setDateField(tester, const Key('business-date'), '2026-06-15');
+      await pumpUntil(
+        tester,
+        'the business date to become June',
+        () => visible('2026-06-15'),
+      );
+
+      // 1 · Reachable only deliberately. An ordinary expense never meets this: the
+      //     routine screen offers no period field at all, and the default rule applies
+      //     silently (D-034 — the fast path does not change).
+      expect(
+        byKeyPrefix('period-amount-'),
+        findsNothing,
+        reason: 'no period editor before anyone asks for one',
+      );
+      expect(find.byKey(const Key('split-expense')), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('split-expense')));
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(
+        byKeyPrefix('period-amount-'),
+        findsNothing,
+        reason: 'even in the split view it is closed until opened',
+      );
+
+      await pumpUntil(
+        tester,
+        'the accounting-period control',
+        () => visible('Split across accounting periods'),
+      );
+      await tester.tap(find.text('Split across accounting periods'));
+      await tester.pump(const Duration(milliseconds: 800));
+
+      // 2 · Two periods, proposed evenly, and the money reconciles exactly.
+      expect(byKeyPrefix('period-amount-'), findsNWidgets(2));
+      await pumpUntil(
+        tester,
+        'the split to balance',
+        () => visible('BALANCED'),
+      );
+      // The labels carry the year, because "May" alone is not a period.
+      expect(
+        visible('May 2026'),
+        isTrue,
+        reason: 'the previous accounting month',
+      );
+      expect(
+        visible('June 2026'),
+        isTrue,
+        reason: 'the month of the business date',
+      );
+      expect(
+        showsText('2026-05-01'),
+        isTrue,
+        reason: 'the service period is stated, not merely the month name',
+      );
+      expect(showsText('2026-06-15'), isTrue);
+      expect(
+        moneyTextsOnScreen(tester),
+        contains('₹60,000.00'),
+        reason:
+            'allocated ₹60,000, in Indian digit grouping, as the user reads it',
+      );
+      expect(
+        periodAmountsOnScreen(tester),
+        ['30,000.00', '30,000.00'],
+        reason:
+            'proposed evenly: ₹30,000 to May and ₹30,000 to June, grouped the Indian '
+            'way in the field itself',
+      );
+      expect(
+        amountShownFor(tester, const Key('remaining-amount')),
+        '₹0.00',
+        reason: 'remaining ₹0',
+      );
+      expect(saveEnabled(tester), isTrue);
+
+      // 3 · Save is available only at exact reconciliation. Not "warned about" —
+      //     unavailable, because a split that does not add up is not a document.
+      final fields = byKeyPrefix('period-amount-').evaluate().toList();
+      await tester.enterText(find.byWidget(fields.first.widget), '25000');
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(
+        saveEnabled(tester),
+        isFalse,
+        reason: '₹25,000 + ₹30,000 is not ₹60,000, so there is nothing to save',
+      );
+      expect(visible('REMAINING'), isTrue);
+      expect(find.byKey(const Key('save-blocked-reason')), findsOneWidget);
+
+      await tester.enterText(find.byWidget(fields.first.widget), '30000');
+      await tester.pump(const Duration(milliseconds: 500));
+      await pumpUntil(tester, 'balance to return', () => visible('BALANCED'));
+      expect(saveEnabled(tester), isTrue);
+
+      // 4 · Saved, accepted by the server, and numbered.
+      await revealAndTap(tester, const Key('more-details'));
+      await tester.pump(const Duration(milliseconds: 700));
+      await pumpUntil(
+        tester,
+        'the notes field',
+        () => find.byKey(const Key('expense-notes')).evaluate().isNotEmpty,
+      );
+      await tester.enterText(
+        find.byKey(const Key('expense-notes')),
+        '$_acceptanceMarker: cross-period May/June',
+      );
+      await tester.pump(const Duration(milliseconds: 300));
+      await revealAndTap(tester, const Key('more-details'));
+      await tester.pump(const Duration(milliseconds: 500));
+
+      final id = await saveExpense(tester);
+      _createdExpenses.add(id);
+      await syncAndAwaitNumber(tester, id);
+
+      // 5 · The reporting shape. One line, two contributions, and — the point of
+      //     D-060 — no third row carrying the whole ₹60,000 against the document date.
+      final repository = ExpenseRepository(boot.database);
+      final saved = await repository.load(id);
+      expect(saved!.allocations, hasLength(1));
+      expect(saved.periodContributions, hasLength(2));
+      expect(
+        saved.periodContributions.every((c) => !c.isDerived),
+        isTrue,
+        reason: 'a deliberate split is not a derived one',
+      );
+
+      final byPeriod = {
+        for (final c in saved.periodContributions)
+          c.pnlPeriodKey: c.amountMinor,
+      };
+      expect(byPeriod, {'2026-05': 3000000, '2026-06': 3000000});
+      expect(
+        saved.periodContributions.map((c) => c.amountMinor),
+        isNot(contains(6000000)),
+        reason:
+            'there is no second contribution for the whole amount — reporting reads '
+            'these rows and only these rows, so one would be counted twice (D-060)',
+      );
+      expect(
+        saved.periodContributions.fold<int>(0, (t, c) => t + c.amountMinor),
+        6000000,
+        reason: 'and they still add up to the line, to the paisa',
+      );
+
+      expect(
+        await repository.contributionTotal(periodKey: '2026-05'),
+        Money.fromRupees(30000),
+      );
+      expect(
+        await repository.contributionTotal(periodKey: '2026-06'),
+        Money.fromRupees(30000),
+      );
+    });
+
+    testWidgets('an amount that will not divide evenly still reconciles', (
+      tester,
+    ) async {
+      await launch(tester);
+      await signIn(tester, 'giridhar@hki.com');
+      await expectSignedIn(tester, 'giridhar@hki.com');
+
+      // ₹1,000.01 is 100,001 paise. Two periods cannot take half of that, so the
+      // proposal has to give one of them a paisa more — largest remainder, applied once
+      // (ARCHITECTURE §6.5). What must never happen is a total of 100,000 or 100,002.
+      await openExpenseEntry(tester);
+      await tester.enterText(
+        find.byKey(const Key('expense-amount')),
+        '1000.01',
+      );
+      await tester.pump(const Duration(milliseconds: 300));
+      await classify(tester, const [
+        'Crystal Canopy Rooftop',
+        'F&B / Kitchen',
+        'Food Production',
+        'Kirana & Pulses',
+      ]);
+      await setDateField(tester, const Key('business-date'), '2026-06-15');
+      await pumpUntil(
+        tester,
+        'the business date to become June',
+        () => visible('2026-06-15'),
+      );
+      await tester.tap(find.byKey(const Key('split-expense')));
+      await tester.pump(const Duration(milliseconds: 600));
+      await pumpUntil(
+        tester,
+        'the accounting-period control',
+        () => visible('Split across accounting periods'),
+      );
+      await tester.tap(find.text('Split across accounting periods'));
+      await tester.pump(const Duration(milliseconds: 800));
+
+      await pumpUntil(
+        tester,
+        'the odd split to balance itself',
+        () => visible('BALANCED'),
+      );
+      expect(
+        amountShownFor(tester, const Key('remaining-amount')),
+        '₹0.00',
+        reason: 'the proposal reconciles to the paisa before anyone edits it',
+      );
+
+      await revealAndTap(tester, const Key('more-details'));
+      await tester.pump(const Duration(milliseconds: 700));
+      await pumpUntil(
+        tester,
+        'the notes field',
+        () => find.byKey(const Key('expense-notes')).evaluate().isNotEmpty,
+      );
+      await tester.enterText(
+        find.byKey(const Key('expense-notes')),
+        '$_acceptanceMarker: odd-paise split',
+      );
+      await tester.pump(const Duration(milliseconds: 300));
+      await revealAndTap(tester, const Key('more-details'));
+      await tester.pump(const Duration(milliseconds: 500));
+
+      final id = await saveExpense(tester);
+      _createdExpenses.add(id);
+      await syncAndAwaitNumber(tester, id);
+
+      final saved = await ExpenseRepository(boot.database).load(id);
+      final amounts = saved!.periodContributions
+          .map((c) => c.amountMinor)
+          .toList();
+      expect(amounts, hasLength(2));
+      expect(
+        amounts.reduce((a, b) => a + b),
+        100001,
+        reason: 'no paisa is invented and none disappears',
+      );
+      expect(
+        (amounts.first - amounts.last).abs(),
+        1,
+        reason:
+            'the remainder lands on exactly one period, not spread as a fraction',
+      );
+      expect(
+        saved.allocations.single.amountMinor,
+        100001,
+        reason: 'and the line the contributions belong to is unchanged',
+      );
+    });
+  });
+
+  // ── D-016 · payment date moves cash, never profitability ───────────────────
+
+  group('payment-accrual', skip: _phase != 'payment-accrual', () {
+    testWidgets('a June salary paid on 5 July is June s cost and July s cash', (
+      tester,
+    ) async {
+      await launch(tester);
+      await signIn(tester, 'giridhar@hki.com');
+      await expectSignedIn(tester, 'giridhar@hki.com');
+
+      await openExpenseEntry(tester);
+      await tester.enterText(find.byKey(const Key('expense-amount')), '80000');
+      await tester.pump(const Duration(milliseconds: 300));
+      await classify(tester, const [
+        'Crystal Canopy Rooftop',
+        'F&B / Kitchen',
+        'Food Production',
+        'Kirana & Pulses',
+      ]);
+
+      // The salary is June's, so the document's business date is the end of June.
+      await setDateField(tester, const Key('business-date'), '2026-06-30');
+      await pumpUntil(
+        tester,
+        'the business date to become June',
+        () => visible('2026-06-30'),
+      );
+
+      // Paid, on 5 July, for work that belongs to June. Payment lives behind the
+      // progressive disclosure precisely because it is not part of the fast path.
+      await revealAndTap(tester, const Key('more-details'));
+      await tester.pump(const Duration(milliseconds: 900));
+      // The payment *section* exists as soon as the details open; the method and date
+      // controls do not exist until the document is marked paid, because unpaid carries
+      // neither and the database refuses a half-stated payment (spec §5.4).
+      await pumpUntil(tester, 'the payment section', () => visible('PAYMENT'));
+      expect(
+        find.byKey(const Key('payment-method')),
+        findsNothing,
+        reason: 'unpaid states no method, and the form does not offer one',
+      );
+      await markPaidOn(tester, '2026-07-05');
+      await tester.enterText(
+        find.byKey(const Key('expense-notes')),
+        '$_acceptanceMarker: June salary paid 5 July',
+      );
+      await tester.pump(const Duration(milliseconds: 300));
+      await revealAndTap(tester, const Key('more-details'));
+      await tester.pump(const Duration(milliseconds: 500));
+
+      final id = await saveExpense(tester);
+      _createdExpenses.add(id);
+      await syncAndAwaitNumber(tester, id);
+
+      final repository = ExpenseRepository(boot.database);
+      final saved = await repository.load(id);
+
+      // The cost is June's. The payment is July's. They are different columns and they
+      // are read by different reports, which is the whole of D-016.
+      expect(saved!.row.paymentStatus, 'paid');
+      expect(saved.row.paymentDate, '2026-07-05');
+      expect(saved.row.paymentMethodId, isNotNull);
+      expect(
+        saved.periodContributions.single.pnlPeriodKey,
+        '2026-06',
+        reason: 'the contribution follows the business date, not the payment',
+      );
+      expect(saved.periodContributions.single.amountMinor, 8000000);
+
+      expect(
+        await repository.contributionTotal(periodKey: '2026-06'),
+        Money.fromRupees(80000),
+        reason: '₹80,000 of June cost',
+      );
+      expect(
+        await repository.contributionTotal(periodKey: '2026-07'),
+        Money.zero,
+        reason:
+            'and nothing at all in July — a payment date must never move an expense '
+            'into another month s profitability',
+      );
+    });
+  });
+
+  // ── D-068 · financial cache retention ─────────────────────────────────────
+  //
+  // These re-run the Phase 2 scope and user-switch security paths, because D-068 and
+  // local schema v8 changed what happens on exactly that boundary. Phase 2 proved that
+  // *reference* data does not survive a user switch. Since D-068 the same must be true
+  // of synced financial documents, and the one thing that must survive — the actor's own
+  // unsent intent — must stop being browsable rather than stop existing.
+
+  group('d068-switch', skip: _phase != 'd068-switch', () {
+    testWidgets('a shared invoice does not survive into the next session', (
+      tester,
+    ) async {
+      await launch(tester);
+      await signIn(tester, 'giridhar@hki.com');
+      await expectSignedIn(tester, 'giridhar@hki.com');
+
+      // The Owner records and caches a complete shared bill: ₹58,000 across both
+      // properties. This is the document a scoped manager must never inherit.
+      final id = const Uuid().v4();
+      final gateway = ExpenseGateway(Supabase.instance.client);
+      final created = await gateway.create(
+        arguments: {
+          'p_id': id,
+          'p_business_date': '2026-06-15',
+          'p_total_minor': 5800000,
+          'p_notes': '$_acceptanceMarker: D-068 shared electricity',
+          'p_allocations': [
+            {
+              'business_unit_id': _ccr,
+              'department_id': _seedId('dept:CCR/FB'),
+              'section_id': _seedId('sec:CCR/FB/FOOD_PROD'),
+              'category_id': _kirana,
+              'amount_minor': 2500000,
+            },
+            {
+              'business_unit_id': _hki,
+              'department_id': _seedId('dept:HKI/HKI_UTIL'),
+              'section_id': _seedId('sec:HKI/HKI_UTIL/HKI_POWER'),
+              'category_id': _seedId('cat:HKI/HKI_UTIL/HKI_POWER/ELECTRICITY'),
+              'amount_minor': 3300000,
+            },
+          ],
+        },
+        mutationId: const Uuid().v4(),
+      );
+      expect(created.isOk, isTrue, reason: '${created.refusalOrNull?.message}');
+      _createdExpenses.add(id);
+
+      await ExpensePull(
+        db: boot.database,
+        gateway: ExpenseGateway(Supabase.instance.client),
+      ).pullOne(id);
+
+      final owned = await ExpenseRepository(boot.database).load(id);
+      expect(owned!.row.visibility, 'complete');
+      expect(
+        owned.row.documentTotalMinor,
+        5800000,
+        reason: 'the Owner really did hold the whole document',
+      );
+
+      // The Owner also queues something that will not be delivered, so the retention
+      // half of the policy is exercised by the same switch.
+      final ownerId = await AuthorityStore(boot.database).ownerUserId();
+      await boot.outbox.enqueue(
+        PendingMutation(
+          mutationId: _ownerQueuedMutationId,
+          entityType: 'expense_category',
+          entityId: _kirana,
+          op: MutationOp.update,
+          payload: const {'name': "Owner's Queued Work"},
+          baseRowVersion: 1,
+          createdAt: DateTime.now().toUtc(),
+          actorUserId: ownerId,
+        ),
+        now: DateTime.now().toUtc(),
+      );
+      final queuedBefore =
+          (await boot.database.select(boot.database.syncOutbox).get()).length;
+
+      await signOutThroughTheUi(tester);
+      await signIn(tester, 'ccr.manager@example.com');
+      await expectSignedIn(tester, 'ccr.manager@example.com');
+
+      // 1 · Nothing financial is inherited. Not the total, not the other property's
+      //     share, not the line, not the contribution, not the attachment record.
+      final db = boot.database;
+      expect(
+        await db.select(db.expenses).get(),
+        isEmpty,
+        reason: "the Owner's document must not be browsable by the next user",
+      );
+      expect(await db.select(db.expenseAllocations).get(), isEmpty);
+      expect(await db.select(db.expensePeriodAllocations).get(), isEmpty);
+      expect(await db.select(db.expenseAttachments).get(), isEmpty);
+
+      // 2 · And the reference-data rule from Phase 2 still holds alongside it.
+      expect(
+        (await db.select(db.businessUnits).get()).map((u) => u.id).toSet(),
+        {_ccr},
+      );
+      expect(
+        await db.select(db.paymentMethods).get(),
+        isNotEmpty,
+        reason: 'company-wide reference data is not scoped (D-049)',
+      );
+
+      // 3 · The sign-out that does all this must not throw. Before local schema v8 it
+      //     did, on any device that had synced an expense (D-068).
+      final violations = await db
+          .customSelect('PRAGMA foreign_key_check')
+          .get();
+      expect(
+        violations,
+        isEmpty,
+        reason: 'no foreign key failure during purge',
+      );
+
+      // 4 · Somebody else's queued work survives, attributed to them.
+      final queued = await db.select(db.syncOutbox).get();
+      expect(queued, hasLength(queuedBefore));
+      final owners = queued.firstWhere(
+        (q) => q.mutationId == _ownerQueuedMutationId,
+      );
+      expect(owners.actorUserId, ownerId);
+      final nowSignedIn = (await AuthorityStore(db).ownerUserId())!;
+      expect(nowSignedIn, isNot(ownerId));
+      final mine = await boot.outbox.dueEntries(
+        now: DateTime.now().toUtc(),
+        actorUserId: nowSignedIn,
+      );
+      expect(
+        mine.map((e) => e.mutationId),
+        isNot(contains(_ownerQueuedMutationId)),
+        reason: "the new user may not push the previous user's intent (D-050)",
+      );
+    });
+
+    testWidgets('CCR Manager → HKI Manager inherits no expense either', (
+      tester,
+    ) async {
+      await launch(tester);
+      await signIn(tester, 'ccr.manager@example.com');
+      await expectSignedIn(tester, 'ccr.manager@example.com');
+
+      await signIn(tester, 'hki.manager@example.com');
+      await expectSignedIn(tester, 'hki.manager@example.com');
+
+      final db = boot.database;
+      expect(await db.select(db.expenses).get(), isEmpty);
+      expect(await db.select(db.expenseAllocations).get(), isEmpty);
+      expect(
+        (await db.select(db.businessUnits).get()).map((u) => u.id).toSet(),
+        {_hki},
+      );
+      // Payment methods, not vendors, are the organisation-global probe here: the
+      // development project seeds no vendor rows at all, so asserting vendors were
+      // retained would assert a fixture that does not exist and would pass for the
+      // wrong reason. That vendors are organisation-global and unaffected by scope is
+      // a classification fact, proven where it lives, in the host suite (D-049).
+      expect(
+        await db.select(db.paymentMethods).get(),
+        isNotEmpty,
+        reason: 'company-wide reference data is not scoped (D-049)',
+      );
+      expect(await db.customSelect('PRAGMA foreign_key_check').get(), isEmpty);
+    });
+  });
+
+  group('d068-revoke', skip: _phase != 'd068-revoke', () {
+    testWidgets('losing one property of two purges only that property', (
+      tester,
+    ) async {
+      // The project lead's exact case: a manager holding Crystal Canopy and Hotel
+      // Krishna loses Crystal Canopy. Grant, act, revoke, and put the grant back — all
+      // through the ordinary API as the Owner, holding no privileged credential.
+      await _admin.grantScope('hki.manager@example.com', 'manager', 'CCR');
+      addTearDown(() => _admin.revokeScope('hki.manager@example.com', 'CCR'));
+
+      await launch(tester);
+      await signIn(tester, 'hki.manager@example.com');
+      await expectSignedIn(tester, 'hki.manager@example.com');
+
+      final db = boot.database;
+      final repository = ExpenseRepository(db);
+
+      // A shared bill, created by the Owner, and visible complete to this manager
+      // because they currently hold both properties.
+      final sharedId = await _admin.createSharedExpense(
+        notes: '$_acceptanceMarker: D-068 partial revocation',
+      );
+      _createdExpenses.add(sharedId);
+
+      // A Crystal-Canopy-only bill, which must disappear entirely.
+      final ccrOnlyId = await _admin.createCcrExpense(
+        notes: '$_acceptanceMarker: D-068 CCR only',
+      );
+      _createdExpenses.add(ccrOnlyId);
+
+      final pull = ExpensePull(
+        db: db,
+        gateway: ExpenseGateway(Supabase.instance.client),
+      );
+      await pull.pullOne(sharedId);
+      await pull.pullOne(ccrOnlyId);
+
+      final shared = await repository.load(sharedId);
+      expect(
+        shared!.row.visibility,
+        'complete',
+        reason: 'holding both properties, this manager sees the whole document',
+      );
+      expect(shared.row.documentTotalMinor, 5800000);
+
+      // Work of their own, over Crystal Canopy, that has not been delivered. This is
+      // the one thing a revocation must not destroy.
+      final unsent = ExpenseDocument(
+        id: const Uuid().v4(),
+        orgId: shared.row.orgId,
+        businessDate: BusinessDate.of(2026, 6, 15),
+        businessDateSource: BusinessDateSource.derived,
+        total: Money.fromRupees(1234),
+        allocations: [
+          ExpenseAllocation.wholePeriod(
+            id: const Uuid().v4(),
+            businessUnitId: _ccr,
+            departmentId: _seedId('dept:CCR/FB'),
+            sectionId: _seedId('sec:CCR/FB/FOOD_PROD'),
+            categoryId: _kirana,
+            amount: Money.fromRupees(1234),
+            businessDate: BusinessDate.of(2026, 6, 15),
+            categoryLabel: 'Kirana & Pulses',
+          ),
+        ],
+        paymentStatus: PaymentStatus.unpaid,
+        createdByUserId: 'acceptance',
+        capturedAt: DateTime.now().toUtc(),
+      );
+      final unsentMutation = await repository.createLocally(
+        unsent,
+        actorUserId: (await AuthorityStore(db).ownerUserId())!,
+        mutationId: const Uuid().v4(),
+        now: DateTime.now().toUtc(),
+      );
+      final outboxBefore = (await db.select(db.syncOutbox).get()).length;
+
+      // Now the Owner takes Crystal Canopy away, and the device refreshes authority —
+      // which is what reconnecting does. Nothing is purged until the server says so.
+      await _admin.revokeScope('hki.manager@example.com', 'CCR');
+
+      final container = ProviderContainer(
+        overrides: [
+          databaseProvider.overrideWithValue(db),
+          outboxProvider.overrideWithValue(boot.outbox),
+          sessionProvider.overrideWith(() => SessionController(boot.session!)),
+        ],
+      );
+      addTearDown(container.dispose);
+      await (container.read(sessionProvider.notifier) as SessionController)
+          .restore();
+
+      var confirmed = false;
+      final deadline = DateTime.now().add(const Duration(seconds: 300));
+      while (DateTime.now().isBefore(deadline)) {
+        await container.read(sessionProvider.notifier).refreshAuthority();
+        final state = container.read(sessionProvider);
+        if (state is SessionReady &&
+            !state.isStale &&
+            !state.authority.scopedUnits.contains(_ccr)) {
+          confirmed = true;
+          break;
+        }
+        await tester.pump(const Duration(seconds: 3));
+      }
+      expect(
+        confirmed,
+        isTrue,
+        reason: 'the server must positively confirm Crystal Canopy is gone',
+      );
+
+      // 1 · The Crystal-Canopy-only document is gone outright.
+      expect(
+        await repository.load(ccrOnlyId),
+        isNull,
+        reason: "a document wholly inside the revoked property does not remain",
+      );
+
+      // 2 · The shared bill keeps the Hotel Krishna share and loses the rest —
+      //     including, and especially, the document total.
+      final after = await repository.load(sharedId);
+      expect(after, isNotNull, reason: 'Hotel Krishna is still held');
+      expect(after!.row.visibility, 'scoped');
+      expect(
+        after.row.documentTotalMinor,
+        isNull,
+        reason: '₹58,000 beside ₹33,000 publishes Crystal Canopy s ₹25,000',
+      );
+      expect(after.visibleAmount, Money.fromRupees(33000));
+      expect(after.allocations, hasLength(1));
+      expect(after.allocations.single.businessUnitId, _hki);
+      expect(after.attachments, isEmpty, reason: 'D-063 — complete only');
+
+      // 3 · Neither forbidden figure survives anywhere on the device.
+      final amounts = [
+        ...(await db.select(db.expenses).get()).expand(
+          (r) => [r.documentTotalMinor, r.visibleAmountMinor],
+        ),
+        ...(await db.select(db.expenseAllocations).get()).map(
+          (r) => r.amountMinor,
+        ),
+        ...(await db.select(db.expensePeriodAllocations).get()).map(
+          (r) => r.amountMinor,
+        ),
+      ];
+      expect(amounts, isNot(contains(2500000)));
+      expect(amounts, isNot(contains(5800000)));
+
+      // 4 · The unsent intent survives, stops being browsable, and stays the actor's.
+      final ledger = await repository.list();
+      expect(
+        ledger.map((e) => e.row.id),
+        isNot(contains(unsent.id)),
+        reason: 'retained is not the same as browsable',
+      );
+      final retained = await repository.listRetainedAfterRevocation();
+      expect(retained.map((e) => e.row.id), contains(unsent.id));
+      expect(retained.single.allocations, hasLength(1));
+      expect(
+        (await db.select(db.syncOutbox).get()).length,
+        outboxBefore,
+        reason: 'no queued work is ever destroyed by an authority change',
+      );
+      expect(
+        await boot.outbox.statusOf(unsentMutation),
+        isNot(OutboxStatus.done),
+      );
+
+      // 5 · Organisation-global data is untouched, and nothing broke on the way.
+      //     Payment methods rather than vendors: the development project seeds no
+      //     vendor rows, so asserting vendors survived would pass for the wrong reason.
+      expect(await db.select(db.paymentMethods).get(), isNotEmpty);
+      expect(
+        (await db.select(db.businessUnits).get()).map((u) => u.id).toSet(),
+        {_hki},
+      );
+      expect(await db.customSelect('PRAGMA foreign_key_check').get(), isEmpty);
+    });
+  });
+
+  group('expense-cleanup', skip: _phase != 'expense-cleanup', () {
+    testWidgets('the development fixtures are reversed', (tester) async {
+      // Deliberately its own phase: acceptance creates real documents, and the dev
+      // project should end a run in the state it started in.
+      //
+      // This phase used to be `expect(true, isTrue)` — it signed in and asserted
+      // nothing, while `PROJECT_STATUS.md` and D-066 both said the fixtures a run
+      // creates are removed afterwards. They were not. The list it was meant to consume
+      // is per-process, so it was always empty here; the documentation described an
+      // intention and the code never carried it out.
+      //
+      // What it does now is **void**, not delete, and that is not a compromise: the
+      // hard constraint is that financial history is corrected by void plus audit and
+      // never by deleting rows (spec §14, D-006). A voided document is excluded from
+      // every aggregate, stays visible in audit, and carries a reason naming the run —
+      // which is exactly the identification D-066 specifies. The append-only audit rows
+      // remain either way, and that asymmetry is the point of the guard.
+      await launch(tester);
+      await signIn(tester, 'giridhar@hki.com');
+      await expectSignedIn(tester, 'giridhar@hki.com');
+
+      // Read through `expense_document`, never `expenses`. No client role holds SELECT
+      // on the base table — the header total on a shared bill is withheld by the
+      // projection, and the first version of this phase asked the base table and was
+      // refused `42501`, which is the D-062 boundary working exactly as designed.
+      final client = Supabase.instance.client;
+      final open = await client
+          .from('expense_document')
+          .select('id,row_version,notes')
+          .like('notes', '$_acceptanceMarker%')
+          .filter('voided_at', 'is', null);
+
+      final gateway = ExpenseGateway(client);
+      var reversed = 0;
+      for (final row in open) {
+        final outcome = await gateway.voidExpense(
+          expenseId: row['id'] as String,
+          baseRowVersion: row['row_version'] as int,
+          reason: 'Reversing $_acceptanceMarker fixture (D-066)',
+          mutationId: const Uuid().v4(),
+        );
+        // A closed period legitimately refuses a void, and that refusal is the period
+        // lock working. It is reported rather than swallowed, and rather than failed on.
+        if (outcome.isOk) {
+          reversed++;
+        } else {
+          debugPrint(
+            'cleanup: ${row['id']} left in place — '
+            '${outcome.refusalOrNull?.code}: ${outcome.refusalOrNull?.message}',
+          );
+        }
+      }
+      debugPrint('cleanup: reversed $reversed of ${open.length} fixture(s)');
+
+      // The state that matters is the end state, and it is asserted rather than assumed.
+      final remaining = await client
+          .from('expense_document')
+          .select('id,notes')
+          .like('notes', '$_acceptanceMarker%')
+          .filter('voided_at', 'is', null);
+      expect(
+        remaining,
+        isEmpty,
+        reason:
+            'every acceptance document is reversed, or the run says which is not and '
+            'why — silence here is what let this phase pass while doing nothing',
+      );
     });
   });
 
@@ -2203,3 +3406,5 @@ Future<int> _currentVersion(String departmentId) async {
       .single();
   return row['row_version'] as int;
 }
+
+String _two(int value) => value.toString().padLeft(2, '0');

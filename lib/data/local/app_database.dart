@@ -52,10 +52,19 @@ class AppDatabase extends _$AppDatabase {
   ///      user's visible share and, by check constraint, **no** document total, because
   ///      total minus own share is the other property's share (see `expense_tables.dart`).
   ///
+  /// v8 — `expense_allocations.business_unit_id` becomes a soft pointer, for the reason
+  ///      v5 existed: a per-user cache legitimately outlives the masters it names, and
+  ///      `ON DELETE RESTRICT` made sign-out throw on a device holding expenses (D-068).
+  /// v9 — `expenses.scope_revoked_at`. A confirmed revocation now purges synced financial
+  ///      cache for the revoked unit rather than retaining it, so the one thing that must
+  ///      survive — a document still carrying the actor's own unsent, rejected or
+  ///      conflicted intent — needs somewhere to say it is being kept for that reason and
+  ///      is not browsable financial data (D-068).
+  ///
   /// Financial tables raise this number as they land, each with a migration step and a
   /// migration test (docs/RELEASE_CHECKLIST.md §C).
   @override
-  int get schemaVersion => 8;
+  int get schemaVersion => 9;
 
   /// Timestamps are stored as ISO-8601 **UTC text**, not as unix seconds.
   ///
@@ -124,11 +133,30 @@ class AppDatabase extends _$AppDatabase {
         // is the only way SQLite drops a foreign key; no value is transformed.
         await m.alterTable(TableMigration(expenseAllocations));
       }
+      if (from < 9) {
+        // `expenses.scope_revoked_at` (D-068). Nothing is back-filled: every row that
+        // exists at upgrade time is one this user could browse, and the column means
+        // "kept through a revocation", which has not happened to any of them.
+        await m.addColumn(expenses, expenses.scopeRevokedAt);
+      }
     },
     beforeOpen: (details) async {
       // Referential integrity is not optional in a financial database. Without this,
       // SQLite silently ignores every foreign key declared above.
       await customStatement('PRAGMA foreign_keys = ON');
+
+      // Deleted content is overwritten rather than left in the free list.
+      //
+      // This matters because of what the delete now means. Since D-068 a confirmed
+      // revocation removes the revoked property's figures, and D-062's argument for the
+      // scoped projection was explicitly about a raw database file being readable — not
+      // about what a widget chooses to draw. Without this pragma the removed rows stay
+      // legible in freed pages until something happens to overwrite them, so the purge
+      // would be weaker than the projection it is protecting.
+      //
+      // Cheap at this write volume, and the alternative (VACUUM after every purge)
+      // rewrites the entire database to solve a smaller problem.
+      await customStatement('PRAGMA secure_delete = ON');
     },
   );
 

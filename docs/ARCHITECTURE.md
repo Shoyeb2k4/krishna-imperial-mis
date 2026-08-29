@@ -779,3 +779,76 @@ classified list against itself, so four Phase 3 tables were never classified and
 objected. It now compares against `AppDatabase.allTables`, in both directions. **A rule
 that nothing evaluates is a comment** — the same shape of finding as D-059, where D-050's
 actor filter existed and was never passed (D-068).
+
+---
+
+## 15. What a revocation removes, since D-070 (2026-08-30)
+
+§13.6 and D-048 drew the purge boundary around **server-owned reference data**. The
+project lead has moved it: a confirmed revocation now also removes the revoked property's
+**synced financial documents** from the browsable local cache, at the authority refresh
+rather than at the next sign-out.
+
+### 15.1 The line that replaced "typed versus downloaded"
+
+The old boundary was "nothing a person typed is ever in scope". That reading kept a
+revoked manager's cached expense amounts on their device, which is the thing the decision
+rejects. The boundary that replaced it is sharper and survives the same reasoning:
+
+| | Purged | Why |
+|---|---|---|
+| A **synced** expense, its lines, contributions, attachment rows and staged bytes | yes | a projection of server state; the server hands it straight back when authority returns, exactly like a department |
+| A **queued, failed, rejected or conflicted** intent and the document rows needed to inspect it | **no** | it exists nowhere else, and losing a property is not a reason to destroy somebody's unsent work |
+
+The retained rows are stamped `expenses.scope_revoked_at` (local schema v9) and are
+removed from every canonical financial read — `list`, `query`, `contributionTotal`. They
+reach the user only through `listRetainedAfterRevocation`, and only the actor who queued
+them, because the outbox is filtered by `actor_user_id` (D-050). Restoring the scope
+clears the stamp; a shared document is restored only when every property it charges is
+reachable again.
+
+`unknown ≠ revoked` is untouched. `ScopeCachePurge.applyTo` still takes an
+`AuthorityRefresh` whose only purging branch is `AuthorityConfirmed`, so there remains no
+signature by which a timeout can delete anything.
+
+### 15.2 A partial revocation downgrades the header; it does not merely trim it
+
+```
+        held complete            after losing Crystal Canopy
+        ─────────────────────────────────────────────────────
+        visibility  complete     scoped              ← downgraded
+        total       ₹58,000      NULL                ← required
+        CCR line    ₹25,000      (removed)
+        HKI line    ₹33,000      ₹33,000
+        visible     ₹58,000      ₹33,000
+```
+
+Leaving the header `complete` beside the one surviving line would publish
+`₹58,000 − ₹33,000 = ₹25,000` — the share just revoked. That is the exact arithmetic
+§13 and D-062 shaped the local read model to make impossible, so the downgrade is part of
+the purge and not a tidy-up after it. The attachment goes too: an attachment is the whole
+bill, and D-063 gates it on `is_complete`, which has just become false.
+
+### 15.3 Two ordering rules that are not incidental
+
+**The database first, the filesystem afterwards.** Staged attachment bytes are reclaimed
+only once the transaction has committed. A rollback can undo a delete in SQLite; it cannot
+put a deleted JPEG back, so nothing on disk is touched while there is still something to
+roll back.
+
+**Deleted rows are overwritten, not merely unlinked.** The local database sets
+`PRAGMA secure_delete = ON`. Without it the purge was *weaker than the projection it
+protects*: D-062's argument was explicitly about a raw SQLite file being readable, and
+freed pages kept the revoked figures legible until something happened to overwrite them.
+This was found by asserting on the bytes of the file rather than on the rows, and
+confirmed by turning the pragma off and watching the revoked ₹25,000 reappear.
+
+### 15.4 What the client still cannot do (D-072)
+
+`expense_update` exists on the server, with its edit window measured under the property's
+business date (§14). **No client can call it.** `ExpenseRepository` exposes no update,
+the detail panel offers Void alone, and nothing in `lib/` ever constructs a
+`MutationOp.update` intent for an expense — the endpoint that would dispatch one has no
+producer. The seven-day window is therefore, today, a rule about an operation the
+applications cannot perform. Recorded rather than quietly filled in, because building it
+is a Phase 3 slice with real concurrency semantics attached.

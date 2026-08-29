@@ -11,6 +11,51 @@
 ///     the user's, not the server's, and losing authority is not a reason to lose it.
 ///     The purge deletes from a fixed list of server-owned tables and asserts that the
 ///     outbox count is unchanged when it finishes.
+///
+/// ## What it removes, since D-068
+///
+/// Two kinds of thing, in one transaction, for the same revoked units.
+///
+/// **Server-owned reference data** — the hierarchy, unit-scoped tax rules, period locks,
+/// the unit itself. Unconditional. The server hands every row back the moment authority
+/// returns, so removing it costs a pull and nothing else.
+///
+/// **Synced financial documents** — expenses, their allocation lines, their period
+/// contributions, their attachment records and the staged bytes on disk. This is the
+/// project lead's final D-068 policy, and it reverses what the Phase 3 checkpoint
+/// shipped: a confirmed revocation must not leave the revoked property's figures sitting
+/// in a browsable local cache until the user happens to sign out.
+///
+/// With one exception, and the exception is the point:
+///
+/// > A document that still carries **the actor's own unsynced intent** — queued, failed,
+/// > rejected or conflicted — is retained whole, stamped `expenses.scope_revoked_at`, and
+/// > removed from every canonical financial read.
+///
+/// Retained *whole*, deliberately. Half-deleting the document behind an unsent intent
+/// would leave the person who queued it unable to see what they submitted, which is the
+/// one thing the retention exists for. Excluding it from browsing is what makes that
+/// safe: it is no longer presented as authorised financial data anywhere, and reaches
+/// the user only through the pending / rejected / conflict workflow that owns it.
+///
+/// ## The partially revoked shared bill
+///
+/// A ₹58,000 invoice charging both properties, held complete by someone who then loses
+/// Crystal Canopy but keeps Hotel Krishna:
+///
+///     before        after
+///     ─────────────────────────────────────────────
+///     complete      scoped              ← downgraded
+///     total 58,000  total NULL          ← required
+///     CCR 25,000    (deleted)
+///     HKI 33,000    HKI 33,000
+///     visible 58,000 visible 33,000
+///
+/// The downgrade is not tidiness. Leaving the header `complete` beside the one surviving
+/// line publishes `58,000 − 33,000 = 25,000` — the share that was just revoked — which is
+/// the precise leak the local read model was shaped to make impossible (D-062). The
+/// attachment goes with it, because an attachment is the whole bill and D-063 makes it
+/// complete-document-only.
 ///  3. **It is one transaction, bottom-up.** Categories before sections before
 ///     departments before the unit itself, so there is no moment at which a section
 ///     hangs off a department that is already gone, and no partially-purged hierarchy
@@ -20,6 +65,7 @@ library;
 import 'package:drift/drift.dart';
 import 'package:krishna_mis/data/local/app_database.dart';
 import 'package:krishna_mis/domain/auth/authority.dart';
+import 'package:krishna_mis/domain/sync/sync_state.dart';
 
 /// What a purge did, for the sync log and for the tests.
 final class ScopePurgeResult {
@@ -28,6 +74,10 @@ final class ScopePurgeResult {
     required this.rowsRemoved,
     required this.outboxEntriesPreserved,
     required this.skippedReason,
+    this.documentsRemoved = const {},
+    this.documentsDowngraded = const {},
+    this.documentsRetainedForUnsyncedWork = const {},
+    this.stagingReclaimed = const {},
   });
 
   /// Nothing happened, and why. Null when a purge actually ran.
@@ -35,7 +85,11 @@ final class ScopePurgeResult {
     : revokedUnits = const {},
       rowsRemoved = const {},
       outboxEntriesPreserved = 0,
-      skippedReason = reason;
+      skippedReason = reason,
+      documentsRemoved = const {},
+      documentsDowngraded = const {},
+      documentsRetainedForUnsyncedWork = const {},
+      stagingReclaimed = const {};
 
   final Set<String> revokedUnits;
 
@@ -48,6 +102,23 @@ final class ScopePurgeResult {
 
   final String? skippedReason;
 
+  /// Expense documents deleted outright: every line they carried named a revoked unit,
+  /// and nothing about them was still unsent.
+  final Set<String> documentsRemoved;
+
+  /// Shared documents that lost some lines and kept others, and were therefore
+  /// downgraded from `complete` to `scoped` with their document total nulled.
+  final Set<String> documentsDowngraded;
+
+  /// Documents kept because they still carry the actor's own unsynced intent. Stamped
+  /// `scope_revoked_at` and excluded from canonical financial reads (D-068).
+  final Set<String> documentsRetainedForUnsyncedWork;
+
+  /// Expense ids whose staged attachment bytes were reclaimed from disk after the
+  /// transaction committed. Reported rather than assumed: file deletion is the one part
+  /// of this that a database rollback could not have undone, so it happens last.
+  final Set<String> stagingReclaimed;
+
   bool get didPurge => skippedReason == null && revokedUnits.isNotEmpty;
   int get totalRowsRemoved =>
       rowsRemoved.values.fold(0, (sum, count) => sum + count);
@@ -56,13 +127,28 @@ final class ScopePurgeResult {
   String toString() => skippedReason != null
       ? 'ScopePurgeResult.skipped($skippedReason)'
       : 'ScopePurgeResult(${revokedUnits.length} units, $totalRowsRemoved rows, '
+            '${documentsRemoved.length} documents removed, '
+            '${documentsDowngraded.length} downgraded, '
+            '${documentsRetainedForUnsyncedWork.length} retained for unsynced work, '
             '$outboxEntriesPreserved outbox entries preserved)';
 }
 
+/// Removes the app-private staged attachment bytes for one expense.
+///
+/// Injected rather than imported so this file keeps no dependency on `dart:io` or on a
+/// platform path resolver, and so a test can watch what would have been deleted without
+/// putting real files anywhere. `AttachmentStaging.discardExpense` is the production
+/// implementation.
+typedef StagingReclaimer = Future<void> Function(String expenseId);
+
 class ScopeCachePurge {
-  const ScopeCachePurge(this.db);
+  const ScopeCachePurge(this.db, {this.reclaimStaging});
 
   final AppDatabase db;
+
+  /// How to remove staged attachment bytes. Null in contexts that hold no files — a
+  /// pure-database test — in which case the rows go and nothing is reclaimed.
+  final StagingReclaimer? reclaimStaging;
 
   /// Purges cached reference data for any unit the confirmed authority no longer covers.
   ///
@@ -82,12 +168,51 @@ class ScopeCachePurge {
       );
     }
 
+    // Authority is confirmed, so this is also the moment to undo a retention that no
+    // longer applies. A document kept only because it carried unsent work is invisible
+    // to canonical browsing; if the unit it charges is back in scope, keeping it hidden
+    // would be a second, silent revocation nobody decided (D-068).
+    final restored = await _restoreBrowsability(refresh.snapshot);
+
     final revoked = refresh.snapshot.unitsRevokedSince(previous);
     if (revoked.isEmpty) {
-      return const ScopePurgeResult.skipped('no business unit was revoked');
+      return ScopePurgeResult.skipped(
+        restored == 0
+            ? 'no business unit was revoked'
+            : 'no business unit was revoked; $restored retained document(s) became '
+                  'browsable again under the confirmed scope',
+      );
     }
 
     return purgeUnits(revoked);
+  }
+
+  /// Clears `scope_revoked_at` on documents every line of which is inside [snapshot]'s
+  /// scope again. Returns how many rows were freed.
+  ///
+  /// An org-wide holder covers everything by construction (D-025), so the predicate for
+  /// them is simply "any retained row". For a scoped holder the test is `NOT EXISTS a
+  /// line outside the scope` — the strict reading, so a partially restored shared bill
+  /// stays hidden until every property it charges is reachable again.
+  Future<int> _restoreBrowsability(AuthoritySnapshot snapshot) async {
+    if (snapshot.holdsOrgWideGrant) {
+      return db.customUpdate(
+        'UPDATE expenses SET scope_revoked_at = NULL '
+        'WHERE scope_revoked_at IS NOT NULL',
+        updates: const {},
+      );
+    }
+    final units = snapshot.scopedUnits;
+    if (units.isEmpty) return 0;
+    return db.customUpdate(
+      'UPDATE expenses SET scope_revoked_at = NULL '
+      'WHERE scope_revoked_at IS NOT NULL AND NOT EXISTS ('
+      '  SELECT 1 FROM expense_allocations a '
+      '  WHERE a.expense_id = expenses.id '
+      '    AND a.business_unit_id NOT IN ${_in(units)})',
+      variables: [for (final unit in units) Variable<String>(unit)],
+      updates: const {},
+    );
   }
 
   /// The deletion itself, for a set of units already established as revoked.
@@ -102,10 +227,17 @@ class ScopeCachePurge {
 
     final outboxBefore = await _outboxCount();
     final removed = <String, int>{};
+    late _FinancialPurge financial;
 
     await db.transaction(() async {
-      // Bottom-up. Each step deletes only rows reachable from the revoked units, and the
-      // order guarantees a parent is never removed before its children.
+      // Financial documents first. They depend on nothing below them, and doing them
+      // inside the same transaction is what makes "the revoked unit's figures are gone"
+      // a single fact rather than two that could half-happen (D-068).
+      financial = await _purgeFinancialDocuments(units, removed);
+
+      // Then reference data, bottom-up. Each step deletes only rows reachable from the
+      // revoked units, and the order guarantees a parent is never removed before its
+      // children.
       removed['revenue_tax_rates'] = await _delete(
         'DELETE FROM revenue_tax_rates WHERE revenue_category_id IN '
         '(SELECT id FROM revenue_categories WHERE business_unit_id IN ${_in(units)})',
@@ -152,6 +284,19 @@ class ScopeCachePurge {
       );
     });
 
+    // Only now, with the transaction committed, are the bytes on disk removed. A
+    // rollback could not have put a deleted file back, so nothing is deleted until there
+    // is nothing left to roll back. The reverse order would trade a recoverable database
+    // state for an unrecoverable filesystem one.
+    final reclaimed = <String>{};
+    final reclaimer = reclaimStaging;
+    if (reclaimer != null) {
+      for (final expenseId in financial.stagingToReclaim) {
+        await reclaimer(expenseId);
+        reclaimed.add(expenseId);
+      }
+    }
+
     final outboxAfter = await _outboxCount();
     if (outboxAfter != outboxBefore) {
       // Not a recoverable situation: the one guarantee that must not bend has bent.
@@ -167,8 +312,155 @@ class ScopeCachePurge {
       rowsRemoved: removed,
       outboxEntriesPreserved: outboxAfter,
       skippedReason: null,
+      documentsRemoved: financial.removed,
+      documentsDowngraded: financial.downgraded,
+      documentsRetainedForUnsyncedWork: financial.retained,
+      stagingReclaimed: reclaimed,
     );
   }
+
+  /// The financial half of a revocation (D-068).
+  ///
+  /// Four outcomes, decided per document, and each one is a different thing:
+  ///
+  /// | Document | Outcome |
+  /// |---|---|
+  /// | carries the actor's own unsynced intent | retained whole, stamped, unbrowsable |
+  /// | every line named a revoked unit | deleted, staged bytes reclaimed |
+  /// | some lines revoked, some kept | lines removed, header downgraded to `scoped` |
+  /// | no line named a revoked unit | untouched |
+  ///
+  /// Runs inside the caller's transaction. Deletes explicitly at every level rather than
+  /// leaning on `ON DELETE CASCADE`, so the counts it reports are counts of rows it
+  /// actually removed and not an estimate of what SQLite did afterwards.
+  Future<_FinancialPurge> _purgeFinancialDocuments(
+    Set<String> units,
+    Map<String, int> removed,
+  ) async {
+    removed['expense_period_allocations'] = 0;
+    removed['expense_allocations'] = 0;
+    removed['expense_attachments'] = 0;
+    removed['expenses'] = 0;
+
+    final touched = await _ids(
+      'SELECT DISTINCT expense_id AS id FROM expense_allocations '
+      'WHERE business_unit_id IN ${_in(units)}',
+      [for (final unit in units) Variable<String>(unit)],
+    );
+    if (touched.isEmpty) return const _FinancialPurge.empty();
+
+    // Work this device has not managed to deliver. `pending_mutation_id` alone is enough
+    // even when the outbox row has vanished: the repository already treats that state as
+    // pending rather than quietly calling it synced, and a purge is not the place to
+    // start resolving the ambiguity in the destructive direction.
+    final retained = await _ids(
+      'SELECT DISTINCT e.id AS id FROM expenses e WHERE e.id IN ${_in(touched)} '
+      'AND (e.pending_mutation_id IS NOT NULL OR EXISTS ('
+      '  SELECT 1 FROM sync_outbox o WHERE o.entity_type = ? '
+      '  AND o.entity_id = e.id AND o.status <> ?))',
+      [
+        for (final id in touched) Variable<String>(id),
+        Variable<String>('expense'),
+        Variable<String>(OutboxStatus.done.name),
+      ],
+    );
+
+    if (retained.isNotEmpty) {
+      await db.customUpdate(
+        'UPDATE expenses SET scope_revoked_at = ? '
+        'WHERE id IN ${_in(retained)} AND scope_revoked_at IS NULL',
+        variables: [
+          Variable<DateTime>(DateTime.now().toUtc()),
+          for (final id in retained) Variable<String>(id),
+        ],
+        updates: const {},
+      );
+    }
+
+    final purgeable = touched.difference(retained);
+    if (purgeable.isEmpty) {
+      return _FinancialPurge(
+        removed: const {},
+        downgraded: const {},
+        retained: retained,
+        stagingToReclaim: const {},
+      );
+    }
+
+    final purgeVars = [for (final id in purgeable) Variable<String>(id)];
+    final unitVars = [for (final unit in units) Variable<String>(unit)];
+
+    // Contributions go by their line rather than by their own `business_unit_id`. The
+    // two always agree, and deleting through the relationship means they go on agreeing
+    // even if one of them is ever wrong.
+    removed['expense_period_allocations'] = await _delete2(
+      'DELETE FROM expense_period_allocations WHERE allocation_id IN ('
+      '  SELECT id FROM expense_allocations '
+      '  WHERE expense_id IN ${_in(purgeable)} '
+      '    AND business_unit_id IN ${_in(units)})',
+      [...purgeVars, ...unitVars],
+    );
+    removed['expense_allocations'] = await _delete2(
+      'DELETE FROM expense_allocations WHERE expense_id IN ${_in(purgeable)} '
+      'AND business_unit_id IN ${_in(units)}',
+      [...purgeVars, ...unitVars],
+    );
+
+    // What is left of each document decides its fate.
+    final orphaned = await _ids(
+      'SELECT id FROM expenses WHERE id IN ${_in(purgeable)} AND NOT EXISTS ('
+      '  SELECT 1 FROM expense_allocations a WHERE a.expense_id = expenses.id)',
+      purgeVars,
+    );
+    final downgraded = purgeable.difference(orphaned);
+
+    // Every affected document loses its attachments either way: an orphaned one is
+    // going, and a downgraded one is no longer a complete document, which is the exact
+    // predicate D-063 gates the original bill on.
+    final losingAttachments = {...orphaned, ...downgraded};
+    removed['expense_attachments'] = await _delete2(
+      'DELETE FROM expense_attachments WHERE expense_id IN '
+      '${_in(losingAttachments)}',
+      [for (final id in losingAttachments) Variable<String>(id)],
+    );
+
+    if (downgraded.isNotEmpty) {
+      // One statement, because the check constraint is evaluated per row at the end of
+      // it: `visibility = 'scoped'` and a non-null `document_total_minor` cannot both be
+      // true, so setting them in two statements would fail on the first.
+      await db.customUpdate(
+        "UPDATE expenses SET visibility = 'scoped', document_total_minor = NULL, "
+        'visible_amount_minor = ('
+        '  SELECT SUM(a.amount_minor) FROM expense_allocations a '
+        '  WHERE a.expense_id = expenses.id) '
+        'WHERE id IN ${_in(downgraded)}',
+        variables: [for (final id in downgraded) Variable<String>(id)],
+        updates: const {},
+      );
+    }
+
+    if (orphaned.isNotEmpty) {
+      removed['expenses'] = await _delete2(
+        'DELETE FROM expenses WHERE id IN ${_in(orphaned)}',
+        [for (final id in orphaned) Variable<String>(id)],
+      );
+    }
+
+    return _FinancialPurge(
+      removed: orphaned,
+      downgraded: downgraded,
+      retained: retained,
+      stagingToReclaim: losingAttachments,
+    );
+  }
+
+  Future<Set<String>> _ids(String sql, List<Variable<Object>> variables) async {
+    final rows = await db.customSelect(sql, variables: variables).get();
+    return {for (final row in rows) row.data['id'] as String};
+  }
+
+  Future<int> _delete2(String sql, List<Variable<Object>> variables) =>
+      db.customUpdate(sql, variables: variables, updates: const {});
 
   /// Removes **every** cached business-unit-scoped record, whatever the unit.
   ///
@@ -212,4 +504,27 @@ class ScopeCachePurge {
         .getSingle();
     return row.data['c'] as int;
   }
+}
+
+/// What the financial half of one purge decided, per document.
+final class _FinancialPurge {
+  const _FinancialPurge({
+    required this.removed,
+    required this.downgraded,
+    required this.retained,
+    required this.stagingToReclaim,
+  });
+
+  const _FinancialPurge.empty()
+    : removed = const {},
+      downgraded = const {},
+      retained = const {},
+      stagingToReclaim = const {};
+
+  final Set<String> removed;
+  final Set<String> downgraded;
+  final Set<String> retained;
+
+  /// Documents whose staged attachment bytes must go once the transaction commits.
+  final Set<String> stagingToReclaim;
 }
