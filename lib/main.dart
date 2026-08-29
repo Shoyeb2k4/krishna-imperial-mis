@@ -20,6 +20,7 @@ Future<void> main() async {
           databaseProvider.overrideWithValue(boot.database),
           outboxProvider.overrideWithValue(boot.outbox),
           mutationEndpointProvider.overrideWithValue(boot.mutationEndpoint),
+          mutationReconcilerProvider.overrideWithValue(boot.mutationReconciler),
           if (boot.session case final session?)
             sessionProvider.overrideWith(() => SessionController(session)),
         ],

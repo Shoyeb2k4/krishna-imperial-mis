@@ -175,6 +175,7 @@ final class MutationResult {
     this.rowVersion,
     this.serverUpdatedAt,
     this.message,
+    this.serverPayload = const {},
   });
 
   final String mutationId;
@@ -185,6 +186,14 @@ final class MutationResult {
   final int? rowVersion;
   final DateTime? serverUpdatedAt;
   final String? message;
+
+  /// The server's answer, verbatim.
+  ///
+  /// Carried so a reconciler can take what it needs — a transaction number, a normalised
+  /// value — without every such field having to be promoted onto this type first. Never
+  /// interpreted here: this class reports what happened, it does not decide what a
+  /// particular entity should do about it.
+  final Map<String, dynamic> serverPayload;
 
   /// Whether the local record can now be marked Synced.
   ///
@@ -207,4 +216,20 @@ abstract interface class RemoteMutationEndpoint {
   /// Pushes a batch. Implementations must preserve one result per mutation, keyed by
   /// `mutationId`, so partial batch outcomes are representable.
   Future<List<MutationResult>> push(List<PendingMutation> mutations);
+}
+
+/// Writes an accepted server answer back into the local read model.
+///
+/// Separate from the endpoint because delivering an intent and recording what came back
+/// are different jobs with different failure modes — and because the second one is
+/// allowed to fail on its own.
+///
+/// **If this throws, the entry must stay queued.** The server has already committed; the
+/// only safe recovery is to ask again *under the same `mutation_id`*, which replays the
+/// stored result rather than creating a second financial record (D-004). Marking the
+/// entry done on a failed reconcile would strand a local row that never learns its
+/// transaction number; sending a fresh mutation id would produce two expenses for one
+/// intent. Neither is acceptable, so the engine retries this exact intent.
+abstract interface class MutationReconciler {
+  Future<void> reconcile(PendingMutation mutation, MutationResult result);
 }

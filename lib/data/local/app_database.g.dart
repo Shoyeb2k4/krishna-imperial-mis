@@ -7488,6 +7488,4231 @@ class RevenueTaxRatesCompanion extends UpdateCompanion<RevenueTaxRateRow> {
   }
 }
 
+class $ExpensesTable extends Expenses
+    with TableInfo<$ExpensesTable, ExpenseRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ExpensesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _orgIdMeta = const VerificationMeta('orgId');
+  @override
+  late final GeneratedColumn<String> orgId = GeneratedColumn<String>(
+    'org_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _txnNumberMeta = const VerificationMeta(
+    'txnNumber',
+  );
+  @override
+  late final GeneratedColumn<String> txnNumber = GeneratedColumn<String>(
+    'txn_number',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _financialYearMeta = const VerificationMeta(
+    'financialYear',
+  );
+  @override
+  late final GeneratedColumn<int> financialYear = GeneratedColumn<int>(
+    'financial_year',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _businessDateMeta = const VerificationMeta(
+    'businessDate',
+  );
+  @override
+  late final GeneratedColumn<String> businessDate = GeneratedColumn<String>(
+    'business_date',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _businessDateSourceMeta =
+      const VerificationMeta('businessDateSource');
+  @override
+  late final GeneratedColumn<String> businessDateSource =
+      GeneratedColumn<String>(
+        'business_date_source',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+        defaultValue: const Constant('derived'),
+      );
+  static const VerificationMeta _accountingPeriodStartMeta =
+      const VerificationMeta('accountingPeriodStart');
+  @override
+  late final GeneratedColumn<String> accountingPeriodStart =
+      GeneratedColumn<String>(
+        'accounting_period_start',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _accountingPeriodEndMeta =
+      const VerificationMeta('accountingPeriodEnd');
+  @override
+  late final GeneratedColumn<String> accountingPeriodEnd =
+      GeneratedColumn<String>(
+        'accounting_period_end',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _visibilityMeta = const VerificationMeta(
+    'visibility',
+  );
+  @override
+  late final GeneratedColumn<String> visibility = GeneratedColumn<String>(
+    'visibility',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('complete'),
+  );
+  static const VerificationMeta _documentTotalMinorMeta =
+      const VerificationMeta('documentTotalMinor');
+  @override
+  late final GeneratedColumn<int> documentTotalMinor = GeneratedColumn<int>(
+    'document_total_minor',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _visibleAmountMinorMeta =
+      const VerificationMeta('visibleAmountMinor');
+  @override
+  late final GeneratedColumn<int> visibleAmountMinor = GeneratedColumn<int>(
+    'visible_amount_minor',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _isSharedMeta = const VerificationMeta(
+    'isShared',
+  );
+  @override
+  late final GeneratedColumn<bool> isShared = GeneratedColumn<bool>(
+    'is_shared',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_shared" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _vendorIdMeta = const VerificationMeta(
+    'vendorId',
+  );
+  @override
+  late final GeneratedColumn<String> vendorId = GeneratedColumn<String>(
+    'vendor_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _paymentStatusMeta = const VerificationMeta(
+    'paymentStatus',
+  );
+  @override
+  late final GeneratedColumn<String> paymentStatus = GeneratedColumn<String>(
+    'payment_status',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('unpaid'),
+  );
+  static const VerificationMeta _paymentDateMeta = const VerificationMeta(
+    'paymentDate',
+  );
+  @override
+  late final GeneratedColumn<String> paymentDate = GeneratedColumn<String>(
+    'payment_date',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _paymentMethodIdMeta = const VerificationMeta(
+    'paymentMethodId',
+  );
+  @override
+  late final GeneratedColumn<String> paymentMethodId = GeneratedColumn<String>(
+    'payment_method_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _referenceNumberMeta = const VerificationMeta(
+    'referenceNumber',
+  );
+  @override
+  late final GeneratedColumn<String> referenceNumber = GeneratedColumn<String>(
+    'reference_number',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _notesMeta = const VerificationMeta('notes');
+  @override
+  late final GeneratedColumn<String> notes = GeneratedColumn<String>(
+    'notes',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _taxAmountMinorMeta = const VerificationMeta(
+    'taxAmountMinor',
+  );
+  @override
+  late final GeneratedColumn<int> taxAmountMinor = GeneratedColumn<int>(
+    'tax_amount_minor',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdByMeta = const VerificationMeta(
+    'createdBy',
+  );
+  @override
+  late final GeneratedColumn<String> createdBy = GeneratedColumn<String>(
+    'created_by',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _capturedAtMeta = const VerificationMeta(
+    'capturedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> capturedAt = GeneratedColumn<DateTime>(
+    'captured_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _voidedAtMeta = const VerificationMeta(
+    'voidedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> voidedAt = GeneratedColumn<DateTime>(
+    'voided_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _voidedByMeta = const VerificationMeta(
+    'voidedBy',
+  );
+  @override
+  late final GeneratedColumn<String> voidedBy = GeneratedColumn<String>(
+    'voided_by',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _voidReasonMeta = const VerificationMeta(
+    'voidReason',
+  );
+  @override
+  late final GeneratedColumn<String> voidReason = GeneratedColumn<String>(
+    'void_reason',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _pendingMutationIdMeta = const VerificationMeta(
+    'pendingMutationId',
+  );
+  @override
+  late final GeneratedColumn<String> pendingMutationId =
+      GeneratedColumn<String>(
+        'pending_mutation_id',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _rowVersionMeta = const VerificationMeta(
+    'rowVersion',
+  );
+  @override
+  late final GeneratedColumn<int> rowVersion = GeneratedColumn<int>(
+    'row_version',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(1),
+  );
+  static const VerificationMeta _serverUpdatedAtMeta = const VerificationMeta(
+    'serverUpdatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> serverUpdatedAt =
+      GeneratedColumn<DateTime>(
+        'server_updated_at',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    orgId,
+    txnNumber,
+    financialYear,
+    businessDate,
+    businessDateSource,
+    accountingPeriodStart,
+    accountingPeriodEnd,
+    visibility,
+    documentTotalMinor,
+    visibleAmountMinor,
+    isShared,
+    vendorId,
+    paymentStatus,
+    paymentDate,
+    paymentMethodId,
+    referenceNumber,
+    notes,
+    taxAmountMinor,
+    createdBy,
+    capturedAt,
+    voidedAt,
+    voidedBy,
+    voidReason,
+    pendingMutationId,
+    rowVersion,
+    serverUpdatedAt,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'expenses';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ExpenseRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('org_id')) {
+      context.handle(
+        _orgIdMeta,
+        orgId.isAcceptableOrUnknown(data['org_id']!, _orgIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_orgIdMeta);
+    }
+    if (data.containsKey('txn_number')) {
+      context.handle(
+        _txnNumberMeta,
+        txnNumber.isAcceptableOrUnknown(data['txn_number']!, _txnNumberMeta),
+      );
+    }
+    if (data.containsKey('financial_year')) {
+      context.handle(
+        _financialYearMeta,
+        financialYear.isAcceptableOrUnknown(
+          data['financial_year']!,
+          _financialYearMeta,
+        ),
+      );
+    }
+    if (data.containsKey('business_date')) {
+      context.handle(
+        _businessDateMeta,
+        businessDate.isAcceptableOrUnknown(
+          data['business_date']!,
+          _businessDateMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_businessDateMeta);
+    }
+    if (data.containsKey('business_date_source')) {
+      context.handle(
+        _businessDateSourceMeta,
+        businessDateSource.isAcceptableOrUnknown(
+          data['business_date_source']!,
+          _businessDateSourceMeta,
+        ),
+      );
+    }
+    if (data.containsKey('accounting_period_start')) {
+      context.handle(
+        _accountingPeriodStartMeta,
+        accountingPeriodStart.isAcceptableOrUnknown(
+          data['accounting_period_start']!,
+          _accountingPeriodStartMeta,
+        ),
+      );
+    }
+    if (data.containsKey('accounting_period_end')) {
+      context.handle(
+        _accountingPeriodEndMeta,
+        accountingPeriodEnd.isAcceptableOrUnknown(
+          data['accounting_period_end']!,
+          _accountingPeriodEndMeta,
+        ),
+      );
+    }
+    if (data.containsKey('visibility')) {
+      context.handle(
+        _visibilityMeta,
+        visibility.isAcceptableOrUnknown(data['visibility']!, _visibilityMeta),
+      );
+    }
+    if (data.containsKey('document_total_minor')) {
+      context.handle(
+        _documentTotalMinorMeta,
+        documentTotalMinor.isAcceptableOrUnknown(
+          data['document_total_minor']!,
+          _documentTotalMinorMeta,
+        ),
+      );
+    }
+    if (data.containsKey('visible_amount_minor')) {
+      context.handle(
+        _visibleAmountMinorMeta,
+        visibleAmountMinor.isAcceptableOrUnknown(
+          data['visible_amount_minor']!,
+          _visibleAmountMinorMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_visibleAmountMinorMeta);
+    }
+    if (data.containsKey('is_shared')) {
+      context.handle(
+        _isSharedMeta,
+        isShared.isAcceptableOrUnknown(data['is_shared']!, _isSharedMeta),
+      );
+    }
+    if (data.containsKey('vendor_id')) {
+      context.handle(
+        _vendorIdMeta,
+        vendorId.isAcceptableOrUnknown(data['vendor_id']!, _vendorIdMeta),
+      );
+    }
+    if (data.containsKey('payment_status')) {
+      context.handle(
+        _paymentStatusMeta,
+        paymentStatus.isAcceptableOrUnknown(
+          data['payment_status']!,
+          _paymentStatusMeta,
+        ),
+      );
+    }
+    if (data.containsKey('payment_date')) {
+      context.handle(
+        _paymentDateMeta,
+        paymentDate.isAcceptableOrUnknown(
+          data['payment_date']!,
+          _paymentDateMeta,
+        ),
+      );
+    }
+    if (data.containsKey('payment_method_id')) {
+      context.handle(
+        _paymentMethodIdMeta,
+        paymentMethodId.isAcceptableOrUnknown(
+          data['payment_method_id']!,
+          _paymentMethodIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('reference_number')) {
+      context.handle(
+        _referenceNumberMeta,
+        referenceNumber.isAcceptableOrUnknown(
+          data['reference_number']!,
+          _referenceNumberMeta,
+        ),
+      );
+    }
+    if (data.containsKey('notes')) {
+      context.handle(
+        _notesMeta,
+        notes.isAcceptableOrUnknown(data['notes']!, _notesMeta),
+      );
+    }
+    if (data.containsKey('tax_amount_minor')) {
+      context.handle(
+        _taxAmountMinorMeta,
+        taxAmountMinor.isAcceptableOrUnknown(
+          data['tax_amount_minor']!,
+          _taxAmountMinorMeta,
+        ),
+      );
+    }
+    if (data.containsKey('created_by')) {
+      context.handle(
+        _createdByMeta,
+        createdBy.isAcceptableOrUnknown(data['created_by']!, _createdByMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdByMeta);
+    }
+    if (data.containsKey('captured_at')) {
+      context.handle(
+        _capturedAtMeta,
+        capturedAt.isAcceptableOrUnknown(data['captured_at']!, _capturedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_capturedAtMeta);
+    }
+    if (data.containsKey('voided_at')) {
+      context.handle(
+        _voidedAtMeta,
+        voidedAt.isAcceptableOrUnknown(data['voided_at']!, _voidedAtMeta),
+      );
+    }
+    if (data.containsKey('voided_by')) {
+      context.handle(
+        _voidedByMeta,
+        voidedBy.isAcceptableOrUnknown(data['voided_by']!, _voidedByMeta),
+      );
+    }
+    if (data.containsKey('void_reason')) {
+      context.handle(
+        _voidReasonMeta,
+        voidReason.isAcceptableOrUnknown(data['void_reason']!, _voidReasonMeta),
+      );
+    }
+    if (data.containsKey('pending_mutation_id')) {
+      context.handle(
+        _pendingMutationIdMeta,
+        pendingMutationId.isAcceptableOrUnknown(
+          data['pending_mutation_id']!,
+          _pendingMutationIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('row_version')) {
+      context.handle(
+        _rowVersionMeta,
+        rowVersion.isAcceptableOrUnknown(data['row_version']!, _rowVersionMeta),
+      );
+    }
+    if (data.containsKey('server_updated_at')) {
+      context.handle(
+        _serverUpdatedAtMeta,
+        serverUpdatedAt.isAcceptableOrUnknown(
+          data['server_updated_at']!,
+          _serverUpdatedAtMeta,
+        ),
+      );
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  ExpenseRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ExpenseRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      orgId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}org_id'],
+      )!,
+      txnNumber: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}txn_number'],
+      ),
+      financialYear: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}financial_year'],
+      ),
+      businessDate: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}business_date'],
+      )!,
+      businessDateSource: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}business_date_source'],
+      )!,
+      accountingPeriodStart: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}accounting_period_start'],
+      ),
+      accountingPeriodEnd: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}accounting_period_end'],
+      ),
+      visibility: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}visibility'],
+      )!,
+      documentTotalMinor: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}document_total_minor'],
+      ),
+      visibleAmountMinor: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}visible_amount_minor'],
+      )!,
+      isShared: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_shared'],
+      )!,
+      vendorId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}vendor_id'],
+      ),
+      paymentStatus: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}payment_status'],
+      )!,
+      paymentDate: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}payment_date'],
+      ),
+      paymentMethodId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}payment_method_id'],
+      ),
+      referenceNumber: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}reference_number'],
+      ),
+      notes: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}notes'],
+      ),
+      taxAmountMinor: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}tax_amount_minor'],
+      ),
+      createdBy: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}created_by'],
+      )!,
+      capturedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}captured_at'],
+      )!,
+      voidedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}voided_at'],
+      ),
+      voidedBy: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}voided_by'],
+      ),
+      voidReason: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}void_reason'],
+      ),
+      pendingMutationId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}pending_mutation_id'],
+      ),
+      rowVersion: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}row_version'],
+      )!,
+      serverUpdatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}server_updated_at'],
+      ),
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $ExpensesTable createAlias(String alias) {
+    return $ExpensesTable(attachedDatabase, alias);
+  }
+}
+
+class ExpenseRow extends DataClass implements Insertable<ExpenseRow> {
+  /// Client-generated UUID v7, assigned before the server ever sees the row (D-008).
+  /// This is the identity offline, and it never changes.
+  final String id;
+  final String orgId;
+
+  /// `KI-EXP-26-27-000001`, issued by the server after it accepts the write.
+  ///
+  /// **Null until then, and never fabricated locally.** Two devices offline for a week
+  /// would both invent `000042`. The interface shows a pending state instead.
+  final String? txnNumber;
+  final int? financialYear;
+  final String businessDate;
+  final String businessDateSource;
+  final String? accountingPeriodStart;
+  final String? accountingPeriodEnd;
+
+  /// `complete` | `scoped`. See the library comment; this is the security model.
+  final String visibility;
+
+  /// The real invoice total — **only** on a complete record. Null on a scoped one, by
+  /// check constraint, because it would give away the other property's share.
+  final int? documentTotalMinor;
+
+  /// What the lines this device holds add up to. On a complete record this equals
+  /// [documentTotalMinor]; on a scoped one it is this user's share and is never
+  /// presented as the invoice.
+  final int visibleAmountMinor;
+
+  /// Whether the document charges more than one business unit. Knowing that a bill is
+  /// shared is authorised; knowing the other share is not.
+  final bool isShared;
+  final String? vendorId;
+  final String paymentStatus;
+  final String? paymentDate;
+  final String? paymentMethodId;
+  final String? referenceNumber;
+  final String? notes;
+
+  /// Informational only (D-018). Never enters a calculation.
+  final int? taxAmountMinor;
+  final String createdBy;
+  final DateTime capturedAt;
+  final DateTime? voidedAt;
+  final String? voidedBy;
+  final String? voidReason;
+
+  /// The queued intent that will deliver this row, if one is outstanding.
+  ///
+  /// Sync state is *derived* from the outbox through this link rather than copied into a
+  /// column of its own, so the two can never disagree about whether something has been
+  /// sent. Cleared in the same transaction that reconciles the server's answer.
+  final String? pendingMutationId;
+  final int rowVersion;
+  final DateTime? serverUpdatedAt;
+  final DateTime updatedAt;
+  const ExpenseRow({
+    required this.id,
+    required this.orgId,
+    this.txnNumber,
+    this.financialYear,
+    required this.businessDate,
+    required this.businessDateSource,
+    this.accountingPeriodStart,
+    this.accountingPeriodEnd,
+    required this.visibility,
+    this.documentTotalMinor,
+    required this.visibleAmountMinor,
+    required this.isShared,
+    this.vendorId,
+    required this.paymentStatus,
+    this.paymentDate,
+    this.paymentMethodId,
+    this.referenceNumber,
+    this.notes,
+    this.taxAmountMinor,
+    required this.createdBy,
+    required this.capturedAt,
+    this.voidedAt,
+    this.voidedBy,
+    this.voidReason,
+    this.pendingMutationId,
+    required this.rowVersion,
+    this.serverUpdatedAt,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['org_id'] = Variable<String>(orgId);
+    if (!nullToAbsent || txnNumber != null) {
+      map['txn_number'] = Variable<String>(txnNumber);
+    }
+    if (!nullToAbsent || financialYear != null) {
+      map['financial_year'] = Variable<int>(financialYear);
+    }
+    map['business_date'] = Variable<String>(businessDate);
+    map['business_date_source'] = Variable<String>(businessDateSource);
+    if (!nullToAbsent || accountingPeriodStart != null) {
+      map['accounting_period_start'] = Variable<String>(accountingPeriodStart);
+    }
+    if (!nullToAbsent || accountingPeriodEnd != null) {
+      map['accounting_period_end'] = Variable<String>(accountingPeriodEnd);
+    }
+    map['visibility'] = Variable<String>(visibility);
+    if (!nullToAbsent || documentTotalMinor != null) {
+      map['document_total_minor'] = Variable<int>(documentTotalMinor);
+    }
+    map['visible_amount_minor'] = Variable<int>(visibleAmountMinor);
+    map['is_shared'] = Variable<bool>(isShared);
+    if (!nullToAbsent || vendorId != null) {
+      map['vendor_id'] = Variable<String>(vendorId);
+    }
+    map['payment_status'] = Variable<String>(paymentStatus);
+    if (!nullToAbsent || paymentDate != null) {
+      map['payment_date'] = Variable<String>(paymentDate);
+    }
+    if (!nullToAbsent || paymentMethodId != null) {
+      map['payment_method_id'] = Variable<String>(paymentMethodId);
+    }
+    if (!nullToAbsent || referenceNumber != null) {
+      map['reference_number'] = Variable<String>(referenceNumber);
+    }
+    if (!nullToAbsent || notes != null) {
+      map['notes'] = Variable<String>(notes);
+    }
+    if (!nullToAbsent || taxAmountMinor != null) {
+      map['tax_amount_minor'] = Variable<int>(taxAmountMinor);
+    }
+    map['created_by'] = Variable<String>(createdBy);
+    map['captured_at'] = Variable<DateTime>(capturedAt);
+    if (!nullToAbsent || voidedAt != null) {
+      map['voided_at'] = Variable<DateTime>(voidedAt);
+    }
+    if (!nullToAbsent || voidedBy != null) {
+      map['voided_by'] = Variable<String>(voidedBy);
+    }
+    if (!nullToAbsent || voidReason != null) {
+      map['void_reason'] = Variable<String>(voidReason);
+    }
+    if (!nullToAbsent || pendingMutationId != null) {
+      map['pending_mutation_id'] = Variable<String>(pendingMutationId);
+    }
+    map['row_version'] = Variable<int>(rowVersion);
+    if (!nullToAbsent || serverUpdatedAt != null) {
+      map['server_updated_at'] = Variable<DateTime>(serverUpdatedAt);
+    }
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  ExpensesCompanion toCompanion(bool nullToAbsent) {
+    return ExpensesCompanion(
+      id: Value(id),
+      orgId: Value(orgId),
+      txnNumber: txnNumber == null && nullToAbsent
+          ? const Value.absent()
+          : Value(txnNumber),
+      financialYear: financialYear == null && nullToAbsent
+          ? const Value.absent()
+          : Value(financialYear),
+      businessDate: Value(businessDate),
+      businessDateSource: Value(businessDateSource),
+      accountingPeriodStart: accountingPeriodStart == null && nullToAbsent
+          ? const Value.absent()
+          : Value(accountingPeriodStart),
+      accountingPeriodEnd: accountingPeriodEnd == null && nullToAbsent
+          ? const Value.absent()
+          : Value(accountingPeriodEnd),
+      visibility: Value(visibility),
+      documentTotalMinor: documentTotalMinor == null && nullToAbsent
+          ? const Value.absent()
+          : Value(documentTotalMinor),
+      visibleAmountMinor: Value(visibleAmountMinor),
+      isShared: Value(isShared),
+      vendorId: vendorId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(vendorId),
+      paymentStatus: Value(paymentStatus),
+      paymentDate: paymentDate == null && nullToAbsent
+          ? const Value.absent()
+          : Value(paymentDate),
+      paymentMethodId: paymentMethodId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(paymentMethodId),
+      referenceNumber: referenceNumber == null && nullToAbsent
+          ? const Value.absent()
+          : Value(referenceNumber),
+      notes: notes == null && nullToAbsent
+          ? const Value.absent()
+          : Value(notes),
+      taxAmountMinor: taxAmountMinor == null && nullToAbsent
+          ? const Value.absent()
+          : Value(taxAmountMinor),
+      createdBy: Value(createdBy),
+      capturedAt: Value(capturedAt),
+      voidedAt: voidedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(voidedAt),
+      voidedBy: voidedBy == null && nullToAbsent
+          ? const Value.absent()
+          : Value(voidedBy),
+      voidReason: voidReason == null && nullToAbsent
+          ? const Value.absent()
+          : Value(voidReason),
+      pendingMutationId: pendingMutationId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(pendingMutationId),
+      rowVersion: Value(rowVersion),
+      serverUpdatedAt: serverUpdatedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(serverUpdatedAt),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory ExpenseRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ExpenseRow(
+      id: serializer.fromJson<String>(json['id']),
+      orgId: serializer.fromJson<String>(json['orgId']),
+      txnNumber: serializer.fromJson<String?>(json['txnNumber']),
+      financialYear: serializer.fromJson<int?>(json['financialYear']),
+      businessDate: serializer.fromJson<String>(json['businessDate']),
+      businessDateSource: serializer.fromJson<String>(
+        json['businessDateSource'],
+      ),
+      accountingPeriodStart: serializer.fromJson<String?>(
+        json['accountingPeriodStart'],
+      ),
+      accountingPeriodEnd: serializer.fromJson<String?>(
+        json['accountingPeriodEnd'],
+      ),
+      visibility: serializer.fromJson<String>(json['visibility']),
+      documentTotalMinor: serializer.fromJson<int?>(json['documentTotalMinor']),
+      visibleAmountMinor: serializer.fromJson<int>(json['visibleAmountMinor']),
+      isShared: serializer.fromJson<bool>(json['isShared']),
+      vendorId: serializer.fromJson<String?>(json['vendorId']),
+      paymentStatus: serializer.fromJson<String>(json['paymentStatus']),
+      paymentDate: serializer.fromJson<String?>(json['paymentDate']),
+      paymentMethodId: serializer.fromJson<String?>(json['paymentMethodId']),
+      referenceNumber: serializer.fromJson<String?>(json['referenceNumber']),
+      notes: serializer.fromJson<String?>(json['notes']),
+      taxAmountMinor: serializer.fromJson<int?>(json['taxAmountMinor']),
+      createdBy: serializer.fromJson<String>(json['createdBy']),
+      capturedAt: serializer.fromJson<DateTime>(json['capturedAt']),
+      voidedAt: serializer.fromJson<DateTime?>(json['voidedAt']),
+      voidedBy: serializer.fromJson<String?>(json['voidedBy']),
+      voidReason: serializer.fromJson<String?>(json['voidReason']),
+      pendingMutationId: serializer.fromJson<String?>(
+        json['pendingMutationId'],
+      ),
+      rowVersion: serializer.fromJson<int>(json['rowVersion']),
+      serverUpdatedAt: serializer.fromJson<DateTime?>(json['serverUpdatedAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'orgId': serializer.toJson<String>(orgId),
+      'txnNumber': serializer.toJson<String?>(txnNumber),
+      'financialYear': serializer.toJson<int?>(financialYear),
+      'businessDate': serializer.toJson<String>(businessDate),
+      'businessDateSource': serializer.toJson<String>(businessDateSource),
+      'accountingPeriodStart': serializer.toJson<String?>(
+        accountingPeriodStart,
+      ),
+      'accountingPeriodEnd': serializer.toJson<String?>(accountingPeriodEnd),
+      'visibility': serializer.toJson<String>(visibility),
+      'documentTotalMinor': serializer.toJson<int?>(documentTotalMinor),
+      'visibleAmountMinor': serializer.toJson<int>(visibleAmountMinor),
+      'isShared': serializer.toJson<bool>(isShared),
+      'vendorId': serializer.toJson<String?>(vendorId),
+      'paymentStatus': serializer.toJson<String>(paymentStatus),
+      'paymentDate': serializer.toJson<String?>(paymentDate),
+      'paymentMethodId': serializer.toJson<String?>(paymentMethodId),
+      'referenceNumber': serializer.toJson<String?>(referenceNumber),
+      'notes': serializer.toJson<String?>(notes),
+      'taxAmountMinor': serializer.toJson<int?>(taxAmountMinor),
+      'createdBy': serializer.toJson<String>(createdBy),
+      'capturedAt': serializer.toJson<DateTime>(capturedAt),
+      'voidedAt': serializer.toJson<DateTime?>(voidedAt),
+      'voidedBy': serializer.toJson<String?>(voidedBy),
+      'voidReason': serializer.toJson<String?>(voidReason),
+      'pendingMutationId': serializer.toJson<String?>(pendingMutationId),
+      'rowVersion': serializer.toJson<int>(rowVersion),
+      'serverUpdatedAt': serializer.toJson<DateTime?>(serverUpdatedAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  ExpenseRow copyWith({
+    String? id,
+    String? orgId,
+    Value<String?> txnNumber = const Value.absent(),
+    Value<int?> financialYear = const Value.absent(),
+    String? businessDate,
+    String? businessDateSource,
+    Value<String?> accountingPeriodStart = const Value.absent(),
+    Value<String?> accountingPeriodEnd = const Value.absent(),
+    String? visibility,
+    Value<int?> documentTotalMinor = const Value.absent(),
+    int? visibleAmountMinor,
+    bool? isShared,
+    Value<String?> vendorId = const Value.absent(),
+    String? paymentStatus,
+    Value<String?> paymentDate = const Value.absent(),
+    Value<String?> paymentMethodId = const Value.absent(),
+    Value<String?> referenceNumber = const Value.absent(),
+    Value<String?> notes = const Value.absent(),
+    Value<int?> taxAmountMinor = const Value.absent(),
+    String? createdBy,
+    DateTime? capturedAt,
+    Value<DateTime?> voidedAt = const Value.absent(),
+    Value<String?> voidedBy = const Value.absent(),
+    Value<String?> voidReason = const Value.absent(),
+    Value<String?> pendingMutationId = const Value.absent(),
+    int? rowVersion,
+    Value<DateTime?> serverUpdatedAt = const Value.absent(),
+    DateTime? updatedAt,
+  }) => ExpenseRow(
+    id: id ?? this.id,
+    orgId: orgId ?? this.orgId,
+    txnNumber: txnNumber.present ? txnNumber.value : this.txnNumber,
+    financialYear: financialYear.present
+        ? financialYear.value
+        : this.financialYear,
+    businessDate: businessDate ?? this.businessDate,
+    businessDateSource: businessDateSource ?? this.businessDateSource,
+    accountingPeriodStart: accountingPeriodStart.present
+        ? accountingPeriodStart.value
+        : this.accountingPeriodStart,
+    accountingPeriodEnd: accountingPeriodEnd.present
+        ? accountingPeriodEnd.value
+        : this.accountingPeriodEnd,
+    visibility: visibility ?? this.visibility,
+    documentTotalMinor: documentTotalMinor.present
+        ? documentTotalMinor.value
+        : this.documentTotalMinor,
+    visibleAmountMinor: visibleAmountMinor ?? this.visibleAmountMinor,
+    isShared: isShared ?? this.isShared,
+    vendorId: vendorId.present ? vendorId.value : this.vendorId,
+    paymentStatus: paymentStatus ?? this.paymentStatus,
+    paymentDate: paymentDate.present ? paymentDate.value : this.paymentDate,
+    paymentMethodId: paymentMethodId.present
+        ? paymentMethodId.value
+        : this.paymentMethodId,
+    referenceNumber: referenceNumber.present
+        ? referenceNumber.value
+        : this.referenceNumber,
+    notes: notes.present ? notes.value : this.notes,
+    taxAmountMinor: taxAmountMinor.present
+        ? taxAmountMinor.value
+        : this.taxAmountMinor,
+    createdBy: createdBy ?? this.createdBy,
+    capturedAt: capturedAt ?? this.capturedAt,
+    voidedAt: voidedAt.present ? voidedAt.value : this.voidedAt,
+    voidedBy: voidedBy.present ? voidedBy.value : this.voidedBy,
+    voidReason: voidReason.present ? voidReason.value : this.voidReason,
+    pendingMutationId: pendingMutationId.present
+        ? pendingMutationId.value
+        : this.pendingMutationId,
+    rowVersion: rowVersion ?? this.rowVersion,
+    serverUpdatedAt: serverUpdatedAt.present
+        ? serverUpdatedAt.value
+        : this.serverUpdatedAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  ExpenseRow copyWithCompanion(ExpensesCompanion data) {
+    return ExpenseRow(
+      id: data.id.present ? data.id.value : this.id,
+      orgId: data.orgId.present ? data.orgId.value : this.orgId,
+      txnNumber: data.txnNumber.present ? data.txnNumber.value : this.txnNumber,
+      financialYear: data.financialYear.present
+          ? data.financialYear.value
+          : this.financialYear,
+      businessDate: data.businessDate.present
+          ? data.businessDate.value
+          : this.businessDate,
+      businessDateSource: data.businessDateSource.present
+          ? data.businessDateSource.value
+          : this.businessDateSource,
+      accountingPeriodStart: data.accountingPeriodStart.present
+          ? data.accountingPeriodStart.value
+          : this.accountingPeriodStart,
+      accountingPeriodEnd: data.accountingPeriodEnd.present
+          ? data.accountingPeriodEnd.value
+          : this.accountingPeriodEnd,
+      visibility: data.visibility.present
+          ? data.visibility.value
+          : this.visibility,
+      documentTotalMinor: data.documentTotalMinor.present
+          ? data.documentTotalMinor.value
+          : this.documentTotalMinor,
+      visibleAmountMinor: data.visibleAmountMinor.present
+          ? data.visibleAmountMinor.value
+          : this.visibleAmountMinor,
+      isShared: data.isShared.present ? data.isShared.value : this.isShared,
+      vendorId: data.vendorId.present ? data.vendorId.value : this.vendorId,
+      paymentStatus: data.paymentStatus.present
+          ? data.paymentStatus.value
+          : this.paymentStatus,
+      paymentDate: data.paymentDate.present
+          ? data.paymentDate.value
+          : this.paymentDate,
+      paymentMethodId: data.paymentMethodId.present
+          ? data.paymentMethodId.value
+          : this.paymentMethodId,
+      referenceNumber: data.referenceNumber.present
+          ? data.referenceNumber.value
+          : this.referenceNumber,
+      notes: data.notes.present ? data.notes.value : this.notes,
+      taxAmountMinor: data.taxAmountMinor.present
+          ? data.taxAmountMinor.value
+          : this.taxAmountMinor,
+      createdBy: data.createdBy.present ? data.createdBy.value : this.createdBy,
+      capturedAt: data.capturedAt.present
+          ? data.capturedAt.value
+          : this.capturedAt,
+      voidedAt: data.voidedAt.present ? data.voidedAt.value : this.voidedAt,
+      voidedBy: data.voidedBy.present ? data.voidedBy.value : this.voidedBy,
+      voidReason: data.voidReason.present
+          ? data.voidReason.value
+          : this.voidReason,
+      pendingMutationId: data.pendingMutationId.present
+          ? data.pendingMutationId.value
+          : this.pendingMutationId,
+      rowVersion: data.rowVersion.present
+          ? data.rowVersion.value
+          : this.rowVersion,
+      serverUpdatedAt: data.serverUpdatedAt.present
+          ? data.serverUpdatedAt.value
+          : this.serverUpdatedAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ExpenseRow(')
+          ..write('id: $id, ')
+          ..write('orgId: $orgId, ')
+          ..write('txnNumber: $txnNumber, ')
+          ..write('financialYear: $financialYear, ')
+          ..write('businessDate: $businessDate, ')
+          ..write('businessDateSource: $businessDateSource, ')
+          ..write('accountingPeriodStart: $accountingPeriodStart, ')
+          ..write('accountingPeriodEnd: $accountingPeriodEnd, ')
+          ..write('visibility: $visibility, ')
+          ..write('documentTotalMinor: $documentTotalMinor, ')
+          ..write('visibleAmountMinor: $visibleAmountMinor, ')
+          ..write('isShared: $isShared, ')
+          ..write('vendorId: $vendorId, ')
+          ..write('paymentStatus: $paymentStatus, ')
+          ..write('paymentDate: $paymentDate, ')
+          ..write('paymentMethodId: $paymentMethodId, ')
+          ..write('referenceNumber: $referenceNumber, ')
+          ..write('notes: $notes, ')
+          ..write('taxAmountMinor: $taxAmountMinor, ')
+          ..write('createdBy: $createdBy, ')
+          ..write('capturedAt: $capturedAt, ')
+          ..write('voidedAt: $voidedAt, ')
+          ..write('voidedBy: $voidedBy, ')
+          ..write('voidReason: $voidReason, ')
+          ..write('pendingMutationId: $pendingMutationId, ')
+          ..write('rowVersion: $rowVersion, ')
+          ..write('serverUpdatedAt: $serverUpdatedAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hashAll([
+    id,
+    orgId,
+    txnNumber,
+    financialYear,
+    businessDate,
+    businessDateSource,
+    accountingPeriodStart,
+    accountingPeriodEnd,
+    visibility,
+    documentTotalMinor,
+    visibleAmountMinor,
+    isShared,
+    vendorId,
+    paymentStatus,
+    paymentDate,
+    paymentMethodId,
+    referenceNumber,
+    notes,
+    taxAmountMinor,
+    createdBy,
+    capturedAt,
+    voidedAt,
+    voidedBy,
+    voidReason,
+    pendingMutationId,
+    rowVersion,
+    serverUpdatedAt,
+    updatedAt,
+  ]);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ExpenseRow &&
+          other.id == this.id &&
+          other.orgId == this.orgId &&
+          other.txnNumber == this.txnNumber &&
+          other.financialYear == this.financialYear &&
+          other.businessDate == this.businessDate &&
+          other.businessDateSource == this.businessDateSource &&
+          other.accountingPeriodStart == this.accountingPeriodStart &&
+          other.accountingPeriodEnd == this.accountingPeriodEnd &&
+          other.visibility == this.visibility &&
+          other.documentTotalMinor == this.documentTotalMinor &&
+          other.visibleAmountMinor == this.visibleAmountMinor &&
+          other.isShared == this.isShared &&
+          other.vendorId == this.vendorId &&
+          other.paymentStatus == this.paymentStatus &&
+          other.paymentDate == this.paymentDate &&
+          other.paymentMethodId == this.paymentMethodId &&
+          other.referenceNumber == this.referenceNumber &&
+          other.notes == this.notes &&
+          other.taxAmountMinor == this.taxAmountMinor &&
+          other.createdBy == this.createdBy &&
+          other.capturedAt == this.capturedAt &&
+          other.voidedAt == this.voidedAt &&
+          other.voidedBy == this.voidedBy &&
+          other.voidReason == this.voidReason &&
+          other.pendingMutationId == this.pendingMutationId &&
+          other.rowVersion == this.rowVersion &&
+          other.serverUpdatedAt == this.serverUpdatedAt &&
+          other.updatedAt == this.updatedAt);
+}
+
+class ExpensesCompanion extends UpdateCompanion<ExpenseRow> {
+  final Value<String> id;
+  final Value<String> orgId;
+  final Value<String?> txnNumber;
+  final Value<int?> financialYear;
+  final Value<String> businessDate;
+  final Value<String> businessDateSource;
+  final Value<String?> accountingPeriodStart;
+  final Value<String?> accountingPeriodEnd;
+  final Value<String> visibility;
+  final Value<int?> documentTotalMinor;
+  final Value<int> visibleAmountMinor;
+  final Value<bool> isShared;
+  final Value<String?> vendorId;
+  final Value<String> paymentStatus;
+  final Value<String?> paymentDate;
+  final Value<String?> paymentMethodId;
+  final Value<String?> referenceNumber;
+  final Value<String?> notes;
+  final Value<int?> taxAmountMinor;
+  final Value<String> createdBy;
+  final Value<DateTime> capturedAt;
+  final Value<DateTime?> voidedAt;
+  final Value<String?> voidedBy;
+  final Value<String?> voidReason;
+  final Value<String?> pendingMutationId;
+  final Value<int> rowVersion;
+  final Value<DateTime?> serverUpdatedAt;
+  final Value<DateTime> updatedAt;
+  final Value<int> rowid;
+  const ExpensesCompanion({
+    this.id = const Value.absent(),
+    this.orgId = const Value.absent(),
+    this.txnNumber = const Value.absent(),
+    this.financialYear = const Value.absent(),
+    this.businessDate = const Value.absent(),
+    this.businessDateSource = const Value.absent(),
+    this.accountingPeriodStart = const Value.absent(),
+    this.accountingPeriodEnd = const Value.absent(),
+    this.visibility = const Value.absent(),
+    this.documentTotalMinor = const Value.absent(),
+    this.visibleAmountMinor = const Value.absent(),
+    this.isShared = const Value.absent(),
+    this.vendorId = const Value.absent(),
+    this.paymentStatus = const Value.absent(),
+    this.paymentDate = const Value.absent(),
+    this.paymentMethodId = const Value.absent(),
+    this.referenceNumber = const Value.absent(),
+    this.notes = const Value.absent(),
+    this.taxAmountMinor = const Value.absent(),
+    this.createdBy = const Value.absent(),
+    this.capturedAt = const Value.absent(),
+    this.voidedAt = const Value.absent(),
+    this.voidedBy = const Value.absent(),
+    this.voidReason = const Value.absent(),
+    this.pendingMutationId = const Value.absent(),
+    this.rowVersion = const Value.absent(),
+    this.serverUpdatedAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  ExpensesCompanion.insert({
+    required String id,
+    required String orgId,
+    this.txnNumber = const Value.absent(),
+    this.financialYear = const Value.absent(),
+    required String businessDate,
+    this.businessDateSource = const Value.absent(),
+    this.accountingPeriodStart = const Value.absent(),
+    this.accountingPeriodEnd = const Value.absent(),
+    this.visibility = const Value.absent(),
+    this.documentTotalMinor = const Value.absent(),
+    required int visibleAmountMinor,
+    this.isShared = const Value.absent(),
+    this.vendorId = const Value.absent(),
+    this.paymentStatus = const Value.absent(),
+    this.paymentDate = const Value.absent(),
+    this.paymentMethodId = const Value.absent(),
+    this.referenceNumber = const Value.absent(),
+    this.notes = const Value.absent(),
+    this.taxAmountMinor = const Value.absent(),
+    required String createdBy,
+    required DateTime capturedAt,
+    this.voidedAt = const Value.absent(),
+    this.voidedBy = const Value.absent(),
+    this.voidReason = const Value.absent(),
+    this.pendingMutationId = const Value.absent(),
+    this.rowVersion = const Value.absent(),
+    this.serverUpdatedAt = const Value.absent(),
+    required DateTime updatedAt,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       orgId = Value(orgId),
+       businessDate = Value(businessDate),
+       visibleAmountMinor = Value(visibleAmountMinor),
+       createdBy = Value(createdBy),
+       capturedAt = Value(capturedAt),
+       updatedAt = Value(updatedAt);
+  static Insertable<ExpenseRow> custom({
+    Expression<String>? id,
+    Expression<String>? orgId,
+    Expression<String>? txnNumber,
+    Expression<int>? financialYear,
+    Expression<String>? businessDate,
+    Expression<String>? businessDateSource,
+    Expression<String>? accountingPeriodStart,
+    Expression<String>? accountingPeriodEnd,
+    Expression<String>? visibility,
+    Expression<int>? documentTotalMinor,
+    Expression<int>? visibleAmountMinor,
+    Expression<bool>? isShared,
+    Expression<String>? vendorId,
+    Expression<String>? paymentStatus,
+    Expression<String>? paymentDate,
+    Expression<String>? paymentMethodId,
+    Expression<String>? referenceNumber,
+    Expression<String>? notes,
+    Expression<int>? taxAmountMinor,
+    Expression<String>? createdBy,
+    Expression<DateTime>? capturedAt,
+    Expression<DateTime>? voidedAt,
+    Expression<String>? voidedBy,
+    Expression<String>? voidReason,
+    Expression<String>? pendingMutationId,
+    Expression<int>? rowVersion,
+    Expression<DateTime>? serverUpdatedAt,
+    Expression<DateTime>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (orgId != null) 'org_id': orgId,
+      if (txnNumber != null) 'txn_number': txnNumber,
+      if (financialYear != null) 'financial_year': financialYear,
+      if (businessDate != null) 'business_date': businessDate,
+      if (businessDateSource != null)
+        'business_date_source': businessDateSource,
+      if (accountingPeriodStart != null)
+        'accounting_period_start': accountingPeriodStart,
+      if (accountingPeriodEnd != null)
+        'accounting_period_end': accountingPeriodEnd,
+      if (visibility != null) 'visibility': visibility,
+      if (documentTotalMinor != null)
+        'document_total_minor': documentTotalMinor,
+      if (visibleAmountMinor != null)
+        'visible_amount_minor': visibleAmountMinor,
+      if (isShared != null) 'is_shared': isShared,
+      if (vendorId != null) 'vendor_id': vendorId,
+      if (paymentStatus != null) 'payment_status': paymentStatus,
+      if (paymentDate != null) 'payment_date': paymentDate,
+      if (paymentMethodId != null) 'payment_method_id': paymentMethodId,
+      if (referenceNumber != null) 'reference_number': referenceNumber,
+      if (notes != null) 'notes': notes,
+      if (taxAmountMinor != null) 'tax_amount_minor': taxAmountMinor,
+      if (createdBy != null) 'created_by': createdBy,
+      if (capturedAt != null) 'captured_at': capturedAt,
+      if (voidedAt != null) 'voided_at': voidedAt,
+      if (voidedBy != null) 'voided_by': voidedBy,
+      if (voidReason != null) 'void_reason': voidReason,
+      if (pendingMutationId != null) 'pending_mutation_id': pendingMutationId,
+      if (rowVersion != null) 'row_version': rowVersion,
+      if (serverUpdatedAt != null) 'server_updated_at': serverUpdatedAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  ExpensesCompanion copyWith({
+    Value<String>? id,
+    Value<String>? orgId,
+    Value<String?>? txnNumber,
+    Value<int?>? financialYear,
+    Value<String>? businessDate,
+    Value<String>? businessDateSource,
+    Value<String?>? accountingPeriodStart,
+    Value<String?>? accountingPeriodEnd,
+    Value<String>? visibility,
+    Value<int?>? documentTotalMinor,
+    Value<int>? visibleAmountMinor,
+    Value<bool>? isShared,
+    Value<String?>? vendorId,
+    Value<String>? paymentStatus,
+    Value<String?>? paymentDate,
+    Value<String?>? paymentMethodId,
+    Value<String?>? referenceNumber,
+    Value<String?>? notes,
+    Value<int?>? taxAmountMinor,
+    Value<String>? createdBy,
+    Value<DateTime>? capturedAt,
+    Value<DateTime?>? voidedAt,
+    Value<String?>? voidedBy,
+    Value<String?>? voidReason,
+    Value<String?>? pendingMutationId,
+    Value<int>? rowVersion,
+    Value<DateTime?>? serverUpdatedAt,
+    Value<DateTime>? updatedAt,
+    Value<int>? rowid,
+  }) {
+    return ExpensesCompanion(
+      id: id ?? this.id,
+      orgId: orgId ?? this.orgId,
+      txnNumber: txnNumber ?? this.txnNumber,
+      financialYear: financialYear ?? this.financialYear,
+      businessDate: businessDate ?? this.businessDate,
+      businessDateSource: businessDateSource ?? this.businessDateSource,
+      accountingPeriodStart:
+          accountingPeriodStart ?? this.accountingPeriodStart,
+      accountingPeriodEnd: accountingPeriodEnd ?? this.accountingPeriodEnd,
+      visibility: visibility ?? this.visibility,
+      documentTotalMinor: documentTotalMinor ?? this.documentTotalMinor,
+      visibleAmountMinor: visibleAmountMinor ?? this.visibleAmountMinor,
+      isShared: isShared ?? this.isShared,
+      vendorId: vendorId ?? this.vendorId,
+      paymentStatus: paymentStatus ?? this.paymentStatus,
+      paymentDate: paymentDate ?? this.paymentDate,
+      paymentMethodId: paymentMethodId ?? this.paymentMethodId,
+      referenceNumber: referenceNumber ?? this.referenceNumber,
+      notes: notes ?? this.notes,
+      taxAmountMinor: taxAmountMinor ?? this.taxAmountMinor,
+      createdBy: createdBy ?? this.createdBy,
+      capturedAt: capturedAt ?? this.capturedAt,
+      voidedAt: voidedAt ?? this.voidedAt,
+      voidedBy: voidedBy ?? this.voidedBy,
+      voidReason: voidReason ?? this.voidReason,
+      pendingMutationId: pendingMutationId ?? this.pendingMutationId,
+      rowVersion: rowVersion ?? this.rowVersion,
+      serverUpdatedAt: serverUpdatedAt ?? this.serverUpdatedAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (orgId.present) {
+      map['org_id'] = Variable<String>(orgId.value);
+    }
+    if (txnNumber.present) {
+      map['txn_number'] = Variable<String>(txnNumber.value);
+    }
+    if (financialYear.present) {
+      map['financial_year'] = Variable<int>(financialYear.value);
+    }
+    if (businessDate.present) {
+      map['business_date'] = Variable<String>(businessDate.value);
+    }
+    if (businessDateSource.present) {
+      map['business_date_source'] = Variable<String>(businessDateSource.value);
+    }
+    if (accountingPeriodStart.present) {
+      map['accounting_period_start'] = Variable<String>(
+        accountingPeriodStart.value,
+      );
+    }
+    if (accountingPeriodEnd.present) {
+      map['accounting_period_end'] = Variable<String>(
+        accountingPeriodEnd.value,
+      );
+    }
+    if (visibility.present) {
+      map['visibility'] = Variable<String>(visibility.value);
+    }
+    if (documentTotalMinor.present) {
+      map['document_total_minor'] = Variable<int>(documentTotalMinor.value);
+    }
+    if (visibleAmountMinor.present) {
+      map['visible_amount_minor'] = Variable<int>(visibleAmountMinor.value);
+    }
+    if (isShared.present) {
+      map['is_shared'] = Variable<bool>(isShared.value);
+    }
+    if (vendorId.present) {
+      map['vendor_id'] = Variable<String>(vendorId.value);
+    }
+    if (paymentStatus.present) {
+      map['payment_status'] = Variable<String>(paymentStatus.value);
+    }
+    if (paymentDate.present) {
+      map['payment_date'] = Variable<String>(paymentDate.value);
+    }
+    if (paymentMethodId.present) {
+      map['payment_method_id'] = Variable<String>(paymentMethodId.value);
+    }
+    if (referenceNumber.present) {
+      map['reference_number'] = Variable<String>(referenceNumber.value);
+    }
+    if (notes.present) {
+      map['notes'] = Variable<String>(notes.value);
+    }
+    if (taxAmountMinor.present) {
+      map['tax_amount_minor'] = Variable<int>(taxAmountMinor.value);
+    }
+    if (createdBy.present) {
+      map['created_by'] = Variable<String>(createdBy.value);
+    }
+    if (capturedAt.present) {
+      map['captured_at'] = Variable<DateTime>(capturedAt.value);
+    }
+    if (voidedAt.present) {
+      map['voided_at'] = Variable<DateTime>(voidedAt.value);
+    }
+    if (voidedBy.present) {
+      map['voided_by'] = Variable<String>(voidedBy.value);
+    }
+    if (voidReason.present) {
+      map['void_reason'] = Variable<String>(voidReason.value);
+    }
+    if (pendingMutationId.present) {
+      map['pending_mutation_id'] = Variable<String>(pendingMutationId.value);
+    }
+    if (rowVersion.present) {
+      map['row_version'] = Variable<int>(rowVersion.value);
+    }
+    if (serverUpdatedAt.present) {
+      map['server_updated_at'] = Variable<DateTime>(serverUpdatedAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ExpensesCompanion(')
+          ..write('id: $id, ')
+          ..write('orgId: $orgId, ')
+          ..write('txnNumber: $txnNumber, ')
+          ..write('financialYear: $financialYear, ')
+          ..write('businessDate: $businessDate, ')
+          ..write('businessDateSource: $businessDateSource, ')
+          ..write('accountingPeriodStart: $accountingPeriodStart, ')
+          ..write('accountingPeriodEnd: $accountingPeriodEnd, ')
+          ..write('visibility: $visibility, ')
+          ..write('documentTotalMinor: $documentTotalMinor, ')
+          ..write('visibleAmountMinor: $visibleAmountMinor, ')
+          ..write('isShared: $isShared, ')
+          ..write('vendorId: $vendorId, ')
+          ..write('paymentStatus: $paymentStatus, ')
+          ..write('paymentDate: $paymentDate, ')
+          ..write('paymentMethodId: $paymentMethodId, ')
+          ..write('referenceNumber: $referenceNumber, ')
+          ..write('notes: $notes, ')
+          ..write('taxAmountMinor: $taxAmountMinor, ')
+          ..write('createdBy: $createdBy, ')
+          ..write('capturedAt: $capturedAt, ')
+          ..write('voidedAt: $voidedAt, ')
+          ..write('voidedBy: $voidedBy, ')
+          ..write('voidReason: $voidReason, ')
+          ..write('pendingMutationId: $pendingMutationId, ')
+          ..write('rowVersion: $rowVersion, ')
+          ..write('serverUpdatedAt: $serverUpdatedAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $ExpenseAllocationsTable extends ExpenseAllocations
+    with TableInfo<$ExpenseAllocationsTable, ExpenseAllocationRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ExpenseAllocationsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _orgIdMeta = const VerificationMeta('orgId');
+  @override
+  late final GeneratedColumn<String> orgId = GeneratedColumn<String>(
+    'org_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _expenseIdMeta = const VerificationMeta(
+    'expenseId',
+  );
+  @override
+  late final GeneratedColumn<String> expenseId = GeneratedColumn<String>(
+    'expense_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES expenses (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _businessUnitIdMeta = const VerificationMeta(
+    'businessUnitId',
+  );
+  @override
+  late final GeneratedColumn<String> businessUnitId = GeneratedColumn<String>(
+    'business_unit_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES business_units (id) ON DELETE RESTRICT',
+    ),
+  );
+  static const VerificationMeta _departmentIdMeta = const VerificationMeta(
+    'departmentId',
+  );
+  @override
+  late final GeneratedColumn<String> departmentId = GeneratedColumn<String>(
+    'department_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _sectionIdMeta = const VerificationMeta(
+    'sectionId',
+  );
+  @override
+  late final GeneratedColumn<String> sectionId = GeneratedColumn<String>(
+    'section_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _categoryIdMeta = const VerificationMeta(
+    'categoryId',
+  );
+  @override
+  late final GeneratedColumn<String> categoryId = GeneratedColumn<String>(
+    'category_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _amountMinorMeta = const VerificationMeta(
+    'amountMinor',
+  );
+  @override
+  late final GeneratedColumn<int> amountMinor = GeneratedColumn<int>(
+    'amount_minor',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _categoryLabelMeta = const VerificationMeta(
+    'categoryLabel',
+  );
+  @override
+  late final GeneratedColumn<String> categoryLabel = GeneratedColumn<String>(
+    'category_label',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _sortOrderMeta = const VerificationMeta(
+    'sortOrder',
+  );
+  @override
+  late final GeneratedColumn<int> sortOrder = GeneratedColumn<int>(
+    'sort_order',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _rowVersionMeta = const VerificationMeta(
+    'rowVersion',
+  );
+  @override
+  late final GeneratedColumn<int> rowVersion = GeneratedColumn<int>(
+    'row_version',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(1),
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    orgId,
+    expenseId,
+    businessUnitId,
+    departmentId,
+    sectionId,
+    categoryId,
+    amountMinor,
+    categoryLabel,
+    sortOrder,
+    rowVersion,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'expense_allocations';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ExpenseAllocationRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('org_id')) {
+      context.handle(
+        _orgIdMeta,
+        orgId.isAcceptableOrUnknown(data['org_id']!, _orgIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_orgIdMeta);
+    }
+    if (data.containsKey('expense_id')) {
+      context.handle(
+        _expenseIdMeta,
+        expenseId.isAcceptableOrUnknown(data['expense_id']!, _expenseIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_expenseIdMeta);
+    }
+    if (data.containsKey('business_unit_id')) {
+      context.handle(
+        _businessUnitIdMeta,
+        businessUnitId.isAcceptableOrUnknown(
+          data['business_unit_id']!,
+          _businessUnitIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_businessUnitIdMeta);
+    }
+    if (data.containsKey('department_id')) {
+      context.handle(
+        _departmentIdMeta,
+        departmentId.isAcceptableOrUnknown(
+          data['department_id']!,
+          _departmentIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_departmentIdMeta);
+    }
+    if (data.containsKey('section_id')) {
+      context.handle(
+        _sectionIdMeta,
+        sectionId.isAcceptableOrUnknown(data['section_id']!, _sectionIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_sectionIdMeta);
+    }
+    if (data.containsKey('category_id')) {
+      context.handle(
+        _categoryIdMeta,
+        categoryId.isAcceptableOrUnknown(data['category_id']!, _categoryIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_categoryIdMeta);
+    }
+    if (data.containsKey('amount_minor')) {
+      context.handle(
+        _amountMinorMeta,
+        amountMinor.isAcceptableOrUnknown(
+          data['amount_minor']!,
+          _amountMinorMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_amountMinorMeta);
+    }
+    if (data.containsKey('category_label')) {
+      context.handle(
+        _categoryLabelMeta,
+        categoryLabel.isAcceptableOrUnknown(
+          data['category_label']!,
+          _categoryLabelMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_categoryLabelMeta);
+    }
+    if (data.containsKey('sort_order')) {
+      context.handle(
+        _sortOrderMeta,
+        sortOrder.isAcceptableOrUnknown(data['sort_order']!, _sortOrderMeta),
+      );
+    }
+    if (data.containsKey('row_version')) {
+      context.handle(
+        _rowVersionMeta,
+        rowVersion.isAcceptableOrUnknown(data['row_version']!, _rowVersionMeta),
+      );
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  ExpenseAllocationRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ExpenseAllocationRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      orgId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}org_id'],
+      )!,
+      expenseId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}expense_id'],
+      )!,
+      businessUnitId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}business_unit_id'],
+      )!,
+      departmentId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}department_id'],
+      )!,
+      sectionId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}section_id'],
+      )!,
+      categoryId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}category_id'],
+      )!,
+      amountMinor: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}amount_minor'],
+      )!,
+      categoryLabel: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}category_label'],
+      )!,
+      sortOrder: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}sort_order'],
+      )!,
+      rowVersion: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}row_version'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $ExpenseAllocationsTable createAlias(String alias) {
+    return $ExpenseAllocationsTable(attachedDatabase, alias);
+  }
+}
+
+class ExpenseAllocationRow extends DataClass
+    implements Insertable<ExpenseAllocationRow> {
+  final String id;
+  final String orgId;
+  final String expenseId;
+  final String businessUnitId;
+  final String departmentId;
+  final String sectionId;
+
+  /// Deliberately **not** a foreign key to `expense_categories`.
+  ///
+  /// The full hierarchy is a per-user cache, and a category can legitimately be absent
+  /// from it — a scope purge (D-048) removes the masters of a revoked unit while an
+  /// expense line that was already synced remains as history. A real foreign key would
+  /// make the purge impossible or the history deletable, and both are worse than a soft
+  /// pointer. The server holds the real key; this is the same reasoning as D-049.
+  final String categoryId;
+  final int amountMinor;
+
+  /// What the category was called when this was recorded (D-035). Reports show the
+  /// current name; the document and the audit trail can show what was on screen.
+  final String categoryLabel;
+  final int sortOrder;
+  final int rowVersion;
+  final DateTime updatedAt;
+  const ExpenseAllocationRow({
+    required this.id,
+    required this.orgId,
+    required this.expenseId,
+    required this.businessUnitId,
+    required this.departmentId,
+    required this.sectionId,
+    required this.categoryId,
+    required this.amountMinor,
+    required this.categoryLabel,
+    required this.sortOrder,
+    required this.rowVersion,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['org_id'] = Variable<String>(orgId);
+    map['expense_id'] = Variable<String>(expenseId);
+    map['business_unit_id'] = Variable<String>(businessUnitId);
+    map['department_id'] = Variable<String>(departmentId);
+    map['section_id'] = Variable<String>(sectionId);
+    map['category_id'] = Variable<String>(categoryId);
+    map['amount_minor'] = Variable<int>(amountMinor);
+    map['category_label'] = Variable<String>(categoryLabel);
+    map['sort_order'] = Variable<int>(sortOrder);
+    map['row_version'] = Variable<int>(rowVersion);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  ExpenseAllocationsCompanion toCompanion(bool nullToAbsent) {
+    return ExpenseAllocationsCompanion(
+      id: Value(id),
+      orgId: Value(orgId),
+      expenseId: Value(expenseId),
+      businessUnitId: Value(businessUnitId),
+      departmentId: Value(departmentId),
+      sectionId: Value(sectionId),
+      categoryId: Value(categoryId),
+      amountMinor: Value(amountMinor),
+      categoryLabel: Value(categoryLabel),
+      sortOrder: Value(sortOrder),
+      rowVersion: Value(rowVersion),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory ExpenseAllocationRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ExpenseAllocationRow(
+      id: serializer.fromJson<String>(json['id']),
+      orgId: serializer.fromJson<String>(json['orgId']),
+      expenseId: serializer.fromJson<String>(json['expenseId']),
+      businessUnitId: serializer.fromJson<String>(json['businessUnitId']),
+      departmentId: serializer.fromJson<String>(json['departmentId']),
+      sectionId: serializer.fromJson<String>(json['sectionId']),
+      categoryId: serializer.fromJson<String>(json['categoryId']),
+      amountMinor: serializer.fromJson<int>(json['amountMinor']),
+      categoryLabel: serializer.fromJson<String>(json['categoryLabel']),
+      sortOrder: serializer.fromJson<int>(json['sortOrder']),
+      rowVersion: serializer.fromJson<int>(json['rowVersion']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'orgId': serializer.toJson<String>(orgId),
+      'expenseId': serializer.toJson<String>(expenseId),
+      'businessUnitId': serializer.toJson<String>(businessUnitId),
+      'departmentId': serializer.toJson<String>(departmentId),
+      'sectionId': serializer.toJson<String>(sectionId),
+      'categoryId': serializer.toJson<String>(categoryId),
+      'amountMinor': serializer.toJson<int>(amountMinor),
+      'categoryLabel': serializer.toJson<String>(categoryLabel),
+      'sortOrder': serializer.toJson<int>(sortOrder),
+      'rowVersion': serializer.toJson<int>(rowVersion),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  ExpenseAllocationRow copyWith({
+    String? id,
+    String? orgId,
+    String? expenseId,
+    String? businessUnitId,
+    String? departmentId,
+    String? sectionId,
+    String? categoryId,
+    int? amountMinor,
+    String? categoryLabel,
+    int? sortOrder,
+    int? rowVersion,
+    DateTime? updatedAt,
+  }) => ExpenseAllocationRow(
+    id: id ?? this.id,
+    orgId: orgId ?? this.orgId,
+    expenseId: expenseId ?? this.expenseId,
+    businessUnitId: businessUnitId ?? this.businessUnitId,
+    departmentId: departmentId ?? this.departmentId,
+    sectionId: sectionId ?? this.sectionId,
+    categoryId: categoryId ?? this.categoryId,
+    amountMinor: amountMinor ?? this.amountMinor,
+    categoryLabel: categoryLabel ?? this.categoryLabel,
+    sortOrder: sortOrder ?? this.sortOrder,
+    rowVersion: rowVersion ?? this.rowVersion,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  ExpenseAllocationRow copyWithCompanion(ExpenseAllocationsCompanion data) {
+    return ExpenseAllocationRow(
+      id: data.id.present ? data.id.value : this.id,
+      orgId: data.orgId.present ? data.orgId.value : this.orgId,
+      expenseId: data.expenseId.present ? data.expenseId.value : this.expenseId,
+      businessUnitId: data.businessUnitId.present
+          ? data.businessUnitId.value
+          : this.businessUnitId,
+      departmentId: data.departmentId.present
+          ? data.departmentId.value
+          : this.departmentId,
+      sectionId: data.sectionId.present ? data.sectionId.value : this.sectionId,
+      categoryId: data.categoryId.present
+          ? data.categoryId.value
+          : this.categoryId,
+      amountMinor: data.amountMinor.present
+          ? data.amountMinor.value
+          : this.amountMinor,
+      categoryLabel: data.categoryLabel.present
+          ? data.categoryLabel.value
+          : this.categoryLabel,
+      sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
+      rowVersion: data.rowVersion.present
+          ? data.rowVersion.value
+          : this.rowVersion,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ExpenseAllocationRow(')
+          ..write('id: $id, ')
+          ..write('orgId: $orgId, ')
+          ..write('expenseId: $expenseId, ')
+          ..write('businessUnitId: $businessUnitId, ')
+          ..write('departmentId: $departmentId, ')
+          ..write('sectionId: $sectionId, ')
+          ..write('categoryId: $categoryId, ')
+          ..write('amountMinor: $amountMinor, ')
+          ..write('categoryLabel: $categoryLabel, ')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('rowVersion: $rowVersion, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    orgId,
+    expenseId,
+    businessUnitId,
+    departmentId,
+    sectionId,
+    categoryId,
+    amountMinor,
+    categoryLabel,
+    sortOrder,
+    rowVersion,
+    updatedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ExpenseAllocationRow &&
+          other.id == this.id &&
+          other.orgId == this.orgId &&
+          other.expenseId == this.expenseId &&
+          other.businessUnitId == this.businessUnitId &&
+          other.departmentId == this.departmentId &&
+          other.sectionId == this.sectionId &&
+          other.categoryId == this.categoryId &&
+          other.amountMinor == this.amountMinor &&
+          other.categoryLabel == this.categoryLabel &&
+          other.sortOrder == this.sortOrder &&
+          other.rowVersion == this.rowVersion &&
+          other.updatedAt == this.updatedAt);
+}
+
+class ExpenseAllocationsCompanion
+    extends UpdateCompanion<ExpenseAllocationRow> {
+  final Value<String> id;
+  final Value<String> orgId;
+  final Value<String> expenseId;
+  final Value<String> businessUnitId;
+  final Value<String> departmentId;
+  final Value<String> sectionId;
+  final Value<String> categoryId;
+  final Value<int> amountMinor;
+  final Value<String> categoryLabel;
+  final Value<int> sortOrder;
+  final Value<int> rowVersion;
+  final Value<DateTime> updatedAt;
+  final Value<int> rowid;
+  const ExpenseAllocationsCompanion({
+    this.id = const Value.absent(),
+    this.orgId = const Value.absent(),
+    this.expenseId = const Value.absent(),
+    this.businessUnitId = const Value.absent(),
+    this.departmentId = const Value.absent(),
+    this.sectionId = const Value.absent(),
+    this.categoryId = const Value.absent(),
+    this.amountMinor = const Value.absent(),
+    this.categoryLabel = const Value.absent(),
+    this.sortOrder = const Value.absent(),
+    this.rowVersion = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  ExpenseAllocationsCompanion.insert({
+    required String id,
+    required String orgId,
+    required String expenseId,
+    required String businessUnitId,
+    required String departmentId,
+    required String sectionId,
+    required String categoryId,
+    required int amountMinor,
+    required String categoryLabel,
+    this.sortOrder = const Value.absent(),
+    this.rowVersion = const Value.absent(),
+    required DateTime updatedAt,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       orgId = Value(orgId),
+       expenseId = Value(expenseId),
+       businessUnitId = Value(businessUnitId),
+       departmentId = Value(departmentId),
+       sectionId = Value(sectionId),
+       categoryId = Value(categoryId),
+       amountMinor = Value(amountMinor),
+       categoryLabel = Value(categoryLabel),
+       updatedAt = Value(updatedAt);
+  static Insertable<ExpenseAllocationRow> custom({
+    Expression<String>? id,
+    Expression<String>? orgId,
+    Expression<String>? expenseId,
+    Expression<String>? businessUnitId,
+    Expression<String>? departmentId,
+    Expression<String>? sectionId,
+    Expression<String>? categoryId,
+    Expression<int>? amountMinor,
+    Expression<String>? categoryLabel,
+    Expression<int>? sortOrder,
+    Expression<int>? rowVersion,
+    Expression<DateTime>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (orgId != null) 'org_id': orgId,
+      if (expenseId != null) 'expense_id': expenseId,
+      if (businessUnitId != null) 'business_unit_id': businessUnitId,
+      if (departmentId != null) 'department_id': departmentId,
+      if (sectionId != null) 'section_id': sectionId,
+      if (categoryId != null) 'category_id': categoryId,
+      if (amountMinor != null) 'amount_minor': amountMinor,
+      if (categoryLabel != null) 'category_label': categoryLabel,
+      if (sortOrder != null) 'sort_order': sortOrder,
+      if (rowVersion != null) 'row_version': rowVersion,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  ExpenseAllocationsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? orgId,
+    Value<String>? expenseId,
+    Value<String>? businessUnitId,
+    Value<String>? departmentId,
+    Value<String>? sectionId,
+    Value<String>? categoryId,
+    Value<int>? amountMinor,
+    Value<String>? categoryLabel,
+    Value<int>? sortOrder,
+    Value<int>? rowVersion,
+    Value<DateTime>? updatedAt,
+    Value<int>? rowid,
+  }) {
+    return ExpenseAllocationsCompanion(
+      id: id ?? this.id,
+      orgId: orgId ?? this.orgId,
+      expenseId: expenseId ?? this.expenseId,
+      businessUnitId: businessUnitId ?? this.businessUnitId,
+      departmentId: departmentId ?? this.departmentId,
+      sectionId: sectionId ?? this.sectionId,
+      categoryId: categoryId ?? this.categoryId,
+      amountMinor: amountMinor ?? this.amountMinor,
+      categoryLabel: categoryLabel ?? this.categoryLabel,
+      sortOrder: sortOrder ?? this.sortOrder,
+      rowVersion: rowVersion ?? this.rowVersion,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (orgId.present) {
+      map['org_id'] = Variable<String>(orgId.value);
+    }
+    if (expenseId.present) {
+      map['expense_id'] = Variable<String>(expenseId.value);
+    }
+    if (businessUnitId.present) {
+      map['business_unit_id'] = Variable<String>(businessUnitId.value);
+    }
+    if (departmentId.present) {
+      map['department_id'] = Variable<String>(departmentId.value);
+    }
+    if (sectionId.present) {
+      map['section_id'] = Variable<String>(sectionId.value);
+    }
+    if (categoryId.present) {
+      map['category_id'] = Variable<String>(categoryId.value);
+    }
+    if (amountMinor.present) {
+      map['amount_minor'] = Variable<int>(amountMinor.value);
+    }
+    if (categoryLabel.present) {
+      map['category_label'] = Variable<String>(categoryLabel.value);
+    }
+    if (sortOrder.present) {
+      map['sort_order'] = Variable<int>(sortOrder.value);
+    }
+    if (rowVersion.present) {
+      map['row_version'] = Variable<int>(rowVersion.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ExpenseAllocationsCompanion(')
+          ..write('id: $id, ')
+          ..write('orgId: $orgId, ')
+          ..write('expenseId: $expenseId, ')
+          ..write('businessUnitId: $businessUnitId, ')
+          ..write('departmentId: $departmentId, ')
+          ..write('sectionId: $sectionId, ')
+          ..write('categoryId: $categoryId, ')
+          ..write('amountMinor: $amountMinor, ')
+          ..write('categoryLabel: $categoryLabel, ')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('rowVersion: $rowVersion, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $ExpensePeriodAllocationsTable extends ExpensePeriodAllocations
+    with TableInfo<$ExpensePeriodAllocationsTable, ExpensePeriodAllocationRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ExpensePeriodAllocationsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _orgIdMeta = const VerificationMeta('orgId');
+  @override
+  late final GeneratedColumn<String> orgId = GeneratedColumn<String>(
+    'org_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _expenseIdMeta = const VerificationMeta(
+    'expenseId',
+  );
+  @override
+  late final GeneratedColumn<String> expenseId = GeneratedColumn<String>(
+    'expense_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES expenses (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _allocationIdMeta = const VerificationMeta(
+    'allocationId',
+  );
+  @override
+  late final GeneratedColumn<String> allocationId = GeneratedColumn<String>(
+    'allocation_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES expense_allocations (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _businessUnitIdMeta = const VerificationMeta(
+    'businessUnitId',
+  );
+  @override
+  late final GeneratedColumn<String> businessUnitId = GeneratedColumn<String>(
+    'business_unit_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _accountingPeriodStartMeta =
+      const VerificationMeta('accountingPeriodStart');
+  @override
+  late final GeneratedColumn<String> accountingPeriodStart =
+      GeneratedColumn<String>(
+        'accounting_period_start',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: true,
+      );
+  static const VerificationMeta _accountingPeriodEndMeta =
+      const VerificationMeta('accountingPeriodEnd');
+  @override
+  late final GeneratedColumn<String> accountingPeriodEnd =
+      GeneratedColumn<String>(
+        'accounting_period_end',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: true,
+      );
+  static const VerificationMeta _amountMinorMeta = const VerificationMeta(
+    'amountMinor',
+  );
+  @override
+  late final GeneratedColumn<int> amountMinor = GeneratedColumn<int>(
+    'amount_minor',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _pnlDateMeta = const VerificationMeta(
+    'pnlDate',
+  );
+  @override
+  late final GeneratedColumn<String> pnlDate = GeneratedColumn<String>(
+    'pnl_date',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _pnlPeriodKeyMeta = const VerificationMeta(
+    'pnlPeriodKey',
+  );
+  @override
+  late final GeneratedColumn<String> pnlPeriodKey = GeneratedColumn<String>(
+    'pnl_period_key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _isDerivedMeta = const VerificationMeta(
+    'isDerived',
+  );
+  @override
+  late final GeneratedColumn<bool> isDerived = GeneratedColumn<bool>(
+    'is_derived',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_derived" IN (0, 1))',
+    ),
+    defaultValue: const Constant(true),
+  );
+  static const VerificationMeta _rowVersionMeta = const VerificationMeta(
+    'rowVersion',
+  );
+  @override
+  late final GeneratedColumn<int> rowVersion = GeneratedColumn<int>(
+    'row_version',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(1),
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    orgId,
+    expenseId,
+    allocationId,
+    businessUnitId,
+    accountingPeriodStart,
+    accountingPeriodEnd,
+    amountMinor,
+    pnlDate,
+    pnlPeriodKey,
+    isDerived,
+    rowVersion,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'expense_period_allocations';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ExpensePeriodAllocationRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('org_id')) {
+      context.handle(
+        _orgIdMeta,
+        orgId.isAcceptableOrUnknown(data['org_id']!, _orgIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_orgIdMeta);
+    }
+    if (data.containsKey('expense_id')) {
+      context.handle(
+        _expenseIdMeta,
+        expenseId.isAcceptableOrUnknown(data['expense_id']!, _expenseIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_expenseIdMeta);
+    }
+    if (data.containsKey('allocation_id')) {
+      context.handle(
+        _allocationIdMeta,
+        allocationId.isAcceptableOrUnknown(
+          data['allocation_id']!,
+          _allocationIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_allocationIdMeta);
+    }
+    if (data.containsKey('business_unit_id')) {
+      context.handle(
+        _businessUnitIdMeta,
+        businessUnitId.isAcceptableOrUnknown(
+          data['business_unit_id']!,
+          _businessUnitIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_businessUnitIdMeta);
+    }
+    if (data.containsKey('accounting_period_start')) {
+      context.handle(
+        _accountingPeriodStartMeta,
+        accountingPeriodStart.isAcceptableOrUnknown(
+          data['accounting_period_start']!,
+          _accountingPeriodStartMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_accountingPeriodStartMeta);
+    }
+    if (data.containsKey('accounting_period_end')) {
+      context.handle(
+        _accountingPeriodEndMeta,
+        accountingPeriodEnd.isAcceptableOrUnknown(
+          data['accounting_period_end']!,
+          _accountingPeriodEndMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_accountingPeriodEndMeta);
+    }
+    if (data.containsKey('amount_minor')) {
+      context.handle(
+        _amountMinorMeta,
+        amountMinor.isAcceptableOrUnknown(
+          data['amount_minor']!,
+          _amountMinorMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_amountMinorMeta);
+    }
+    if (data.containsKey('pnl_date')) {
+      context.handle(
+        _pnlDateMeta,
+        pnlDate.isAcceptableOrUnknown(data['pnl_date']!, _pnlDateMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_pnlDateMeta);
+    }
+    if (data.containsKey('pnl_period_key')) {
+      context.handle(
+        _pnlPeriodKeyMeta,
+        pnlPeriodKey.isAcceptableOrUnknown(
+          data['pnl_period_key']!,
+          _pnlPeriodKeyMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_pnlPeriodKeyMeta);
+    }
+    if (data.containsKey('is_derived')) {
+      context.handle(
+        _isDerivedMeta,
+        isDerived.isAcceptableOrUnknown(data['is_derived']!, _isDerivedMeta),
+      );
+    }
+    if (data.containsKey('row_version')) {
+      context.handle(
+        _rowVersionMeta,
+        rowVersion.isAcceptableOrUnknown(data['row_version']!, _rowVersionMeta),
+      );
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  ExpensePeriodAllocationRow map(
+    Map<String, dynamic> data, {
+    String? tablePrefix,
+  }) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ExpensePeriodAllocationRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      orgId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}org_id'],
+      )!,
+      expenseId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}expense_id'],
+      )!,
+      allocationId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}allocation_id'],
+      )!,
+      businessUnitId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}business_unit_id'],
+      )!,
+      accountingPeriodStart: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}accounting_period_start'],
+      )!,
+      accountingPeriodEnd: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}accounting_period_end'],
+      )!,
+      amountMinor: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}amount_minor'],
+      )!,
+      pnlDate: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}pnl_date'],
+      )!,
+      pnlPeriodKey: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}pnl_period_key'],
+      )!,
+      isDerived: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_derived'],
+      )!,
+      rowVersion: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}row_version'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $ExpensePeriodAllocationsTable createAlias(String alias) {
+    return $ExpensePeriodAllocationsTable(attachedDatabase, alias);
+  }
+}
+
+class ExpensePeriodAllocationRow extends DataClass
+    implements Insertable<ExpensePeriodAllocationRow> {
+  final String id;
+  final String orgId;
+  final String expenseId;
+  final String allocationId;
+  final String businessUnitId;
+  final String accountingPeriodStart;
+  final String accountingPeriodEnd;
+  final int amountMinor;
+
+  /// Computed once and stored, never re-derived at read time (D-019).
+  final String pnlDate;
+  final String pnlPeriodKey;
+
+  /// Whether the default rule produced this, or a person chose it. Drives the
+  /// `expense.allocate_periods` capability check and what the audit trail says.
+  final bool isDerived;
+  final int rowVersion;
+  final DateTime updatedAt;
+  const ExpensePeriodAllocationRow({
+    required this.id,
+    required this.orgId,
+    required this.expenseId,
+    required this.allocationId,
+    required this.businessUnitId,
+    required this.accountingPeriodStart,
+    required this.accountingPeriodEnd,
+    required this.amountMinor,
+    required this.pnlDate,
+    required this.pnlPeriodKey,
+    required this.isDerived,
+    required this.rowVersion,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['org_id'] = Variable<String>(orgId);
+    map['expense_id'] = Variable<String>(expenseId);
+    map['allocation_id'] = Variable<String>(allocationId);
+    map['business_unit_id'] = Variable<String>(businessUnitId);
+    map['accounting_period_start'] = Variable<String>(accountingPeriodStart);
+    map['accounting_period_end'] = Variable<String>(accountingPeriodEnd);
+    map['amount_minor'] = Variable<int>(amountMinor);
+    map['pnl_date'] = Variable<String>(pnlDate);
+    map['pnl_period_key'] = Variable<String>(pnlPeriodKey);
+    map['is_derived'] = Variable<bool>(isDerived);
+    map['row_version'] = Variable<int>(rowVersion);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  ExpensePeriodAllocationsCompanion toCompanion(bool nullToAbsent) {
+    return ExpensePeriodAllocationsCompanion(
+      id: Value(id),
+      orgId: Value(orgId),
+      expenseId: Value(expenseId),
+      allocationId: Value(allocationId),
+      businessUnitId: Value(businessUnitId),
+      accountingPeriodStart: Value(accountingPeriodStart),
+      accountingPeriodEnd: Value(accountingPeriodEnd),
+      amountMinor: Value(amountMinor),
+      pnlDate: Value(pnlDate),
+      pnlPeriodKey: Value(pnlPeriodKey),
+      isDerived: Value(isDerived),
+      rowVersion: Value(rowVersion),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory ExpensePeriodAllocationRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ExpensePeriodAllocationRow(
+      id: serializer.fromJson<String>(json['id']),
+      orgId: serializer.fromJson<String>(json['orgId']),
+      expenseId: serializer.fromJson<String>(json['expenseId']),
+      allocationId: serializer.fromJson<String>(json['allocationId']),
+      businessUnitId: serializer.fromJson<String>(json['businessUnitId']),
+      accountingPeriodStart: serializer.fromJson<String>(
+        json['accountingPeriodStart'],
+      ),
+      accountingPeriodEnd: serializer.fromJson<String>(
+        json['accountingPeriodEnd'],
+      ),
+      amountMinor: serializer.fromJson<int>(json['amountMinor']),
+      pnlDate: serializer.fromJson<String>(json['pnlDate']),
+      pnlPeriodKey: serializer.fromJson<String>(json['pnlPeriodKey']),
+      isDerived: serializer.fromJson<bool>(json['isDerived']),
+      rowVersion: serializer.fromJson<int>(json['rowVersion']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'orgId': serializer.toJson<String>(orgId),
+      'expenseId': serializer.toJson<String>(expenseId),
+      'allocationId': serializer.toJson<String>(allocationId),
+      'businessUnitId': serializer.toJson<String>(businessUnitId),
+      'accountingPeriodStart': serializer.toJson<String>(accountingPeriodStart),
+      'accountingPeriodEnd': serializer.toJson<String>(accountingPeriodEnd),
+      'amountMinor': serializer.toJson<int>(amountMinor),
+      'pnlDate': serializer.toJson<String>(pnlDate),
+      'pnlPeriodKey': serializer.toJson<String>(pnlPeriodKey),
+      'isDerived': serializer.toJson<bool>(isDerived),
+      'rowVersion': serializer.toJson<int>(rowVersion),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  ExpensePeriodAllocationRow copyWith({
+    String? id,
+    String? orgId,
+    String? expenseId,
+    String? allocationId,
+    String? businessUnitId,
+    String? accountingPeriodStart,
+    String? accountingPeriodEnd,
+    int? amountMinor,
+    String? pnlDate,
+    String? pnlPeriodKey,
+    bool? isDerived,
+    int? rowVersion,
+    DateTime? updatedAt,
+  }) => ExpensePeriodAllocationRow(
+    id: id ?? this.id,
+    orgId: orgId ?? this.orgId,
+    expenseId: expenseId ?? this.expenseId,
+    allocationId: allocationId ?? this.allocationId,
+    businessUnitId: businessUnitId ?? this.businessUnitId,
+    accountingPeriodStart: accountingPeriodStart ?? this.accountingPeriodStart,
+    accountingPeriodEnd: accountingPeriodEnd ?? this.accountingPeriodEnd,
+    amountMinor: amountMinor ?? this.amountMinor,
+    pnlDate: pnlDate ?? this.pnlDate,
+    pnlPeriodKey: pnlPeriodKey ?? this.pnlPeriodKey,
+    isDerived: isDerived ?? this.isDerived,
+    rowVersion: rowVersion ?? this.rowVersion,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  ExpensePeriodAllocationRow copyWithCompanion(
+    ExpensePeriodAllocationsCompanion data,
+  ) {
+    return ExpensePeriodAllocationRow(
+      id: data.id.present ? data.id.value : this.id,
+      orgId: data.orgId.present ? data.orgId.value : this.orgId,
+      expenseId: data.expenseId.present ? data.expenseId.value : this.expenseId,
+      allocationId: data.allocationId.present
+          ? data.allocationId.value
+          : this.allocationId,
+      businessUnitId: data.businessUnitId.present
+          ? data.businessUnitId.value
+          : this.businessUnitId,
+      accountingPeriodStart: data.accountingPeriodStart.present
+          ? data.accountingPeriodStart.value
+          : this.accountingPeriodStart,
+      accountingPeriodEnd: data.accountingPeriodEnd.present
+          ? data.accountingPeriodEnd.value
+          : this.accountingPeriodEnd,
+      amountMinor: data.amountMinor.present
+          ? data.amountMinor.value
+          : this.amountMinor,
+      pnlDate: data.pnlDate.present ? data.pnlDate.value : this.pnlDate,
+      pnlPeriodKey: data.pnlPeriodKey.present
+          ? data.pnlPeriodKey.value
+          : this.pnlPeriodKey,
+      isDerived: data.isDerived.present ? data.isDerived.value : this.isDerived,
+      rowVersion: data.rowVersion.present
+          ? data.rowVersion.value
+          : this.rowVersion,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ExpensePeriodAllocationRow(')
+          ..write('id: $id, ')
+          ..write('orgId: $orgId, ')
+          ..write('expenseId: $expenseId, ')
+          ..write('allocationId: $allocationId, ')
+          ..write('businessUnitId: $businessUnitId, ')
+          ..write('accountingPeriodStart: $accountingPeriodStart, ')
+          ..write('accountingPeriodEnd: $accountingPeriodEnd, ')
+          ..write('amountMinor: $amountMinor, ')
+          ..write('pnlDate: $pnlDate, ')
+          ..write('pnlPeriodKey: $pnlPeriodKey, ')
+          ..write('isDerived: $isDerived, ')
+          ..write('rowVersion: $rowVersion, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    orgId,
+    expenseId,
+    allocationId,
+    businessUnitId,
+    accountingPeriodStart,
+    accountingPeriodEnd,
+    amountMinor,
+    pnlDate,
+    pnlPeriodKey,
+    isDerived,
+    rowVersion,
+    updatedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ExpensePeriodAllocationRow &&
+          other.id == this.id &&
+          other.orgId == this.orgId &&
+          other.expenseId == this.expenseId &&
+          other.allocationId == this.allocationId &&
+          other.businessUnitId == this.businessUnitId &&
+          other.accountingPeriodStart == this.accountingPeriodStart &&
+          other.accountingPeriodEnd == this.accountingPeriodEnd &&
+          other.amountMinor == this.amountMinor &&
+          other.pnlDate == this.pnlDate &&
+          other.pnlPeriodKey == this.pnlPeriodKey &&
+          other.isDerived == this.isDerived &&
+          other.rowVersion == this.rowVersion &&
+          other.updatedAt == this.updatedAt);
+}
+
+class ExpensePeriodAllocationsCompanion
+    extends UpdateCompanion<ExpensePeriodAllocationRow> {
+  final Value<String> id;
+  final Value<String> orgId;
+  final Value<String> expenseId;
+  final Value<String> allocationId;
+  final Value<String> businessUnitId;
+  final Value<String> accountingPeriodStart;
+  final Value<String> accountingPeriodEnd;
+  final Value<int> amountMinor;
+  final Value<String> pnlDate;
+  final Value<String> pnlPeriodKey;
+  final Value<bool> isDerived;
+  final Value<int> rowVersion;
+  final Value<DateTime> updatedAt;
+  final Value<int> rowid;
+  const ExpensePeriodAllocationsCompanion({
+    this.id = const Value.absent(),
+    this.orgId = const Value.absent(),
+    this.expenseId = const Value.absent(),
+    this.allocationId = const Value.absent(),
+    this.businessUnitId = const Value.absent(),
+    this.accountingPeriodStart = const Value.absent(),
+    this.accountingPeriodEnd = const Value.absent(),
+    this.amountMinor = const Value.absent(),
+    this.pnlDate = const Value.absent(),
+    this.pnlPeriodKey = const Value.absent(),
+    this.isDerived = const Value.absent(),
+    this.rowVersion = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  ExpensePeriodAllocationsCompanion.insert({
+    required String id,
+    required String orgId,
+    required String expenseId,
+    required String allocationId,
+    required String businessUnitId,
+    required String accountingPeriodStart,
+    required String accountingPeriodEnd,
+    required int amountMinor,
+    required String pnlDate,
+    required String pnlPeriodKey,
+    this.isDerived = const Value.absent(),
+    this.rowVersion = const Value.absent(),
+    required DateTime updatedAt,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       orgId = Value(orgId),
+       expenseId = Value(expenseId),
+       allocationId = Value(allocationId),
+       businessUnitId = Value(businessUnitId),
+       accountingPeriodStart = Value(accountingPeriodStart),
+       accountingPeriodEnd = Value(accountingPeriodEnd),
+       amountMinor = Value(amountMinor),
+       pnlDate = Value(pnlDate),
+       pnlPeriodKey = Value(pnlPeriodKey),
+       updatedAt = Value(updatedAt);
+  static Insertable<ExpensePeriodAllocationRow> custom({
+    Expression<String>? id,
+    Expression<String>? orgId,
+    Expression<String>? expenseId,
+    Expression<String>? allocationId,
+    Expression<String>? businessUnitId,
+    Expression<String>? accountingPeriodStart,
+    Expression<String>? accountingPeriodEnd,
+    Expression<int>? amountMinor,
+    Expression<String>? pnlDate,
+    Expression<String>? pnlPeriodKey,
+    Expression<bool>? isDerived,
+    Expression<int>? rowVersion,
+    Expression<DateTime>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (orgId != null) 'org_id': orgId,
+      if (expenseId != null) 'expense_id': expenseId,
+      if (allocationId != null) 'allocation_id': allocationId,
+      if (businessUnitId != null) 'business_unit_id': businessUnitId,
+      if (accountingPeriodStart != null)
+        'accounting_period_start': accountingPeriodStart,
+      if (accountingPeriodEnd != null)
+        'accounting_period_end': accountingPeriodEnd,
+      if (amountMinor != null) 'amount_minor': amountMinor,
+      if (pnlDate != null) 'pnl_date': pnlDate,
+      if (pnlPeriodKey != null) 'pnl_period_key': pnlPeriodKey,
+      if (isDerived != null) 'is_derived': isDerived,
+      if (rowVersion != null) 'row_version': rowVersion,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  ExpensePeriodAllocationsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? orgId,
+    Value<String>? expenseId,
+    Value<String>? allocationId,
+    Value<String>? businessUnitId,
+    Value<String>? accountingPeriodStart,
+    Value<String>? accountingPeriodEnd,
+    Value<int>? amountMinor,
+    Value<String>? pnlDate,
+    Value<String>? pnlPeriodKey,
+    Value<bool>? isDerived,
+    Value<int>? rowVersion,
+    Value<DateTime>? updatedAt,
+    Value<int>? rowid,
+  }) {
+    return ExpensePeriodAllocationsCompanion(
+      id: id ?? this.id,
+      orgId: orgId ?? this.orgId,
+      expenseId: expenseId ?? this.expenseId,
+      allocationId: allocationId ?? this.allocationId,
+      businessUnitId: businessUnitId ?? this.businessUnitId,
+      accountingPeriodStart:
+          accountingPeriodStart ?? this.accountingPeriodStart,
+      accountingPeriodEnd: accountingPeriodEnd ?? this.accountingPeriodEnd,
+      amountMinor: amountMinor ?? this.amountMinor,
+      pnlDate: pnlDate ?? this.pnlDate,
+      pnlPeriodKey: pnlPeriodKey ?? this.pnlPeriodKey,
+      isDerived: isDerived ?? this.isDerived,
+      rowVersion: rowVersion ?? this.rowVersion,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (orgId.present) {
+      map['org_id'] = Variable<String>(orgId.value);
+    }
+    if (expenseId.present) {
+      map['expense_id'] = Variable<String>(expenseId.value);
+    }
+    if (allocationId.present) {
+      map['allocation_id'] = Variable<String>(allocationId.value);
+    }
+    if (businessUnitId.present) {
+      map['business_unit_id'] = Variable<String>(businessUnitId.value);
+    }
+    if (accountingPeriodStart.present) {
+      map['accounting_period_start'] = Variable<String>(
+        accountingPeriodStart.value,
+      );
+    }
+    if (accountingPeriodEnd.present) {
+      map['accounting_period_end'] = Variable<String>(
+        accountingPeriodEnd.value,
+      );
+    }
+    if (amountMinor.present) {
+      map['amount_minor'] = Variable<int>(amountMinor.value);
+    }
+    if (pnlDate.present) {
+      map['pnl_date'] = Variable<String>(pnlDate.value);
+    }
+    if (pnlPeriodKey.present) {
+      map['pnl_period_key'] = Variable<String>(pnlPeriodKey.value);
+    }
+    if (isDerived.present) {
+      map['is_derived'] = Variable<bool>(isDerived.value);
+    }
+    if (rowVersion.present) {
+      map['row_version'] = Variable<int>(rowVersion.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ExpensePeriodAllocationsCompanion(')
+          ..write('id: $id, ')
+          ..write('orgId: $orgId, ')
+          ..write('expenseId: $expenseId, ')
+          ..write('allocationId: $allocationId, ')
+          ..write('businessUnitId: $businessUnitId, ')
+          ..write('accountingPeriodStart: $accountingPeriodStart, ')
+          ..write('accountingPeriodEnd: $accountingPeriodEnd, ')
+          ..write('amountMinor: $amountMinor, ')
+          ..write('pnlDate: $pnlDate, ')
+          ..write('pnlPeriodKey: $pnlPeriodKey, ')
+          ..write('isDerived: $isDerived, ')
+          ..write('rowVersion: $rowVersion, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $ExpenseAttachmentsTable extends ExpenseAttachments
+    with TableInfo<$ExpenseAttachmentsTable, ExpenseAttachmentRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ExpenseAttachmentsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _orgIdMeta = const VerificationMeta('orgId');
+  @override
+  late final GeneratedColumn<String> orgId = GeneratedColumn<String>(
+    'org_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _expenseIdMeta = const VerificationMeta(
+    'expenseId',
+  );
+  @override
+  late final GeneratedColumn<String> expenseId = GeneratedColumn<String>(
+    'expense_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES expenses (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _fileNameMeta = const VerificationMeta(
+    'fileName',
+  );
+  @override
+  late final GeneratedColumn<String> fileName = GeneratedColumn<String>(
+    'file_name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _contentTypeMeta = const VerificationMeta(
+    'contentType',
+  );
+  @override
+  late final GeneratedColumn<String> contentType = GeneratedColumn<String>(
+    'content_type',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _byteSizeMeta = const VerificationMeta(
+    'byteSize',
+  );
+  @override
+  late final GeneratedColumn<int> byteSize = GeneratedColumn<int>(
+    'byte_size',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _contentHashMeta = const VerificationMeta(
+    'contentHash',
+  );
+  @override
+  late final GeneratedColumn<String> contentHash = GeneratedColumn<String>(
+    'content_hash',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _localPathMeta = const VerificationMeta(
+    'localPath',
+  );
+  @override
+  late final GeneratedColumn<String> localPath = GeneratedColumn<String>(
+    'local_path',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _uploadStateMeta = const VerificationMeta(
+    'uploadState',
+  );
+  @override
+  late final GeneratedColumn<String> uploadState = GeneratedColumn<String>(
+    'upload_state',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('pending'),
+  );
+  static const VerificationMeta _storagePathMeta = const VerificationMeta(
+    'storagePath',
+  );
+  @override
+  late final GeneratedColumn<String> storagePath = GeneratedColumn<String>(
+    'storage_path',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _attemptCountMeta = const VerificationMeta(
+    'attemptCount',
+  );
+  @override
+  late final GeneratedColumn<int> attemptCount = GeneratedColumn<int>(
+    'attempt_count',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _nextAttemptAtMeta = const VerificationMeta(
+    'nextAttemptAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> nextAttemptAt =
+      GeneratedColumn<DateTime>(
+        'next_attempt_at',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _lastErrorMeta = const VerificationMeta(
+    'lastError',
+  );
+  @override
+  late final GeneratedColumn<String> lastError = GeneratedColumn<String>(
+    'last_error',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _uploadedAtMeta = const VerificationMeta(
+    'uploadedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> uploadedAt = GeneratedColumn<DateTime>(
+    'uploaded_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _reclaimableAfterMeta = const VerificationMeta(
+    'reclaimableAfter',
+  );
+  @override
+  late final GeneratedColumn<DateTime> reclaimableAfter =
+      GeneratedColumn<DateTime>(
+        'reclaimable_after',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _uploadedByMeta = const VerificationMeta(
+    'uploadedBy',
+  );
+  @override
+  late final GeneratedColumn<String> uploadedBy = GeneratedColumn<String>(
+    'uploaded_by',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    orgId,
+    expenseId,
+    fileName,
+    contentType,
+    byteSize,
+    contentHash,
+    localPath,
+    uploadState,
+    storagePath,
+    attemptCount,
+    nextAttemptAt,
+    lastError,
+    uploadedAt,
+    reclaimableAfter,
+    uploadedBy,
+    createdAt,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'expense_attachments';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ExpenseAttachmentRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('org_id')) {
+      context.handle(
+        _orgIdMeta,
+        orgId.isAcceptableOrUnknown(data['org_id']!, _orgIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_orgIdMeta);
+    }
+    if (data.containsKey('expense_id')) {
+      context.handle(
+        _expenseIdMeta,
+        expenseId.isAcceptableOrUnknown(data['expense_id']!, _expenseIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_expenseIdMeta);
+    }
+    if (data.containsKey('file_name')) {
+      context.handle(
+        _fileNameMeta,
+        fileName.isAcceptableOrUnknown(data['file_name']!, _fileNameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_fileNameMeta);
+    }
+    if (data.containsKey('content_type')) {
+      context.handle(
+        _contentTypeMeta,
+        contentType.isAcceptableOrUnknown(
+          data['content_type']!,
+          _contentTypeMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_contentTypeMeta);
+    }
+    if (data.containsKey('byte_size')) {
+      context.handle(
+        _byteSizeMeta,
+        byteSize.isAcceptableOrUnknown(data['byte_size']!, _byteSizeMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_byteSizeMeta);
+    }
+    if (data.containsKey('content_hash')) {
+      context.handle(
+        _contentHashMeta,
+        contentHash.isAcceptableOrUnknown(
+          data['content_hash']!,
+          _contentHashMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_contentHashMeta);
+    }
+    if (data.containsKey('local_path')) {
+      context.handle(
+        _localPathMeta,
+        localPath.isAcceptableOrUnknown(data['local_path']!, _localPathMeta),
+      );
+    }
+    if (data.containsKey('upload_state')) {
+      context.handle(
+        _uploadStateMeta,
+        uploadState.isAcceptableOrUnknown(
+          data['upload_state']!,
+          _uploadStateMeta,
+        ),
+      );
+    }
+    if (data.containsKey('storage_path')) {
+      context.handle(
+        _storagePathMeta,
+        storagePath.isAcceptableOrUnknown(
+          data['storage_path']!,
+          _storagePathMeta,
+        ),
+      );
+    }
+    if (data.containsKey('attempt_count')) {
+      context.handle(
+        _attemptCountMeta,
+        attemptCount.isAcceptableOrUnknown(
+          data['attempt_count']!,
+          _attemptCountMeta,
+        ),
+      );
+    }
+    if (data.containsKey('next_attempt_at')) {
+      context.handle(
+        _nextAttemptAtMeta,
+        nextAttemptAt.isAcceptableOrUnknown(
+          data['next_attempt_at']!,
+          _nextAttemptAtMeta,
+        ),
+      );
+    }
+    if (data.containsKey('last_error')) {
+      context.handle(
+        _lastErrorMeta,
+        lastError.isAcceptableOrUnknown(data['last_error']!, _lastErrorMeta),
+      );
+    }
+    if (data.containsKey('uploaded_at')) {
+      context.handle(
+        _uploadedAtMeta,
+        uploadedAt.isAcceptableOrUnknown(data['uploaded_at']!, _uploadedAtMeta),
+      );
+    }
+    if (data.containsKey('reclaimable_after')) {
+      context.handle(
+        _reclaimableAfterMeta,
+        reclaimableAfter.isAcceptableOrUnknown(
+          data['reclaimable_after']!,
+          _reclaimableAfterMeta,
+        ),
+      );
+    }
+    if (data.containsKey('uploaded_by')) {
+      context.handle(
+        _uploadedByMeta,
+        uploadedBy.isAcceptableOrUnknown(data['uploaded_by']!, _uploadedByMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_uploadedByMeta);
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  ExpenseAttachmentRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ExpenseAttachmentRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      orgId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}org_id'],
+      )!,
+      expenseId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}expense_id'],
+      )!,
+      fileName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}file_name'],
+      )!,
+      contentType: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}content_type'],
+      )!,
+      byteSize: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}byte_size'],
+      )!,
+      contentHash: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}content_hash'],
+      )!,
+      localPath: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}local_path'],
+      ),
+      uploadState: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}upload_state'],
+      )!,
+      storagePath: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}storage_path'],
+      ),
+      attemptCount: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}attempt_count'],
+      )!,
+      nextAttemptAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}next_attempt_at'],
+      ),
+      lastError: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}last_error'],
+      ),
+      uploadedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}uploaded_at'],
+      ),
+      reclaimableAfter: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}reclaimable_after'],
+      ),
+      uploadedBy: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}uploaded_by'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $ExpenseAttachmentsTable createAlias(String alias) {
+    return $ExpenseAttachmentsTable(attachedDatabase, alias);
+  }
+}
+
+class ExpenseAttachmentRow extends DataClass
+    implements Insertable<ExpenseAttachmentRow> {
+  final String id;
+  final String orgId;
+  final String expenseId;
+  final String fileName;
+  final String contentType;
+  final int byteSize;
+
+  /// SHA-256 of the staged bytes, computed before upload and compared afterwards.
+  final String contentHash;
+
+  /// The app-private staging copy. Never a gallery or Downloads path: those can be
+  /// moved, renamed or revoked by the OS between capture and upload.
+  final String? localPath;
+
+  /// `pending` | `uploaded` | `stagingReclaimed` | `failed`.
+  final String uploadState;
+  final String? storagePath;
+  final int attemptCount;
+  final DateTime? nextAttemptAt;
+  final String? lastError;
+  final DateTime? uploadedAt;
+
+  /// When the verified staging copy becomes eligible for reclamation — seven days after
+  /// the server confirmed *and* the hash matched (AttachmentPolicy.stagingRetention).
+  final DateTime? reclaimableAfter;
+  final String uploadedBy;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  const ExpenseAttachmentRow({
+    required this.id,
+    required this.orgId,
+    required this.expenseId,
+    required this.fileName,
+    required this.contentType,
+    required this.byteSize,
+    required this.contentHash,
+    this.localPath,
+    required this.uploadState,
+    this.storagePath,
+    required this.attemptCount,
+    this.nextAttemptAt,
+    this.lastError,
+    this.uploadedAt,
+    this.reclaimableAfter,
+    required this.uploadedBy,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['org_id'] = Variable<String>(orgId);
+    map['expense_id'] = Variable<String>(expenseId);
+    map['file_name'] = Variable<String>(fileName);
+    map['content_type'] = Variable<String>(contentType);
+    map['byte_size'] = Variable<int>(byteSize);
+    map['content_hash'] = Variable<String>(contentHash);
+    if (!nullToAbsent || localPath != null) {
+      map['local_path'] = Variable<String>(localPath);
+    }
+    map['upload_state'] = Variable<String>(uploadState);
+    if (!nullToAbsent || storagePath != null) {
+      map['storage_path'] = Variable<String>(storagePath);
+    }
+    map['attempt_count'] = Variable<int>(attemptCount);
+    if (!nullToAbsent || nextAttemptAt != null) {
+      map['next_attempt_at'] = Variable<DateTime>(nextAttemptAt);
+    }
+    if (!nullToAbsent || lastError != null) {
+      map['last_error'] = Variable<String>(lastError);
+    }
+    if (!nullToAbsent || uploadedAt != null) {
+      map['uploaded_at'] = Variable<DateTime>(uploadedAt);
+    }
+    if (!nullToAbsent || reclaimableAfter != null) {
+      map['reclaimable_after'] = Variable<DateTime>(reclaimableAfter);
+    }
+    map['uploaded_by'] = Variable<String>(uploadedBy);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  ExpenseAttachmentsCompanion toCompanion(bool nullToAbsent) {
+    return ExpenseAttachmentsCompanion(
+      id: Value(id),
+      orgId: Value(orgId),
+      expenseId: Value(expenseId),
+      fileName: Value(fileName),
+      contentType: Value(contentType),
+      byteSize: Value(byteSize),
+      contentHash: Value(contentHash),
+      localPath: localPath == null && nullToAbsent
+          ? const Value.absent()
+          : Value(localPath),
+      uploadState: Value(uploadState),
+      storagePath: storagePath == null && nullToAbsent
+          ? const Value.absent()
+          : Value(storagePath),
+      attemptCount: Value(attemptCount),
+      nextAttemptAt: nextAttemptAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(nextAttemptAt),
+      lastError: lastError == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastError),
+      uploadedAt: uploadedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(uploadedAt),
+      reclaimableAfter: reclaimableAfter == null && nullToAbsent
+          ? const Value.absent()
+          : Value(reclaimableAfter),
+      uploadedBy: Value(uploadedBy),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory ExpenseAttachmentRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ExpenseAttachmentRow(
+      id: serializer.fromJson<String>(json['id']),
+      orgId: serializer.fromJson<String>(json['orgId']),
+      expenseId: serializer.fromJson<String>(json['expenseId']),
+      fileName: serializer.fromJson<String>(json['fileName']),
+      contentType: serializer.fromJson<String>(json['contentType']),
+      byteSize: serializer.fromJson<int>(json['byteSize']),
+      contentHash: serializer.fromJson<String>(json['contentHash']),
+      localPath: serializer.fromJson<String?>(json['localPath']),
+      uploadState: serializer.fromJson<String>(json['uploadState']),
+      storagePath: serializer.fromJson<String?>(json['storagePath']),
+      attemptCount: serializer.fromJson<int>(json['attemptCount']),
+      nextAttemptAt: serializer.fromJson<DateTime?>(json['nextAttemptAt']),
+      lastError: serializer.fromJson<String?>(json['lastError']),
+      uploadedAt: serializer.fromJson<DateTime?>(json['uploadedAt']),
+      reclaimableAfter: serializer.fromJson<DateTime?>(
+        json['reclaimableAfter'],
+      ),
+      uploadedBy: serializer.fromJson<String>(json['uploadedBy']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'orgId': serializer.toJson<String>(orgId),
+      'expenseId': serializer.toJson<String>(expenseId),
+      'fileName': serializer.toJson<String>(fileName),
+      'contentType': serializer.toJson<String>(contentType),
+      'byteSize': serializer.toJson<int>(byteSize),
+      'contentHash': serializer.toJson<String>(contentHash),
+      'localPath': serializer.toJson<String?>(localPath),
+      'uploadState': serializer.toJson<String>(uploadState),
+      'storagePath': serializer.toJson<String?>(storagePath),
+      'attemptCount': serializer.toJson<int>(attemptCount),
+      'nextAttemptAt': serializer.toJson<DateTime?>(nextAttemptAt),
+      'lastError': serializer.toJson<String?>(lastError),
+      'uploadedAt': serializer.toJson<DateTime?>(uploadedAt),
+      'reclaimableAfter': serializer.toJson<DateTime?>(reclaimableAfter),
+      'uploadedBy': serializer.toJson<String>(uploadedBy),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  ExpenseAttachmentRow copyWith({
+    String? id,
+    String? orgId,
+    String? expenseId,
+    String? fileName,
+    String? contentType,
+    int? byteSize,
+    String? contentHash,
+    Value<String?> localPath = const Value.absent(),
+    String? uploadState,
+    Value<String?> storagePath = const Value.absent(),
+    int? attemptCount,
+    Value<DateTime?> nextAttemptAt = const Value.absent(),
+    Value<String?> lastError = const Value.absent(),
+    Value<DateTime?> uploadedAt = const Value.absent(),
+    Value<DateTime?> reclaimableAfter = const Value.absent(),
+    String? uploadedBy,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  }) => ExpenseAttachmentRow(
+    id: id ?? this.id,
+    orgId: orgId ?? this.orgId,
+    expenseId: expenseId ?? this.expenseId,
+    fileName: fileName ?? this.fileName,
+    contentType: contentType ?? this.contentType,
+    byteSize: byteSize ?? this.byteSize,
+    contentHash: contentHash ?? this.contentHash,
+    localPath: localPath.present ? localPath.value : this.localPath,
+    uploadState: uploadState ?? this.uploadState,
+    storagePath: storagePath.present ? storagePath.value : this.storagePath,
+    attemptCount: attemptCount ?? this.attemptCount,
+    nextAttemptAt: nextAttemptAt.present
+        ? nextAttemptAt.value
+        : this.nextAttemptAt,
+    lastError: lastError.present ? lastError.value : this.lastError,
+    uploadedAt: uploadedAt.present ? uploadedAt.value : this.uploadedAt,
+    reclaimableAfter: reclaimableAfter.present
+        ? reclaimableAfter.value
+        : this.reclaimableAfter,
+    uploadedBy: uploadedBy ?? this.uploadedBy,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  ExpenseAttachmentRow copyWithCompanion(ExpenseAttachmentsCompanion data) {
+    return ExpenseAttachmentRow(
+      id: data.id.present ? data.id.value : this.id,
+      orgId: data.orgId.present ? data.orgId.value : this.orgId,
+      expenseId: data.expenseId.present ? data.expenseId.value : this.expenseId,
+      fileName: data.fileName.present ? data.fileName.value : this.fileName,
+      contentType: data.contentType.present
+          ? data.contentType.value
+          : this.contentType,
+      byteSize: data.byteSize.present ? data.byteSize.value : this.byteSize,
+      contentHash: data.contentHash.present
+          ? data.contentHash.value
+          : this.contentHash,
+      localPath: data.localPath.present ? data.localPath.value : this.localPath,
+      uploadState: data.uploadState.present
+          ? data.uploadState.value
+          : this.uploadState,
+      storagePath: data.storagePath.present
+          ? data.storagePath.value
+          : this.storagePath,
+      attemptCount: data.attemptCount.present
+          ? data.attemptCount.value
+          : this.attemptCount,
+      nextAttemptAt: data.nextAttemptAt.present
+          ? data.nextAttemptAt.value
+          : this.nextAttemptAt,
+      lastError: data.lastError.present ? data.lastError.value : this.lastError,
+      uploadedAt: data.uploadedAt.present
+          ? data.uploadedAt.value
+          : this.uploadedAt,
+      reclaimableAfter: data.reclaimableAfter.present
+          ? data.reclaimableAfter.value
+          : this.reclaimableAfter,
+      uploadedBy: data.uploadedBy.present
+          ? data.uploadedBy.value
+          : this.uploadedBy,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ExpenseAttachmentRow(')
+          ..write('id: $id, ')
+          ..write('orgId: $orgId, ')
+          ..write('expenseId: $expenseId, ')
+          ..write('fileName: $fileName, ')
+          ..write('contentType: $contentType, ')
+          ..write('byteSize: $byteSize, ')
+          ..write('contentHash: $contentHash, ')
+          ..write('localPath: $localPath, ')
+          ..write('uploadState: $uploadState, ')
+          ..write('storagePath: $storagePath, ')
+          ..write('attemptCount: $attemptCount, ')
+          ..write('nextAttemptAt: $nextAttemptAt, ')
+          ..write('lastError: $lastError, ')
+          ..write('uploadedAt: $uploadedAt, ')
+          ..write('reclaimableAfter: $reclaimableAfter, ')
+          ..write('uploadedBy: $uploadedBy, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    orgId,
+    expenseId,
+    fileName,
+    contentType,
+    byteSize,
+    contentHash,
+    localPath,
+    uploadState,
+    storagePath,
+    attemptCount,
+    nextAttemptAt,
+    lastError,
+    uploadedAt,
+    reclaimableAfter,
+    uploadedBy,
+    createdAt,
+    updatedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ExpenseAttachmentRow &&
+          other.id == this.id &&
+          other.orgId == this.orgId &&
+          other.expenseId == this.expenseId &&
+          other.fileName == this.fileName &&
+          other.contentType == this.contentType &&
+          other.byteSize == this.byteSize &&
+          other.contentHash == this.contentHash &&
+          other.localPath == this.localPath &&
+          other.uploadState == this.uploadState &&
+          other.storagePath == this.storagePath &&
+          other.attemptCount == this.attemptCount &&
+          other.nextAttemptAt == this.nextAttemptAt &&
+          other.lastError == this.lastError &&
+          other.uploadedAt == this.uploadedAt &&
+          other.reclaimableAfter == this.reclaimableAfter &&
+          other.uploadedBy == this.uploadedBy &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt);
+}
+
+class ExpenseAttachmentsCompanion
+    extends UpdateCompanion<ExpenseAttachmentRow> {
+  final Value<String> id;
+  final Value<String> orgId;
+  final Value<String> expenseId;
+  final Value<String> fileName;
+  final Value<String> contentType;
+  final Value<int> byteSize;
+  final Value<String> contentHash;
+  final Value<String?> localPath;
+  final Value<String> uploadState;
+  final Value<String?> storagePath;
+  final Value<int> attemptCount;
+  final Value<DateTime?> nextAttemptAt;
+  final Value<String?> lastError;
+  final Value<DateTime?> uploadedAt;
+  final Value<DateTime?> reclaimableAfter;
+  final Value<String> uploadedBy;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
+  final Value<int> rowid;
+  const ExpenseAttachmentsCompanion({
+    this.id = const Value.absent(),
+    this.orgId = const Value.absent(),
+    this.expenseId = const Value.absent(),
+    this.fileName = const Value.absent(),
+    this.contentType = const Value.absent(),
+    this.byteSize = const Value.absent(),
+    this.contentHash = const Value.absent(),
+    this.localPath = const Value.absent(),
+    this.uploadState = const Value.absent(),
+    this.storagePath = const Value.absent(),
+    this.attemptCount = const Value.absent(),
+    this.nextAttemptAt = const Value.absent(),
+    this.lastError = const Value.absent(),
+    this.uploadedAt = const Value.absent(),
+    this.reclaimableAfter = const Value.absent(),
+    this.uploadedBy = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  ExpenseAttachmentsCompanion.insert({
+    required String id,
+    required String orgId,
+    required String expenseId,
+    required String fileName,
+    required String contentType,
+    required int byteSize,
+    required String contentHash,
+    this.localPath = const Value.absent(),
+    this.uploadState = const Value.absent(),
+    this.storagePath = const Value.absent(),
+    this.attemptCount = const Value.absent(),
+    this.nextAttemptAt = const Value.absent(),
+    this.lastError = const Value.absent(),
+    this.uploadedAt = const Value.absent(),
+    this.reclaimableAfter = const Value.absent(),
+    required String uploadedBy,
+    required DateTime createdAt,
+    required DateTime updatedAt,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       orgId = Value(orgId),
+       expenseId = Value(expenseId),
+       fileName = Value(fileName),
+       contentType = Value(contentType),
+       byteSize = Value(byteSize),
+       contentHash = Value(contentHash),
+       uploadedBy = Value(uploadedBy),
+       createdAt = Value(createdAt),
+       updatedAt = Value(updatedAt);
+  static Insertable<ExpenseAttachmentRow> custom({
+    Expression<String>? id,
+    Expression<String>? orgId,
+    Expression<String>? expenseId,
+    Expression<String>? fileName,
+    Expression<String>? contentType,
+    Expression<int>? byteSize,
+    Expression<String>? contentHash,
+    Expression<String>? localPath,
+    Expression<String>? uploadState,
+    Expression<String>? storagePath,
+    Expression<int>? attemptCount,
+    Expression<DateTime>? nextAttemptAt,
+    Expression<String>? lastError,
+    Expression<DateTime>? uploadedAt,
+    Expression<DateTime>? reclaimableAfter,
+    Expression<String>? uploadedBy,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (orgId != null) 'org_id': orgId,
+      if (expenseId != null) 'expense_id': expenseId,
+      if (fileName != null) 'file_name': fileName,
+      if (contentType != null) 'content_type': contentType,
+      if (byteSize != null) 'byte_size': byteSize,
+      if (contentHash != null) 'content_hash': contentHash,
+      if (localPath != null) 'local_path': localPath,
+      if (uploadState != null) 'upload_state': uploadState,
+      if (storagePath != null) 'storage_path': storagePath,
+      if (attemptCount != null) 'attempt_count': attemptCount,
+      if (nextAttemptAt != null) 'next_attempt_at': nextAttemptAt,
+      if (lastError != null) 'last_error': lastError,
+      if (uploadedAt != null) 'uploaded_at': uploadedAt,
+      if (reclaimableAfter != null) 'reclaimable_after': reclaimableAfter,
+      if (uploadedBy != null) 'uploaded_by': uploadedBy,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  ExpenseAttachmentsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? orgId,
+    Value<String>? expenseId,
+    Value<String>? fileName,
+    Value<String>? contentType,
+    Value<int>? byteSize,
+    Value<String>? contentHash,
+    Value<String?>? localPath,
+    Value<String>? uploadState,
+    Value<String?>? storagePath,
+    Value<int>? attemptCount,
+    Value<DateTime?>? nextAttemptAt,
+    Value<String?>? lastError,
+    Value<DateTime?>? uploadedAt,
+    Value<DateTime?>? reclaimableAfter,
+    Value<String>? uploadedBy,
+    Value<DateTime>? createdAt,
+    Value<DateTime>? updatedAt,
+    Value<int>? rowid,
+  }) {
+    return ExpenseAttachmentsCompanion(
+      id: id ?? this.id,
+      orgId: orgId ?? this.orgId,
+      expenseId: expenseId ?? this.expenseId,
+      fileName: fileName ?? this.fileName,
+      contentType: contentType ?? this.contentType,
+      byteSize: byteSize ?? this.byteSize,
+      contentHash: contentHash ?? this.contentHash,
+      localPath: localPath ?? this.localPath,
+      uploadState: uploadState ?? this.uploadState,
+      storagePath: storagePath ?? this.storagePath,
+      attemptCount: attemptCount ?? this.attemptCount,
+      nextAttemptAt: nextAttemptAt ?? this.nextAttemptAt,
+      lastError: lastError ?? this.lastError,
+      uploadedAt: uploadedAt ?? this.uploadedAt,
+      reclaimableAfter: reclaimableAfter ?? this.reclaimableAfter,
+      uploadedBy: uploadedBy ?? this.uploadedBy,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (orgId.present) {
+      map['org_id'] = Variable<String>(orgId.value);
+    }
+    if (expenseId.present) {
+      map['expense_id'] = Variable<String>(expenseId.value);
+    }
+    if (fileName.present) {
+      map['file_name'] = Variable<String>(fileName.value);
+    }
+    if (contentType.present) {
+      map['content_type'] = Variable<String>(contentType.value);
+    }
+    if (byteSize.present) {
+      map['byte_size'] = Variable<int>(byteSize.value);
+    }
+    if (contentHash.present) {
+      map['content_hash'] = Variable<String>(contentHash.value);
+    }
+    if (localPath.present) {
+      map['local_path'] = Variable<String>(localPath.value);
+    }
+    if (uploadState.present) {
+      map['upload_state'] = Variable<String>(uploadState.value);
+    }
+    if (storagePath.present) {
+      map['storage_path'] = Variable<String>(storagePath.value);
+    }
+    if (attemptCount.present) {
+      map['attempt_count'] = Variable<int>(attemptCount.value);
+    }
+    if (nextAttemptAt.present) {
+      map['next_attempt_at'] = Variable<DateTime>(nextAttemptAt.value);
+    }
+    if (lastError.present) {
+      map['last_error'] = Variable<String>(lastError.value);
+    }
+    if (uploadedAt.present) {
+      map['uploaded_at'] = Variable<DateTime>(uploadedAt.value);
+    }
+    if (reclaimableAfter.present) {
+      map['reclaimable_after'] = Variable<DateTime>(reclaimableAfter.value);
+    }
+    if (uploadedBy.present) {
+      map['uploaded_by'] = Variable<String>(uploadedBy.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ExpenseAttachmentsCompanion(')
+          ..write('id: $id, ')
+          ..write('orgId: $orgId, ')
+          ..write('expenseId: $expenseId, ')
+          ..write('fileName: $fileName, ')
+          ..write('contentType: $contentType, ')
+          ..write('byteSize: $byteSize, ')
+          ..write('contentHash: $contentHash, ')
+          ..write('localPath: $localPath, ')
+          ..write('uploadState: $uploadState, ')
+          ..write('storagePath: $storagePath, ')
+          ..write('attemptCount: $attemptCount, ')
+          ..write('nextAttemptAt: $nextAttemptAt, ')
+          ..write('lastError: $lastError, ')
+          ..write('uploadedAt: $uploadedAt, ')
+          ..write('reclaimableAfter: $reclaimableAfter, ')
+          ..write('uploadedBy: $uploadedBy, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -7509,6 +11734,13 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $RevenueTaxRatesTable revenueTaxRates = $RevenueTaxRatesTable(
     this,
   );
+  late final $ExpensesTable expenses = $ExpensesTable(this);
+  late final $ExpenseAllocationsTable expenseAllocations =
+      $ExpenseAllocationsTable(this);
+  late final $ExpensePeriodAllocationsTable expensePeriodAllocations =
+      $ExpensePeriodAllocationsTable(this);
+  late final $ExpenseAttachmentsTable expenseAttachments =
+      $ExpenseAttachmentsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -7526,7 +11758,46 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     periodLocks,
     periodLockEvents,
     revenueTaxRates,
+    expenses,
+    expenseAllocations,
+    expensePeriodAllocations,
+    expenseAttachments,
   ];
+  @override
+  StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'expenses',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('expense_allocations', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'expenses',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [
+        TableUpdate('expense_period_allocations', kind: UpdateKind.delete),
+      ],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'expense_allocations',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [
+        TableUpdate('expense_period_allocations', kind: UpdateKind.delete),
+      ],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'expenses',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('expense_attachments', kind: UpdateKind.delete)],
+    ),
+  ]);
 }
 
 typedef $$AppMetaTableCreateCompanionBuilder =
@@ -8150,6 +12421,30 @@ final class $$BusinessUnitsTableReferences
       manager.$state.copyWith(prefetchedData: cache),
     );
   }
+
+  static MultiTypedResultKey<
+    $ExpenseAllocationsTable,
+    List<ExpenseAllocationRow>
+  >
+  _expenseAllocationsRefsTable(_$AppDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.expenseAllocations,
+        aliasName: 'business_units__id__expense_allocations__business_unit_id',
+      );
+
+  $$ExpenseAllocationsTableProcessedTableManager get expenseAllocationsRefs {
+    final manager = $$ExpenseAllocationsTableTableManager(
+      $_db,
+      $_db.expenseAllocations,
+    ).filter((f) => f.businessUnitId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _expenseAllocationsRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
 }
 
 class $$BusinessUnitsTableFilterComposer
@@ -8282,6 +12577,31 @@ class $$BusinessUnitsTableFilterComposer
           }) => $$PeriodLocksTableFilterComposer(
             $db: $db,
             $table: $db.periodLocks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> expenseAllocationsRefs(
+    Expression<bool> Function($$ExpenseAllocationsTableFilterComposer f) f,
+  ) {
+    final $$ExpenseAllocationsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.expenseAllocations,
+      getReferencedColumn: (t) => t.businessUnitId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ExpenseAllocationsTableFilterComposer(
+            $db: $db,
+            $table: $db.expenseAllocations,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -8480,6 +12800,32 @@ class $$BusinessUnitsTableAnnotationComposer
     );
     return f(composer);
   }
+
+  Expression<T> expenseAllocationsRefs<T extends Object>(
+    Expression<T> Function($$ExpenseAllocationsTableAnnotationComposer a) f,
+  ) {
+    final $$ExpenseAllocationsTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.expenseAllocations,
+          getReferencedColumn: (t) => t.businessUnitId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$ExpenseAllocationsTableAnnotationComposer(
+                $db: $db,
+                $table: $db.expenseAllocations,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
 }
 
 class $$BusinessUnitsTableTableManager
@@ -8499,6 +12845,7 @@ class $$BusinessUnitsTableTableManager
             bool departmentsRefs,
             bool revenueCategoriesRefs,
             bool periodLocksRefs,
+            bool expenseAllocationsRefs,
           })
         > {
   $$BusinessUnitsTableTableManager(_$AppDatabase db, $BusinessUnitsTable table)
@@ -8581,6 +12928,7 @@ class $$BusinessUnitsTableTableManager
                 departmentsRefs = false,
                 revenueCategoriesRefs = false,
                 periodLocksRefs = false,
+                expenseAllocationsRefs = false,
               }) {
                 return PrefetchHooks(
                   db: db,
@@ -8588,6 +12936,7 @@ class $$BusinessUnitsTableTableManager
                     if (departmentsRefs) db.departments,
                     if (revenueCategoriesRefs) db.revenueCategories,
                     if (periodLocksRefs) db.periodLocks,
+                    if (expenseAllocationsRefs) db.expenseAllocations,
                   ],
                   addJoins: null,
                   getPrefetchedDataCallback: (items) async {
@@ -8655,6 +13004,27 @@ class $$BusinessUnitsTableTableManager
                               ),
                           typedResults: items,
                         ),
+                      if (expenseAllocationsRefs)
+                        await $_getPrefetchedData<
+                          BusinessUnitRow,
+                          $BusinessUnitsTable,
+                          ExpenseAllocationRow
+                        >(
+                          currentTable: table,
+                          referencedTable: $$BusinessUnitsTableReferences
+                              ._expenseAllocationsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$BusinessUnitsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).expenseAllocationsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.businessUnitId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
                     ];
                   },
                 );
@@ -8679,6 +13049,7 @@ typedef $$BusinessUnitsTableProcessedTableManager =
         bool departmentsRefs,
         bool revenueCategoriesRefs,
         bool periodLocksRefs,
+        bool expenseAllocationsRefs,
       })
     >;
 typedef $$DepartmentsTableCreateCompanionBuilder =
@@ -12701,6 +17072,2882 @@ typedef $$RevenueTaxRatesTableProcessedTableManager =
       RevenueTaxRateRow,
       PrefetchHooks Function({bool revenueCategoryId})
     >;
+typedef $$ExpensesTableCreateCompanionBuilder =
+    ExpensesCompanion Function({
+      required String id,
+      required String orgId,
+      Value<String?> txnNumber,
+      Value<int?> financialYear,
+      required String businessDate,
+      Value<String> businessDateSource,
+      Value<String?> accountingPeriodStart,
+      Value<String?> accountingPeriodEnd,
+      Value<String> visibility,
+      Value<int?> documentTotalMinor,
+      required int visibleAmountMinor,
+      Value<bool> isShared,
+      Value<String?> vendorId,
+      Value<String> paymentStatus,
+      Value<String?> paymentDate,
+      Value<String?> paymentMethodId,
+      Value<String?> referenceNumber,
+      Value<String?> notes,
+      Value<int?> taxAmountMinor,
+      required String createdBy,
+      required DateTime capturedAt,
+      Value<DateTime?> voidedAt,
+      Value<String?> voidedBy,
+      Value<String?> voidReason,
+      Value<String?> pendingMutationId,
+      Value<int> rowVersion,
+      Value<DateTime?> serverUpdatedAt,
+      required DateTime updatedAt,
+      Value<int> rowid,
+    });
+typedef $$ExpensesTableUpdateCompanionBuilder =
+    ExpensesCompanion Function({
+      Value<String> id,
+      Value<String> orgId,
+      Value<String?> txnNumber,
+      Value<int?> financialYear,
+      Value<String> businessDate,
+      Value<String> businessDateSource,
+      Value<String?> accountingPeriodStart,
+      Value<String?> accountingPeriodEnd,
+      Value<String> visibility,
+      Value<int?> documentTotalMinor,
+      Value<int> visibleAmountMinor,
+      Value<bool> isShared,
+      Value<String?> vendorId,
+      Value<String> paymentStatus,
+      Value<String?> paymentDate,
+      Value<String?> paymentMethodId,
+      Value<String?> referenceNumber,
+      Value<String?> notes,
+      Value<int?> taxAmountMinor,
+      Value<String> createdBy,
+      Value<DateTime> capturedAt,
+      Value<DateTime?> voidedAt,
+      Value<String?> voidedBy,
+      Value<String?> voidReason,
+      Value<String?> pendingMutationId,
+      Value<int> rowVersion,
+      Value<DateTime?> serverUpdatedAt,
+      Value<DateTime> updatedAt,
+      Value<int> rowid,
+    });
+
+final class $$ExpensesTableReferences
+    extends BaseReferences<_$AppDatabase, $ExpensesTable, ExpenseRow> {
+  $$ExpensesTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static MultiTypedResultKey<
+    $ExpenseAllocationsTable,
+    List<ExpenseAllocationRow>
+  >
+  _expenseAllocationsRefsTable(_$AppDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.expenseAllocations,
+        aliasName: 'expenses__id__expense_allocations__expense_id',
+      );
+
+  $$ExpenseAllocationsTableProcessedTableManager get expenseAllocationsRefs {
+    final manager = $$ExpenseAllocationsTableTableManager(
+      $_db,
+      $_db.expenseAllocations,
+    ).filter((f) => f.expenseId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _expenseAllocationsRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<
+    $ExpensePeriodAllocationsTable,
+    List<ExpensePeriodAllocationRow>
+  >
+  _expensePeriodAllocationsRefsTable(_$AppDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.expensePeriodAllocations,
+        aliasName: 'expenses__id__expense_period_allocations__expense_id',
+      );
+
+  $$ExpensePeriodAllocationsTableProcessedTableManager
+  get expensePeriodAllocationsRefs {
+    final manager = $$ExpensePeriodAllocationsTableTableManager(
+      $_db,
+      $_db.expensePeriodAllocations,
+    ).filter((f) => f.expenseId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _expensePeriodAllocationsRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<
+    $ExpenseAttachmentsTable,
+    List<ExpenseAttachmentRow>
+  >
+  _expenseAttachmentsRefsTable(_$AppDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.expenseAttachments,
+        aliasName: 'expenses__id__expense_attachments__expense_id',
+      );
+
+  $$ExpenseAttachmentsTableProcessedTableManager get expenseAttachmentsRefs {
+    final manager = $$ExpenseAttachmentsTableTableManager(
+      $_db,
+      $_db.expenseAttachments,
+    ).filter((f) => f.expenseId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _expenseAttachmentsRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+}
+
+class $$ExpensesTableFilterComposer
+    extends Composer<_$AppDatabase, $ExpensesTable> {
+  $$ExpensesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get orgId => $composableBuilder(
+    column: $table.orgId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get txnNumber => $composableBuilder(
+    column: $table.txnNumber,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get financialYear => $composableBuilder(
+    column: $table.financialYear,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get businessDate => $composableBuilder(
+    column: $table.businessDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get businessDateSource => $composableBuilder(
+    column: $table.businessDateSource,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get accountingPeriodStart => $composableBuilder(
+    column: $table.accountingPeriodStart,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get accountingPeriodEnd => $composableBuilder(
+    column: $table.accountingPeriodEnd,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get visibility => $composableBuilder(
+    column: $table.visibility,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get documentTotalMinor => $composableBuilder(
+    column: $table.documentTotalMinor,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get visibleAmountMinor => $composableBuilder(
+    column: $table.visibleAmountMinor,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isShared => $composableBuilder(
+    column: $table.isShared,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get vendorId => $composableBuilder(
+    column: $table.vendorId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get paymentStatus => $composableBuilder(
+    column: $table.paymentStatus,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get paymentDate => $composableBuilder(
+    column: $table.paymentDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get paymentMethodId => $composableBuilder(
+    column: $table.paymentMethodId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get referenceNumber => $composableBuilder(
+    column: $table.referenceNumber,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get notes => $composableBuilder(
+    column: $table.notes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get taxAmountMinor => $composableBuilder(
+    column: $table.taxAmountMinor,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get createdBy => $composableBuilder(
+    column: $table.createdBy,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get capturedAt => $composableBuilder(
+    column: $table.capturedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get voidedAt => $composableBuilder(
+    column: $table.voidedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get voidedBy => $composableBuilder(
+    column: $table.voidedBy,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get voidReason => $composableBuilder(
+    column: $table.voidReason,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get pendingMutationId => $composableBuilder(
+    column: $table.pendingMutationId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get rowVersion => $composableBuilder(
+    column: $table.rowVersion,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get serverUpdatedAt => $composableBuilder(
+    column: $table.serverUpdatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  Expression<bool> expenseAllocationsRefs(
+    Expression<bool> Function($$ExpenseAllocationsTableFilterComposer f) f,
+  ) {
+    final $$ExpenseAllocationsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.expenseAllocations,
+      getReferencedColumn: (t) => t.expenseId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ExpenseAllocationsTableFilterComposer(
+            $db: $db,
+            $table: $db.expenseAllocations,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> expensePeriodAllocationsRefs(
+    Expression<bool> Function($$ExpensePeriodAllocationsTableFilterComposer f)
+    f,
+  ) {
+    final $$ExpensePeriodAllocationsTableFilterComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.expensePeriodAllocations,
+          getReferencedColumn: (t) => t.expenseId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$ExpensePeriodAllocationsTableFilterComposer(
+                $db: $db,
+                $table: $db.expensePeriodAllocations,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
+
+  Expression<bool> expenseAttachmentsRefs(
+    Expression<bool> Function($$ExpenseAttachmentsTableFilterComposer f) f,
+  ) {
+    final $$ExpenseAttachmentsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.expenseAttachments,
+      getReferencedColumn: (t) => t.expenseId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ExpenseAttachmentsTableFilterComposer(
+            $db: $db,
+            $table: $db.expenseAttachments,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$ExpensesTableOrderingComposer
+    extends Composer<_$AppDatabase, $ExpensesTable> {
+  $$ExpensesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get orgId => $composableBuilder(
+    column: $table.orgId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get txnNumber => $composableBuilder(
+    column: $table.txnNumber,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get financialYear => $composableBuilder(
+    column: $table.financialYear,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get businessDate => $composableBuilder(
+    column: $table.businessDate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get businessDateSource => $composableBuilder(
+    column: $table.businessDateSource,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get accountingPeriodStart => $composableBuilder(
+    column: $table.accountingPeriodStart,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get accountingPeriodEnd => $composableBuilder(
+    column: $table.accountingPeriodEnd,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get visibility => $composableBuilder(
+    column: $table.visibility,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get documentTotalMinor => $composableBuilder(
+    column: $table.documentTotalMinor,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get visibleAmountMinor => $composableBuilder(
+    column: $table.visibleAmountMinor,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get isShared => $composableBuilder(
+    column: $table.isShared,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get vendorId => $composableBuilder(
+    column: $table.vendorId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get paymentStatus => $composableBuilder(
+    column: $table.paymentStatus,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get paymentDate => $composableBuilder(
+    column: $table.paymentDate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get paymentMethodId => $composableBuilder(
+    column: $table.paymentMethodId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get referenceNumber => $composableBuilder(
+    column: $table.referenceNumber,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get notes => $composableBuilder(
+    column: $table.notes,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get taxAmountMinor => $composableBuilder(
+    column: $table.taxAmountMinor,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get createdBy => $composableBuilder(
+    column: $table.createdBy,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get capturedAt => $composableBuilder(
+    column: $table.capturedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get voidedAt => $composableBuilder(
+    column: $table.voidedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get voidedBy => $composableBuilder(
+    column: $table.voidedBy,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get voidReason => $composableBuilder(
+    column: $table.voidReason,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get pendingMutationId => $composableBuilder(
+    column: $table.pendingMutationId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get rowVersion => $composableBuilder(
+    column: $table.rowVersion,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get serverUpdatedAt => $composableBuilder(
+    column: $table.serverUpdatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$ExpensesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $ExpensesTable> {
+  $$ExpensesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get orgId =>
+      $composableBuilder(column: $table.orgId, builder: (column) => column);
+
+  GeneratedColumn<String> get txnNumber =>
+      $composableBuilder(column: $table.txnNumber, builder: (column) => column);
+
+  GeneratedColumn<int> get financialYear => $composableBuilder(
+    column: $table.financialYear,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get businessDate => $composableBuilder(
+    column: $table.businessDate,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get businessDateSource => $composableBuilder(
+    column: $table.businessDateSource,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get accountingPeriodStart => $composableBuilder(
+    column: $table.accountingPeriodStart,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get accountingPeriodEnd => $composableBuilder(
+    column: $table.accountingPeriodEnd,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get visibility => $composableBuilder(
+    column: $table.visibility,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get documentTotalMinor => $composableBuilder(
+    column: $table.documentTotalMinor,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get visibleAmountMinor => $composableBuilder(
+    column: $table.visibleAmountMinor,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get isShared =>
+      $composableBuilder(column: $table.isShared, builder: (column) => column);
+
+  GeneratedColumn<String> get vendorId =>
+      $composableBuilder(column: $table.vendorId, builder: (column) => column);
+
+  GeneratedColumn<String> get paymentStatus => $composableBuilder(
+    column: $table.paymentStatus,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get paymentDate => $composableBuilder(
+    column: $table.paymentDate,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get paymentMethodId => $composableBuilder(
+    column: $table.paymentMethodId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get referenceNumber => $composableBuilder(
+    column: $table.referenceNumber,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get notes =>
+      $composableBuilder(column: $table.notes, builder: (column) => column);
+
+  GeneratedColumn<int> get taxAmountMinor => $composableBuilder(
+    column: $table.taxAmountMinor,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get createdBy =>
+      $composableBuilder(column: $table.createdBy, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get capturedAt => $composableBuilder(
+    column: $table.capturedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get voidedAt =>
+      $composableBuilder(column: $table.voidedAt, builder: (column) => column);
+
+  GeneratedColumn<String> get voidedBy =>
+      $composableBuilder(column: $table.voidedBy, builder: (column) => column);
+
+  GeneratedColumn<String> get voidReason => $composableBuilder(
+    column: $table.voidReason,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get pendingMutationId => $composableBuilder(
+    column: $table.pendingMutationId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get rowVersion => $composableBuilder(
+    column: $table.rowVersion,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get serverUpdatedAt => $composableBuilder(
+    column: $table.serverUpdatedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  Expression<T> expenseAllocationsRefs<T extends Object>(
+    Expression<T> Function($$ExpenseAllocationsTableAnnotationComposer a) f,
+  ) {
+    final $$ExpenseAllocationsTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.expenseAllocations,
+          getReferencedColumn: (t) => t.expenseId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$ExpenseAllocationsTableAnnotationComposer(
+                $db: $db,
+                $table: $db.expenseAllocations,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
+
+  Expression<T> expensePeriodAllocationsRefs<T extends Object>(
+    Expression<T> Function($$ExpensePeriodAllocationsTableAnnotationComposer a)
+    f,
+  ) {
+    final $$ExpensePeriodAllocationsTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.expensePeriodAllocations,
+          getReferencedColumn: (t) => t.expenseId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$ExpensePeriodAllocationsTableAnnotationComposer(
+                $db: $db,
+                $table: $db.expensePeriodAllocations,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
+
+  Expression<T> expenseAttachmentsRefs<T extends Object>(
+    Expression<T> Function($$ExpenseAttachmentsTableAnnotationComposer a) f,
+  ) {
+    final $$ExpenseAttachmentsTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.expenseAttachments,
+          getReferencedColumn: (t) => t.expenseId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$ExpenseAttachmentsTableAnnotationComposer(
+                $db: $db,
+                $table: $db.expenseAttachments,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
+}
+
+class $$ExpensesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $ExpensesTable,
+          ExpenseRow,
+          $$ExpensesTableFilterComposer,
+          $$ExpensesTableOrderingComposer,
+          $$ExpensesTableAnnotationComposer,
+          $$ExpensesTableCreateCompanionBuilder,
+          $$ExpensesTableUpdateCompanionBuilder,
+          (ExpenseRow, $$ExpensesTableReferences),
+          ExpenseRow,
+          PrefetchHooks Function({
+            bool expenseAllocationsRefs,
+            bool expensePeriodAllocationsRefs,
+            bool expenseAttachmentsRefs,
+          })
+        > {
+  $$ExpensesTableTableManager(_$AppDatabase db, $ExpensesTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ExpensesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ExpensesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$ExpensesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> orgId = const Value.absent(),
+                Value<String?> txnNumber = const Value.absent(),
+                Value<int?> financialYear = const Value.absent(),
+                Value<String> businessDate = const Value.absent(),
+                Value<String> businessDateSource = const Value.absent(),
+                Value<String?> accountingPeriodStart = const Value.absent(),
+                Value<String?> accountingPeriodEnd = const Value.absent(),
+                Value<String> visibility = const Value.absent(),
+                Value<int?> documentTotalMinor = const Value.absent(),
+                Value<int> visibleAmountMinor = const Value.absent(),
+                Value<bool> isShared = const Value.absent(),
+                Value<String?> vendorId = const Value.absent(),
+                Value<String> paymentStatus = const Value.absent(),
+                Value<String?> paymentDate = const Value.absent(),
+                Value<String?> paymentMethodId = const Value.absent(),
+                Value<String?> referenceNumber = const Value.absent(),
+                Value<String?> notes = const Value.absent(),
+                Value<int?> taxAmountMinor = const Value.absent(),
+                Value<String> createdBy = const Value.absent(),
+                Value<DateTime> capturedAt = const Value.absent(),
+                Value<DateTime?> voidedAt = const Value.absent(),
+                Value<String?> voidedBy = const Value.absent(),
+                Value<String?> voidReason = const Value.absent(),
+                Value<String?> pendingMutationId = const Value.absent(),
+                Value<int> rowVersion = const Value.absent(),
+                Value<DateTime?> serverUpdatedAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => ExpensesCompanion(
+                id: id,
+                orgId: orgId,
+                txnNumber: txnNumber,
+                financialYear: financialYear,
+                businessDate: businessDate,
+                businessDateSource: businessDateSource,
+                accountingPeriodStart: accountingPeriodStart,
+                accountingPeriodEnd: accountingPeriodEnd,
+                visibility: visibility,
+                documentTotalMinor: documentTotalMinor,
+                visibleAmountMinor: visibleAmountMinor,
+                isShared: isShared,
+                vendorId: vendorId,
+                paymentStatus: paymentStatus,
+                paymentDate: paymentDate,
+                paymentMethodId: paymentMethodId,
+                referenceNumber: referenceNumber,
+                notes: notes,
+                taxAmountMinor: taxAmountMinor,
+                createdBy: createdBy,
+                capturedAt: capturedAt,
+                voidedAt: voidedAt,
+                voidedBy: voidedBy,
+                voidReason: voidReason,
+                pendingMutationId: pendingMutationId,
+                rowVersion: rowVersion,
+                serverUpdatedAt: serverUpdatedAt,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String orgId,
+                Value<String?> txnNumber = const Value.absent(),
+                Value<int?> financialYear = const Value.absent(),
+                required String businessDate,
+                Value<String> businessDateSource = const Value.absent(),
+                Value<String?> accountingPeriodStart = const Value.absent(),
+                Value<String?> accountingPeriodEnd = const Value.absent(),
+                Value<String> visibility = const Value.absent(),
+                Value<int?> documentTotalMinor = const Value.absent(),
+                required int visibleAmountMinor,
+                Value<bool> isShared = const Value.absent(),
+                Value<String?> vendorId = const Value.absent(),
+                Value<String> paymentStatus = const Value.absent(),
+                Value<String?> paymentDate = const Value.absent(),
+                Value<String?> paymentMethodId = const Value.absent(),
+                Value<String?> referenceNumber = const Value.absent(),
+                Value<String?> notes = const Value.absent(),
+                Value<int?> taxAmountMinor = const Value.absent(),
+                required String createdBy,
+                required DateTime capturedAt,
+                Value<DateTime?> voidedAt = const Value.absent(),
+                Value<String?> voidedBy = const Value.absent(),
+                Value<String?> voidReason = const Value.absent(),
+                Value<String?> pendingMutationId = const Value.absent(),
+                Value<int> rowVersion = const Value.absent(),
+                Value<DateTime?> serverUpdatedAt = const Value.absent(),
+                required DateTime updatedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => ExpensesCompanion.insert(
+                id: id,
+                orgId: orgId,
+                txnNumber: txnNumber,
+                financialYear: financialYear,
+                businessDate: businessDate,
+                businessDateSource: businessDateSource,
+                accountingPeriodStart: accountingPeriodStart,
+                accountingPeriodEnd: accountingPeriodEnd,
+                visibility: visibility,
+                documentTotalMinor: documentTotalMinor,
+                visibleAmountMinor: visibleAmountMinor,
+                isShared: isShared,
+                vendorId: vendorId,
+                paymentStatus: paymentStatus,
+                paymentDate: paymentDate,
+                paymentMethodId: paymentMethodId,
+                referenceNumber: referenceNumber,
+                notes: notes,
+                taxAmountMinor: taxAmountMinor,
+                createdBy: createdBy,
+                capturedAt: capturedAt,
+                voidedAt: voidedAt,
+                voidedBy: voidedBy,
+                voidReason: voidReason,
+                pendingMutationId: pendingMutationId,
+                rowVersion: rowVersion,
+                serverUpdatedAt: serverUpdatedAt,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$ExpensesTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback:
+              ({
+                expenseAllocationsRefs = false,
+                expensePeriodAllocationsRefs = false,
+                expenseAttachmentsRefs = false,
+              }) {
+                return PrefetchHooks(
+                  db: db,
+                  explicitlyWatchedTables: [
+                    if (expenseAllocationsRefs) db.expenseAllocations,
+                    if (expensePeriodAllocationsRefs)
+                      db.expensePeriodAllocations,
+                    if (expenseAttachmentsRefs) db.expenseAttachments,
+                  ],
+                  addJoins: null,
+                  getPrefetchedDataCallback: (items) async {
+                    return [
+                      if (expenseAllocationsRefs)
+                        await $_getPrefetchedData<
+                          ExpenseRow,
+                          $ExpensesTable,
+                          ExpenseAllocationRow
+                        >(
+                          currentTable: table,
+                          referencedTable: $$ExpensesTableReferences
+                              ._expenseAllocationsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$ExpensesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).expenseAllocationsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.expenseId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                      if (expensePeriodAllocationsRefs)
+                        await $_getPrefetchedData<
+                          ExpenseRow,
+                          $ExpensesTable,
+                          ExpensePeriodAllocationRow
+                        >(
+                          currentTable: table,
+                          referencedTable: $$ExpensesTableReferences
+                              ._expensePeriodAllocationsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$ExpensesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).expensePeriodAllocationsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.expenseId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                      if (expenseAttachmentsRefs)
+                        await $_getPrefetchedData<
+                          ExpenseRow,
+                          $ExpensesTable,
+                          ExpenseAttachmentRow
+                        >(
+                          currentTable: table,
+                          referencedTable: $$ExpensesTableReferences
+                              ._expenseAttachmentsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$ExpensesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).expenseAttachmentsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.expenseId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                    ];
+                  },
+                );
+              },
+        ),
+      );
+}
+
+typedef $$ExpensesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $ExpensesTable,
+      ExpenseRow,
+      $$ExpensesTableFilterComposer,
+      $$ExpensesTableOrderingComposer,
+      $$ExpensesTableAnnotationComposer,
+      $$ExpensesTableCreateCompanionBuilder,
+      $$ExpensesTableUpdateCompanionBuilder,
+      (ExpenseRow, $$ExpensesTableReferences),
+      ExpenseRow,
+      PrefetchHooks Function({
+        bool expenseAllocationsRefs,
+        bool expensePeriodAllocationsRefs,
+        bool expenseAttachmentsRefs,
+      })
+    >;
+typedef $$ExpenseAllocationsTableCreateCompanionBuilder =
+    ExpenseAllocationsCompanion Function({
+      required String id,
+      required String orgId,
+      required String expenseId,
+      required String businessUnitId,
+      required String departmentId,
+      required String sectionId,
+      required String categoryId,
+      required int amountMinor,
+      required String categoryLabel,
+      Value<int> sortOrder,
+      Value<int> rowVersion,
+      required DateTime updatedAt,
+      Value<int> rowid,
+    });
+typedef $$ExpenseAllocationsTableUpdateCompanionBuilder =
+    ExpenseAllocationsCompanion Function({
+      Value<String> id,
+      Value<String> orgId,
+      Value<String> expenseId,
+      Value<String> businessUnitId,
+      Value<String> departmentId,
+      Value<String> sectionId,
+      Value<String> categoryId,
+      Value<int> amountMinor,
+      Value<String> categoryLabel,
+      Value<int> sortOrder,
+      Value<int> rowVersion,
+      Value<DateTime> updatedAt,
+      Value<int> rowid,
+    });
+
+final class $$ExpenseAllocationsTableReferences
+    extends
+        BaseReferences<
+          _$AppDatabase,
+          $ExpenseAllocationsTable,
+          ExpenseAllocationRow
+        > {
+  $$ExpenseAllocationsTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $ExpensesTable _expenseIdTable(_$AppDatabase db) =>
+      db.expenses.createAlias('expense_allocations__expense_id__expenses__id');
+
+  $$ExpensesTableProcessedTableManager get expenseId {
+    final $_column = $_itemColumn<String>('expense_id')!;
+
+    final manager = $$ExpensesTableTableManager(
+      $_db,
+      $_db.expenses,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_expenseIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static $BusinessUnitsTable _businessUnitIdTable(_$AppDatabase db) => db
+      .businessUnits
+      .createAlias('expense_allocations__business_unit_id__business_units__id');
+
+  $$BusinessUnitsTableProcessedTableManager get businessUnitId {
+    final $_column = $_itemColumn<String>('business_unit_id')!;
+
+    final manager = $$BusinessUnitsTableTableManager(
+      $_db,
+      $_db.businessUnits,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_businessUnitIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static MultiTypedResultKey<
+    $ExpensePeriodAllocationsTable,
+    List<ExpensePeriodAllocationRow>
+  >
+  _expensePeriodAllocationsRefsTable(
+    _$AppDatabase db,
+  ) => MultiTypedResultKey.fromTable(
+    db.expensePeriodAllocations,
+    aliasName:
+        'expense_allocations__id__expense_period_allocations__allocation_id',
+  );
+
+  $$ExpensePeriodAllocationsTableProcessedTableManager
+  get expensePeriodAllocationsRefs {
+    final manager = $$ExpensePeriodAllocationsTableTableManager(
+      $_db,
+      $_db.expensePeriodAllocations,
+    ).filter((f) => f.allocationId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _expensePeriodAllocationsRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+}
+
+class $$ExpenseAllocationsTableFilterComposer
+    extends Composer<_$AppDatabase, $ExpenseAllocationsTable> {
+  $$ExpenseAllocationsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get orgId => $composableBuilder(
+    column: $table.orgId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get departmentId => $composableBuilder(
+    column: $table.departmentId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get sectionId => $composableBuilder(
+    column: $table.sectionId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get categoryId => $composableBuilder(
+    column: $table.categoryId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get amountMinor => $composableBuilder(
+    column: $table.amountMinor,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get categoryLabel => $composableBuilder(
+    column: $table.categoryLabel,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get rowVersion => $composableBuilder(
+    column: $table.rowVersion,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$ExpensesTableFilterComposer get expenseId {
+    final $$ExpensesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.expenseId,
+      referencedTable: $db.expenses,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ExpensesTableFilterComposer(
+            $db: $db,
+            $table: $db.expenses,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$BusinessUnitsTableFilterComposer get businessUnitId {
+    final $$BusinessUnitsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.businessUnitId,
+      referencedTable: $db.businessUnits,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$BusinessUnitsTableFilterComposer(
+            $db: $db,
+            $table: $db.businessUnits,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  Expression<bool> expensePeriodAllocationsRefs(
+    Expression<bool> Function($$ExpensePeriodAllocationsTableFilterComposer f)
+    f,
+  ) {
+    final $$ExpensePeriodAllocationsTableFilterComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.expensePeriodAllocations,
+          getReferencedColumn: (t) => t.allocationId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$ExpensePeriodAllocationsTableFilterComposer(
+                $db: $db,
+                $table: $db.expensePeriodAllocations,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
+}
+
+class $$ExpenseAllocationsTableOrderingComposer
+    extends Composer<_$AppDatabase, $ExpenseAllocationsTable> {
+  $$ExpenseAllocationsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get orgId => $composableBuilder(
+    column: $table.orgId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get departmentId => $composableBuilder(
+    column: $table.departmentId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get sectionId => $composableBuilder(
+    column: $table.sectionId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get categoryId => $composableBuilder(
+    column: $table.categoryId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get amountMinor => $composableBuilder(
+    column: $table.amountMinor,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get categoryLabel => $composableBuilder(
+    column: $table.categoryLabel,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get rowVersion => $composableBuilder(
+    column: $table.rowVersion,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$ExpensesTableOrderingComposer get expenseId {
+    final $$ExpensesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.expenseId,
+      referencedTable: $db.expenses,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ExpensesTableOrderingComposer(
+            $db: $db,
+            $table: $db.expenses,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$BusinessUnitsTableOrderingComposer get businessUnitId {
+    final $$BusinessUnitsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.businessUnitId,
+      referencedTable: $db.businessUnits,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$BusinessUnitsTableOrderingComposer(
+            $db: $db,
+            $table: $db.businessUnits,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ExpenseAllocationsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $ExpenseAllocationsTable> {
+  $$ExpenseAllocationsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get orgId =>
+      $composableBuilder(column: $table.orgId, builder: (column) => column);
+
+  GeneratedColumn<String> get departmentId => $composableBuilder(
+    column: $table.departmentId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get sectionId =>
+      $composableBuilder(column: $table.sectionId, builder: (column) => column);
+
+  GeneratedColumn<String> get categoryId => $composableBuilder(
+    column: $table.categoryId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get amountMinor => $composableBuilder(
+    column: $table.amountMinor,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get categoryLabel => $composableBuilder(
+    column: $table.categoryLabel,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get sortOrder =>
+      $composableBuilder(column: $table.sortOrder, builder: (column) => column);
+
+  GeneratedColumn<int> get rowVersion => $composableBuilder(
+    column: $table.rowVersion,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  $$ExpensesTableAnnotationComposer get expenseId {
+    final $$ExpensesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.expenseId,
+      referencedTable: $db.expenses,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ExpensesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.expenses,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$BusinessUnitsTableAnnotationComposer get businessUnitId {
+    final $$BusinessUnitsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.businessUnitId,
+      referencedTable: $db.businessUnits,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$BusinessUnitsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.businessUnits,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  Expression<T> expensePeriodAllocationsRefs<T extends Object>(
+    Expression<T> Function($$ExpensePeriodAllocationsTableAnnotationComposer a)
+    f,
+  ) {
+    final $$ExpensePeriodAllocationsTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.expensePeriodAllocations,
+          getReferencedColumn: (t) => t.allocationId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$ExpensePeriodAllocationsTableAnnotationComposer(
+                $db: $db,
+                $table: $db.expensePeriodAllocations,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
+}
+
+class $$ExpenseAllocationsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $ExpenseAllocationsTable,
+          ExpenseAllocationRow,
+          $$ExpenseAllocationsTableFilterComposer,
+          $$ExpenseAllocationsTableOrderingComposer,
+          $$ExpenseAllocationsTableAnnotationComposer,
+          $$ExpenseAllocationsTableCreateCompanionBuilder,
+          $$ExpenseAllocationsTableUpdateCompanionBuilder,
+          (ExpenseAllocationRow, $$ExpenseAllocationsTableReferences),
+          ExpenseAllocationRow,
+          PrefetchHooks Function({
+            bool expenseId,
+            bool businessUnitId,
+            bool expensePeriodAllocationsRefs,
+          })
+        > {
+  $$ExpenseAllocationsTableTableManager(
+    _$AppDatabase db,
+    $ExpenseAllocationsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ExpenseAllocationsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ExpenseAllocationsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$ExpenseAllocationsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> orgId = const Value.absent(),
+                Value<String> expenseId = const Value.absent(),
+                Value<String> businessUnitId = const Value.absent(),
+                Value<String> departmentId = const Value.absent(),
+                Value<String> sectionId = const Value.absent(),
+                Value<String> categoryId = const Value.absent(),
+                Value<int> amountMinor = const Value.absent(),
+                Value<String> categoryLabel = const Value.absent(),
+                Value<int> sortOrder = const Value.absent(),
+                Value<int> rowVersion = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => ExpenseAllocationsCompanion(
+                id: id,
+                orgId: orgId,
+                expenseId: expenseId,
+                businessUnitId: businessUnitId,
+                departmentId: departmentId,
+                sectionId: sectionId,
+                categoryId: categoryId,
+                amountMinor: amountMinor,
+                categoryLabel: categoryLabel,
+                sortOrder: sortOrder,
+                rowVersion: rowVersion,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String orgId,
+                required String expenseId,
+                required String businessUnitId,
+                required String departmentId,
+                required String sectionId,
+                required String categoryId,
+                required int amountMinor,
+                required String categoryLabel,
+                Value<int> sortOrder = const Value.absent(),
+                Value<int> rowVersion = const Value.absent(),
+                required DateTime updatedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => ExpenseAllocationsCompanion.insert(
+                id: id,
+                orgId: orgId,
+                expenseId: expenseId,
+                businessUnitId: businessUnitId,
+                departmentId: departmentId,
+                sectionId: sectionId,
+                categoryId: categoryId,
+                amountMinor: amountMinor,
+                categoryLabel: categoryLabel,
+                sortOrder: sortOrder,
+                rowVersion: rowVersion,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$ExpenseAllocationsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback:
+              ({
+                expenseId = false,
+                businessUnitId = false,
+                expensePeriodAllocationsRefs = false,
+              }) {
+                return PrefetchHooks(
+                  db: db,
+                  explicitlyWatchedTables: [
+                    if (expensePeriodAllocationsRefs)
+                      db.expensePeriodAllocations,
+                  ],
+                  addJoins:
+                      <
+                        T extends TableManagerState<
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic
+                        >
+                      >(state) {
+                        if (expenseId) {
+                          state =
+                              state.withJoin(
+                                    currentTable: table,
+                                    currentColumn: table.expenseId,
+                                    referencedTable:
+                                        $$ExpenseAllocationsTableReferences
+                                            ._expenseIdTable(db),
+                                    referencedColumn:
+                                        $$ExpenseAllocationsTableReferences
+                                            ._expenseIdTable(db)
+                                            .id,
+                                  )
+                                  as T;
+                        }
+                        if (businessUnitId) {
+                          state =
+                              state.withJoin(
+                                    currentTable: table,
+                                    currentColumn: table.businessUnitId,
+                                    referencedTable:
+                                        $$ExpenseAllocationsTableReferences
+                                            ._businessUnitIdTable(db),
+                                    referencedColumn:
+                                        $$ExpenseAllocationsTableReferences
+                                            ._businessUnitIdTable(db)
+                                            .id,
+                                  )
+                                  as T;
+                        }
+
+                        return state;
+                      },
+                  getPrefetchedDataCallback: (items) async {
+                    return [
+                      if (expensePeriodAllocationsRefs)
+                        await $_getPrefetchedData<
+                          ExpenseAllocationRow,
+                          $ExpenseAllocationsTable,
+                          ExpensePeriodAllocationRow
+                        >(
+                          currentTable: table,
+                          referencedTable: $$ExpenseAllocationsTableReferences
+                              ._expensePeriodAllocationsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$ExpenseAllocationsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).expensePeriodAllocationsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.allocationId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                    ];
+                  },
+                );
+              },
+        ),
+      );
+}
+
+typedef $$ExpenseAllocationsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $ExpenseAllocationsTable,
+      ExpenseAllocationRow,
+      $$ExpenseAllocationsTableFilterComposer,
+      $$ExpenseAllocationsTableOrderingComposer,
+      $$ExpenseAllocationsTableAnnotationComposer,
+      $$ExpenseAllocationsTableCreateCompanionBuilder,
+      $$ExpenseAllocationsTableUpdateCompanionBuilder,
+      (ExpenseAllocationRow, $$ExpenseAllocationsTableReferences),
+      ExpenseAllocationRow,
+      PrefetchHooks Function({
+        bool expenseId,
+        bool businessUnitId,
+        bool expensePeriodAllocationsRefs,
+      })
+    >;
+typedef $$ExpensePeriodAllocationsTableCreateCompanionBuilder =
+    ExpensePeriodAllocationsCompanion Function({
+      required String id,
+      required String orgId,
+      required String expenseId,
+      required String allocationId,
+      required String businessUnitId,
+      required String accountingPeriodStart,
+      required String accountingPeriodEnd,
+      required int amountMinor,
+      required String pnlDate,
+      required String pnlPeriodKey,
+      Value<bool> isDerived,
+      Value<int> rowVersion,
+      required DateTime updatedAt,
+      Value<int> rowid,
+    });
+typedef $$ExpensePeriodAllocationsTableUpdateCompanionBuilder =
+    ExpensePeriodAllocationsCompanion Function({
+      Value<String> id,
+      Value<String> orgId,
+      Value<String> expenseId,
+      Value<String> allocationId,
+      Value<String> businessUnitId,
+      Value<String> accountingPeriodStart,
+      Value<String> accountingPeriodEnd,
+      Value<int> amountMinor,
+      Value<String> pnlDate,
+      Value<String> pnlPeriodKey,
+      Value<bool> isDerived,
+      Value<int> rowVersion,
+      Value<DateTime> updatedAt,
+      Value<int> rowid,
+    });
+
+final class $$ExpensePeriodAllocationsTableReferences
+    extends
+        BaseReferences<
+          _$AppDatabase,
+          $ExpensePeriodAllocationsTable,
+          ExpensePeriodAllocationRow
+        > {
+  $$ExpensePeriodAllocationsTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $ExpensesTable _expenseIdTable(_$AppDatabase db) => db.expenses
+      .createAlias('expense_period_allocations__expense_id__expenses__id');
+
+  $$ExpensesTableProcessedTableManager get expenseId {
+    final $_column = $_itemColumn<String>('expense_id')!;
+
+    final manager = $$ExpensesTableTableManager(
+      $_db,
+      $_db.expenses,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_expenseIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static $ExpenseAllocationsTable _allocationIdTable(_$AppDatabase db) =>
+      db.expenseAllocations.createAlias(
+        'expense_period_allocations__allocation_id__expense_allocations__id',
+      );
+
+  $$ExpenseAllocationsTableProcessedTableManager get allocationId {
+    final $_column = $_itemColumn<String>('allocation_id')!;
+
+    final manager = $$ExpenseAllocationsTableTableManager(
+      $_db,
+      $_db.expenseAllocations,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_allocationIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$ExpensePeriodAllocationsTableFilterComposer
+    extends Composer<_$AppDatabase, $ExpensePeriodAllocationsTable> {
+  $$ExpensePeriodAllocationsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get orgId => $composableBuilder(
+    column: $table.orgId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get businessUnitId => $composableBuilder(
+    column: $table.businessUnitId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get accountingPeriodStart => $composableBuilder(
+    column: $table.accountingPeriodStart,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get accountingPeriodEnd => $composableBuilder(
+    column: $table.accountingPeriodEnd,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get amountMinor => $composableBuilder(
+    column: $table.amountMinor,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get pnlDate => $composableBuilder(
+    column: $table.pnlDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get pnlPeriodKey => $composableBuilder(
+    column: $table.pnlPeriodKey,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isDerived => $composableBuilder(
+    column: $table.isDerived,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get rowVersion => $composableBuilder(
+    column: $table.rowVersion,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$ExpensesTableFilterComposer get expenseId {
+    final $$ExpensesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.expenseId,
+      referencedTable: $db.expenses,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ExpensesTableFilterComposer(
+            $db: $db,
+            $table: $db.expenses,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$ExpenseAllocationsTableFilterComposer get allocationId {
+    final $$ExpenseAllocationsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.allocationId,
+      referencedTable: $db.expenseAllocations,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ExpenseAllocationsTableFilterComposer(
+            $db: $db,
+            $table: $db.expenseAllocations,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ExpensePeriodAllocationsTableOrderingComposer
+    extends Composer<_$AppDatabase, $ExpensePeriodAllocationsTable> {
+  $$ExpensePeriodAllocationsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get orgId => $composableBuilder(
+    column: $table.orgId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get businessUnitId => $composableBuilder(
+    column: $table.businessUnitId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get accountingPeriodStart => $composableBuilder(
+    column: $table.accountingPeriodStart,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get accountingPeriodEnd => $composableBuilder(
+    column: $table.accountingPeriodEnd,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get amountMinor => $composableBuilder(
+    column: $table.amountMinor,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get pnlDate => $composableBuilder(
+    column: $table.pnlDate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get pnlPeriodKey => $composableBuilder(
+    column: $table.pnlPeriodKey,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get isDerived => $composableBuilder(
+    column: $table.isDerived,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get rowVersion => $composableBuilder(
+    column: $table.rowVersion,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$ExpensesTableOrderingComposer get expenseId {
+    final $$ExpensesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.expenseId,
+      referencedTable: $db.expenses,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ExpensesTableOrderingComposer(
+            $db: $db,
+            $table: $db.expenses,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$ExpenseAllocationsTableOrderingComposer get allocationId {
+    final $$ExpenseAllocationsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.allocationId,
+      referencedTable: $db.expenseAllocations,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ExpenseAllocationsTableOrderingComposer(
+            $db: $db,
+            $table: $db.expenseAllocations,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ExpensePeriodAllocationsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $ExpensePeriodAllocationsTable> {
+  $$ExpensePeriodAllocationsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get orgId =>
+      $composableBuilder(column: $table.orgId, builder: (column) => column);
+
+  GeneratedColumn<String> get businessUnitId => $composableBuilder(
+    column: $table.businessUnitId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get accountingPeriodStart => $composableBuilder(
+    column: $table.accountingPeriodStart,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get accountingPeriodEnd => $composableBuilder(
+    column: $table.accountingPeriodEnd,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get amountMinor => $composableBuilder(
+    column: $table.amountMinor,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get pnlDate =>
+      $composableBuilder(column: $table.pnlDate, builder: (column) => column);
+
+  GeneratedColumn<String> get pnlPeriodKey => $composableBuilder(
+    column: $table.pnlPeriodKey,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get isDerived =>
+      $composableBuilder(column: $table.isDerived, builder: (column) => column);
+
+  GeneratedColumn<int> get rowVersion => $composableBuilder(
+    column: $table.rowVersion,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  $$ExpensesTableAnnotationComposer get expenseId {
+    final $$ExpensesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.expenseId,
+      referencedTable: $db.expenses,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ExpensesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.expenses,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$ExpenseAllocationsTableAnnotationComposer get allocationId {
+    final $$ExpenseAllocationsTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.allocationId,
+          referencedTable: $db.expenseAllocations,
+          getReferencedColumn: (t) => t.id,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$ExpenseAllocationsTableAnnotationComposer(
+                $db: $db,
+                $table: $db.expenseAllocations,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return composer;
+  }
+}
+
+class $$ExpensePeriodAllocationsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $ExpensePeriodAllocationsTable,
+          ExpensePeriodAllocationRow,
+          $$ExpensePeriodAllocationsTableFilterComposer,
+          $$ExpensePeriodAllocationsTableOrderingComposer,
+          $$ExpensePeriodAllocationsTableAnnotationComposer,
+          $$ExpensePeriodAllocationsTableCreateCompanionBuilder,
+          $$ExpensePeriodAllocationsTableUpdateCompanionBuilder,
+          (
+            ExpensePeriodAllocationRow,
+            $$ExpensePeriodAllocationsTableReferences,
+          ),
+          ExpensePeriodAllocationRow,
+          PrefetchHooks Function({bool expenseId, bool allocationId})
+        > {
+  $$ExpensePeriodAllocationsTableTableManager(
+    _$AppDatabase db,
+    $ExpensePeriodAllocationsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ExpensePeriodAllocationsTableFilterComposer(
+                $db: db,
+                $table: table,
+              ),
+          createOrderingComposer: () =>
+              $$ExpensePeriodAllocationsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$ExpensePeriodAllocationsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> orgId = const Value.absent(),
+                Value<String> expenseId = const Value.absent(),
+                Value<String> allocationId = const Value.absent(),
+                Value<String> businessUnitId = const Value.absent(),
+                Value<String> accountingPeriodStart = const Value.absent(),
+                Value<String> accountingPeriodEnd = const Value.absent(),
+                Value<int> amountMinor = const Value.absent(),
+                Value<String> pnlDate = const Value.absent(),
+                Value<String> pnlPeriodKey = const Value.absent(),
+                Value<bool> isDerived = const Value.absent(),
+                Value<int> rowVersion = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => ExpensePeriodAllocationsCompanion(
+                id: id,
+                orgId: orgId,
+                expenseId: expenseId,
+                allocationId: allocationId,
+                businessUnitId: businessUnitId,
+                accountingPeriodStart: accountingPeriodStart,
+                accountingPeriodEnd: accountingPeriodEnd,
+                amountMinor: amountMinor,
+                pnlDate: pnlDate,
+                pnlPeriodKey: pnlPeriodKey,
+                isDerived: isDerived,
+                rowVersion: rowVersion,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String orgId,
+                required String expenseId,
+                required String allocationId,
+                required String businessUnitId,
+                required String accountingPeriodStart,
+                required String accountingPeriodEnd,
+                required int amountMinor,
+                required String pnlDate,
+                required String pnlPeriodKey,
+                Value<bool> isDerived = const Value.absent(),
+                Value<int> rowVersion = const Value.absent(),
+                required DateTime updatedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => ExpensePeriodAllocationsCompanion.insert(
+                id: id,
+                orgId: orgId,
+                expenseId: expenseId,
+                allocationId: allocationId,
+                businessUnitId: businessUnitId,
+                accountingPeriodStart: accountingPeriodStart,
+                accountingPeriodEnd: accountingPeriodEnd,
+                amountMinor: amountMinor,
+                pnlDate: pnlDate,
+                pnlPeriodKey: pnlPeriodKey,
+                isDerived: isDerived,
+                rowVersion: rowVersion,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$ExpensePeriodAllocationsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({expenseId = false, allocationId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (expenseId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.expenseId,
+                                referencedTable:
+                                    $$ExpensePeriodAllocationsTableReferences
+                                        ._expenseIdTable(db),
+                                referencedColumn:
+                                    $$ExpensePeriodAllocationsTableReferences
+                                        ._expenseIdTable(db)
+                                        .id,
+                              )
+                              as T;
+                    }
+                    if (allocationId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.allocationId,
+                                referencedTable:
+                                    $$ExpensePeriodAllocationsTableReferences
+                                        ._allocationIdTable(db),
+                                referencedColumn:
+                                    $$ExpensePeriodAllocationsTableReferences
+                                        ._allocationIdTable(db)
+                                        .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$ExpensePeriodAllocationsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $ExpensePeriodAllocationsTable,
+      ExpensePeriodAllocationRow,
+      $$ExpensePeriodAllocationsTableFilterComposer,
+      $$ExpensePeriodAllocationsTableOrderingComposer,
+      $$ExpensePeriodAllocationsTableAnnotationComposer,
+      $$ExpensePeriodAllocationsTableCreateCompanionBuilder,
+      $$ExpensePeriodAllocationsTableUpdateCompanionBuilder,
+      (ExpensePeriodAllocationRow, $$ExpensePeriodAllocationsTableReferences),
+      ExpensePeriodAllocationRow,
+      PrefetchHooks Function({bool expenseId, bool allocationId})
+    >;
+typedef $$ExpenseAttachmentsTableCreateCompanionBuilder =
+    ExpenseAttachmentsCompanion Function({
+      required String id,
+      required String orgId,
+      required String expenseId,
+      required String fileName,
+      required String contentType,
+      required int byteSize,
+      required String contentHash,
+      Value<String?> localPath,
+      Value<String> uploadState,
+      Value<String?> storagePath,
+      Value<int> attemptCount,
+      Value<DateTime?> nextAttemptAt,
+      Value<String?> lastError,
+      Value<DateTime?> uploadedAt,
+      Value<DateTime?> reclaimableAfter,
+      required String uploadedBy,
+      required DateTime createdAt,
+      required DateTime updatedAt,
+      Value<int> rowid,
+    });
+typedef $$ExpenseAttachmentsTableUpdateCompanionBuilder =
+    ExpenseAttachmentsCompanion Function({
+      Value<String> id,
+      Value<String> orgId,
+      Value<String> expenseId,
+      Value<String> fileName,
+      Value<String> contentType,
+      Value<int> byteSize,
+      Value<String> contentHash,
+      Value<String?> localPath,
+      Value<String> uploadState,
+      Value<String?> storagePath,
+      Value<int> attemptCount,
+      Value<DateTime?> nextAttemptAt,
+      Value<String?> lastError,
+      Value<DateTime?> uploadedAt,
+      Value<DateTime?> reclaimableAfter,
+      Value<String> uploadedBy,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+      Value<int> rowid,
+    });
+
+final class $$ExpenseAttachmentsTableReferences
+    extends
+        BaseReferences<
+          _$AppDatabase,
+          $ExpenseAttachmentsTable,
+          ExpenseAttachmentRow
+        > {
+  $$ExpenseAttachmentsTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $ExpensesTable _expenseIdTable(_$AppDatabase db) =>
+      db.expenses.createAlias('expense_attachments__expense_id__expenses__id');
+
+  $$ExpensesTableProcessedTableManager get expenseId {
+    final $_column = $_itemColumn<String>('expense_id')!;
+
+    final manager = $$ExpensesTableTableManager(
+      $_db,
+      $_db.expenses,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_expenseIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$ExpenseAttachmentsTableFilterComposer
+    extends Composer<_$AppDatabase, $ExpenseAttachmentsTable> {
+  $$ExpenseAttachmentsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get orgId => $composableBuilder(
+    column: $table.orgId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get fileName => $composableBuilder(
+    column: $table.fileName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get contentType => $composableBuilder(
+    column: $table.contentType,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get byteSize => $composableBuilder(
+    column: $table.byteSize,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get contentHash => $composableBuilder(
+    column: $table.contentHash,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get localPath => $composableBuilder(
+    column: $table.localPath,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get uploadState => $composableBuilder(
+    column: $table.uploadState,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get storagePath => $composableBuilder(
+    column: $table.storagePath,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get attemptCount => $composableBuilder(
+    column: $table.attemptCount,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get nextAttemptAt => $composableBuilder(
+    column: $table.nextAttemptAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get lastError => $composableBuilder(
+    column: $table.lastError,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get uploadedAt => $composableBuilder(
+    column: $table.uploadedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get reclaimableAfter => $composableBuilder(
+    column: $table.reclaimableAfter,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get uploadedBy => $composableBuilder(
+    column: $table.uploadedBy,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$ExpensesTableFilterComposer get expenseId {
+    final $$ExpensesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.expenseId,
+      referencedTable: $db.expenses,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ExpensesTableFilterComposer(
+            $db: $db,
+            $table: $db.expenses,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ExpenseAttachmentsTableOrderingComposer
+    extends Composer<_$AppDatabase, $ExpenseAttachmentsTable> {
+  $$ExpenseAttachmentsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get orgId => $composableBuilder(
+    column: $table.orgId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get fileName => $composableBuilder(
+    column: $table.fileName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get contentType => $composableBuilder(
+    column: $table.contentType,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get byteSize => $composableBuilder(
+    column: $table.byteSize,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get contentHash => $composableBuilder(
+    column: $table.contentHash,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get localPath => $composableBuilder(
+    column: $table.localPath,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get uploadState => $composableBuilder(
+    column: $table.uploadState,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get storagePath => $composableBuilder(
+    column: $table.storagePath,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get attemptCount => $composableBuilder(
+    column: $table.attemptCount,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get nextAttemptAt => $composableBuilder(
+    column: $table.nextAttemptAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get lastError => $composableBuilder(
+    column: $table.lastError,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get uploadedAt => $composableBuilder(
+    column: $table.uploadedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get reclaimableAfter => $composableBuilder(
+    column: $table.reclaimableAfter,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get uploadedBy => $composableBuilder(
+    column: $table.uploadedBy,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$ExpensesTableOrderingComposer get expenseId {
+    final $$ExpensesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.expenseId,
+      referencedTable: $db.expenses,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ExpensesTableOrderingComposer(
+            $db: $db,
+            $table: $db.expenses,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ExpenseAttachmentsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $ExpenseAttachmentsTable> {
+  $$ExpenseAttachmentsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get orgId =>
+      $composableBuilder(column: $table.orgId, builder: (column) => column);
+
+  GeneratedColumn<String> get fileName =>
+      $composableBuilder(column: $table.fileName, builder: (column) => column);
+
+  GeneratedColumn<String> get contentType => $composableBuilder(
+    column: $table.contentType,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get byteSize =>
+      $composableBuilder(column: $table.byteSize, builder: (column) => column);
+
+  GeneratedColumn<String> get contentHash => $composableBuilder(
+    column: $table.contentHash,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get localPath =>
+      $composableBuilder(column: $table.localPath, builder: (column) => column);
+
+  GeneratedColumn<String> get uploadState => $composableBuilder(
+    column: $table.uploadState,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get storagePath => $composableBuilder(
+    column: $table.storagePath,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get attemptCount => $composableBuilder(
+    column: $table.attemptCount,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get nextAttemptAt => $composableBuilder(
+    column: $table.nextAttemptAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get lastError =>
+      $composableBuilder(column: $table.lastError, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get uploadedAt => $composableBuilder(
+    column: $table.uploadedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get reclaimableAfter => $composableBuilder(
+    column: $table.reclaimableAfter,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get uploadedBy => $composableBuilder(
+    column: $table.uploadedBy,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  $$ExpensesTableAnnotationComposer get expenseId {
+    final $$ExpensesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.expenseId,
+      referencedTable: $db.expenses,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ExpensesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.expenses,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ExpenseAttachmentsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $ExpenseAttachmentsTable,
+          ExpenseAttachmentRow,
+          $$ExpenseAttachmentsTableFilterComposer,
+          $$ExpenseAttachmentsTableOrderingComposer,
+          $$ExpenseAttachmentsTableAnnotationComposer,
+          $$ExpenseAttachmentsTableCreateCompanionBuilder,
+          $$ExpenseAttachmentsTableUpdateCompanionBuilder,
+          (ExpenseAttachmentRow, $$ExpenseAttachmentsTableReferences),
+          ExpenseAttachmentRow,
+          PrefetchHooks Function({bool expenseId})
+        > {
+  $$ExpenseAttachmentsTableTableManager(
+    _$AppDatabase db,
+    $ExpenseAttachmentsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ExpenseAttachmentsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ExpenseAttachmentsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$ExpenseAttachmentsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> orgId = const Value.absent(),
+                Value<String> expenseId = const Value.absent(),
+                Value<String> fileName = const Value.absent(),
+                Value<String> contentType = const Value.absent(),
+                Value<int> byteSize = const Value.absent(),
+                Value<String> contentHash = const Value.absent(),
+                Value<String?> localPath = const Value.absent(),
+                Value<String> uploadState = const Value.absent(),
+                Value<String?> storagePath = const Value.absent(),
+                Value<int> attemptCount = const Value.absent(),
+                Value<DateTime?> nextAttemptAt = const Value.absent(),
+                Value<String?> lastError = const Value.absent(),
+                Value<DateTime?> uploadedAt = const Value.absent(),
+                Value<DateTime?> reclaimableAfter = const Value.absent(),
+                Value<String> uploadedBy = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => ExpenseAttachmentsCompanion(
+                id: id,
+                orgId: orgId,
+                expenseId: expenseId,
+                fileName: fileName,
+                contentType: contentType,
+                byteSize: byteSize,
+                contentHash: contentHash,
+                localPath: localPath,
+                uploadState: uploadState,
+                storagePath: storagePath,
+                attemptCount: attemptCount,
+                nextAttemptAt: nextAttemptAt,
+                lastError: lastError,
+                uploadedAt: uploadedAt,
+                reclaimableAfter: reclaimableAfter,
+                uploadedBy: uploadedBy,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String orgId,
+                required String expenseId,
+                required String fileName,
+                required String contentType,
+                required int byteSize,
+                required String contentHash,
+                Value<String?> localPath = const Value.absent(),
+                Value<String> uploadState = const Value.absent(),
+                Value<String?> storagePath = const Value.absent(),
+                Value<int> attemptCount = const Value.absent(),
+                Value<DateTime?> nextAttemptAt = const Value.absent(),
+                Value<String?> lastError = const Value.absent(),
+                Value<DateTime?> uploadedAt = const Value.absent(),
+                Value<DateTime?> reclaimableAfter = const Value.absent(),
+                required String uploadedBy,
+                required DateTime createdAt,
+                required DateTime updatedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => ExpenseAttachmentsCompanion.insert(
+                id: id,
+                orgId: orgId,
+                expenseId: expenseId,
+                fileName: fileName,
+                contentType: contentType,
+                byteSize: byteSize,
+                contentHash: contentHash,
+                localPath: localPath,
+                uploadState: uploadState,
+                storagePath: storagePath,
+                attemptCount: attemptCount,
+                nextAttemptAt: nextAttemptAt,
+                lastError: lastError,
+                uploadedAt: uploadedAt,
+                reclaimableAfter: reclaimableAfter,
+                uploadedBy: uploadedBy,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$ExpenseAttachmentsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({expenseId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (expenseId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.expenseId,
+                                referencedTable:
+                                    $$ExpenseAttachmentsTableReferences
+                                        ._expenseIdTable(db),
+                                referencedColumn:
+                                    $$ExpenseAttachmentsTableReferences
+                                        ._expenseIdTable(db)
+                                        .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$ExpenseAttachmentsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $ExpenseAttachmentsTable,
+      ExpenseAttachmentRow,
+      $$ExpenseAttachmentsTableFilterComposer,
+      $$ExpenseAttachmentsTableOrderingComposer,
+      $$ExpenseAttachmentsTableAnnotationComposer,
+      $$ExpenseAttachmentsTableCreateCompanionBuilder,
+      $$ExpenseAttachmentsTableUpdateCompanionBuilder,
+      (ExpenseAttachmentRow, $$ExpenseAttachmentsTableReferences),
+      ExpenseAttachmentRow,
+      PrefetchHooks Function({bool expenseId})
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -12729,4 +19976,15 @@ class $AppDatabaseManager {
       $$PeriodLockEventsTableTableManager(_db, _db.periodLockEvents);
   $$RevenueTaxRatesTableTableManager get revenueTaxRates =>
       $$RevenueTaxRatesTableTableManager(_db, _db.revenueTaxRates);
+  $$ExpensesTableTableManager get expenses =>
+      $$ExpensesTableTableManager(_db, _db.expenses);
+  $$ExpenseAllocationsTableTableManager get expenseAllocations =>
+      $$ExpenseAllocationsTableTableManager(_db, _db.expenseAllocations);
+  $$ExpensePeriodAllocationsTableTableManager get expensePeriodAllocations =>
+      $$ExpensePeriodAllocationsTableTableManager(
+        _db,
+        _db.expensePeriodAllocations,
+      );
+  $$ExpenseAttachmentsTableTableManager get expenseAttachments =>
+      $$ExpenseAttachmentsTableTableManager(_db, _db.expenseAttachments);
 }

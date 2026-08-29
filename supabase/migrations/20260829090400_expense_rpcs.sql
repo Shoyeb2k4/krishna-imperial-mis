@@ -446,9 +446,9 @@ begin
 
   v_before := to_jsonb(e);
 
-  -- Reverse the usage counters the old lines contributed, then write the new shape.
+  -- The old lines stop being live. Their historical usage is untouched (see 0032).
   perform app.record_master_usage(v_org, 'expense_category', a.category_id,
-                                  e.business_date, -1)
+                                  e.business_date, 0, -1)
      from public.expense_allocations a where a.expense_id = p_id;
 
   delete from public.expense_period_allocations where expense_id = p_id;
@@ -569,10 +569,11 @@ begin
      set voided_at = now(), voided_by = v_actor, void_reason = p_reason
    where id = p_id;
 
-  -- A voided document is out of every aggregate, so its categories give back the usage
-  -- they contributed. Attachments are untouched.
+  -- Active references go; historical usage stays. A voided expense still happened, and
+  -- the D-038 rename warning is built on that history (see 0032). Attachments are
+  -- untouched: the document and its evidence remain part of the record.
   perform app.record_master_usage(v_org, 'expense_category', a.category_id,
-                                  e.business_date, -1)
+                                  e.business_date, 0, -1)
      from public.expense_allocations a where a.expense_id = p_id;
 
   v_result := jsonb_build_object(

@@ -115,6 +115,7 @@ final class ExpenseAllocation {
     required this.categoryId,
     required this.amount,
     required this.periodContributions,
+    this.categoryLabel = '',
   }) {
     if (amount.paise <= 0) {
       throw ArgumentError.value(
@@ -152,6 +153,7 @@ final class ExpenseAllocation {
     BusinessDate? accountingPeriodStart,
     BusinessDate? accountingPeriodEnd,
     String? contributionId,
+    String categoryLabel = '',
   }) => ExpenseAllocation(
     id: id,
     businessUnitId: businessUnitId,
@@ -159,6 +161,7 @@ final class ExpenseAllocation {
     sectionId: sectionId,
     categoryId: categoryId,
     amount: amount,
+    categoryLabel: categoryLabel,
     periodContributions: [
       PeriodContribution.derivedFrom(
         id: contributionId ?? '$id:period',
@@ -176,6 +179,14 @@ final class ExpenseAllocation {
   final String sectionId;
   final String categoryId;
   final Money amount;
+
+  /// What the category was called when this was recorded (D-035).
+  ///
+  /// Held on the line so an offline device can render the document without the master
+  /// hierarchy — which a scope purge may legitimately have removed (D-048). The server
+  /// re-reads the authoritative name when it writes, so a client cannot mislabel history
+  /// by sending something else; this copy is for display, not for truth.
+  final String categoryLabel;
 
   /// Never empty. Exactly one derived entry for an ordinary line; two or more chosen
   /// entries for a cost a person deliberately spread across months.

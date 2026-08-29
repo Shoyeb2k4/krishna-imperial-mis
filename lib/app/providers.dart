@@ -8,6 +8,10 @@ library;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:krishna_mis/data/local/app_database.dart';
 import 'package:krishna_mis/data/repositories/local_master_usage_reader.dart';
+import 'package:krishna_mis/data/attachments/attachment_source.dart';
+import 'package:krishna_mis/data/attachments/attachment_staging.dart';
+import 'package:krishna_mis/data/local/encrypted_database.dart';
+import 'package:krishna_mis/data/repositories/expense_repository.dart';
 import 'package:krishna_mis/data/repositories/master_repository.dart';
 import 'package:krishna_mis/data/repositories/tax_repository.dart';
 import 'package:krishna_mis/data/repositories/vendor_repository.dart';
@@ -39,6 +43,28 @@ final mutationEndpointProvider = Provider<RemoteMutationEndpoint?>(
   (ref) => null,
 );
 
+/// How an accepted answer gets written back into the local read model.
+final mutationReconcilerProvider = Provider<MutationReconciler?>((ref) => null);
+
+final expenseRepositoryProvider = Provider<ExpenseRepository>(
+  (ref) => ExpenseRepository(ref.watch(databaseProvider)),
+);
+
+/// Copies a chosen bill into app-private storage and hashes it. Local work only — an
+/// expense never waits for an attachment, and an attachment never waits for a network.
+final attachmentStagingProvider = Provider<AttachmentStagingService>(
+  (ref) => AttachmentStagingService(
+    resolveStagingDirectory: resolveAttachmentStagingDirectory,
+  ),
+);
+
+/// The platform's way of producing a file. Overridden in `main()` per target; the
+/// default offers nothing, so a screen built before the platform plugins land degrades
+/// to "no attachment" rather than to a crash.
+final attachmentSourceProvider = Provider<AttachmentSource>(
+  (ref) => const UnavailableAttachmentSource(),
+);
+
 /// The push worker, bound to whoever is signed in.
 ///
 /// It is rebuilt whenever the session changes, and it carries that user's id, so a
@@ -54,6 +80,7 @@ final syncEngineProvider = Provider<SyncEngine?>((ref) {
     outbox: ref.watch(outboxProvider),
     endpoint: endpoint,
     actorUserId: actor,
+    reconciler: ref.watch(mutationReconcilerProvider),
   );
 });
 

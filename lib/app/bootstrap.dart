@@ -23,6 +23,9 @@ import 'package:krishna_mis/data/remote/auth_gateway.dart';
 import 'package:krishna_mis/data/remote/authority_gateway.dart';
 import 'package:krishna_mis/data/remote/master_gateway.dart';
 import 'package:krishna_mis/data/remote/vendor_tax_period_gateways.dart';
+import 'package:krishna_mis/data/remote/expense_gateway.dart';
+import 'package:krishna_mis/data/repositories/expense_repository.dart';
+import 'package:krishna_mis/data/sync/expense_mutation_endpoint.dart';
 import 'package:krishna_mis/data/sync/master_mutation_endpoint.dart';
 import 'package:krishna_mis/data/sync/outbox_repository.dart';
 import 'package:krishna_mis/domain/sync/pending_mutation.dart';
@@ -57,6 +60,7 @@ class BootstrapResult {
     required this.recoveredInFlightEntries,
     required this.session,
     required this.mutationEndpoint,
+    required this.mutationReconciler,
   });
 
   final AppConfig config;
@@ -76,6 +80,10 @@ class BootstrapResult {
   /// How queued work reaches the server. Null when no backend is configured, in which
   /// case there is nothing to reach and the queue simply waits.
   final RemoteMutationEndpoint? mutationEndpoint;
+
+  /// Writes an accepted server answer back into the local read model. Null when there is
+  /// no backend, in which case nothing is ever accepted.
+  final MutationReconciler? mutationReconciler;
 }
 
 /// Starts the application.
@@ -135,6 +143,7 @@ Future<BootstrapResult> bootstrap({http.Client? transport}) async {
   // credential for company financial data (D-022).
   SessionDependencies? session;
   RemoteMutationEndpoint? mutationEndpoint;
+  MutationReconciler? mutationReconciler;
   if (config.hasBackend) {
     await Supabase.initialize(
       url: config.supabaseUrl,
@@ -148,9 +157,17 @@ Future<BootstrapResult> bootstrap({http.Client? transport}) async {
     final client = Supabase.instance.client;
     final authorityGateway = AuthorityGateway(client);
     final masterGateway = MasterGateway(client);
-    mutationEndpoint = MasterMutationEndpoint(
-      masters: masterGateway,
-      vendors: VendorGateway(client),
+    final expenseGateway = ExpenseGateway(client);
+    mutationEndpoint = RoutingMutationEndpoint(
+      masters: MasterMutationEndpoint(
+        masters: masterGateway,
+        vendors: VendorGateway(client),
+      ),
+      expenses: ExpenseMutationEndpoint(expenseGateway),
+    );
+    mutationReconciler = ExpenseReconciler(
+      ExpenseRepository(database),
+      expenseGateway,
     );
     session = SessionDependencies(
       auth: AuthGateway(client),
@@ -171,6 +188,7 @@ Future<BootstrapResult> bootstrap({http.Client? transport}) async {
     database: database,
     outbox: outbox,
     mutationEndpoint: mutationEndpoint,
+    mutationReconciler: mutationReconciler,
     recoveredInFlightEntries: recovered,
     session: session,
   );

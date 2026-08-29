@@ -98,3 +98,16 @@ bool isFileEncrypted(File file) {
     db?.close();
   }
 }
+
+/// Where staged attachments live: inside the application's own support directory.
+///
+/// App-private by construction. A gallery path or a Downloads folder is not a place a
+/// financial document can be kept — the OS may move, rename or revoke it between the
+/// moment a bill is attached and the moment it uploads, which can be days later.
+Future<Directory> resolveAttachmentStagingDirectory() async {
+  final directory = Directory(
+    p.join((await getApplicationSupportDirectory()).path, 'attachments'),
+  );
+  await directory.create(recursive: true);
+  return directory;
+}

@@ -34,7 +34,11 @@ declare
     'user_provision', 'user_deactivate', 'user_reactivate',
     'user_role_grant', 'user_role_revoke',
     'expense_create', 'expense_update', 'expense_void',
-    'expense_visible_units', 'expense_sees_whole_org'];
+    'expense_visible_units', 'expense_sees_whole_org',
+    -- Storage policies are evaluated with the querying user's privileges, exactly like
+    -- table policies, so the two predicates they call have to be reachable by
+    -- `authenticated` for the same reason `current_org_id` is (D-045).
+    'storage_expense_id', 'may_read_expense_attachments'];
 begin
   -- Nothing at all may be callable without signing in.
   select string_agg(p.oid::regprocedure::text, ', ' order by p.oid::regprocedure::text)

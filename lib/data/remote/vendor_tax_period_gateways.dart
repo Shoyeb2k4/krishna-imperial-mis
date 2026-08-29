@@ -11,27 +11,10 @@ library;
 import 'package:krishna_mis/data/remote/remote_outcome.dart';
 import 'package:krishna_mis/data/remote/supabase_gateway.dart';
 
-/// Shared plumbing: call an RPC, keep the outcome typed.
-mixin _RpcCalls on SupabaseGateway {
-  Future<RemoteOutcome<Map<String, dynamic>>> callRpc(
-    String function,
-    Map<String, dynamic> params,
-  ) async {
-    final outcome = await guard(
-      () => client.rpc<dynamic>(function, params: params),
-    );
-    return outcome.map(
-      (value) => value is Map
-          ? Map<String, dynamic>.from(value)
-          : <String, dynamic>{'status': 'applied'},
-    );
-  }
-}
-
 /// Vendors are organisation-global masters (D-049). Renaming and archiving one goes
 /// through `master_rename` / `master_archive` like any other master, so a vendor obeys
 /// the same D-038 acknowledgement and D-039 archive rules rather than a parallel set.
-class VendorGateway extends SupabaseGateway with _RpcCalls {
+class VendorGateway extends SupabaseGateway with RpcCalls {
   VendorGateway(super.client);
 
   Future<RemoteOutcome<Map<String, dynamic>>> create({
@@ -69,7 +52,7 @@ class VendorGateway extends SupabaseGateway with _RpcCalls {
 /// There is deliberately no "set the rate" call. A rate change is a new period that
 /// supersedes the old one, atomically, so last year's Net Sales can never be restated —
 /// and an API shaped as `update` would invite exactly that.
-class TaxGateway extends SupabaseGateway with _RpcCalls {
+class TaxGateway extends SupabaseGateway with RpcCalls {
   TaxGateway(super.client);
 
   Future<RemoteOutcome<Map<String, dynamic>>> create({
@@ -127,7 +110,7 @@ class TaxGateway extends SupabaseGateway with _RpcCalls {
 }
 
 /// Closing and reopening accounting periods (spec §13.4).
-class PeriodGateway extends SupabaseGateway with _RpcCalls {
+class PeriodGateway extends SupabaseGateway with RpcCalls {
   PeriodGateway(super.client);
 
   Future<RemoteOutcome<Map<String, dynamic>>> close({

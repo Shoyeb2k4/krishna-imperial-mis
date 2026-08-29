@@ -102,3 +102,24 @@ abstract class SupabaseGateway {
     return const {};
   }
 }
+
+/// Shared plumbing: call an RPC, keep the outcome typed.
+///
+/// Lives here rather than beside one family of gateways because every mutation in the
+/// application goes through an RPC, and a second copy of this is a second place for the
+/// "a non-map answer means applied" convention to drift.
+mixin RpcCalls on SupabaseGateway {
+  Future<RemoteOutcome<Map<String, dynamic>>> callRpc(
+    String function,
+    Map<String, dynamic> params,
+  ) async {
+    final outcome = await guard(
+      () => client.rpc<dynamic>(function, params: params),
+    );
+    return outcome.map(
+      (value) => value is Map
+          ? Map<String, dynamic>.from(value)
+          : <String, dynamic>{'status': 'applied'},
+    );
+  }
+}

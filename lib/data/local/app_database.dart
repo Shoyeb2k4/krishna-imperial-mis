@@ -5,6 +5,7 @@
 library;
 
 import 'package:drift/drift.dart';
+import 'package:krishna_mis/data/local/expense_tables.dart';
 import 'package:krishna_mis/data/local/master_tables.dart';
 import 'package:krishna_mis/data/local/seed/master_seed.dart';
 import 'package:krishna_mis/data/local/tables.dart';
@@ -25,6 +26,10 @@ part 'app_database.g.dart';
     PeriodLocks,
     PeriodLockEvents,
     RevenueTaxRates,
+    Expenses,
+    ExpenseAllocations,
+    ExpensePeriodAllocations,
+    ExpenseAttachments,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -42,11 +47,15 @@ class AppDatabase extends _$AppDatabase {
   ///      whose default target it cannot see.
   /// v6 — the outbox records which user queued each intent, so a shared installation
   ///      never lets one person's device push another person's work (D-050).
+  /// v7 — the expense read model: documents, allocation lines, period contributions and
+  ///      attachment staging. Not a mirror of Postgres — a scoped record carries this
+  ///      user's visible share and, by check constraint, **no** document total, because
+  ///      total minus own share is the other property's share (see `expense_tables.dart`).
   ///
   /// Financial tables raise this number as they land, each with a migration step and a
   /// migration test (docs/RELEASE_CHECKLIST.md §C).
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 7;
 
   /// Timestamps are stored as ISO-8601 **UTC text**, not as unix seconds.
   ///
@@ -100,6 +109,12 @@ class AppDatabase extends _$AppDatabase {
       }
       if (from < 6) {
         await m.addColumn(syncOutbox, syncOutbox.actorUserId);
+      }
+      if (from < 7) {
+        await m.createTable(expenses);
+        await m.createTable(expenseAllocations);
+        await m.createTable(expensePeriodAllocations);
+        await m.createTable(expenseAttachments);
       }
     },
     beforeOpen: (details) async {

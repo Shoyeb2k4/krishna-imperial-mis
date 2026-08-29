@@ -52,6 +52,7 @@ class SyncEngine {
     this.batchSize = 25,
     this.inFlightTimeout = const Duration(minutes: 2),
     this.actorUserId,
+    this.reconciler,
   });
 
   final OutboxRepository outbox;
@@ -71,6 +72,12 @@ class SyncEngine {
   /// for the tests that are about the queue mechanics themselves; the application always
   /// supplies the signed-in user.
   final String? actorUserId;
+
+  /// Writes an accepted answer into the local read model, if anything needs to be.
+  ///
+  /// Master mutations need nothing: the pull re-reads them. An expense does — it has a
+  /// transaction number to learn, and it learns it here.
+  final MutationReconciler? reconciler;
 
   bool _cycleInProgress = false;
 
@@ -146,20 +153,29 @@ class SyncEngine {
 
       switch (result.outcome) {
         case MutationOutcome.applied:
-          await outbox.updateStatus(
-            mutation.mutationId,
-            status: OutboxStatus.done,
-          );
-          applied++;
-
         case MutationOutcome.duplicateIgnored:
-          // Idempotency working as designed: the server already holds exactly this
-          // intent. Not an error, and not a second record.
+          // `duplicateIgnored` is idempotency working as designed: the server already
+          // holds exactly this intent, so there is one record and it is the right one.
+          //
+          // Reconciliation happens *before* the entry is marked done, and a failure
+          // leaves it queued. The server has committed by this point; the only safe
+          // recovery is to ask again under the same mutation id, which replays. Marking
+          // it done here would strand a local row that never learns its number, and
+          // re-queueing it under a fresh id would create a second expense (D-004).
+          final reconciled = await _reconcile(mutation, result);
+          if (!reconciled) {
+            transient++;
+            continue;
+          }
           await outbox.updateStatus(
             mutation.mutationId,
             status: OutboxStatus.done,
           );
-          duplicates++;
+          if (result.outcome == MutationOutcome.applied) {
+            applied++;
+          } else {
+            duplicates++;
+          }
 
         case MutationOutcome.conflict:
           // Never retried automatically. A stale intent must not be re-applied, and a
@@ -220,6 +236,25 @@ class SyncEngine {
   /// Called after a successful re-authentication to release a paused queue.
   Future<void> resumeAfterReauthentication() =>
       outbox.unblockAfterAuth(now: clock());
+
+  /// Runs the reconciler, if there is one. False means "leave it queued".
+  Future<bool> _reconcile(
+    PendingMutation mutation,
+    MutationResult result,
+  ) async {
+    if (reconciler == null) return true;
+    try {
+      await reconciler!.reconcile(mutation, result);
+      return true;
+    } on Object catch (error) {
+      await _recordTransientFailure(
+        mutation,
+        'accepted by the server, not yet recorded locally: '
+        '${error.runtimeType}',
+      );
+      return false;
+    }
+  }
 
   Future<void> _recordTransientFailure(
     PendingMutation mutation,
