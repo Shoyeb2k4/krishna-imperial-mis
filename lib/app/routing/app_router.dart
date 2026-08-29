@@ -11,6 +11,7 @@ import 'package:go_router/go_router.dart';
 import 'package:krishna_mis/app/routing/app_routes.dart';
 import 'package:krishna_mis/app/shell/desktop_shell.dart';
 import 'package:krishna_mis/app/shell/mobile_shell.dart';
+import 'package:krishna_mis/features/expenses/presentation/expense_ledger_page.dart';
 import 'package:krishna_mis/features/masters/presentation/masters_page.dart';
 import 'package:krishna_mis/features/placeholder/placeholder_page.dart';
 
@@ -45,12 +46,7 @@ abstract final class AppRouter {
           ),
           _branch(
             AppRoutes.transactions,
-            const PlaceholderPage(
-              title: 'Transactions',
-              arrivesIn: 'Phase 5 — Ledger & Reporting Engine',
-              summary:
-                  'The expense and sales ledger, with sync state on every row.',
-            ),
+            const ExpenseLedgerPage(shellKind: AppShellKind.mobile),
           ),
           _branch(
             AppRoutes.reports,
@@ -90,12 +86,7 @@ abstract final class AppRouter {
           ),
           _branch(
             AppRoutes.transactions,
-            const PlaceholderPage(
-              title: 'Transactions',
-              arrivesIn: 'Phase 3 — Expense Engine',
-              summary:
-                  'Expenses, sales and their allocation lines, in dense tables.',
-            ),
+            const ExpenseLedgerPage(shellKind: AppShellKind.desktop),
           ),
           _branch(
             AppRoutes.analytics,

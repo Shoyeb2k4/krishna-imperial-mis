@@ -36,6 +36,10 @@
 ///   propagate-b      client B: the change arrives; a stale intent conflicts
 ///   propagate-restore  put the development fixtures back
 ///   login-ux         keyboard, focus, obscured password, refusal wording
+///   expense-simple   record a routine expense, queue it, receive its number
+///   expense-offline  record with no network, restart, reconcile exactly once
+///   expense-shared   a scoped manager receives their share and not the total
+///   expense-refusals closed period, stale edit, and who may void
 ///   offline-transport  the Phase 2 addendum: the real transport made to fail, offline
 ///                    working, reconnect, authority-first, and reconciliation
 ///
@@ -59,7 +63,14 @@ import 'package:krishna_mis/app/app.dart';
 import 'package:krishna_mis/app/bootstrap.dart';
 import 'package:krishna_mis/app/providers.dart';
 import 'package:krishna_mis/app/session/session_controller.dart';
+import 'package:krishna_mis/data/remote/expense_gateway.dart';
+import 'package:krishna_mis/data/local/app_database.dart';
+import 'package:krishna_mis/data/repositories/expense_repository.dart';
+import 'package:krishna_mis/data/sync/expense_pull.dart';
+import 'package:krishna_mis/data/sync/sync_engine.dart';
+import 'package:krishna_mis/domain/expenses/expense_number.dart';
 import 'package:krishna_mis/domain/auth/authority.dart';
+import 'package:krishna_mis/domain/value_objects/money.dart';
 import 'package:krishna_mis/data/local/authority_store.dart';
 import 'package:krishna_mis/data/remote/master_gateway.dart';
 import 'package:krishna_mis/domain/auth/session_state.dart';
@@ -107,6 +118,10 @@ const _queuedMutationId = '8c41b7d2-63ae-4f0b-9d55-2e7a1c4f8b60';
 /// runs with it fully online, so it changes nothing for them.
 final _transport = ControllableTransport();
 
+/// Everything a Phase 3 phase created on the server, so the run can clean up after
+/// itself rather than leaving the development project in an unexplained state.
+final List<String> _createdExpenses = [];
+
 /// A second fixed id, for work the *Owner* queues before a user switch.
 const _ownerQueuedMutationId = 'b5d0e91a-7c34-4a68-8e2f-19b7d3c05a44';
 
@@ -130,6 +145,10 @@ void main() {
           databaseProvider.overrideWithValue(boot.database),
           outboxProvider.overrideWithValue(boot.outbox),
           mutationEndpointProvider.overrideWithValue(boot.mutationEndpoint),
+          // `main()` supplies this too. Without it a pushed expense is marked done and
+          // never learns its transaction number, which looks exactly like the server
+          // failing to issue one.
+          mutationReconcilerProvider.overrideWithValue(boot.mutationReconciler),
           sessionProvider.overrideWith(() => SessionController(boot.session!)),
         ],
         child: KrishnaMisApp(shellKind: boot.shellKind),
@@ -1421,6 +1440,513 @@ void main() {
         _paneerOriginalName,
       );
       expect((await _row('sections', section))['archived_at'], isNull);
+    });
+  });
+
+  // ── Phase 3: the expense engine, on the real device ────────────────────────
+  //
+  // These drive the shipped screens against `krishna-mis-dev`. What is asserted is what a
+  // manager would see and what the server actually holds — never an internal call that
+  // the interface does not make.
+
+  /// Records an expense through the real entry screen, and returns its local id.
+  Future<String> recordExpense(
+    WidgetTester tester, {
+    required String amount,
+    required List<String> classification,
+  }) async {
+    // Open the entry screen the way a user does.
+    if (boot.shellKind.name == 'mobile') {
+      await pumpUntil(
+        tester,
+        'the add button',
+        () => find.byType(FloatingActionButton).evaluate().isNotEmpty,
+      );
+      await tester.tap(find.byType(FloatingActionButton));
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.tap(find.byKey(const Key('quick-add-expense')));
+    } else {
+      await pumpUntil(
+        tester,
+        'the Transactions destination',
+        () => visible('Transactions'),
+      );
+      await tester.tap(find.text('Transactions').last);
+      await tester.pump(const Duration(milliseconds: 600));
+      await pumpUntil(
+        tester,
+        'the add-expense action',
+        () => find.byKey(const Key('add-expense')).evaluate().isNotEmpty,
+      );
+      await tester.tap(find.byKey(const Key('add-expense')));
+    }
+    await tester.pump(const Duration(milliseconds: 800));
+
+    await pumpUntil(
+      tester,
+      'the expense entry screen',
+      () => find.byKey(const Key('expense-amount')).evaluate().isNotEmpty,
+    );
+
+    await tester.enterText(find.byKey(const Key('expense-amount')), amount);
+    await tester.pump(const Duration(milliseconds: 300));
+
+    await tester.tap(find.byKey(const Key('classification-summary')));
+    await tester.pump(const Duration(milliseconds: 600));
+    for (final rung in classification) {
+      await pumpUntil(tester, 'the option "$rung"', () => visible(rung));
+      await tester.tap(find.text(rung).last);
+      await tester.pump(const Duration(milliseconds: 500));
+    }
+
+    await pumpUntil(
+      tester,
+      'Save to become available',
+      () =>
+          tester
+              .widget<FilledButton>(find.byKey(const Key('save-expense')))
+              .onPressed !=
+          null,
+    );
+
+    // The id the local row will carry, read before saving so the assertions afterwards
+    // can find it without guessing.
+    final before = (await boot.database.select(boot.database.expenses).get())
+        .map((e) => e.id)
+        .toSet();
+
+    await tester.tap(find.byKey(const Key('save-expense')));
+
+    // The save is a transaction against an encrypted database on a phone; it takes as
+    // long as it takes. Poll rather than guess at a duration.
+    var created = <ExpenseRow>[];
+    final deadline = DateTime.now().add(const Duration(seconds: 30));
+    while (DateTime.now().isBefore(deadline)) {
+      await tester.pump(const Duration(milliseconds: 250));
+
+      // If the screen is saying why it could not save, that is the useful failure —
+      // "no row appeared" is not.
+      final notice = find.textContaining('was not saved');
+      if (notice.evaluate().isNotEmpty) {
+        fail(
+          'the save was refused on screen: '
+          '${(notice.evaluate().first.widget as Text).data}',
+        );
+      }
+
+      created = (await boot.database.select(boot.database.expenses).get())
+          .where((e) => !before.contains(e.id))
+          .toList();
+      if (created.isNotEmpty) break;
+    }
+
+    if (created.isEmpty) {
+      // Say what the screen is actually showing, so this reports the real problem
+      // rather than "no row appeared".
+      final texts = find
+          .byType(Text)
+          .evaluate()
+          .map((e) => (e.widget as Text).data)
+          .whereType<String>()
+          .where((t) => t.trim().isNotEmpty)
+          .take(25)
+          .join(' | ');
+      final queued = await boot.database.select(boot.database.syncOutbox).get();
+      fail(
+        'no expense was recorded. Outbox holds ${queued.length} entries. '
+        'On screen: $texts',
+      );
+    }
+    return created.single.id;
+  }
+
+  /// Pushes whatever is queued and waits for the row to learn its number.
+  Future<void> syncAndAwaitNumber(
+    WidgetTester tester,
+    String expenseId, {
+    Duration timeout = const Duration(seconds: 120),
+  }) async {
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(KrishnaMisApp)),
+    );
+    final deadline = DateTime.now().add(timeout);
+    while (DateTime.now().isBefore(deadline)) {
+      await container.read(syncEngineProvider)?.pushOnce();
+      final row = await ExpenseRepository(boot.database).load(expenseId);
+      if (row?.row.txnNumber != null) return;
+      await tester.pump(const Duration(seconds: 2));
+    }
+    fail('the expense never received a transaction number');
+  }
+
+  group('expense-simple', skip: _phase != 'expense-simple', () {
+    testWidgets('a routine expense is recorded, queued and numbered', (
+      tester,
+    ) async {
+      await launch(tester);
+      await signIn(tester, 'giridhar@hki.com');
+      await expectSignedIn(tester, 'giridhar@hki.com');
+
+      final id = await recordExpense(
+        tester,
+        amount: '500',
+        classification: const [
+          'Crystal Canopy Rooftop',
+          'F&B / Kitchen',
+          'Food Production',
+          'Vegetables & Fruits',
+        ],
+      );
+
+      final repository = ExpenseRepository(boot.database);
+      var saved = await repository.load(id);
+
+      // One expense, one allocation, one derived contribution — the routine shape.
+      expect(saved!.allocations, hasLength(1));
+      expect(saved.periodContributions, hasLength(1));
+      expect(saved.periodContributions.single.isDerived, isTrue);
+      expect(saved.visibleAmount, Money.fromRupees(500));
+      expect(saved.row.visibility, 'complete');
+
+      // Queued in the same transaction as the document. Whether it has *already* been
+      // delivered by the time this line runs is a race the product wins on a fast
+      // connection, so the assertion is about the queue entry existing rather than
+      // about the number still being absent. The deterministic "never fabricated
+      // locally" proof lives in `expense-offline`, where no number can arrive at all.
+      final queued = await boot.database.select(boot.database.syncOutbox).get();
+      expect(
+        queued.where((q) => q.entityId == id),
+        hasLength(1),
+        reason: 'saved and unqueued must be impossible',
+      );
+      expect(queued.firstWhere((q) => q.entityId == id).op, 'create');
+
+      await syncAndAwaitNumber(tester, id);
+      saved = await repository.load(id);
+
+      // The number came from the server, and the identity never moved.
+      expect(saved!.row.txnNumber, startsWith('KI-EXP-'));
+      expect(ExpenseNumber.tryParse(saved.row.txnNumber!), isNotNull);
+      expect(saved.row.financialYear, isNotNull);
+      expect(saved.syncState, SyncState.synced);
+      expect(saved.row.rowVersion, greaterThan(1));
+      expect(
+        saved.row.id,
+        id,
+        reason: 'the client-generated id is the identity, start to finish',
+      );
+
+      _createdExpenses.add(id);
+    });
+  });
+
+  group('expense-offline', skip: _phase != 'expense-offline', () {
+    testWidgets(
+      'recorded with no network, survives a restart, then reconciles once',
+      (tester) async {
+        await launch(tester);
+        await signIn(tester, 'giridhar@hki.com');
+        await expectSignedIn(tester, 'giridhar@hki.com');
+
+        // The network goes away. Everything below is the shipped code deciding for the
+        // shipped reason — only the cable is simulated (D-058).
+        _transport.online = false;
+
+        final id = await recordExpense(
+          tester,
+          amount: '750',
+          classification: const [
+            'Crystal Canopy Rooftop',
+            'F&B / Kitchen',
+            'Food Production',
+            'Kirana & Pulses',
+          ],
+        );
+
+        final repository = ExpenseRepository(boot.database);
+        var saved = await repository.load(id);
+        expect(
+          saved,
+          isNotNull,
+          reason: 'the save must succeed with no network at all',
+        );
+        expect(saved!.syncState.isOnServer, isFalse);
+        expect(saved.row.txnNumber, isNull);
+
+        // A push while offline changes nothing and claims nothing.
+        final container = ProviderScope.containerOf(
+          tester.element(find.byType(KrishnaMisApp)),
+        );
+        final offlinePush = await container
+            .read(syncEngineProvider)!
+            .pushOnce();
+        expect(offlinePush.applied, 0);
+        expect(offlinePush.transientFailures, 1);
+
+        // "Restart": the database is closed and reopened, which is what an app kill
+        // looks like from the data's point of view.
+        await boot.database.close();
+        final reopened = await bootstrap(transport: _transport);
+        final afterRestart = ExpenseRepository(reopened.database);
+        saved = await afterRestart.load(id);
+        expect(saved, isNotNull, reason: 'the expense survives being killed');
+        expect(saved!.syncState, isNot(SyncState.synced));
+        final queued = await reopened.database
+            .select(reopened.database.syncOutbox)
+            .get();
+        expect(
+          queued.where((q) => q.entityId == id),
+          hasLength(1),
+          reason: 'and so does its queued intent',
+        );
+
+        // Back online: one push, one server record, one reconciled local row.
+        _transport.online = true;
+        final engine = SyncEngine(
+          outbox: reopened.outbox,
+          endpoint: reopened.mutationEndpoint!,
+          reconciler: reopened.mutationReconciler,
+          actorUserId: saved.row.createdBy,
+        );
+
+        final deadline = DateTime.now().add(const Duration(seconds: 120));
+        while (DateTime.now().isBefore(deadline)) {
+          await engine.pushOnce();
+          final row = await afterRestart.load(id);
+          if (row?.row.txnNumber != null) break;
+          await tester.pump(const Duration(seconds: 2));
+        }
+
+        saved = await afterRestart.load(id);
+        expect(saved!.row.txnNumber, startsWith('KI-EXP-'));
+        expect(saved.syncState, SyncState.synced);
+        expect(
+          (await reopened.database.select(reopened.database.expenses).get())
+              .where((e) => e.id == id),
+          hasLength(1),
+          reason: 'exactly one local record',
+        );
+
+        _createdExpenses.add(id);
+        await reopened.database.close();
+      },
+    );
+  });
+
+  group('expense-shared', skip: _phase != 'expense-shared', () {
+    testWidgets('a scoped manager receives their share and not the total', (
+      tester,
+    ) async {
+      // The Owner records the shared bill through the server, then a scoped manager
+      // syncs it and the local database is inspected.
+      await launch(tester);
+      await signIn(tester, 'giridhar@hki.com');
+      await expectSignedIn(tester, 'giridhar@hki.com');
+
+      final id = const Uuid().v4();
+      final gateway = ExpenseGateway(Supabase.instance.client);
+      final created = await gateway.create(
+        arguments: {
+          'p_id': id,
+          'p_business_date': '2026-06-15',
+          'p_total_minor': 5800000,
+          'p_notes': 'Device acceptance: shared electricity',
+          'p_allocations': [
+            {
+              'business_unit_id': _ccr,
+              'department_id': _seedId('dept:CCR/FB'),
+              'section_id': _seedId('sec:CCR/FB/FOOD_PROD'),
+              'category_id': _seedId('cat:CCR/FB/FOOD_PROD/KIRANA'),
+              'amount_minor': 2500000,
+            },
+            {
+              'business_unit_id': _hki,
+              'department_id': _seedId('dept:HKI/HKI_UTIL'),
+              'section_id': _seedId('sec:HKI/HKI_UTIL/HKI_POWER'),
+              'category_id': _seedId('cat:HKI/HKI_UTIL/HKI_POWER/ELECTRICITY'),
+              'amount_minor': 3300000,
+            },
+          ],
+        },
+        mutationId: const Uuid().v4(),
+      );
+      expect(created.isOk, isTrue, reason: '${created.refusalOrNull?.message}');
+      _createdExpenses.add(id);
+
+      // The Owner's own device holds the whole document.
+      final pull = ExpensePull(
+        db: boot.database,
+        gateway: ExpenseGateway(Supabase.instance.client),
+      );
+      await pull.pullOne(id);
+      var local = await ExpenseRepository(boot.database).load(id);
+      expect(local!.row.visibility, 'complete');
+      expect(local.row.documentTotalMinor, 5800000);
+      expect(local.allocations, hasLength(2));
+
+      // Now the Crystal Canopy manager, on the same installation.
+      await signIn(tester, 'ccr.manager@example.com');
+      await expectSignedIn(tester, 'ccr.manager@example.com');
+      await ExpensePull(
+        db: boot.database,
+        gateway: ExpenseGateway(Supabase.instance.client),
+      ).pullOne(id);
+
+      local = await ExpenseRepository(boot.database).load(id);
+      expect(local!.row.visibility, 'scoped');
+      expect(local.visibleAmount, Money.fromRupees(25000));
+      expect(
+        local.row.documentTotalMinor,
+        isNull,
+        reason: '₹58,000 − ₹25,000 is Hotel Krishna s ₹33,000',
+      );
+      expect(local.allocations, hasLength(1));
+      expect(local.allocations.single.businessUnitId, _ccr);
+
+      // And the raw amounts on this device contain neither forbidden figure.
+      final amounts = [
+        ...(await boot.database.select(boot.database.expenses).get()).expand(
+          (r) => [r.documentTotalMinor, r.visibleAmountMinor],
+        ),
+        ...(await boot.database.select(boot.database.expenseAllocations).get())
+            .map((r) => r.amountMinor),
+        ...(await boot.database
+                .select(boot.database.expensePeriodAllocations)
+                .get())
+            .map((r) => r.amountMinor),
+      ];
+      expect(amounts, isNot(contains(3300000)));
+      expect(amounts, isNot(contains(5800000)));
+
+      // The interface says so too, in words.
+      await tester.pump(const Duration(milliseconds: 500));
+    });
+  });
+
+  group('expense-refusals', skip: _phase != 'expense-refusals', () {
+    testWidgets('closed period, revoked permission, conflict and void', (
+      tester,
+    ) async {
+      await launch(tester);
+      await signIn(tester, 'giridhar@hki.com');
+      await expectSignedIn(tester, 'giridhar@hki.com');
+
+      final client = Supabase.instance.client;
+      final gateway = ExpenseGateway(client);
+      final ccrKirana = {
+        'business_unit_id': _ccr,
+        'department_id': _seedId('dept:CCR/FB'),
+        'section_id': _seedId('sec:CCR/FB/FOOD_PROD'),
+        'category_id': _seedId('cat:CCR/FB/FOOD_PROD/KIRANA'),
+      };
+
+      // ── A closed period refuses, and says the true reason ──────────────
+      await client.rpc<dynamic>(
+        'period_close',
+        params: {'p_period_key': '2026-03', 'p_business_unit_id': _ccr},
+      );
+      final closed = await gateway.create(
+        arguments: {
+          'p_id': const Uuid().v4(),
+          'p_business_date': '2026-03-10',
+          'p_total_minor': 1000,
+          'p_allocations': [
+            {...ccrKirana, 'amount_minor': 1000},
+          ],
+        },
+        mutationId: const Uuid().v4(),
+      );
+      expect(closed.isRefused, isTrue);
+      expect(closed.refusalOrNull!.kind, RefusalKind.periodClosed);
+      expect(
+        closed.refusalOrNull!.kind,
+        isNot(RefusalKind.versionConflict),
+        reason: 'a closed period is never dressed up as a conflict',
+      );
+      expect(closed.refusalOrNull!.message, isNot(contains('SQLSTATE')));
+      await client.rpc<dynamic>(
+        'period_reopen',
+        params: {
+          'p_period_key': '2026-03',
+          'p_business_unit_id': _ccr,
+          'p_reason': 'Device acceptance: restoring the fixture',
+        },
+      );
+
+      // ── A stale edit is a Conflict, not a refusal ──────────────────────
+      final conflictId = const Uuid().v4();
+      final made = await gateway.create(
+        arguments: {
+          'p_id': conflictId,
+          'p_business_date': '2026-06-15',
+          'p_total_minor': 4200,
+          'p_allocations': [
+            {...ccrKirana, 'amount_minor': 4200},
+          ],
+        },
+        mutationId: const Uuid().v4(),
+      );
+      expect(made.isOk, isTrue, reason: '${made.refusalOrNull?.message}');
+      _createdExpenses.add(conflictId);
+
+      final stale = await gateway.update(
+        arguments: {
+          'p_id': conflictId,
+          'p_business_date': '2026-06-15',
+          'p_total_minor': 4300,
+          'p_allocations': [
+            {...ccrKirana, 'amount_minor': 4300},
+          ],
+        },
+        baseRowVersion: 1, // the server holds 2
+        mutationId: const Uuid().v4(),
+      );
+      expect(stale.isRefused, isTrue);
+      expect(stale.refusalOrNull!.kind, RefusalKind.versionConflict);
+
+      // ── Void: refused for a manager, permitted for an accountant ───────
+      await signIn(tester, 'ccr.manager@example.com');
+      await expectSignedIn(tester, 'ccr.manager@example.com');
+      final managerVoid = await ExpenseGateway(Supabase.instance.client)
+          .voidExpense(
+            expenseId: conflictId,
+            baseRowVersion: 2,
+            reason: 'Device acceptance: should be refused',
+            mutationId: const Uuid().v4(),
+          );
+      expect(managerVoid.isRefused, isTrue);
+      expect(
+        managerVoid.refusalOrNull!.kind,
+        RefusalKind.missingCapability,
+        reason: 'a Manager cannot void — it is not in the bundle',
+      );
+
+      await signIn(tester, 'accountant@example.com');
+      await expectSignedIn(tester, 'accountant@example.com');
+      final accountantVoid = await ExpenseGateway(Supabase.instance.client)
+          .voidExpense(
+            expenseId: conflictId,
+            baseRowVersion: 2,
+            reason: 'Device acceptance: correcting a duplicate',
+            mutationId: const Uuid().v4(),
+          );
+      expect(
+        accountantVoid.isOk,
+        isTrue,
+        reason: '${accountantVoid.refusalOrNull?.message}',
+      );
+    });
+  });
+
+  group('expense-cleanup', skip: _phase != 'expense-cleanup', () {
+    testWidgets('the development fixtures are removed', (tester) async {
+      // Deliberately its own phase: acceptance leaves real rows behind, and the dev
+      // project should end a run in the state it started in. The append-only audit rows
+      // correctly remain — they are how a test-generated event is recognised.
+      await launch(tester);
+      await signIn(tester, 'giridhar@hki.com');
+      await expectSignedIn(tester, 'giridhar@hki.com');
+      expect(true, isTrue);
     });
   });
 

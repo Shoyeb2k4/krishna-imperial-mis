@@ -55,15 +55,32 @@ void main() {
     'category_id': _seedId('cat:HKI/HKI_UTIL/HKI_POWER/ELECTRICITY'),
   };
 
+  // One signed-in client per identity, created once and reused.
+  //
+  // Re-authenticating before every call is what a naive suite does, and it earns a 429
+  // from the auth endpoint less than a minute in — which looks exactly like a product
+  // failure and is not one. Six sign-ins per run instead of sixty.
+  final clients = <String, SupabaseClient>{};
   late SupabaseClient client;
   final created = <String>[];
 
   Future<void> signInAs(String email) async {
+    final existing = clients[email];
+    if (existing != null) {
+      client = existing;
+      return;
+    }
+    final fresh = SupabaseClient(
+      config['SUPABASE_URL'] as String,
+      config['SUPABASE_ANON_KEY'] as String,
+    );
     final entry = identities[email] as Map<String, dynamic>;
-    await client.auth.signInWithPassword(
+    await fresh.auth.signInWithPassword(
       email: email,
       password: entry['password'] as String,
     );
+    clients[email] = fresh;
+    client = fresh;
   }
 
   setUpAll(() async {
@@ -92,8 +109,10 @@ void main() {
             .then((_) {}, onError: (_) {});
       }
     }
-    await client.auth.signOut();
-    await client.dispose();
+    for (final signedIn in clients.values) {
+      await signedIn.auth.signOut();
+      await signedIn.dispose();
+    }
     driftRuntimeOptions.dontWarnAboutMultipleDatabases = false;
   });
 
@@ -561,6 +580,140 @@ void main() {
         reason:
             'a voided expense still happened — the rename warning in D-038 is '
             'built on this history and must not be erased by a void',
+      );
+    });
+  });
+
+  group('the seven-day edit window, at the boundary', () {
+    // The gap the previous checkpoint recorded as untested, closed against the real
+    // server. `edit_window_days` is configuration and the seeded value is 7; the server
+    // compares `current_date - business_date` against it.
+    //
+    // Exact semantics, stated because "seven days" is ambiguous until it is written down:
+    //
+    //   elapsed = current_date − business_date, in whole calendar days
+    //   elapsed <= 7   permitted for an ordinary editor
+    //   elapsed >  7   refused KM021, unless the caller holds
+    //                  `transaction.correct.beyond_window`
+    //
+    // So a business date of D is editable on D+7 and refused on D+8. The window is
+    // inclusive of its last day.
+    String isoDaysAgo(int days) {
+      final date = DateTime.now().toUtc().subtract(Duration(days: days));
+      return '${date.year.toString().padLeft(4, '0')}-'
+          '${date.month.toString().padLeft(2, '0')}-'
+          '${date.day.toString().padLeft(2, '0')}';
+    }
+
+    Map<String, Object?> expenseDated(String id, String businessDate) => {
+      'p_id': id,
+      'p_business_date': businessDate,
+      'p_total_minor': 25000,
+      'p_allocations': [
+        {...ccrKirana, 'amount_minor': 25000},
+      ],
+    };
+
+    /// Data Entry holds `expense.edit.own` and records it themselves, so ownership is
+    /// not what is under test here — the age of the entry is.
+    Future<RemoteOutcome<Map<String, dynamic>>> editAs(
+      String email,
+      String id,
+      String businessDate,
+    ) async {
+      await signInAs(email);
+      return ExpenseGateway(client).update(
+        arguments: {
+          ...expenseDated(id, businessDate),
+          'p_notes': 'edited within the window test',
+        },
+        baseRowVersion: 2,
+        mutationId: const Uuid().v4(),
+      );
+    }
+
+    test('an entry seven days old may still be corrected', () async {
+      final id = const Uuid().v4();
+      final date = isoDaysAgo(7);
+      await createAs('data.entry@example.com', expenseDated(id, date));
+
+      final outcome = await editAs('data.entry@example.com', id, date);
+      expect(
+        outcome.isOk,
+        isTrue,
+        reason:
+            'the window is inclusive of its last day — refused here would mean '
+            'six days, not seven (${outcome.refusalOrNull?.message})',
+      );
+    });
+
+    test('an entry eight days old is refused KM021', () async {
+      final id = const Uuid().v4();
+      final date = isoDaysAgo(8);
+      await createAs('data.entry@example.com', expenseDated(id, date));
+
+      final outcome = await editAs('data.entry@example.com', id, date);
+      expect(outcome.isRefused, isTrue);
+      expect(outcome.refusalOrNull!.kind, RefusalKind.editWindowExpired);
+      expect(
+        outcome.refusalOrNull!.message,
+        isNot(contains('SQLSTATE')),
+        reason: 'a manager never sees a Postgres error',
+      );
+    });
+
+    test(
+      'a holder of transaction.correct.beyond_window may still correct it',
+      () async {
+        final id = const Uuid().v4();
+        final date = isoDaysAgo(30);
+        await createAs('giridhar@hki.com', expenseDated(id, date));
+
+        // The Accountant bundle carries the capability; the Owner role carries
+        // everything. Neither is identified by name — the capability is what is asked.
+        final outcome = await editAs('accountant@example.com', id, date);
+        expect(
+          outcome.isOk,
+          isTrue,
+          reason:
+              'thirty days old, and the capability exists precisely for this '
+              '(${outcome.refusalOrNull?.message})',
+        );
+      },
+    );
+
+    test('a closed period refuses the correction even with that capability — '
+        'the period lock wins', () async {
+      final id = const Uuid().v4();
+      // Well outside the window, and in a month we then close.
+      const date = '2026-01-15';
+      await createAs('giridhar@hki.com', expenseDated(id, date));
+
+      await signInAs('giridhar@hki.com');
+      await client.rpc<dynamic>(
+        'period_close',
+        params: {'p_period_key': '2026-01', 'p_business_unit_id': ccr},
+      );
+
+      final outcome = await editAs('accountant@example.com', id, date);
+      expect(outcome.isRefused, isTrue);
+      expect(
+        outcome.refusalOrNull!.kind,
+        RefusalKind.periodClosed,
+        reason:
+            'beyond_window lets somebody past the age rule, never past the '
+            'period lock — the lock is never bypassed',
+      );
+
+      // Leave the period as it was found.
+      await signInAs('giridhar@hki.com');
+      await client.rpc<dynamic>(
+        'period_reopen',
+        params: {
+          'p_period_key': '2026-01',
+          'p_business_unit_id': ccr,
+          'p_reason': 'Phase 3 acceptance: restoring the development fixture',
+        },
       );
     });
   });

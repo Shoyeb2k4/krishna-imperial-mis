@@ -178,6 +178,14 @@ final vendorListProvider = FutureProvider.family<List<Vendor>, bool>((
       .list(includeArchived: includeArchived);
 });
 
+/// The organisation's payment methods, for the expense form.
+final paymentMethodsProvider = FutureProvider<List<PaymentMethodRow>>(
+  (ref) => ref
+      .watch(databaseProvider)
+      .select(ref.watch(databaseProvider).paymentMethods)
+      .get(),
+);
+
 final taxRulesProvider = FutureProvider<Map<String, TaxRuleSet>>((ref) {
   ref.watch(sessionProvider);
   return ref.watch(taxRepositoryProvider).allRules();

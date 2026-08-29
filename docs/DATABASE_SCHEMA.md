@@ -725,3 +725,66 @@ Every migration the server has applied must exist as a committed file (D-056). T
 a convention: `my_authority()` was applied to the development project and never committed,
 and for a day the repository could not have rebuilt the environment. The live suite now
 asserts that every RPC the server exposes is created by a file in `supabase/migrations/`.
+
+---
+
+## Phase 3 — the expense engine, as built (2026-08-29)
+
+Four server tables, four local ones, and a deliberate difference between them.
+
+### Server
+
+```
+expenses                     the document: dates, vendor, payment, total, void state
+expense_allocations          one line per (business unit → department → section → category)
+expense_period_allocations   one row per accounting period per line — the ONLY reporting source
+expense_attachments          bill images and invoices, complete-document-only
+document_number_counters     one row per (org, kind, financial year); locked while a number is issued
+```
+
+**One composite foreign key validates a whole classification.** A line names
+`(category_id, section_id, department_id, business_unit_id)` and resolves it against
+`expense_categories (id, section_id, department_id, business_unit_id)` — the anchor D-040
+put there for exactly this. A Hotel Krishna section under a Crystal Canopy department is
+not rejected by a trigger; it does not resolve.
+
+**Two sums, both deferred to COMMIT.** `SUM(lines) = total` and
+`SUM(contributions) = line amount` are constraint triggers, so a multi-statement write is
+legal in flight and illegal to finish unbalanced. A modified client cannot produce an
+expense that does not reconcile, because the transaction will not close.
+
+**Period contributions are always present (D-060).** No deliberate split produces one
+derived row covering the whole amount; a split produces one row per period. There is no
+document-level `pnl_date` column at all, so nothing can count an amount twice.
+
+**Numbering** is issued by `app.allocate_expense_number` under a row lock on the counter,
+after the write is accepted. `max(txn_number) + 1` is the pattern that looks correct and
+issues duplicates under load. Clients never reserve a number.
+
+### Reading it back
+
+No client role holds `SELECT` on `public.expenses`. The header is reachable only through
+`public.expense_document`, a `security_barrier` view carrying its own scope predicate,
+which returns `visible_amount_minor`, `is_complete`, and `total_amount_minor` **only when
+every line is visible**. On a two-property bill `total − own share` is the other share, so
+the total is withheld rather than hidden (D-062).
+
+`public.expense_period_contributions` is the named projection reporting consumes, so
+"what do I sum?" has exactly one answer.
+
+### Local (Drift v7)
+
+A sibling schema, not a copy. `visibility ∈ {complete, scoped}`, a nullable
+`document_total_minor` under a check constraint that refuses a scoped row carrying one, and
+a non-null `visible_amount_minor`. Withheld lines are absent rather than filtered.
+Divergences and their reasons are tabulated in D-062 and in
+`lib/data/local/expense_tables.dart`.
+
+### Error vocabulary added
+
+```
+KM018 allocation_imbalance    the lines do not add up to the total
+KM019 period_imbalance        a period split does not add up to its line
+KM020 record_voided           the document is finished and immutable
+KM021 edit_window_expired     older than the window, and no beyond-window capability
+```

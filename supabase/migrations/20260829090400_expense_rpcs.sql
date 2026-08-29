@@ -19,6 +19,31 @@
 -- `p_mutation_id` replays a stored result; `p_base_row_version` refuses a stale intent.
 -- ─────────────────────────────────────────────────────────────────────────────
 
+-- May this caller edit anything at all?
+--
+-- The cheap pre-check that runs before the target row is loaded (D-046). It accepts
+-- either editing capability: `expense.edit.own` for somebody correcting their own work,
+-- `expense.edit.all` for finance correcting anybody's. The per-unit checks afterwards
+-- decide the real question.
+create or replace function app.require_any_edit_capability()
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if not (public.has_capability_anywhere('expense.edit.own')
+          or public.has_capability_anywhere('expense.edit.all')) then
+    perform app.refuse('KM001', 'missing_capability',
+      'You do not have permission to do this.',
+      jsonb_build_object('capability', 'expense.edit'));
+  end if;
+end;
+$$;
+
+revoke all on function app.require_any_edit_capability()
+  from public, anon, authenticated;
+
 -- Period lock, as its own refusal. `KM004` is distinct from a conflict and from a
 -- permission problem so the interface can say the true thing (D-026).
 create or replace function app.require_period_open(
@@ -390,7 +415,11 @@ begin
 
   -- Permission before existence (D-046): a caller who may edit nothing anywhere learns
   -- nothing about which documents exist.
-  perform app.require_capability_anywhere('expense.edit.own');
+  --
+  -- **Either** form counts. An Accountant holds `expense.edit.all` and not
+  -- `expense.edit.own`, so asking for the latter specifically refused the one role that
+  -- exists to correct other people's entries. Caught by the live edit-window test.
+  perform app.require_any_edit_capability();
 
   select * into e from public.expenses where id = p_id and org_id = v_org;
   if e.id is null then
@@ -424,12 +453,17 @@ begin
     from public.org_settings os
    where os.org_id = v_org and os.key = 'edit_window_days';
 
+  -- Inclusive of its last day: a business date of D is editable on D+7 and refused on
+  -- D+8. `transaction.correct.beyond_window` lifts the *age* rule and nothing else — the
+  -- period lock is checked afterwards and is never bypassed.
   if (current_date - e.business_date) > coalesce(v_window, 7)
      and not public.has_capability_anywhere('transaction.correct.beyond_window') then
     perform app.refuse('KM021', 'edit_window_expired',
       format('This entry is more than %s days old and can no longer be changed here.',
              coalesce(v_window, 7)),
-      jsonb_build_object('business_date', e.business_date));
+      jsonb_build_object('business_date', e.business_date,
+                         'days_elapsed', current_date - e.business_date,
+                         'window_days', coalesce(v_window, 7)));
   end if;
 
   -- Concurrency, after authority and state, so a caller without permission never learns

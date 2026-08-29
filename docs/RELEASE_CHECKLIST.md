@@ -247,3 +247,68 @@ Each verified in the installed application, not in a test harness:
 - [ ] Any grant revoked during acceptance is re-granted
 - [ ] Any account deactivated during acceptance is reactivated
 - [ ] The project is not left in an unexplained modified state
+
+## L. Financial write gate (added end of Phase 3)
+
+Everything below is about money reconciling exactly and about one user never learning
+another property's figures. Each line is checked against `krishna-mis-dev` with the real
+signed application, not asserted from shared code.
+
+### L.1 Reconciliation, to the paisa
+
+- [ ] A simple expense: one line, one derived period contribution, contributions total
+      equals the document total
+- [ ] A shared bill: ₹58,000 as ₹25,000 + ₹33,000, exactly
+- [ ] An odd amount split three ways reconciles with no paisa lost or invented
+      (largest remainder)
+- [ ] A cross-period split: ₹60,000 as ₹30,000 May + ₹30,000 June, and **not** also
+      ₹60,000 against a document date
+- [ ] Shared *and* cross-period at once reconciles on both dimensions and globally
+- [ ] An unbalanced write is refused by the deferred constraint, not merely by the UI
+
+### L.2 Scoped visibility — the covert channel stays closed
+
+- [ ] `authenticated` holds no `SELECT` on `public.expenses` (the read path is
+      `expense_document`)
+- [ ] A unit-scoped user's projection carries `is_complete = false` and a **null** total
+- [ ] The same bill synced to three devices: inspect the **raw SQLite** of each and
+      confirm no unauthorised amount is present in any column
+- [ ] A scoped user cannot download the attachment object directly from Storage
+- [ ] The attachment bucket is private and no client role holds DELETE
+
+### L.3 Authority on the write path
+
+- [ ] A unit-scoped manager is refused `KM002`, naming the unit, for a line outside scope
+- [ ] Holding both scopes without `expense.allocate_cross_unit` is refused `KM001`
+- [ ] A period split without `expense.allocate_periods` is refused `KM001`
+- [ ] An ordinary one-period expense needs **neither** of those capabilities
+
+### L.4 Period locks and the edit window
+
+- [ ] Open period: create succeeds
+- [ ] Closed period: create, edit and void all refused `KM004`, and never as a conflict
+- [ ] Reopen is audited, carries a mandatory reason, and only then does the correction work
+- [ ] Edit window: business date D is editable on **D+7** and refused `KM021` on **D+8**
+- [ ] `transaction.correct.beyond_window` permits an old correction while the period is open
+- [ ] …and is still refused `KM004` when the period is closed — the lock is never bypassed
+
+### L.5 Void
+
+- [ ] Data Entry and Manager are refused, and are not offered the action
+- [ ] Accountant and the Owner role succeed while the period is open
+- [ ] A reason is mandatory and no default is offered
+- [ ] `base_row_version` is required; a stale void is a `KM003` conflict
+- [ ] A voided document is immutable, stays in the ledger marked VOIDED, and keeps its
+      attachments
+- [ ] Historical master usage is unchanged by the void; active usage decreases
+
+### L.6 Offline and recovery
+
+- [ ] An expense saves with no network and is queued in the same transaction
+- [ ] Killing and restarting the app preserves both the expense and its queued intent
+- [ ] Server-commits-then-response-lost yields **one** server record and one local record
+- [ ] A local write failing after acceptance leaves the intent queued, not done
+- [ ] A queued expense delivered after a permission change is refused and recorded as
+      terminal `Rejected`, never `Conflict`, and is not retried forever
+- [ ] Attachment upload failure never changes the expense's own state
+

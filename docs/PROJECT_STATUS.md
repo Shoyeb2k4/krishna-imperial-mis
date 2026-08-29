@@ -23,11 +23,22 @@ Every gate passed, including the ones that can only be passed by running the rea
 application: the Android package on a device, and the compiled Windows executable, both
 against the real `krishna-mis-dev` project, with the real development identities.
 
-**Phase 3 — Expense Engine: proposed, not started.** No Phase 3 code exists. The plan is
-with the project lead.
+**Phase 3 — Expense Engine: in progress.** Slices 1–7 are approved and committed
+(`81ef239`, `03e8b93`); slices 8–13 — the Android entry surface, the Windows ledger and
+detail, edit/void, cross-business and cross-period allocation, and the audit presentation —
+are built and covered by host tests. Device acceptance is the remaining work.
+
+Six decisions were recorded during it, three of them corrections the project lead required
+or the work exposed: period contributions as the only reporting source (D-060), cross-unit
+allocation as its own capability (D-061), the local read model as a deliberate sibling of
+the server schema rather than a copy (D-062), attachments as complete-document-only
+(D-063), historical usage surviving a void (D-064), and the edit window's exact boundary
+(D-065). D-066 records how development acceptance events are recognised without weakening
+audit integrity.
 
 Phase 0 complete and committed (`3a4502f`). Phase 1 complete. Phase 2 backend integration
-checkpointed at `58526c0` and completed at the Phase 2 commit recorded below.
+checkpointed at `58526c0`, completed at `1ba1e3a`, and closed by the acceptance addendum
+at `7d19f15`.
 
 ## Completed
 
@@ -80,11 +91,12 @@ Blocked.**
 |---|---|---|
 | `dart format --set-exit-if-changed` | **Tested** | clean (104 files) |
 | `flutter analyze` | **Tested** | **No issues found** |
-| Host test suite | **Tested** | **408 tests, all passing** |
+| Host test suite | **Tested** | **575 tests, all passing** |
 | Secret scan — tree, git history, built binaries | **Tested** | clean; positive control proves it detects |
 | Migration audit (search_path, API surface, policy boundary) | **Tested** | 14 host tests |
 | Backend schema parity (migrations vs the claims made about them) | **Tested** | 18 host tests |
 | Live backend suite against `krishna-mis-dev` | **Tested** | **19 tests** across 7 phases |
+| Live expense suite against `krishna-mis-dev` | **Tested** | **16 tests**: reconciliation, scoped raw-cache security, period locks, the 7-day boundary, usage semantics |
 | Repository ↔ server migration integrity (D-056) | **Tested** | live `drift` phase |
 | Android device acceptance, real APK, real backend | **Tested** | **19 tests** across 10 phases |
 | Windows acceptance, real `krishna_mis.exe`, real backend | **Tested** | **18 tests** across 11 phases |
@@ -98,20 +110,26 @@ Blocked.**
 | Windows offline/cached-authority behaviour | **Tested** | Phase 2 addendum — 14-point offline round trip inside the real `.exe` (D-058) |
 | Android offline behaviour via the same injected transport | **Tested** | the same phase, on the real APK |
 | Android release APK / AAB, Windows installer | **Not tested** | Phase 9, needs the project lead's keystore |
+| Expense domain, schema, RLS and RPC boundary | **Tested** | 53 domain tests; every rule proven against the real server |
+| Local expense read model and atomic offline create | **Tested** | 19 repository tests including rollback at each write boundary |
+| Expense sync, idempotency and response-loss recovery | **Tested** | 10 tests; one server record and one local record in every variant |
+| Attachment staging, upload, hash verification and retry | **Tested** | 18 tests |
+| Android and Windows expense surfaces | **Tested** | 37 draft-model tests + 17 widget tests |
 | Reporting engines and parity suite | **Not implemented** | Phase 5, by design |
-| Financial tables, expenses, revenue | **Not implemented** | Phase 3+, by design |
+| Revenue tables and entry | **Not implemented** | Phase 4, by design |
 
 ### Test totals
 
 | Suite | Count | Result |
 |---|---|---|
-| Host (`flutter test`) | 408 | all passing |
+| Host (`flutter test`) | 575 | all passing |
 | Live backend against `krishna-mis-dev` (opt-in) | 19 | all passing |
+| Live expense suite against `krishna-mis-dev` (opt-in) | 16 | all passing |
 | Android device acceptance (real APK) | 19 | all passing |
 | Windows acceptance (real executable) | 18 | all passing |
 | Windows shell (real executable) | 15 | all passing |
 | Encryption on device — Android 8, Windows 8 | 16 | all passing |
-| **Total** | **495** | **0 failing, 0 skipped-and-counted** |
+| **Total** | **678** | **0 failing, 0 skipped-and-counted** |
 
 Skipped phases are *not* counted. Each acceptance phase reports its own tests as passing
 and every other phase as skipped; only the phase that ran contributes to the total above.

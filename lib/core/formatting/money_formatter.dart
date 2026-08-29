@@ -63,6 +63,14 @@ final class MoneyFormatter {
   /// currency formatting.
   static const MoneyFormatter plain = MoneyFormatter(showSymbol: false);
 
+  /// Confirmation of what somebody just typed: paise only when they typed paise.
+  ///
+  /// `12500` reads back as `₹12,500` and `12500.50` as `₹12,500.50`. Padding the first
+  /// to `₹12,500.00` invites the reader to check whether the two zeros were theirs.
+  static const MoneyFormatter entry = MoneyFormatter(
+    decimals: MoneyDecimals.whenPresent,
+  );
+
   String format(Money money) {
     final negative = money.isNegative;
     final magnitude = money.absolute;

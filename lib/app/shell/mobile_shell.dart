@@ -8,6 +8,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:krishna_mis/core/design/tokens/app_tokens.dart';
+import 'package:krishna_mis/features/expenses/presentation/expense_entry_page.dart';
 
 class MobileShell extends StatelessWidget {
   const MobileShell({required this.navigationShell, super.key});
@@ -135,11 +136,18 @@ class MobileShell extends StatelessWidget {
             ),
             const SizedBox(height: AppSpacing.lg),
             ListTile(
+              key: const Key('quick-add-expense'),
               leading: const Icon(Icons.shopping_bag_outlined),
               title: const Text('Add Expense'),
-              subtitle: const Text('Phase 3 — Expense Engine'),
-              enabled: false,
-              onTap: () {},
+              subtitle: const Text('Works offline'),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                Navigator.of(context).push(
+                  MaterialPageRoute<String>(
+                    builder: (_) => const ExpenseEntryPage(),
+                  ),
+                );
+              },
             ),
             ListTile(
               leading: const Icon(Icons.point_of_sale_outlined),

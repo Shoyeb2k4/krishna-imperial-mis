@@ -1271,3 +1271,159 @@ worker that can see only their own queued work.
 proves the whole round trip on both platforms: refused while offline as transient, retried
 after its real backoff elapses, applied once when permitted, and recorded as terminal
 `Rejected` — never `Conflict` — when the server declines the act itself.
+
+---
+
+# Phase 3 — Expense Engine decisions (2026-08-29)
+
+## D-060 — Period contributions are the only reporting source
+**Date:** 2026-08-29 · **Status:** Accepted (project-lead correction)
+**Context:** The Phase 0 design stored `pnl_date` on the document and, separately,
+allowed optional cross-period allocations (D-034). Read literally that is two reporting
+sources for one amount: a ₹60,000 line split ₹30,000 May / ₹30,000 June would contribute
+₹30,000 to each period *and* ₹60,000 against its document date, and any report that
+touched both would count ₹120,000. The project lead required that double counting be
+prevented **by construction** rather than by every query being careful.
+**Decision:** Every allocation line carries at least one period contribution, always.
+
+* No deliberate split → the server generates **one** contribution for the whole amount,
+  covering the document's own accounting period (or its business date), marked
+  `is_derived = true`. The user never sees it and never needs the
+  `expense.allocate_periods` capability for it.
+* A deliberate split → one contribution per period, `is_derived = false`, gated by that
+  capability and audited.
+
+**Reporting reads `expense_period_allocations` and nothing else.** There is no
+document-level `pnl_date` column on the expense at all, and `ExpenseDocument` exposes no
+such property — so no caller can sum a line amount against one date and its contributions
+against theirs. `SUM(contributions) = line amount` is a deferred constraint trigger, so a
+transaction that would unbalance it cannot commit.
+**Alternatives:** keeping `pnl_date` on the document and excluding split lines in every
+query (one forgotten `WHERE` is a wrong P&L, and nothing would fail loudly); a view that
+unions the two shapes (same risk, hidden one layer down).
+**Consequences:** The default case costs one extra row per line, which is the price of
+there being exactly one place the money lives. `public.expense_period_contributions` is
+the named projection reports will consume, so "what do I sum?" has one answer.
+
+## D-061 — Cross-unit allocation is its own capability
+**Date:** 2026-08-29 · **Status:** Accepted
+**Context:** Spec §7 allows one expense to charge both properties. Holding scope on both
+was the obvious gate, and it is not enough: a manager covering both properties
+operationally would silently acquire the ability to decide how a shared cost is
+apportioned between two businesses, which moves both of their operating profits.
+**Decision:** `expense.allocate_cross_unit`, granted to Accountant and the Owner role and
+deliberately not to Manager or Data Entry — the same line `expense.allocate_periods`
+already draws, for the same reason. Scope on every unit named remains necessary; this is
+what makes it sufficient.
+**Consequences:** A Crystal Canopy-only manager is not offered Hotel Krishna as a split
+target and is refused `KM002` if a modified client tries; a manager holding both scopes is
+offered the split flow only if they also hold the capability, and is refused `KM001`
+otherwise. Both proven against the real server.
+
+## D-062 — The local read model is a sibling of the server schema, not a copy
+**Date:** 2026-08-29 · **Status:** Accepted (project-lead requirement)
+**Context:** The server projection already withholds the header total from a unit-scoped
+user, because on a two-property bill `total − own share` is the other share. A local
+cache that stored the total anyway would undo that protection, and "the widget does not
+display it" is not protection at all — a raw SQLite file is readable with a text editor.
+**Decision:** The local expense header carries `visibility ∈ {complete, scoped}`, a
+nullable `document_total_minor` and a non-null `visible_amount_minor`, with a **SQLite
+check constraint**: a `scoped` row carrying a document total is refused by the database.
+Withheld allocation lines and contributions are absent rather than filtered — the server
+never sends them, so they cannot be on the device.
+**Documented divergences from Postgres, each deliberate:**
+
+| Local | Server | Why |
+|---|---|---|
+| no `SUM(lines) = total` constraint | deferred trigger | a scoped record deliberately does not sum to the document |
+| `pending_mutation_id` | — | sync state is *derived* from the outbox, never duplicated into a column that could disagree |
+| `category_id` is a soft pointer | real foreign key | a scope purge (D-048) legitimately removes masters while synced history remains (same reasoning as D-049) |
+| attachment staging columns | — | staging is a client concern by definition |
+
+**Consequences:** Proven by syncing one ₹58,000 shared bill into three separate local
+databases and reading the **bytes** of each: the Crystal Canopy device holds 2,500,000 and
+neither 3,300,000 nor 5,800,000; the Hotel Krishna device the converse; the Owner the whole
+document. A future writer cannot reintroduce the leak by forgetting a null.
+
+## D-063 — Original attachments are complete-document-only
+**Date:** 2026-08-29 · **Status:** Accepted (project-lead requirement)
+**Context:** An attachment is the whole bill. The shared electricity invoice says ₹58,000
+on its face, so handing the image to a manager entitled to ₹25,000 gives away exactly what
+the projection withholds — in a form no database policy can redact.
+**Decision:** A user who receives a **scoped** projection of an expense does not receive
+its attachments. Not "receives them with the button hidden": the Storage policy returns
+nothing, and the `expense_attachments` table policy returns no row. The predicate is
+literally the same one the header projection uses for `is_complete`, so an attachment can
+never be readable by somebody the document itself is only partly visible to.
+
+The bucket is private. The object path is derived and predictable
+(`org/{org}/expenses/{expense}/{attachment}.{ext}`) and that is fine — path secrecy is not
+authorisation, and a client has to be able to name what it just wrote. No client role holds
+DELETE on the bucket.
+**Consequences:** A redacted or per-unit attachment feature is a *feature*, with its own
+decision, not something to be approximated by trimming an image. Verified by attempting a
+direct Storage download as a scoped manager and being refused.
+
+## D-064 — Usage means two different things, and both are kept
+**Date:** 2026-08-29 · **Status:** Accepted (project-lead correction)
+**Context:** The first implementation decremented `master_usage_counters.transaction_count`
+on void, which would have quietly erased the evidence the D-038 rename warning is built on:
+a category used four hundred times and voided once would report three hundred and
+ninety-nine, and a category whose only entries were later voided would report zero — as
+though it had never been used.
+**Decision:** Two figures.
+
+* `transaction_count` is **historical**: how many accepted lines have ever referenced this
+  master. It never decreases. A voided expense still happened.
+* `active_count` is **current**: how many live, unvoided lines reference it now. A void and
+  an edit that drops a line both decrement it.
+
+D-038's rename warning reads the historical figure. A "can I stop using this?" question
+reads the active one.
+**Consequences:** `app.record_master_usage` takes both deltas; a void passes `(0, -1)`. The
+superseded five-argument signature had to be dropped, because with a defaulted sixth
+parameter every existing five-argument call became ambiguous — caught by the live suite.
+
+## D-065 — The edit window is inclusive of its last day
+**Date:** 2026-08-29 · **Status:** Accepted — closes the gap the Phase 3 checkpoint recorded
+**Context:** "Seven days" is ambiguous until it is written down and tested. The Phase 3
+checkpoint recorded the boundary as untested and said so rather than implying otherwise.
+**Decision:** `elapsed = current_date − business_date`, in whole calendar days.
+
+```
+elapsed <= edit_window_days   permitted
+elapsed >  edit_window_days   refused KM021
+```
+
+So a business date of D is editable on **D+7** and refused on **D+8**.
+`transaction.correct.beyond_window` lifts the *age* rule and nothing else: the period lock
+is checked afterwards and is **never** bypassed. `edit_window_days` remains configuration
+(`org_settings`), not a constant.
+**Consequences:** All four cases proven against `krishna-mis-dev`: seven days permitted,
+eight refused `KM021`, thirty days permitted for a holder of the capability, and a closed
+period refusing `KM004` even for that holder. Building the test found a real defect —
+`expense_update`'s non-enumerating pre-check asked for `expense.edit.own` specifically, so
+an Accountant, who holds `expense.edit.all` and not `expense.edit.own`, was refused before
+the document was loaded. The pre-check now accepts either form.
+
+## D-066 — Development acceptance leaves audit evidence, and it is not erased
+**Date:** 2026-08-29 · **Status:** Accepted (project-lead requirement)
+**Context:** Device acceptance creates real documents in `krishna-mis-dev` and therefore
+real audit rows. `audit_logs` is append-only by trigger and correctly refuses deletion.
+**Decision:** The audit trail is never edited to make the development database look tidy.
+Acceptance-generated events are recognised, without weakening audit integrity, by what is
+already recorded on them:
+
+* the **actor** — every development identity is an `@example.com` address, or the single
+  named development Owner, and no such account exists outside the development project;
+* the **environment** — the rows live in `krishna-mis-dev`, which is a separate Supabase
+  project from staging and production and shares no data with either (spec §3);
+* the **reason text** on every reversal a test performs, which names the acceptance run.
+
+No mutable `is_test` flag is added to audit history. The fixtures a run creates — the
+expense documents themselves — *are* removed afterwards, because they are development
+scaffolding rather than history; the audit rows recording that they existed remain, which
+is exactly the asymmetry the append-only guard is for.
+**Consequences:** A run ends with the development project's financial tables at baseline
+and its audit trail longer. That is the correct outcome and is documented here so it is
+not mistaken for contamination.

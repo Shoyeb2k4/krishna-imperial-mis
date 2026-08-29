@@ -198,8 +198,34 @@ class ExpenseAuthorizer {
     required RecordContext record,
     required BusinessDate today,
     required String? reason,
+  }) => authorizeVoidOf(
+    principal: principal,
+    businessUnitIds: expense.businessUnitIds,
+    periods: {
+      for (final line in expense.allocations)
+        for (final part in line.periodContributions)
+          (unit: line.businessUnitId, periodKey: part.periodKey),
+    },
+    record: record,
+    today: today,
+    reason: reason,
+  );
+
+  /// The same decision, from the pieces rather than the whole aggregate.
+  ///
+  /// A scoped reader legitimately cannot build an [ExpenseDocument] — they do not have
+  /// the document total — but they can still be told whether Void would be permitted, so
+  /// the interface can decide whether to offer it. Same rules, same order, one
+  /// implementation.
+  ExpenseDecision authorizeVoidOf({
+    required Principal principal,
+    required Set<String> businessUnitIds,
+    required Set<({String unit, String periodKey})> periods,
+    required RecordContext record,
+    required BusinessDate today,
+    required String? reason,
   }) {
-    for (final unit in expense.businessUnitIds) {
+    for (final unit in businessUnitIds) {
       final decision = authorizer.authorizeMutation(
         principal: principal,
         capability: VoidPolicy.capability,
@@ -218,8 +244,18 @@ class ExpenseAuthorizer {
       }
     }
 
-    final periods = _authorizePeriods(principal, expense);
-    if (periods is ExpenseDenied) return periods;
+    for (final period in periods) {
+      if (authorizer.periodRegistry.stateFor(
+            periodKey: period.periodKey,
+            businessUnitId: period.unit,
+          ) ==
+          PeriodState.closed) {
+        return ExpenseDecision.denied(
+          ExpenseDenialReason.periodClosed,
+          detail: '${period.periodKey} · ${period.unit}',
+        );
+      }
+    }
 
     if (reason == null || reason.trim().isEmpty) {
       return const ExpenseDecision.denied(

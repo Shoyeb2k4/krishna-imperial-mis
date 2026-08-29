@@ -64,6 +64,19 @@ enum RefusalKind {
   /// D-038: the rename touches recorded history — `KM017`.
   acknowledgementRequired,
 
+  /// The allocation lines do not add up to the expense total — `KM018`.
+  allocationImbalance,
+
+  /// An accounting-period split does not add up to its line — `KM019`.
+  periodImbalance,
+
+  /// The document has been voided and is immutable — `KM020`.
+  recordVoided,
+
+  /// The entry is older than the edit window and the caller cannot correct beyond it —
+  /// `KM021`.
+  editWindowExpired,
+
   /// The transport failed, or the server said something this version does not know.
   unrecognised;
 
@@ -167,6 +180,13 @@ final class ServerRefusal implements Exception {
     'period_not_closed': RefusalKind.unknownEntity,
     'append_only': RefusalKind.appendOnly,
     'acknowledgement_required': RefusalKind.acknowledgementRequired,
+    // Phase 3. Each is its own kind because each is a different conversation with the
+    // user: a sum that does not add up, a document that is finished, and an entry that
+    // is simply too old for this person to change.
+    'allocation_imbalance': RefusalKind.allocationImbalance,
+    'period_imbalance': RefusalKind.periodImbalance,
+    'record_voided': RefusalKind.recordVoided,
+    'edit_window_expired': RefusalKind.editWindowExpired,
   };
 
   static String _message(
@@ -174,6 +194,16 @@ final class ServerRefusal implements Exception {
     Map<String, Object?> detail,
     String? serverMessage,
   ) => switch (kind) {
+    RefusalKind.allocationImbalance =>
+      'The amounts charged do not add up to the expense total.',
+    RefusalKind.periodImbalance =>
+      'The accounting-period split does not add up to its line.',
+    RefusalKind.recordVoided =>
+      'This expense has been voided and can no longer be changed. To correct '
+          'it, record a new one.',
+    RefusalKind.editWindowExpired =>
+      'This entry is older than the correction window and can no longer be '
+          'changed here.',
     RefusalKind.missingCapability => 'You do not have permission to do this.',
     RefusalKind.outOfUnitScope =>
       'You do not have permission to do this for this business unit.',

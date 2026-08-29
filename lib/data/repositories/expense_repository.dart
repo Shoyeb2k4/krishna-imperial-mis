@@ -114,6 +114,23 @@ final class LocalExpense {
       'Pending number · ${row.id.substring(0, 8).toUpperCase()}';
 }
 
+/// What the ledger is being asked for.
+///
+/// An interface rather than a concrete type so the data layer does not depend on the
+/// feature layer — the presentation's `ExpenseFilter` implements it, and the repository
+/// never learns that a filter bar exists.
+abstract interface class ExpenseQuery {
+  String? get from;
+  String? get to;
+  String? get businessUnitId;
+  String? get categoryId;
+  String? get vendorId;
+  String? get paymentStatus;
+  SyncState? get syncState;
+  String? get search;
+  bool get includeVoided;
+}
+
 class ExpenseRepository {
   ExpenseRepository(this._db);
 
@@ -312,6 +329,51 @@ class ExpenseRepository {
     ],
   };
 
+  /// Marks an expense voided locally and queues the void, atomically.
+  ///
+  /// The void carries `base_row_version`, so a void issued from a stale view is a
+  /// conflict rather than an overwrite (D-021) — a document somebody edited to v4 must
+  /// not be voided on the strength of a v3 intent.
+  Future<void> voidLocally(
+    LocalExpense expense, {
+    required String reason,
+    required String actorUserId,
+    required String mutationId,
+    required DateTime now,
+  }) async {
+    await _db.transaction(() async {
+      await (_db.update(
+        _db.expenses,
+      )..where((t) => t.id.equals(expense.row.id))).write(
+        ExpensesCompanion(
+          voidedAt: Value(now),
+          voidedBy: Value(actorUserId),
+          voidReason: Value(reason),
+          pendingMutationId: Value(mutationId),
+          updatedAt: Value(now),
+        ),
+      );
+
+      await _db
+          .into(_db.syncOutbox)
+          .insert(
+            SyncOutboxCompanion.insert(
+              mutationId: mutationId,
+              actorUserId: Value(actorUserId),
+              entityType: 'expense',
+              entityId: expense.row.id,
+              op: MutationOp.void_.name,
+              payload: jsonEncode({'p_reason': reason}),
+              baseRowVersion: Value(expense.row.rowVersion),
+              nextAttemptAt: now,
+              status: OutboxStatus.pending.name,
+              createdAt: now,
+            ),
+            mode: InsertMode.insertOrIgnore,
+          );
+    });
+  }
+
   /// Writes the server's answer onto the local row.
   ///
   /// Deliberately narrow: the transaction number, the version, the server timestamp and
@@ -418,6 +480,104 @@ class ExpenseRepository {
     if (entry == null) return SyncState.pendingSync;
     return OutboxStatus.fromName(entry.status).userVisibleState;
   }
+
+  /// The ledger, filtered and paged in SQL.
+  ///
+  /// Keyset-style: the caller asks for a window and gets exactly that. Nothing here
+  /// fetches "all expenses" and narrows them in Dart — at a year of history that is the
+  /// difference between a ledger that opens and one that does not (spec §27).
+  Future<List<LocalExpense>> query(
+    ExpenseQuery filter, {
+    int limit = 100,
+    int offset = 0,
+  }) async {
+    final select = _db.select(_db.expenses);
+
+    if (!filter.includeVoided) {
+      select.where((t) => t.voidedAt.isNull());
+    }
+    if (filter.from case final from?) {
+      select.where((t) => t.businessDate.isBiggerOrEqualValue(from));
+    }
+    if (filter.to case final to?) {
+      select.where((t) => t.businessDate.isSmallerOrEqualValue(to));
+    }
+    if (filter.paymentStatus case final status?) {
+      select.where((t) => t.paymentStatus.equals(status));
+    }
+    if (filter.vendorId case final vendor?) {
+      select.where((t) => t.vendorId.equals(vendor));
+    }
+    if (filter.search case final term? when term.trim().isNotEmpty) {
+      final needle = '%${term.trim()}%';
+      select.where(
+        (t) => t.txnNumber.like(needle) | t.referenceNumber.like(needle),
+      );
+    }
+    if (filter.businessUnitId case final unit?) {
+      // A document is in scope of the filter if any visible line charges that unit.
+      select.where(
+        (t) => existsQuery(
+          _db.selectOnly(_db.expenseAllocations)
+            ..addColumns([_db.expenseAllocations.id])
+            ..where(
+              _db.expenseAllocations.expenseId.equalsExp(t.id) &
+                  _db.expenseAllocations.businessUnitId.equals(unit),
+            ),
+        ),
+      );
+    }
+    if (filter.categoryId case final category?) {
+      select.where(
+        (t) => existsQuery(
+          _db.selectOnly(_db.expenseAllocations)
+            ..addColumns([_db.expenseAllocations.id])
+            ..where(
+              _db.expenseAllocations.expenseId.equalsExp(t.id) &
+                  _db.expenseAllocations.categoryId.equals(category),
+            ),
+        ),
+      );
+    }
+
+    select
+      ..orderBy([
+        (t) =>
+            OrderingTerm(expression: t.businessDate, mode: OrderingMode.desc),
+        (t) => OrderingTerm(expression: t.capturedAt, mode: OrderingMode.desc),
+      ])
+      ..limit(limit, offset: offset);
+
+    final rows = await select.get();
+    final loaded = <LocalExpense>[];
+    for (final row in rows) {
+      final expense = await _hydrate(row);
+      // Sync state is derived from the outbox, so it cannot be a SQL predicate without
+      // duplicating it into a column. The window is already bounded by the query above,
+      // so filtering it here costs nothing meaningful.
+      if (filter.syncState != null && expense.syncState != filter.syncState) {
+        continue;
+      }
+      loaded.add(expense);
+    }
+    return loaded;
+  }
+
+  Future<LocalExpense> _hydrate(ExpenseRow row) async => LocalExpense(
+    row: row,
+    allocations:
+        await (_db.select(_db.expenseAllocations)
+              ..where((t) => t.expenseId.equals(row.id))
+              ..orderBy([(t) => OrderingTerm(expression: t.sortOrder)]))
+            .get(),
+    periodContributions: await (_db.select(
+      _db.expensePeriodAllocations,
+    )..where((t) => t.expenseId.equals(row.id))).get(),
+    attachments: await (_db.select(
+      _db.expenseAttachments,
+    )..where((t) => t.expenseId.equals(row.id))).get(),
+    syncState: await _syncStateFor(row),
+  );
 
   /// Everything this device holds for a business unit's contributions in one period.
   ///
