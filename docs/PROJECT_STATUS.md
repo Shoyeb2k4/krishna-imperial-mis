@@ -161,12 +161,18 @@ Blocked.**
 | **Android cross-period (`cross-period`)** | **2** | **all passing** |
 | **Android payment-date accrual (`payment-accrual`)** | **1** | **all passing** |
 | **Acceptance fixture reversal (`expense-cleanup`, both platforms)** | **2** | **all passing** |
-| **Total** | **735** | **0 failing, 0 skipped-and-counted** |
+| **Total** | **738** | **0 failing, 0 skipped-and-counted** |
 
 The Phase 3 acceptance figures are four phases per platform — `expense-simple`,
 `expense-offline`, `expense-shared`, `expense-refusals` — each one process launch against
 the real backend. **Skipped phases are not counted**, and the surfaces listed as *Not
 tested* above contribute nothing to this total, because they have no phase to run.
+
+**Two suites in this table were not re-run at this checkpoint** and are carried forward
+from the previous one: the live backend suite (19) and the live expense suite (16). They
+were green when last run and nothing in this change touches the RPCs they exercise, but
+"carried forward" is not "re-verified", and they are named here so the total cannot be
+read as a claim that everything in it ran today.
 
 Skipped phases are *not* counted. Each acceptance phase reports its own tests as passing
 and every other phase as skipped; only the phase that ran contributes to the total above.
