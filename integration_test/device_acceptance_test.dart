@@ -1641,96 +1641,152 @@ void main() {
   });
 
   group('expense-offline', skip: _phase != 'expense-offline', () {
-    testWidgets(
-      'recorded with no network, survives a restart, then reconciles once',
-      (tester) async {
-        await launch(tester);
-        await signIn(tester, 'giridhar@hki.com');
-        await expectSignedIn(tester, 'giridhar@hki.com');
+    testWidgets('recorded with no network, survives a restart, then reconciles once', (
+      tester,
+    ) async {
+      await launch(tester);
+      await signIn(tester, 'giridhar@hki.com');
+      await expectSignedIn(tester, 'giridhar@hki.com');
 
-        // The network goes away. Everything below is the shipped code deciding for the
-        // shipped reason — only the cable is simulated (D-058).
-        _transport.online = false;
+      // The network goes away. Everything below is the shipped code deciding for the
+      // shipped reason — only the cable is simulated (D-058).
+      _transport.online = false;
 
-        final id = await recordExpense(
-          tester,
-          amount: '750',
-          classification: const [
-            'Crystal Canopy Rooftop',
-            'F&B / Kitchen',
-            'Food Production',
-            'Kirana & Pulses',
-          ],
-        );
+      final id = await recordExpense(
+        tester,
+        amount: '750',
+        classification: const [
+          'Crystal Canopy Rooftop',
+          'F&B / Kitchen',
+          'Food Production',
+          'Kirana & Pulses',
+        ],
+      );
 
-        final repository = ExpenseRepository(boot.database);
-        var saved = await repository.load(id);
-        expect(
-          saved,
-          isNotNull,
-          reason: 'the save must succeed with no network at all',
-        );
-        expect(saved!.syncState.isOnServer, isFalse);
-        expect(saved.row.txnNumber, isNull);
+      final repository = ExpenseRepository(boot.database);
+      var saved = await repository.load(id);
+      expect(
+        saved,
+        isNotNull,
+        reason: 'the save must succeed with no network at all',
+      );
+      expect(saved!.syncState.isOnServer, isFalse);
+      expect(saved.row.txnNumber, isNull);
 
-        // A push while offline changes nothing and claims nothing.
-        final container = ProviderScope.containerOf(
-          tester.element(find.byType(KrishnaMisApp)),
-        );
-        final offlinePush = await container
-            .read(syncEngineProvider)!
-            .pushOnce();
-        expect(offlinePush.applied, 0);
-        expect(offlinePush.transientFailures, 1);
+      // A push while offline changes nothing and claims nothing.
+      //
+      // What is asserted is the **durable consequence**, not the return value of this
+      // particular call. The shipped application runs its own sync worker and the save
+      // wakes it; whichever of the two reaches the queue first, the product's promise
+      // is identical — nothing applied, the intent still queued, no number invented on
+      // the device. An earlier version asserted `transientFailures == 1`, which is a
+      // claim that *this* call did the work: `pushOnce` returns an empty report both
+      // when nothing is due and when a cycle is already running, so the real worker
+      // won the race and the assertion failed against correct behaviour. Found by the
+      // first device run of this phase.
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(KrishnaMisApp)),
+      );
+      final offlinePush = await container.read(syncEngineProvider)!.pushOnce();
+      expect(
+        offlinePush.applied,
+        0,
+        reason: 'nothing can be applied with no network',
+      );
+      expect(
+        offlinePush.rejected,
+        0,
+        reason: 'an unreachable server is never a refusal (D-059)',
+      );
 
-        // "Restart": the database is closed and reopened, which is what an app kill
-        // looks like from the data's point of view.
-        await boot.database.close();
-        final reopened = await bootstrap(transport: _transport);
-        final afterRestart = ExpenseRepository(reopened.database);
-        saved = await afterRestart.load(id);
-        expect(saved, isNotNull, reason: 'the expense survives being killed');
-        expect(saved!.syncState, isNot(SyncState.synced));
-        final queued = await reopened.database
-            .select(reopened.database.syncOutbox)
-            .get();
-        expect(
-          queued.where((q) => q.entityId == id),
-          hasLength(1),
-          reason: 'and so does its queued intent',
-        );
+      // Something attempted delivery and failed transiently. Polled, because the
+      // worker may be mid-cycle: the assertion is that the queue *reaches* this
+      // state, not which caller drove it there.
+      late SyncOutboxRow entry;
+      final deadlineOffline = DateTime.now().add(const Duration(seconds: 30));
+      while (true) {
+        entry = (await boot.database.select(boot.database.syncOutbox).get())
+            .firstWhere((q) => q.entityId == id);
+        if (entry.attemptCount > 0) break;
+        if (!DateTime.now().isBefore(deadlineOffline)) break;
+        await tester.pump(const Duration(seconds: 1));
+      }
+      expect(
+        entry.attemptCount,
+        greaterThan(0),
+        reason: 'the offline attempt is recorded, not silently skipped',
+      );
+      expect(
+        entry.status,
+        isNot(OutboxStatus.done.name),
+        reason: 'an unreachable server must never mark an intent delivered',
+      );
+      expect(
+        entry.status,
+        isNot(OutboxStatus.rejected.name),
+        reason: 'unknown is not refused — D-048 §1, D-059',
+      );
+      expect(
+        (await repository.load(id))!.row.txnNumber,
+        isNull,
+        reason: 'a transaction number is only ever issued by the server',
+      );
 
-        // Back online: one push, one server record, one reconciled local row.
-        _transport.online = true;
-        final engine = SyncEngine(
-          outbox: reopened.outbox,
-          endpoint: reopened.mutationEndpoint!,
-          reconciler: reopened.mutationReconciler,
-          actorUserId: saved.row.createdBy,
-        );
+      // "Restart": the database is closed and reopened, which is what an app kill
+      // looks like from the data's point of view.
+      await boot.database.close();
+      final reopened = await bootstrap(transport: _transport);
+      final afterRestart = ExpenseRepository(reopened.database);
+      saved = await afterRestart.load(id);
+      expect(saved, isNotNull, reason: 'the expense survives being killed');
+      expect(saved!.syncState, isNot(SyncState.synced));
+      final queued = await reopened.database
+          .select(reopened.database.syncOutbox)
+          .get();
+      expect(
+        queued.where((q) => q.entityId == id),
+        hasLength(1),
+        reason: 'and so does its queued intent',
+      );
 
-        final deadline = DateTime.now().add(const Duration(seconds: 120));
-        while (DateTime.now().isBefore(deadline)) {
-          await engine.pushOnce();
-          final row = await afterRestart.load(id);
-          if (row?.row.txnNumber != null) break;
-          await tester.pump(const Duration(seconds: 2));
-        }
+      // And it is still attributed to the person who queued it. An anonymous queue is
+      // how one user's financial intent gets pushed under another's session (D-050).
+      expect(
+        queued.firstWhere((q) => q.entityId == id).actorUserId,
+        saved.row.createdBy,
+        reason: 'the queued intent belongs to the actor who recorded it',
+      );
 
-        saved = await afterRestart.load(id);
-        expect(saved!.row.txnNumber, startsWith('KI-EXP-'));
-        expect(saved.syncState, SyncState.synced);
-        expect(
-          (await reopened.database.select(reopened.database.expenses).get())
-              .where((e) => e.id == id),
-          hasLength(1),
-          reason: 'exactly one local record',
-        );
+      // Back online: one push, one server record, one reconciled local row.
+      _transport.online = true;
+      final engine = SyncEngine(
+        outbox: reopened.outbox,
+        endpoint: reopened.mutationEndpoint!,
+        reconciler: reopened.mutationReconciler,
+        actorUserId: saved.row.createdBy,
+      );
 
-        _createdExpenses.add(id);
-        await reopened.database.close();
-      },
-    );
+      final deadline = DateTime.now().add(const Duration(seconds: 120));
+      while (DateTime.now().isBefore(deadline)) {
+        await engine.pushOnce();
+        final row = await afterRestart.load(id);
+        if (row?.row.txnNumber != null) break;
+        await tester.pump(const Duration(seconds: 2));
+      }
+
+      saved = await afterRestart.load(id);
+      expect(saved!.row.txnNumber, startsWith('KI-EXP-'));
+      expect(saved.syncState, SyncState.synced);
+      expect(
+        (await reopened.database.select(reopened.database.expenses).get())
+            .where((e) => e.id == id),
+        hasLength(1),
+        reason: 'exactly one local record',
+      );
+
+      _createdExpenses.add(id);
+      await reopened.database.close();
+    });
   });
 
   group('expense-shared', skip: _phase != 'expense-shared', () {

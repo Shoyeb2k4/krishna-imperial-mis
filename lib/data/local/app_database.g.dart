@@ -9156,9 +9156,6 @@ class $ExpenseAllocationsTable extends ExpenseAllocations
     false,
     type: DriftSqlType.string,
     requiredDuringInsert: true,
-    defaultConstraints: GeneratedColumn.constraintIsAlways(
-      'REFERENCES business_units (id) ON DELETE RESTRICT',
-    ),
   );
   static const VerificationMeta _departmentIdMeta = const VerificationMeta(
     'departmentId',
@@ -9449,6 +9446,22 @@ class ExpenseAllocationRow extends DataClass
   final String id;
   final String orgId;
   final String expenseId;
+
+  /// Deliberately **not** a foreign key to `business_units`, for exactly the reason
+  /// given for [categoryId] below — they are two columns of one classification and the
+  /// argument does not stop applying halfway along it.
+  ///
+  /// It was one, with `ON DELETE RESTRICT`, until the Phase 3 acceptance ran sign-out on
+  /// a device that had synced an expense. `ScopeCachePurge` deletes the business units a
+  /// user no longer holds — and at sign-out, all of them (D-053) — so the restrict fired
+  /// and **sign-out threw**. On a shared back-office workstation that is the ordinary
+  /// sequence, and it is the one D-054 added the control for.
+  ///
+  /// A foreign key asserts "the target exists in this database". On a per-user cache that
+  /// is simply false: the purge removes the masters of a revoked unit while the expense
+  /// lines already synced stay as history (D-048 — the purge is limited to server-owned
+  /// *reference* data, and never touches anything a person typed). The server keeps the
+  /// real key, where the assertion is true. Same reasoning as D-049 and D-062.
   final String businessUnitId;
   final String departmentId;
   final String sectionId;
@@ -12421,30 +12434,6 @@ final class $$BusinessUnitsTableReferences
       manager.$state.copyWith(prefetchedData: cache),
     );
   }
-
-  static MultiTypedResultKey<
-    $ExpenseAllocationsTable,
-    List<ExpenseAllocationRow>
-  >
-  _expenseAllocationsRefsTable(_$AppDatabase db) =>
-      MultiTypedResultKey.fromTable(
-        db.expenseAllocations,
-        aliasName: 'business_units__id__expense_allocations__business_unit_id',
-      );
-
-  $$ExpenseAllocationsTableProcessedTableManager get expenseAllocationsRefs {
-    final manager = $$ExpenseAllocationsTableTableManager(
-      $_db,
-      $_db.expenseAllocations,
-    ).filter((f) => f.businessUnitId.id.sqlEquals($_itemColumn<String>('id')!));
-
-    final cache = $_typedResult.readTableOrNull(
-      _expenseAllocationsRefsTable($_db),
-    );
-    return ProcessedTableManager(
-      manager.$state.copyWith(prefetchedData: cache),
-    );
-  }
 }
 
 class $$BusinessUnitsTableFilterComposer
@@ -12577,31 +12566,6 @@ class $$BusinessUnitsTableFilterComposer
           }) => $$PeriodLocksTableFilterComposer(
             $db: $db,
             $table: $db.periodLocks,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
-    );
-    return f(composer);
-  }
-
-  Expression<bool> expenseAllocationsRefs(
-    Expression<bool> Function($$ExpenseAllocationsTableFilterComposer f) f,
-  ) {
-    final $$ExpenseAllocationsTableFilterComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.id,
-      referencedTable: $db.expenseAllocations,
-      getReferencedColumn: (t) => t.businessUnitId,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$ExpenseAllocationsTableFilterComposer(
-            $db: $db,
-            $table: $db.expenseAllocations,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -12800,32 +12764,6 @@ class $$BusinessUnitsTableAnnotationComposer
     );
     return f(composer);
   }
-
-  Expression<T> expenseAllocationsRefs<T extends Object>(
-    Expression<T> Function($$ExpenseAllocationsTableAnnotationComposer a) f,
-  ) {
-    final $$ExpenseAllocationsTableAnnotationComposer composer =
-        $composerBuilder(
-          composer: this,
-          getCurrentColumn: (t) => t.id,
-          referencedTable: $db.expenseAllocations,
-          getReferencedColumn: (t) => t.businessUnitId,
-          builder:
-              (
-                joinBuilder, {
-                $addJoinBuilderToRootComposer,
-                $removeJoinBuilderFromRootComposer,
-              }) => $$ExpenseAllocationsTableAnnotationComposer(
-                $db: $db,
-                $table: $db.expenseAllocations,
-                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-                joinBuilder: joinBuilder,
-                $removeJoinBuilderFromRootComposer:
-                    $removeJoinBuilderFromRootComposer,
-              ),
-        );
-    return f(composer);
-  }
 }
 
 class $$BusinessUnitsTableTableManager
@@ -12845,7 +12783,6 @@ class $$BusinessUnitsTableTableManager
             bool departmentsRefs,
             bool revenueCategoriesRefs,
             bool periodLocksRefs,
-            bool expenseAllocationsRefs,
           })
         > {
   $$BusinessUnitsTableTableManager(_$AppDatabase db, $BusinessUnitsTable table)
@@ -12928,7 +12865,6 @@ class $$BusinessUnitsTableTableManager
                 departmentsRefs = false,
                 revenueCategoriesRefs = false,
                 periodLocksRefs = false,
-                expenseAllocationsRefs = false,
               }) {
                 return PrefetchHooks(
                   db: db,
@@ -12936,7 +12872,6 @@ class $$BusinessUnitsTableTableManager
                     if (departmentsRefs) db.departments,
                     if (revenueCategoriesRefs) db.revenueCategories,
                     if (periodLocksRefs) db.periodLocks,
-                    if (expenseAllocationsRefs) db.expenseAllocations,
                   ],
                   addJoins: null,
                   getPrefetchedDataCallback: (items) async {
@@ -13004,27 +12939,6 @@ class $$BusinessUnitsTableTableManager
                               ),
                           typedResults: items,
                         ),
-                      if (expenseAllocationsRefs)
-                        await $_getPrefetchedData<
-                          BusinessUnitRow,
-                          $BusinessUnitsTable,
-                          ExpenseAllocationRow
-                        >(
-                          currentTable: table,
-                          referencedTable: $$BusinessUnitsTableReferences
-                              ._expenseAllocationsRefsTable(db),
-                          managerFromTypedResult: (p0) =>
-                              $$BusinessUnitsTableReferences(
-                                db,
-                                table,
-                                p0,
-                              ).expenseAllocationsRefs,
-                          referencedItemsForCurrentItem:
-                              (item, referencedItems) => referencedItems.where(
-                                (e) => e.businessUnitId == item.id,
-                              ),
-                          typedResults: items,
-                        ),
                     ];
                   },
                 );
@@ -13049,7 +12963,6 @@ typedef $$BusinessUnitsTableProcessedTableManager =
         bool departmentsRefs,
         bool revenueCategoriesRefs,
         bool periodLocksRefs,
-        bool expenseAllocationsRefs,
       })
     >;
 typedef $$DepartmentsTableCreateCompanionBuilder =
@@ -18132,24 +18045,6 @@ final class $$ExpenseAllocationsTableReferences
     );
   }
 
-  static $BusinessUnitsTable _businessUnitIdTable(_$AppDatabase db) => db
-      .businessUnits
-      .createAlias('expense_allocations__business_unit_id__business_units__id');
-
-  $$BusinessUnitsTableProcessedTableManager get businessUnitId {
-    final $_column = $_itemColumn<String>('business_unit_id')!;
-
-    final manager = $$BusinessUnitsTableTableManager(
-      $_db,
-      $_db.businessUnits,
-    ).filter((f) => f.id.sqlEquals($_column));
-    final item = $_typedResult.readTableOrNull(_businessUnitIdTable($_db));
-    if (item == null) return manager;
-    return ProcessedTableManager(
-      manager.$state.copyWith(prefetchedData: [item]),
-    );
-  }
-
   static MultiTypedResultKey<
     $ExpensePeriodAllocationsTable,
     List<ExpensePeriodAllocationRow>
@@ -18194,6 +18089,11 @@ class $$ExpenseAllocationsTableFilterComposer
 
   ColumnFilters<String> get orgId => $composableBuilder(
     column: $table.orgId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get businessUnitId => $composableBuilder(
+    column: $table.businessUnitId,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -18260,29 +18160,6 @@ class $$ExpenseAllocationsTableFilterComposer
     return composer;
   }
 
-  $$BusinessUnitsTableFilterComposer get businessUnitId {
-    final $$BusinessUnitsTableFilterComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.businessUnitId,
-      referencedTable: $db.businessUnits,
-      getReferencedColumn: (t) => t.id,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$BusinessUnitsTableFilterComposer(
-            $db: $db,
-            $table: $db.businessUnits,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
-    );
-    return composer;
-  }
-
   Expression<bool> expensePeriodAllocationsRefs(
     Expression<bool> Function($$ExpensePeriodAllocationsTableFilterComposer f)
     f,
@@ -18327,6 +18204,11 @@ class $$ExpenseAllocationsTableOrderingComposer
 
   ColumnOrderings<String> get orgId => $composableBuilder(
     column: $table.orgId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get businessUnitId => $composableBuilder(
+    column: $table.businessUnitId,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -18392,29 +18274,6 @@ class $$ExpenseAllocationsTableOrderingComposer
     );
     return composer;
   }
-
-  $$BusinessUnitsTableOrderingComposer get businessUnitId {
-    final $$BusinessUnitsTableOrderingComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.businessUnitId,
-      referencedTable: $db.businessUnits,
-      getReferencedColumn: (t) => t.id,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$BusinessUnitsTableOrderingComposer(
-            $db: $db,
-            $table: $db.businessUnits,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
-    );
-    return composer;
-  }
 }
 
 class $$ExpenseAllocationsTableAnnotationComposer
@@ -18431,6 +18290,11 @@ class $$ExpenseAllocationsTableAnnotationComposer
 
   GeneratedColumn<String> get orgId =>
       $composableBuilder(column: $table.orgId, builder: (column) => column);
+
+  GeneratedColumn<String> get businessUnitId => $composableBuilder(
+    column: $table.businessUnitId,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<String> get departmentId => $composableBuilder(
     column: $table.departmentId,
@@ -18489,29 +18353,6 @@ class $$ExpenseAllocationsTableAnnotationComposer
     return composer;
   }
 
-  $$BusinessUnitsTableAnnotationComposer get businessUnitId {
-    final $$BusinessUnitsTableAnnotationComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.businessUnitId,
-      referencedTable: $db.businessUnits,
-      getReferencedColumn: (t) => t.id,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$BusinessUnitsTableAnnotationComposer(
-            $db: $db,
-            $table: $db.businessUnits,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
-    );
-    return composer;
-  }
-
   Expression<T> expensePeriodAllocationsRefs<T extends Object>(
     Expression<T> Function($$ExpensePeriodAllocationsTableAnnotationComposer a)
     f,
@@ -18555,7 +18396,6 @@ class $$ExpenseAllocationsTableTableManager
           ExpenseAllocationRow,
           PrefetchHooks Function({
             bool expenseId,
-            bool businessUnitId,
             bool expensePeriodAllocationsRefs,
           })
         > {
@@ -18644,11 +18484,7 @@ class $$ExpenseAllocationsTableTableManager
               )
               .toList(),
           prefetchHooksCallback:
-              ({
-                expenseId = false,
-                businessUnitId = false,
-                expensePeriodAllocationsRefs = false,
-              }) {
+              ({expenseId = false, expensePeriodAllocationsRefs = false}) {
                 return PrefetchHooks(
                   db: db,
                   explicitlyWatchedTables: [
@@ -18682,21 +18518,6 @@ class $$ExpenseAllocationsTableTableManager
                                     referencedColumn:
                                         $$ExpenseAllocationsTableReferences
                                             ._expenseIdTable(db)
-                                            .id,
-                                  )
-                                  as T;
-                        }
-                        if (businessUnitId) {
-                          state =
-                              state.withJoin(
-                                    currentTable: table,
-                                    currentColumn: table.businessUnitId,
-                                    referencedTable:
-                                        $$ExpenseAllocationsTableReferences
-                                            ._businessUnitIdTable(db),
-                                    referencedColumn:
-                                        $$ExpenseAllocationsTableReferences
-                                            ._businessUnitIdTable(db)
                                             .id,
                                   )
                                   as T;
@@ -18749,7 +18570,6 @@ typedef $$ExpenseAllocationsTableProcessedTableManager =
       ExpenseAllocationRow,
       PrefetchHooks Function({
         bool expenseId,
-        bool businessUnitId,
         bool expensePeriodAllocationsRefs,
       })
     >;

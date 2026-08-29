@@ -6,7 +6,7 @@ Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
 Status: **Proposed — Phase 0 revised.** No migration has been written or applied.
-Last updated: 2026-08-26
+Last updated: 2026-08-30
 
 This is the normalised proposal for review before implementation. Table and column names
 may still change; the *shape* is what matters. Postgres is the system of record; the local
@@ -497,9 +497,22 @@ Edit window (spec §13.3), evaluated only while the period is open:
 ```
 allowed if  period is open
         and caller has the operation capability for the row's business unit
-        and (   business_date >= today - org_settings.edit_window_days
+        and (   today - business_date <= org_settings.edit_window_days
              or caller has 'transaction.correct.beyond_window' )
 ```
+
+**`today` is the property's current business date, never `current_date`** (D-067). This
+database's session timezone is UTC and the properties are `Asia/Kolkata` with an 05:00
+cut-off, so `current_date` lagged the property's own date for half an hour every night and
+granted an eighth day it had not been asked to grant. It is derived by
+`app.business_date_at(now(), unit.timezone, unit.business_day_cutoff)` — the same rule
+`BusinessDate.fromInstant` applies on the client — and for a shared document
+`app.expense_window_today` takes the **greatest** such date across the units it charges, so
+the window must still be open for every property the bill touches.
+
+The comparison is inclusive of its last day: a business date of D is editable on **D+7**
+and refused on **D+8** (D-065). `transaction.correct.beyond_window` lifts the *age* rule
+and nothing else — the period lock is checked afterwards and is never bypassed.
 
 ## 8. Audit and sync infrastructure
 

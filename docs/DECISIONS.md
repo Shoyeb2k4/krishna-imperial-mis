@@ -1427,3 +1427,148 @@ is exactly the asymmetry the append-only guard is for.
 **Consequences:** A run ends with the development project's financial tables at baseline
 and its audit trail longer. That is the correct outcome and is documented here so it is
 not mistaken for contamination.
+
+---
+
+# Phase 3 — decisions forced by the device acceptance (2026-08-30)
+
+Each of the three below is a defect the acceptance found in code that had already passed
+review, a clean `flutter analyze` and a green host suite. They are recorded as decisions
+because each changes a rule, not merely a line.
+
+## D-067 — The edit window is measured under the property's business date
+**Date:** 2026-08-30 · **Status:** Accepted — **amends D-065**
+**Context:** D-065 fixed the *boundary* of the seven-day window — D+7 permitted, D+8
+refused — and wrote the rule as `elapsed = current_date − business_date`. It did not ask
+what `current_date` means. It means the **database session's** calendar date, and this
+database's session timezone is UTC:
+
+```
+select current_setting('TimeZone')   →  UTC
+```
+
+The properties are `Asia/Kolkata` (UTC+05:30) with an 05:00 cut-off, so the UTC calendar
+date lags the property's own business date for part of every night. Measured against the
+real configuration, the two disagreed for **thirty minutes a day, 05:00–05:29 IST**, and
+inside that window an entry that was D+8 old counted as D+7 and was **wrongly accepted for
+edit**.
+
+**Thirty minutes is not the point.** The window is that narrow only because the +05:30
+offset and the 05:00 cut-off happen to cancel out, and both are configuration (spec §9). A
+unit with a midnight cut-off is misjudged for **five and a half hours a day**; a unit in a
+zone west of UTC is misjudged the other way, refusing edits that are still inside the
+window. Correctness cannot rest on a coincidence between two independently editable
+settings.
+
+**Decision:** "Today", for the edit window, is the **property's current business date**,
+derived exactly as spec §9 derives it for a new entry — `now()` in the unit's IANA
+timezone, stepped back one calendar day when the local time is before that unit's cut-off.
+`app.business_date_at(instant, timezone, cutoff)` is the server half of
+`BusinessDate.fromInstant`, and takes the instant as a parameter so the rule is testable at
+04:59, 05:00, 23:59 and 00:01 without waiting for those times to arrive. Migration 0033
+asserts all four, plus the 05:15 case this decision exists for.
+
+Deriving it through the cut-off — rather than simply using the property's calendar date —
+is what makes the two layers consistent: an expense recorded this second has `elapsed = 0`
+instead of having already spent a day of its window.
+
+A shared bill charges more than one property and each property's books are protected
+separately, so the window must be open for **every** unit the document touches. The
+comparison uses the greatest business date among them: the strictest reading, never the
+most permissive.
+
+**Alternatives:** setting the database session timezone to `Asia/Kolkata` (moves the
+coincidence rather than removing it, and silently changes every other date expression in
+the schema); comparing against the property's plain calendar date (disagrees with the
+cut-off, so a just-recorded entry starts a day into its window).
+
+**Consequences:** `current_date` no longer appears anywhere in the schema. Both helpers
+live in `app`, which `authenticated` cannot reach, so the reviewed API surface (D-044) is
+unchanged — and the migration asserts that, in both directions.
+
+The migration was **refused on its first application** by its own assertion: Postgres had
+granted `PUBLIC EXECUTE` on both new helpers. `alter default privileges … in schema app`
+was set by 0024 and did not cover them, because `ALTER DEFAULT PRIVILEGES` applies only to
+objects created by the role that ran it, and these arrived over a different connection. The
+revoke is now explicit and lives in the same file that creates the functions, so it cannot
+depend on who holds the connection. **A default privilege is not a guard; it is a default.**
+
+## D-068 — Financial documents are scoped, and retained; their unit pointer is soft
+**Date:** 2026-08-30 · **Status:** Accepted — completes D-048's classification
+**Context:** Signing out on a device that had synced an expense **threw**:
+
+```
+DELETE FROM business_units WHERE id IN (?, ?)  →  FOREIGN KEY constraint failed
+```
+
+`expense_allocations.business_unit_id` was a real foreign key with `ON DELETE RESTRICT`,
+while `category_id` — the column immediately below it, in the same classification, for the
+same reason — was deliberately a soft pointer (D-062). The scope purge deletes the units a
+user no longer holds, and at sign-out all of them (D-053), so the restrict fired. On a
+shared back-office workstation that is the ordinary sequence, and it is precisely the one
+D-054 added the sign-out control for.
+
+Underneath it was a second, quieter defect. D-048 promised that `CacheClassification`
+"names every local table and its owner, and throws on an unclassified one — so a new table
+forces a decision about what an authority change does to it". The test that was supposed to
+hold that promise iterated `CacheClassification.tables` and asserted each entry was in
+`CacheClassification.tables`. It is true by construction and proved nothing. Phase 3 added
+four expense tables, none of them was classified, and the suite went on passing.
+
+**Decision, in three parts.**
+
+1. **`business_unit_id` on an allocation line is a soft pointer**, like its neighbour. A
+   foreign key asserts "the target exists in this database"; on a per-user cache that is
+   simply false, and a retained line may legitimately outlive the cached unit it names.
+   The server keeps the real key, where the assertion is true. Local schema **v8**.
+2. **The four expense tables are classified `scopedFinancialHistory` and are retained.**
+   Not `businessUnitScoped`, because that value means *purged*; not `organizationGlobal`,
+   because that would be untrue and would mislead the next reader. The purge is limited to
+   server-owned **reference** data, which the server hands straight back when authority
+   returns — "nothing a person typed is ever in scope" was already the stated limit, and an
+   expense is something a person typed.
+3. **The completeness guard now runs against the real schema**, comparing the classified
+   set with `AppDatabase.allTables` in both directions. A promise nothing evaluates is a
+   comment.
+
+**A question left open for the project lead.** This retains a revoked manager's cached
+expense amounts for the property they have lost. It follows from D-048 as written, and the
+alternative — purging scoped financial history too — is defensible on the same security
+reasoning that chose Option A. It is a retention decision about financial data, so it is
+his to make, not one to be settled by an implementer reading between two documents. If he
+wants it purged, it is one line in `CacheClassification` plus a delete step, and part 1
+above is required either way.
+
+**Consequences:** Sign-out works on a device holding expenses. The atomicity test that used
+the dropped foreign key to force a mid-transaction failure now forces one with a duplicate
+allocation primary key: the rollback path under test is unchanged, only the way the test
+reaches it.
+
+## D-069 — The secret scan proves its own controls on every run
+**Date:** 2026-08-30 · **Status:** Accepted
+**Context:** The first Windows **Release** build of Phase 3 produced an AOT snapshot, and
+the scan reported a Postgres connection string with a password inside `app.so`. It was a
+297-character false positive: `AppConfig`'s classifier contains the literal `postgres://`
+precisely so it can *refuse* a connection string, and in an AOT string table that literal
+is interned beside unrelated symbols. The pattern's trailing `[^\s@]+` ran across the
+separator bytes and reached the `@` in `_timeZoneOffsetInSeconds@0150898`, assembling a
+"password" out of `Error_trySetStackTrace`, `StreamTransformerBase` and `HctSolver`.
+
+This is the same class of defect the Phase 2 acceptance recorded and fixed for
+`sb_secret_`. The fix then was a `verify` hook; the Postgres pattern never got one.
+
+**Decision:** The pattern gains a verifier — a real connection string is short and
+contiguous, and every character between the scheme and the `@` is legal in a URI userinfo,
+so one byte outside that set means the match has left the string it started in.
+
+And because every `verify` hook makes the scan **narrower**, the tool now runs a
+**self-test on every invocation**, not behind a flag: five control credentials it must
+still catch, and two look-alikes it must not. If any control fails it exits 2 and reports
+which, because *a scan that has quietly stopped matching reports "clean" just as
+confidently as a scan that is working*. Verified by deliberately over-narrowing the
+verifier and watching the run refuse itself.
+
+**Consequences:** Narrowing a pattern to silence a false positive can no longer narrow it
+past the real thing without saying so. Acceptance builds carry the development identity
+passwords in `kernel_blob.bin` and are still proven non-distributable by the same tool;
+the distributable artefacts are rebuilt without the identity defines and scanned clean.

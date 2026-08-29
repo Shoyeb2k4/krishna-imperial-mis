@@ -96,7 +96,41 @@ void main() {
   });
 
   group('cache classification', () {
-    test('every table has an explicit owner', () {
+    test('every table in the real schema has an explicit owner', () async {
+      // Against the **database**, not against the list itself.
+      //
+      // This assertion used to iterate `CacheClassification.tables` and check that each
+      // of them was in `CacheClassification.tables`, which is true by construction and
+      // therefore proved nothing. Phase 3 added four expense tables, none of them was
+      // classified, and this test went on passing — until sign-out threw a foreign-key
+      // error on a real device, because the purge deleted a business unit that a synced
+      // expense line still pointed at.
+      //
+      // D-048's promise was that "a new table forces a decision about what an authority
+      // change does to it". A promise nothing evaluates is a comment. This evaluates it.
+      final db = AppDatabase(NativeDatabase.memory());
+      addTearDown(db.close);
+
+      final actual = db.allTables.map((t) => t.actualTableName).toSet();
+      final classified = CacheClassification.tables.map((t) => t.name).toSet();
+
+      expect(
+        actual.difference(classified),
+        isEmpty,
+        reason:
+            'these tables exist in the local database and no one has said what a '
+            'revocation does to them — classify them in CacheClassification',
+      );
+      expect(
+        classified.difference(actual),
+        isEmpty,
+        reason:
+            'these tables are classified but no longer exist; a stale entry makes the '
+            'list look more complete than it is',
+      );
+    });
+
+    test('the classification list agrees with itself', () {
       for (final table in CacheClassification.tables) {
         expect(
           () => CacheClassification.ownershipOf(table.name),
@@ -108,6 +142,27 @@ void main() {
         throwsArgumentError,
         reason: 'a new table must be classified before it can be cached',
       );
+    });
+
+    test('financial documents are retained, not purged', () {
+      // The purge is limited to server-owned *reference* data (D-048). An expense is
+      // something a person typed, so it is outside that limit — and its lines carry a
+      // soft `business_unit_id` precisely so a retained line may outlive the cached unit
+      // it names.
+      final purged = CacheClassification.purgedOnRevocation.map((t) => t.name);
+      for (final table in const [
+        'expenses',
+        'expense_allocations',
+        'expense_period_allocations',
+        'expense_attachments',
+      ]) {
+        expect(
+          CacheClassification.ownershipOf(table),
+          CacheOwnership.scopedFinancialHistory,
+          reason: '$table holds documents, not reference data',
+        );
+        expect(purged, isNot(contains(table)));
+      }
     });
 
     test('the outbox is never in the purged set', () {

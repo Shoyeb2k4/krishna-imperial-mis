@@ -201,6 +201,39 @@ void main() {
         '2026-06-15',
       );
     });
+
+    test('neither the device clock nor UTC can change the answer', () {
+      // The instant migration 0033 exists for: 23:45 UTC on 15 June is 05:15 on the
+      // 16th in Kolkata, which is *after* the 05:00 cut-off. So the property's business
+      // date is the 16th while the UTC calendar date is still the 15th.
+      //
+      // The server used to measure the 7-day edit window with Postgres `current_date`,
+      // evaluated in a UTC session, and therefore counted one day fewer than the
+      // property had actually lived through — accepting an edit on D+8 as though it
+      // were D+7. It now derives the comparison date with exactly the rule below, so
+      // the two layers agree at this instant rather than merely near it.
+      final instant = DateTime.utc(2026, 6, 15, 23, 45);
+
+      expect(
+        instant.toUtc().toIso8601String().substring(0, 10),
+        '2026-06-15',
+        reason: 'the UTC calendar date',
+      );
+      expect(
+        BusinessDate.fromInstant(instant, timeZoneId: kolkata).iso,
+        '2026-06-16',
+        reason: 'the property has already begun the 16th',
+      );
+
+      // And it is a function of the instant, not of how that instant is expressed.
+      // `fromInstant` takes the absolute moment and the *property's* zone; the zone the
+      // recording device happens to be set to is not an input and cannot become one.
+      expect(
+        BusinessDate.fromInstant(instant.toLocal(), timeZoneId: kolkata).iso,
+        BusinessDate.fromInstant(instant, timeZoneId: kolkata).iso,
+        reason: 'an Android phone and a Windows desktop must agree',
+      );
+    });
   });
 
   group('value semantics', () {

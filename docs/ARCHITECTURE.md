@@ -8,7 +8,7 @@ the application role named **Owner** is a separate concept — D-057)
 Status: **Sections 1–12 proposed (Phase 0, revised); section 13 describes what is built
 and verified.** Sections 6, 5.3 and 8 carry the project lead's mandated corrections.
 Implementation status is tracked in `PROJECT_STATUS.md`.
-Last updated: 2026-08-28
+Last updated: 2026-08-30
 
 ---
 
@@ -709,3 +709,73 @@ A `SECURITY DEFINER` RPC checks organisation-wide capability **before** it loads
 row (D-046), so an unauthorised caller cannot use "unknown entity" versus "no permission"
 to discover whether a record exists. The unit-scoped check still runs afterwards, because
 it has to know which property the row belongs to.
+
+---
+
+## 14. Dates, and the two layers that must agree (2026-08-30)
+
+§4.1 says business date is derived once, from the capture instant, the unit's timezone and
+the unit's cut-off, and then persisted. That covers the date written **onto** a record. It
+did not say what date a *rule* compares against, and the Phase 3 acceptance found the gap.
+
+### 14.1 There are two clocks, and only one of them is authoritative
+
+| | Where it comes from | What it is good for |
+|---|---|---|
+| The **property's business date** | `now()` in the unit's IANA zone, stepped back a calendar day before that unit's cut-off | every business rule: the edit window, which trading day an entry belongs to |
+| The **database session's calendar date** | `current_date`, evaluated in the session's timezone — **UTC** on this project | nothing in this product |
+
+`expense_update` measured the seven-day edit window with the second one. Because
+`Asia/Kolkata` is UTC+05:30 and the cut-off is 05:00, the two disagreed between **05:00 and
+05:29 local time every day**, and inside that half hour an entry that was D+8 old was
+counted as D+7 and accepted. The narrowness is an accident of two settings cancelling: a
+midnight cut-off widens it to five and a half hours, and a property west of UTC reverses
+its sign, refusing edits that are still inside the window (D-067).
+
+### 14.2 One rule, expressed twice, pinned to the same instant
+
+```
+        BusinessDate.fromInstant(instant, zone, cutoff)      ← Dart, domain layer
+        app.business_date_at(instant, zone, cutoff)          ← SQL, app schema
+```
+
+Both take the **instant** as an argument rather than reading a clock, which is what makes
+the rule testable at 04:59, 05:00, 23:59 and 00:01 without waiting for those times. Both
+are asserted at the same boundary instants — the Dart suite in
+`test/domain/business_date_test.dart`, the SQL in migration 0033's own `do` block, which
+fails the deploy rather than merely warning. One case is deliberately shared: 23:45 UTC on
+15 June, where the UTC calendar date is the 15th and the property's business date is
+already the 16th. Client and server are pinned to the *same instant*, not merely to the
+same prose.
+
+Deriving the comparison date **through the cut-off**, rather than using the property's
+plain calendar date, is what keeps the two consistent: an expense recorded this second has
+`elapsed = 0` rather than having already spent a day of its window.
+
+A shared bill charges more than one property, and each property's books are protected
+separately. `app.expense_window_today` therefore takes the **greatest** current business
+date across the units a document charges — the window must still be open for all of them.
+
+### 14.3 The local read model is a cache, so it does not assert what a cache cannot know
+
+§13.5 and D-062 established the principle; Phase 3's acceptance showed where it had not
+been applied. `expense_allocations.business_unit_id` was a real foreign key to
+`business_units` with `ON DELETE RESTRICT`, immediately above a `category_id` whose comment
+explains at length why it is *not* one.
+
+A foreign key asserts "the target exists in this database". On a per-user cache that is
+false by design: the scope purge removes a revoked unit's masters while the expense lines
+already synced remain as history, and at sign-out it removes every unit (D-053). So the
+restrict fired and **sign-out threw** on any device that had synced an expense — the exact
+sequence a shared back-office workstation performs daily, and the one D-054 added the
+control for.
+
+Local schema **v8** makes it a soft pointer. The server keeps the real key, where the
+assertion is true.
+
+The related lesson is about the guard rather than the column. `CacheClassification` was
+supposed to make an unclassified table impossible; the test enforcing it compared the
+classified list against itself, so four Phase 3 tables were never classified and nothing
+objected. It now compares against `AppDatabase.allTables`, in both directions. **A rule
+that nothing evaluates is a comment** — the same shape of finding as D-059, where D-050's
+actor filter existed and was never passed (D-068).

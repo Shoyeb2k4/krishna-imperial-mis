@@ -85,10 +85,21 @@ void main() {
     test(
       'a failure while writing the lines leaves no document and no queue entry',
       () async {
-        // A line naming a business unit that does not exist trips the foreign key
-        // mid-transaction, after the header has been inserted.
+        // Two lines sharing one primary key. The second insert is refused after the
+        // header and the first line are already written — which is precisely the
+        // half-written state this test exists to prove cannot survive.
+        //
+        // The failure used to be forced with a line naming a business unit that does not
+        // exist, which relied on `expense_allocations.business_unit_id` being a foreign
+        // key. It is deliberately a soft pointer now, because a synced line legitimately
+        // outlives the cached unit it names (see the column, and D-048/D-062), so that
+        // trigger no longer fires and the save correctly succeeded. The rollback path
+        // under test is unchanged; only the way this test reaches it is.
         final broken = expenseWith(
-          lines: [line(unit: 'no-such-unit', rupees: 100)],
+          lines: [
+            line(unit: ccrId, rupees: 60, id: 'duplicate-line'),
+            line(unit: ccrId, rupees: 40, id: 'duplicate-line'),
+          ],
         );
 
         await expectLater(save(broken), throwsA(anything));

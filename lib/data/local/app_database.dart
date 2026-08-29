@@ -55,7 +55,7 @@ class AppDatabase extends _$AppDatabase {
   /// Financial tables raise this number as they land, each with a migration step and a
   /// migration test (docs/RELEASE_CHECKLIST.md §C).
   @override
-  int get schemaVersion => 7;
+  int get schemaVersion => 8;
 
   /// Timestamps are stored as ISO-8601 **UTC text**, not as unix seconds.
   ///
@@ -115,6 +115,14 @@ class AppDatabase extends _$AppDatabase {
         await m.createTable(expenseAllocations);
         await m.createTable(expensePeriodAllocations);
         await m.createTable(expenseAttachments);
+      }
+      if (from < 8) {
+        // `expense_allocations.business_unit_id` stops being a foreign key, for the
+        // reason given on the column: the scope purge legitimately removes a business
+        // unit while synced expense history stays, and `ON DELETE RESTRICT` made
+        // sign-out throw on any device that had synced an expense. Recreating the table
+        // is the only way SQLite drops a foreign key; no value is transformed.
+        await m.alterTable(TableMigration(expenseAllocations));
       }
     },
     beforeOpen: (details) async {

@@ -41,6 +41,27 @@ bool _looksLikeKeyMaterial(RegExpMatch match) {
   return head.length >= 30 && digits >= 4;
 }
 
+/// Whether a `postgres://user:pass@` match is one string rather than several.
+///
+/// The same compiled-binary problem as [_looksLikeKeyMaterial], reached from the other
+/// end. `AppConfig`'s key classifier contains the literal `postgres://` precisely so it
+/// can **refuse** a connection string, and in an AOT snapshot that literal is interned
+/// beside unrelated symbols with only NUL and length bytes between them. The pattern's
+/// trailing `[^\s@]+` runs happily across those and reaches the `@` in some later
+/// symbol — producing, in the first Windows Release build of Phase 3, a 297-character
+/// "password" assembled from `Error_trySetStackTrace`, `StreamTransformerBase` and
+/// `HctSolver`.
+///
+/// A real connection string is short and contiguous, and every character between the
+/// scheme and the `@` is legal in a URI userinfo. One byte outside that set means the
+/// match has left the string it started in.
+bool _looksLikeConnectionString(RegExpMatch match) {
+  final whole = match.group(0) ?? '';
+  if (whole.length > 200) return false;
+  final afterScheme = whole.substring(whole.indexOf('//') + 2);
+  return RegExp(r"^[A-Za-z0-9._~%!$&'()*+,;=:@-]+$").hasMatch(afterScheme);
+}
+
 /// Patterns that can only be real credential material.
 final _patterns = <({String label, RegExp pattern, _Verifier? verify})>[
   (
@@ -51,7 +72,7 @@ final _patterns = <({String label, RegExp pattern, _Verifier? verify})>[
   (
     label: 'Postgres connection string with a password',
     pattern: RegExp(r'postgres(?:ql)?://[^\s:/@]+:[^\s@]+@'),
-    verify: null,
+    verify: _looksLikeConnectionString,
   ),
   (
     // The header *and* a body. Several dependencies declare the PEM delimiters as
@@ -110,8 +131,79 @@ const _textExtensions = {
   '.g.dart',
 };
 
+/// Proves the scan still detects what it exists to detect.
+///
+/// A scanner is only as trustworthy as its last true positive, and every `verify`
+/// hook makes it narrower. Each case below is a credential this must catch and a
+/// look-alike it must not, so narrowing a pattern to silence a false positive cannot
+/// quietly narrow it past the real thing. Run by `--self-test`, and by the gate.
+///
+/// The values here are synthetic and belong to nothing.
+List<String> _selfTest() {
+  final failures = <String>[];
+
+  void mustFind(String label, String sample) {
+    if (_scan(sample, 'self-test').isEmpty) {
+      failures.add('MISS: the scan no longer detects $label');
+    }
+  }
+
+  void mustIgnore(String label, String sample) {
+    if (_scan(sample, 'self-test').isNotEmpty) {
+      failures.add('FALSE POSITIVE: the scan flags $label');
+    }
+  }
+
+  mustFind(
+    'a Postgres connection string',
+    'postgresql://postgres:hunter2CorrectHorse@db.example.supabase.co:5432/postgres',
+  );
+  mustFind('a short Postgres connection string', 'postgres://user:pw@host/db');
+  mustFind(
+    'a modern Supabase secret key',
+    'sb_secret_9fK2xQ7bT4wR1nZ8vY6mC3jL5hD0gS2a',
+  );
+  mustFind(
+    'a PEM private key block',
+    '-----BEGIN RSA PRIVATE KEY-----\n'
+        'MIIEowIBAAKCAQEA7t9Xq2mVb4kZ1cR8sT6uY0wP3nD5gH7jL9fA2eB4cM6oQ8rS0v',
+  );
+  mustFind('a JWT signing secret', 'JWT_SECRET=aB3dE6gH9jK2mN5pQ8sT1vW4xY7z');
+
+  // The AOT string table: `postgres://` interned beside unrelated symbols, with the
+  // `@` supplied by a much later one. This is the shape that made the first Windows
+  // Release build of Phase 3 look like it carried a database password.
+  mustIgnore(
+    'a match spanning the AOT string constant table',
+    'MapEntry\x00\x00postgres://\x00\x00\x01Error_trySetStackTrace\x00'
+        'StreamTransformerBase\x00HctSolver\x00_timeZoneOffsetInSeconds@0150898',
+  );
+  // The classifier literal on its own is a parser, not a credential.
+  mustIgnore('the bare scheme literal', "const prefix = 'postgres://';");
+
+  return failures;
+}
+
 Future<int> main(List<String> args) async {
   final findings = <String>[];
+
+  // Always, not only under a flag. A scan that has quietly stopped matching reports
+  // "clean" just as confidently as a scan that is working.
+  final selfTestFailures = _selfTest();
+  if (selfTestFailures.isNotEmpty) {
+    stderr.writeln('THE SECRET SCAN IS NOT WORKING — its own controls failed:');
+    for (final failure in selfTestFailures) {
+      stderr.writeln('  $failure');
+    }
+    return 2;
+  }
+  if (args.contains('--self-test')) {
+    stdout.writeln(
+      'Secret scan self-test passed: every control credential is still detected '
+      'and every look-alike is still ignored.',
+    );
+    return 0;
+  }
   final root = Directory.current;
 
   await for (final entity in root.list(recursive: true, followLinks: false)) {

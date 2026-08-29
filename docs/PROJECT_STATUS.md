@@ -5,7 +5,7 @@ Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
-Last updated: **2026-08-28**
+Last updated: **2026-08-30**
 
 > A new session should be able to read this file and know exactly where work stopped.
 > This file — not chat history — is the checkpoint.
@@ -23,10 +23,21 @@ Every gate passed, including the ones that can only be passed by running the rea
 application: the Android package on a device, and the compiled Windows executable, both
 against the real `krishna-mis-dev` project, with the real development identities.
 
-**Phase 3 — Expense Engine: in progress.** Slices 1–7 are approved and committed
-(`81ef239`, `03e8b93`); slices 8–13 — the Android entry surface, the Windows ledger and
-detail, edit/void, cross-business and cross-period allocation, and the audit presentation —
-are built and covered by host tests. Device acceptance is the remaining work.
+**Phase 3 — Expense Engine: in progress. NOT complete.** Slices 1–7 are approved and
+committed (`81ef239`, `03e8b93`); slices 8–13 — the Android entry surface, the Windows
+ledger and detail, edit/void, cross-business and cross-period allocation, and the audit
+presentation — are built and committed (`3871b9f`) and covered by host tests.
+
+**Device acceptance is under way and is partly done.** The core lifecycle is proven on both
+real clients against `krishna-mis-dev`: routine entry, the full offline round trip, the
+shared-bill scoped projection, and the refusal set (closed period, stale-version conflict,
+who may void). Three defects were found and fixed, one of them a server-side correctness
+bug in the edit window that no host test could have caught (D-067), one a crash on sign-out
+(D-068), and one in the secret scanner itself (D-069).
+
+**What remains before Phase 3 can be called complete** is listed under *Acceptance still
+outstanding* below. It is deliberately not glossed: several requested surfaces have no
+acceptance phase written yet, and a phase that has not run is not a phase that passed.
 
 Six decisions were recorded during it, three of them corrections the project lead required
 or the work exposed: period contributions as the only reporting source (D-060), cross-unit
@@ -89,10 +100,10 @@ Blocked.**
 
 | Item | Status | Evidence |
 |---|---|---|
-| `dart format --set-exit-if-changed` | **Tested** | clean (104 files) |
+| `dart format --set-exit-if-changed` | **Tested** | clean (140 files) |
 | `flutter analyze` | **Tested** | **No issues found** |
-| Host test suite | **Tested** | **575 tests, all passing** |
-| Secret scan — tree, git history, built binaries | **Tested** | clean; positive control proves it detects |
+| Host test suite | **Tested** | **578 tests, all passing** |
+| Secret scan — tree, git history, built binaries | **Tested** | clean — tree, history and rebuilt distributables; the scan now proves its own controls every run (D-069) |
 | Migration audit (search_path, API surface, policy boundary) | **Tested** | 14 host tests |
 | Backend schema parity (migrations vs the claims made about them) | **Tested** | 18 host tests |
 | Live backend suite against `krishna-mis-dev` | **Tested** | **19 tests** across 7 phases |
@@ -117,19 +128,36 @@ Blocked.**
 | Android and Windows expense surfaces | **Tested** | 37 draft-model tests + 17 widget tests |
 | Reporting engines and parity suite | **Not implemented** | Phase 5, by design |
 | Revenue tables and entry | **Not implemented** | Phase 4, by design |
+| Android expense acceptance — routine entry, offline round trip, shared projection, refusals | **Tested** | 4 phases on the real dev APK against `krishna-mis-dev` |
+| Windows expense acceptance — the same four phases | **Tested** | 4 phases inside the real `krishna_mis.exe` |
+| Edit window under the property's business date (D-067) | **Tested** | migration 0033 asserts 04:59 / 05:00 / 05:15 / 23:59 / 00:01; live suite re-run green |
+| Device timezone cannot influence a business date | **Tested** | `business_date_test.dart`, pinned to the same instant the server asserts |
+| Secret scan — tree, history, **rebuilt distributable** APK + Windows Release | **Tested** | clean; scanner self-test proves its own controls, verified by breaking it |
+| Android cross-period entry through the UI | **Not tested** | no acceptance phase written |
+| Attachments on either platform, end to end | **Not tested** | no acceptance phase written; host coverage only (18 tests) |
+| Windows ledger: filters, paging, detail projection | **Not tested** | no acceptance phase written; widget coverage only |
+| Two-device Android ⇄ Windows expense propagation | **Not tested** | no acceptance phase written |
+| Payment-date accrual through the application | **Not tested** | domain rule covered; no client-path acceptance |
 
 ### Test totals
 
 | Suite | Count | Result |
 |---|---|---|
-| Host (`flutter test`) | 575 | all passing |
+| Host (`flutter test`) | 578 | all passing |
 | Live backend against `krishna-mis-dev` (opt-in) | 19 | all passing |
 | Live expense suite against `krishna-mis-dev` (opt-in) | 16 | all passing |
-| Android device acceptance (real APK) | 19 | all passing |
-| Windows acceptance (real executable) | 18 | all passing |
+| Android Phase 2 device acceptance (real APK) | 19 | all passing |
+| Windows Phase 2 acceptance (real executable) | 18 | all passing |
 | Windows shell (real executable) | 15 | all passing |
 | Encryption on device — Android 8, Windows 8 | 16 | all passing |
-| **Total** | **678** | **0 failing, 0 skipped-and-counted** |
+| **Android Phase 3 expense acceptance (real APK)** | **4** | **all passing** |
+| **Windows Phase 3 expense acceptance (real executable)** | **4** | **all passing** |
+| **Total** | **689** | **0 failing, 0 skipped-and-counted** |
+
+The Phase 3 acceptance figures are four phases per platform — `expense-simple`,
+`expense-offline`, `expense-shared`, `expense-refusals` — each one process launch against
+the real backend. **Skipped phases are not counted**, and the surfaces listed as *Not
+tested* above contribute nothing to this total, because they have no phase to run.
 
 Skipped phases are *not* counted. Each acceptance phase reports its own tests as passing
 and every other phase as skipped; only the phase that ran contributes to the total above.
@@ -171,6 +199,61 @@ only by running the real application.
     `kernel_blob.bin`. Those artefacts must never be distributed; the scanner now proves
     the distributable build is clean and the check has a positive control.
 
+## Defects found and fixed during the Phase 3 acceptance
+
+Each passed review, `flutter analyze` and a green host suite beforehand. Each was found
+only by running the real application, or by asking what a committed rule actually evaluated
+to. Full reasoning in `DECISIONS.md` D-067 … D-069.
+
+1. **The edit window was measured against the server's calendar date, not the property's.**
+   `expense_update` used Postgres `current_date`; the session timezone is UTC, the
+   properties are `Asia/Kolkata` with an 05:00 cut-off, so for **thirty minutes every day**
+   an entry that was D+8 old was counted as D+7 and accepted for edit. Narrow only because
+   the +05:30 offset and the 05:00 cut-off happen to cancel — a midnight cut-off is wrong
+   for five and a half hours a day. Fixed in migration 0033 (D-067).
+2. **The migration was refused by its own assertion on first application** — Postgres had
+   granted `PUBLIC EXECUTE` on both new helpers, because `ALTER DEFAULT PRIVILEGES` covers
+   only objects created by the role that ran it. The revoke is now explicit and sits beside
+   the functions it protects. The invariant working exactly as D-044 intended.
+3. **Signing out threw a foreign-key error on any device that had synced an expense.**
+   `expense_allocations.business_unit_id` was a real FK with `ON DELETE RESTRICT` while the
+   column below it was deliberately soft, and the scope purge deletes every unit at
+   sign-out. Local schema v8 makes it a soft pointer (D-068).
+4. **The cache-classification guard had never been evaluated.** It iterated the classified
+   list and asserted each entry was in the classified list. Phase 3 added four expense
+   tables, none was classified, and the suite went on passing. It now compares against
+   `AppDatabase.allTables` in both directions (D-068).
+5. **The secret scanner reported a database password inside the Windows Release binary.**
+   A 297-character false positive assembled from adjacent AOT string-table symbols. The
+   pattern gained a verifier — and, because every verifier narrows the scan, the tool now
+   proves its own controls on every run (D-069).
+6. **An acceptance assertion raced the shipped sync worker.** `expense-offline` asserted
+   `transientFailures == 1`, which claims *that particular call* did the work; `pushOnce`
+   returns an empty report both when nothing is due and when a cycle is already running.
+   Now asserts the durable consequence — nothing applied, the intent still queued with a
+   recorded attempt, no number invented locally.
+
+## Acceptance still outstanding
+
+Written down rather than glossed. None of these has an acceptance phase yet, so none of
+them has passed; each is host- or widget-tested only.
+
+1. **Cross-period allocation through the Android UI** — the ₹60,000 → May ₹30,000 / June
+   ₹30,000 split, and an uneven minor-unit split reconciling to the paisa. The *server*
+   half is proven by the live suite (`shared and cross-period at once reconciles on both
+   dimensions`); the entry surface is not.
+2. **Attachments end to end on either platform** — staging, independent upload, hash
+   confirmation, transient-failure retry that leaves the expense `Synced`, and a scoped
+   manager being refused the complete-document object by Storage rather than by a hidden
+   button. Host coverage is 18 tests; the live suite proves the Storage refusal.
+3. **The Windows ledger** — filters, keyset paging against SQL rather than an in-memory
+   future, and the detail panel never labelling a scoped share as `TOTAL`.
+4. **Two-device propagation**, Android ⇄ Windows simultaneously, for expenses.
+5. **Payment-date accrual through the application** — a June salary paid 5 July
+   contributing ₹80,000 to June and ₹0 to July.
+6. **Void through the UI** — mandatory reason, blank reason refused, control absent for a
+   Manager. The *server* refusals are proven on both platforms; the surface is not.
+
 ## Known issues
 
 1. **`flutter_secure_storage` pinned to 9.2.4.** 11.x requires `compileSdk 37`; this
@@ -203,26 +286,38 @@ platforms run against it.
 
 ## Next exact task
 
-**Phase 3 — Expense Engine.** The proposal is with the project lead and no code has been
-written.
-It covers the expense document, allocation lines with exact reconciliation, optional
-cross-period allocation (D-034), attachments with deferred upload, offline creation with an
-atomic outbox write, the Phase 3 Postgres schema with its RLS and RPC boundary, correction
-and void semantics, and the Android and Windows entry surfaces.
+**Finish the Phase 3 acceptance.** Write and run the six phases listed under *Acceptance
+still outstanding*, then re-run the full gate set and close the phase. Nothing is blocked;
+this is remaining work, not an obstacle.
 
-Four project-lead decisions are needed before implementation begins — see the proposal.
+The order that costs least: cross-period entry and payment-date accrual share the entry
+surface and should be one phase each on Android; attachments need a phase on each platform
+because the pickers differ; the Windows ledger needs one; two-device propagation needs two
+halves like `propagate-a` / `propagate-b`.
+
+**Do not mark Phase 3 complete until those have run.** Four of the requested surfaces are
+covered today only by host and widget tests, and Phase 2 established — five times over —
+that a green host suite is not evidence about the real application.
 
 ## Open questions for the project lead
 
-**None outstanding from Phase 2.** The Phase 3 proposal raises four new ones.
+1. **Does a revoked scope take that property's cached expense history with it?** (D-068.)
+   Today it does not: the scope purge is limited to server-owned *reference* data, so a
+   manager who loses Crystal Canopy keeps its cached expense amounts on their device until
+   they sign out. That follows from D-048 as written — "nothing a person typed is ever in
+   scope" — and the opposite reading is defensible on exactly the security grounds that
+   made D-048 choose Option A in the first place. It is a retention decision about
+   financial data, so it is yours rather than an implementer's. If you want it purged it is
+   one line in `CacheClassification` plus a delete step; nothing else changes either way.
 
 ## Project lead actions required
 
-1. **Read the Phase 3 proposal and answer its four questions.** Nothing else blocks work.
+1. **Answer the D-068 retention question above.** It does not block finishing the
+   acceptance, and it should be settled before Phase 3 closes.
 2. **Supply the first tax rule per revenue category** — Restaurant, Nandbhog, Room,
    Banquet — when the real treatment has been verified (D-043). Both applications
    currently show "No rule configured", which is correct and honest until then. This does
-   not block Phase 3, but Phase 4 revenue entry cannot be completed without it.
+   not block Phase 3, but **Phase 4 revenue entry cannot be completed without it.**
 3. **Optional decision:** whether archiving should also offer a *confirmed* cascade for a
    whole subtree (D-039).
 
@@ -236,25 +331,39 @@ password, service-role key, database password, private key or signing password i
 | Android (debug, dev flavour) | **Built, installed, and driven on an emulator against the real backend** |
 | Android (release APK / AAB) | Not attempted — Phase 9, needs the project lead's keystore |
 | Windows (debug) | **Built, launched, and driven against the real backend** |
-| Windows (release + installer) | Not attempted — Phase 9 |
+| Windows (release) | **Built** — `krishna_mis.exe`, scanned clean |
+| Windows installer | Not attempted — Phase 9 |
+
+**Acceptance builds are not distributable.** Driving the acceptance suite compiles the
+development identity passwords into `kernel_blob.bin`; the scanner proves it, and proved it
+again this phase. The artefacts that survive a run are rebuilt without the identity defines
+and re-scanned before anything is called distributable.
 
 ## Database migration status
 
-**Local Drift schema v6.** v1 `app_meta` and `sync_outbox`; v2 masters and period locks;
+**Local Drift schema v8.** v1 `app_meta` and `sync_outbox`; v2 masters and period locks;
 v3–v4 the Phase 2 master refinements; v5 makes `vendors.default_business_unit_id` and
 `default_category_id` soft pointers rather than foreign keys, because a per-user cache
 legitimately holds a vendor whose usual property is one this user cannot see (D-049); v6
-adds `sync_outbox.actor_user_id` (D-050).
+adds `sync_outbox.actor_user_id` (D-050); v7 adds the four expense tables; **v8 makes
+`expense_allocations.business_unit_id` a soft pointer** for the same reason v5 existed —
+the scope purge legitimately removes a unit while synced history stays, and the foreign key
+made sign-out throw (D-068).
 
-**Postgres: 24 migrations, all applied to `krishna-mis-dev` and all committed.** The live
-suite asserts the repository and the server agree (D-056).
+**Postgres: 32 migrations, all applied to `krishna-mis-dev` and all committed.** 0033
+measures the edit window under the property's business date instead of the database
+session's calendar date (D-067). The live suite asserts the repository and the server agree
+(D-056).
 
 ## Last important decision
 
-**D-059 — the outbox has a real transport, and it sends only its owner's work.** Building
-the offline addendum exposed that `SyncEngine` had never had a real endpoint — nothing
-joined the durable queue to the gateways — and that D-050's actor filter was written down
-but never passed. Both are closed, and the round trip is proven on both platforms.
+**D-067 — the edit window counts days under the property's date, not the server's.** The
+seven-day boundary was already correct and tested; what nobody had asked was what
+`current_date` meant. It meant UTC, and the properties do not keep UTC time, so for half an
+hour every night the server granted an eighth day it had not been asked to grant. The rule
+now derives "today" the same way the client derives a business date for a new entry —
+`now()` in the unit's timezone, stepped back before the cut-off — so the two layers agree
+by construction rather than by coincidence.
 
 ## Master Spec version
 

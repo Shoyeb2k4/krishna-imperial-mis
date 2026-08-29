@@ -53,7 +53,6 @@
 library;
 
 import 'package:drift/drift.dart';
-import 'package:krishna_mis/data/local/master_tables.dart';
 
 /// How much of a document this device was given.
 ///
@@ -171,8 +170,22 @@ class ExpenseAllocations extends Table {
   TextColumn get expenseId =>
       text().references(Expenses, #id, onDelete: KeyAction.cascade)();
 
-  TextColumn get businessUnitId =>
-      text().references(BusinessUnits, #id, onDelete: KeyAction.restrict)();
+  /// Deliberately **not** a foreign key to `business_units`, for exactly the reason
+  /// given for [categoryId] below — they are two columns of one classification and the
+  /// argument does not stop applying halfway along it.
+  ///
+  /// It was one, with `ON DELETE RESTRICT`, until the Phase 3 acceptance ran sign-out on
+  /// a device that had synced an expense. `ScopeCachePurge` deletes the business units a
+  /// user no longer holds — and at sign-out, all of them (D-053) — so the restrict fired
+  /// and **sign-out threw**. On a shared back-office workstation that is the ordinary
+  /// sequence, and it is the one D-054 added the control for.
+  ///
+  /// A foreign key asserts "the target exists in this database". On a per-user cache that
+  /// is simply false: the purge removes the masters of a revoked unit while the expense
+  /// lines already synced stay as history (D-048 — the purge is limited to server-owned
+  /// *reference* data, and never touches anything a person typed). The server keeps the
+  /// real key, where the assertion is true. Same reasoning as D-049 and D-062.
+  TextColumn get businessUnitId => text()();
   TextColumn get departmentId => text()();
   TextColumn get sectionId => text()();
 

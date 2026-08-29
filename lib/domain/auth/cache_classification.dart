@@ -3,12 +3,13 @@
 ///
 /// The classification is written down because the alternative is deciding it row by row
 /// at the moment of a destructive operation, which is exactly when nobody should be
-/// improvising. Four kinds, and the rules for each are absolute:
+/// improvising. Five kinds, and the rules for each are absolute:
 ///
 /// | Kind | On revocation of a business unit |
 /// |---|---|
 /// | Organisation-global server cache | Retained while the user still has organisation access |
 /// | Business-unit scoped server cache | **Purged** for the revoked unit |
+/// | Scoped financial history | Retained — the purge covers reference data, not documents |
 /// | User-local and outbox data | **Never** purged. Not for this, not for anything |
 /// | Authentication / session | Separate lifecycle entirely (`ARCHITECTURE.md` §8.2) |
 ///
@@ -36,6 +37,20 @@ enum CacheOwnership {
   /// Tokens and the database key. Governed by the sign-out and key-loss rules, not by
   /// this policy.
   session,
+
+  /// Financial documents this device has synced: expenses, their allocation lines,
+  /// their period contributions and their attachment records.
+  ///
+  /// Business-unit scoped in the sense that every line names one property — but **not**
+  /// [businessUnitScoped], because that value means *purged*, and these are retained.
+  /// The purge is deliberately limited to server-owned **reference** data, which the
+  /// server hands straight back when authority returns; nothing a person typed is ever
+  /// in its scope (D-048). An expense is something a person typed.
+  ///
+  /// Named as its own kind rather than filed under [organizationGlobal], because that
+  /// would be untrue — these rows *are* scoped — and the next person to read this list
+  /// would be misled about what a revocation does to them.
+  scopedFinancialHistory,
 }
 
 /// One locally cached table and what owns it.
@@ -121,6 +136,32 @@ abstract final class CacheClassification {
     CachedTable('vendors', CacheOwnership.organizationGlobal),
     CachedTable('payment_methods', CacheOwnership.organizationGlobal),
     CachedTable('period_lock_events', CacheOwnership.organizationGlobal),
+
+    // ── Scoped financial history: retained ──────────────────────────────────
+    //
+    // Present here because a table that is absent from this list is a table nobody has
+    // decided anything about. All four were missing until the Phase 3 acceptance found
+    // sign-out throwing a foreign-key error on a device that had synced an expense: the
+    // guard "every table must be classified" was written down but never run against the
+    // real schema, so Phase 3 added four tables and nothing objected. It is enforced now
+    // (see the cache-classification test).
+    //
+    // They are **retained** through a revocation. The purge covers server-owned
+    // reference data, which the server returns the instant authority does; an expense is
+    // something a person typed, and D-048 puts that outside the purge entirely. Their
+    // `business_unit_id` is a soft pointer for the same reason, so a retained line may
+    // legitimately outlive the cached unit it names.
+    CachedTable('expense_attachments', CacheOwnership.scopedFinancialHistory),
+    CachedTable(
+      'expense_period_allocations',
+      CacheOwnership.scopedFinancialHistory,
+    ),
+    CachedTable(
+      'expense_allocations',
+      CacheOwnership.scopedFinancialHistory,
+      unitColumn: 'business_unit_id',
+    ),
+    CachedTable('expenses', CacheOwnership.scopedFinancialHistory),
 
     // ── User-local: never purged for any authority reason ────────────────────
     CachedTable('sync_outbox', CacheOwnership.userLocal),
