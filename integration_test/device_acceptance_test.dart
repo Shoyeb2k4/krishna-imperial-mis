@@ -227,11 +227,14 @@ final class _AdminClient {
 
   /// The spec's shared electricity bill, recorded by the Owner: ₹58,000 across both
   /// properties as ₹25,000 + ₹33,000.
-  Future<String> createSharedExpense({required String notes}) async {
+  Future<String> createSharedExpense({
+    required String notes,
+    String businessDate = '2026-06-15',
+  }) async {
     final id = const Uuid().v4();
     await _rpc('expense_create', {
       'p_id': id,
-      'p_business_date': '2026-06-15',
+      'p_business_date': businessDate,
       'p_total_minor': 5800000,
       'p_notes': notes,
       'p_allocations': [
@@ -256,11 +259,14 @@ final class _AdminClient {
   }
 
   /// ₹4,000 charged entirely to Crystal Canopy.
-  Future<String> createCcrExpense({required String notes}) async {
+  Future<String> createCcrExpense({
+    required String notes,
+    String businessDate = '2026-06-15',
+  }) async {
     final id = const Uuid().v4();
     await _rpc('expense_create', {
       'p_id': id,
-      'p_business_date': '2026-06-15',
+      'p_business_date': businessDate,
       'p_total_minor': 400000,
       'p_notes': notes,
       'p_allocations': [
@@ -3569,11 +3575,22 @@ void main() {
 
       // Three documents with deliberately different shapes: one Crystal Canopy, one
       // Hotel Krishna, one shared between them and paid.
+      // Dated today, deliberately. The ledger is ordered by business date, and a June
+      // fixture sits below every document the other phases have created since — which is
+      // the ledger working correctly and makes it a poor subject for a selection test.
+      final now = DateTime.now();
+      final today =
+          '${now.year.toString().padLeft(4, '0')}-'
+          '${now.month.toString().padLeft(2, '0')}-'
+          '${now.day.toString().padLeft(2, '0')}';
+
       final ccrId = await _admin.createCcrExpense(
         notes: '$_acceptanceMarker: ledger CCR only',
+        businessDate: today,
       );
       final sharedId = await _admin.createSharedExpense(
         notes: '$_acceptanceMarker: ledger shared bill',
+        businessDate: today,
       );
       _createdExpenses
         ..add(ccrId)
@@ -3633,6 +3650,12 @@ void main() {
       final sharedNumber =
           (await _expenseRow(sharedId))['txn_number'] as String;
 
+      // The application's own container, so the filter asserted below is the one the
+      // controls actually wrote — not a copy this phase maintains alongside it.
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(KrishnaMisApp)),
+      );
+
       // Search by expense number narrows to one document.
       await tester.enterText(find.byKey(const Key('ledger-search')), ccrNumber);
       await tester.pump(const Duration(seconds: 2));
@@ -3675,27 +3698,153 @@ void main() {
       );
 
       // Filters clear.
-      await pumpUntil(tester, 'Clear filters', () => visible('Clear filters'));
-      await tester.tap(find.text('Clear filters').last);
+      await pumpUntil(
+        tester,
+        'Clear filters',
+        () =>
+            find.byKey(const Key('ledger-clear-filters')).evaluate().isNotEmpty,
+      );
+      await tester.tap(find.byKey(const Key('ledger-clear-filters')));
       await tester.pump(const Duration(seconds: 2));
       expect(showsText(ccrNumber), isTrue);
       expect(showsText(sharedNumber), isTrue);
 
-      // Payment status and attention are offered as filters, and narrow the query.
-      expect(visible('Unpaid only'), isTrue);
-      expect(visible('Needs attention'), isTrue);
-      expect(visible('Include voided'), isTrue);
+      // ── The rest of the surface, behind Filters ─────────────────────────────
+      //
+      // Progressive on purpose (D-073 §19): the bar carries the date range, the search
+      // and the property; the other six live behind a button that says how many are
+      // active, so a narrowed ledger is never mysterious.
+      expect(
+        find.byKey(const Key('ledger-filter-panel')),
+        findsNothing,
+        reason: 'closed until asked for',
+      );
+      await tester.tap(find.byKey(const Key('ledger-more-filters')));
+      await tester.pump(const Duration(seconds: 1));
+      await pumpUntil(
+        tester,
+        'the expanded filter panel',
+        () =>
+            find.byKey(const Key('ledger-filter-panel')).evaluate().isNotEmpty,
+      );
 
+      for (final control in const [
+        'ledger-department-filter',
+        'ledger-section-filter',
+        'ledger-category-filter',
+        'ledger-payment-filter',
+        'ledger-status-filter',
+      ]) {
+        expect(
+          find.byKey(Key(control)),
+          findsOneWidget,
+          reason: '$control is part of the V1 surface',
+        );
+      }
+      expect(visible('Include voided'), isTrue);
+      expect(find.byKey(const Key('ledger-date-range')), findsOneWidget);
+
+      // Department narrows, through the query.
+      await tester.tap(find.byKey(const Key('ledger-department-filter')));
+      await tester.pump(const Duration(milliseconds: 900));
+      await pumpUntil(
+        tester,
+        'a Hotel Krishna department in the filter',
+        () => visible('Utilities'),
+      );
+      await tester.tap(find.text('Utilities').last);
+      await tester.pump(const Duration(seconds: 2));
+      expect(
+        showsText(sharedNumber),
+        isTrue,
+        reason: 'the shared bill has a Hotel Krishna utilities line',
+      );
+      expect(showsText(ccrNumber), isFalse);
+
+      // ── The dependency rule (D-073 §20) ─────────────────────────────────────
+      //
+      // Moving the property must not leave a department from the other one active behind
+      // a collapsed panel: two predicates that intersect to nothing look exactly like an
+      // empty ledger, and nothing on screen would say why.
+      await tester.tap(find.byKey(const Key('ledger-unit-filter')));
+      await tester.pump(const Duration(milliseconds: 900));
+      await pumpUntil(
+        tester,
+        'Crystal Canopy in the unit filter',
+        () => visible('Crystal Canopy Rooftop'),
+      );
+      await tester.tap(find.text('Crystal Canopy Rooftop').last);
+      await tester.pump(const Duration(seconds: 2));
+
+      final corrected = container.read(expenseFilterProvider);
+      expect(corrected.businessUnitId, isNotNull);
+      expect(
+        corrected.departmentId,
+        isNull,
+        reason:
+            'a Hotel Krishna department cannot survive a move to Crystal Canopy',
+      );
+      // And the corrected filter is one that actually returns the Crystal Canopy
+      // document — the point being that clearing the orphan restored a *useful* query,
+      // not merely a tidy one. Asserted through the query the UI feeds, because what is
+      // on screen at this instant also depends on scrolling and column width, and the
+      // claim here is about the filter.
+      final afterCorrection = await repository.query(corrected);
+      expect(
+        afterCorrection.map((e) => e.row.id),
+        contains(ccrId),
+        reason: 'the stale department would have narrowed this to nothing',
+      );
+
+      // Payment status, as a predicate rather than a label.
       final unpaidOnly = await repository.query(
         const ExpenseFilter(paymentStatus: 'unpaid'),
       );
+      expect(unpaidOnly.every((e) => e.row.paymentStatus == 'unpaid'), isTrue);
+
+      // Clearing restores everything.
+      await pumpUntil(
+        tester,
+        'Clear filters',
+        () =>
+            find.byKey(const Key('ledger-clear-filters')).evaluate().isNotEmpty,
+      );
+      await tester.tap(find.byKey(const Key('ledger-clear-filters')));
+      await tester.pump(const Duration(seconds: 2));
+      final afterClear = container.read(expenseFilterProvider);
       expect(
-        unpaidOnly.every((e) => e.row.paymentStatus == 'unpaid'),
-        isTrue,
-        reason: 'the payment filter is a predicate, not a label',
+        afterClear.activeCount,
+        0,
+        reason:
+            'no narrowing choice survives Clear filters. Left: '
+            'unit=${afterClear.businessUnitId} dept=${afterClear.departmentId} '
+            'section=${afterClear.sectionId} category=${afterClear.categoryId} '
+            'vendor=${afterClear.vendorId} payment=${afterClear.paymentStatus} '
+            'status=${afterClear.syncState} voided=${afterClear.includeVoided} '
+            'from=${afterClear.from} to=${afterClear.to}',
+      );
+      expect(
+        (await repository.query(afterClear)).map((e) => e.row.id),
+        containsAll(<String>[ccrId, sharedId]),
+        reason: 'clearing restores the unfiltered ledger',
       );
 
       // ── Selection opens the detail, and the caption tells the truth ──────────
+      //
+      // Searched for first, which is what a finance user does: the ledger is ordered by
+      // business date and holds documents from every earlier phase, so a June bill is a
+      // long way down a list headed by today's. That is the ledger working, not failing.
+      await tester.enterText(
+        find.byKey(const Key('ledger-search')),
+        sharedNumber,
+      );
+      await tester.pump(const Duration(seconds: 2));
+      await pumpUntil(
+        tester,
+        'the shared bill, found by its number',
+        () => showsText(sharedNumber),
+        timeout: const Duration(seconds: 20),
+      );
       await tester.tap(find.textContaining(sharedNumber).first);
       await tester.pump(const Duration(seconds: 2));
       await pumpUntil(

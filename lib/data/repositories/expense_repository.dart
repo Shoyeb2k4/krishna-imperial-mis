@@ -123,6 +123,8 @@ abstract interface class ExpenseQuery {
   String? get from;
   String? get to;
   String? get businessUnitId;
+  String? get departmentId;
+  String? get sectionId;
   String? get categoryId;
   String? get vendorId;
   String? get paymentStatus;
@@ -746,6 +748,35 @@ class ExpenseRepository {
             ..where(
               _db.expenseAllocations.expenseId.equalsExp(t.id) &
                   _db.expenseAllocations.businessUnitId.equals(unit),
+            ),
+        ),
+      );
+    }
+    // Department, section and category are the same shape as the business-unit filter
+    // and for the same reason: classification lives on the allocation line, never on the
+    // document (D-003), so "expenses in Housekeeping" means "documents with at least one
+    // visible line in Housekeeping". A shared bill charging two departments belongs in
+    // both views, and that is correct rather than a duplicate.
+    if (filter.departmentId case final department?) {
+      select.where(
+        (t) => existsQuery(
+          _db.selectOnly(_db.expenseAllocations)
+            ..addColumns([_db.expenseAllocations.id])
+            ..where(
+              _db.expenseAllocations.expenseId.equalsExp(t.id) &
+                  _db.expenseAllocations.departmentId.equals(department),
+            ),
+        ),
+      );
+    }
+    if (filter.sectionId case final section?) {
+      select.where(
+        (t) => existsQuery(
+          _db.selectOnly(_db.expenseAllocations)
+            ..addColumns([_db.expenseAllocations.id])
+            ..where(
+              _db.expenseAllocations.expenseId.equalsExp(t.id) &
+                  _db.expenseAllocations.sectionId.equals(section),
             ),
         ),
       );
