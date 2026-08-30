@@ -48,6 +48,8 @@
 ///   payment-accrual  a June salary paid in July is June's cost and July's cash
 ///   expense-edit     the D-072 edit surface: correct, D+7, D+8, and the version rule
 ///   expense-edit-shared  a scoped share of a shared bill is read-only, UI and server
+///   expense-edit-offline  edit with no network, queue it, reconnect, reconcile
+///   expense-edit-refused  a closed period and a withdrawn permission are Rejected
 ///
 /// Three phases need something to happen on the *host* while the phase is running — the
 /// device's network taken away, a grant revoked, an account deactivated — because the
@@ -3012,6 +3014,303 @@ void main() {
       // The server's value stands. Nothing was merged and nothing was overwritten.
       final server = await _expenseRow(id);
       expect(server['total_amount_minor'], 99900);
+    });
+  });
+
+  group('expense-edit-offline', skip: _phase != 'expense-edit-offline', () {
+    testWidgets('an edit made offline queues, survives, and reconciles once', (
+      tester,
+    ) async {
+      await launch(tester);
+      await signIn(tester, 'giridhar@hki.com');
+      await expectSignedIn(tester, 'giridhar@hki.com');
+
+      final id = await recordExpense(
+        tester,
+        amount: '450',
+        classification: const [
+          'Crystal Canopy Rooftop',
+          'F&B / Kitchen',
+          'Food Production',
+          'Vegetables & Fruits',
+        ],
+        notes: 'offline edit acceptance',
+      );
+      _createdExpenses.add(id);
+      await syncAndAwaitNumber(tester, id);
+
+      final repository = ExpenseRepository(boot.database);
+      final before = await repository.load(id);
+      final versionBefore = before!.row.rowVersion;
+      final numberBefore = before.row.txnNumber;
+
+      // The network goes away. Nothing is faked above the cable: the real transport
+      // throws the platform's own SocketException from inside `send` (D-058).
+      _transport.online = false;
+      addTearDown(() => _transport.online = true);
+
+      await openExpenseDetail(tester, id);
+      await pumpUntil(
+        tester,
+        'the Edit control',
+        () => find.byKey(const Key('edit-expense')).evaluate().isNotEmpty,
+      );
+      await revealAndTap(tester, const Key('edit-expense'));
+      await tester.pump(const Duration(milliseconds: 900));
+      await pumpUntil(
+        tester,
+        'the edit form',
+        () => find.byKey(const Key('expense-amount')).evaluate().isNotEmpty,
+      );
+
+      await tester.enterText(find.byKey(const Key('expense-amount')), '612');
+      await tester.pump(const Duration(milliseconds: 400));
+      await saveEditedExpense(tester, id);
+
+      // 1 · Saved locally, with no network, and honest about it.
+      final offline = await repository.load(id);
+      expect(offline!.documentTotal, Money.fromRupees(612));
+      expect(
+        offline.syncState,
+        isNot(SyncState.synced),
+        reason: 'an edit that has not been delivered is never shown as synced',
+      );
+      final intent = (await boot.outbox.allEntries()).singleWhere(
+        (q) => q.entityId == id && q.op == 'update',
+      );
+      expect(intent.baseRowVersion, versionBefore);
+      expect(intent.status, isNot(OutboxStatus.done.name));
+
+      // 2 · It survives a restart of the application — the queue is durable, not a
+      //     field on a widget.
+      final reopened = await bootstrap(transport: _transport);
+      addTearDown(() => reopened.database.close());
+      final afterRestart = ExpenseRepository(reopened.database);
+      expect(
+        (await afterRestart.load(id))!.documentTotal,
+        Money.fromRupees(612),
+      );
+      expect(
+        (await reopened.outbox.allEntries()).where(
+          (q) => q.entityId == id && q.op == 'update',
+        ),
+        hasLength(1),
+      );
+
+      // 3 · The network returns and the edit is applied exactly once.
+      _transport.online = true;
+      final settled = await pushUntilSettled(
+        tester,
+        id,
+        expected: {SyncState.synced},
+      );
+      expect(settled, SyncState.synced);
+
+      final after = await repository.load(id);
+      expect(after!.documentTotal, Money.fromRupees(612));
+      expect(
+        after.row.txnNumber,
+        numberBefore,
+        reason: 'the number does not move, offline or on',
+      );
+      expect(after.row.rowVersion, greaterThan(versionBefore));
+      expect(
+        (await boot.database.select(boot.database.expenses).get()).where(
+          (e) => e.id == id,
+        ),
+        hasLength(1),
+        reason: 'one document, one edit, however many times it was retried',
+      );
+
+      final server = await _expenseRow(id);
+      expect(server['total_amount_minor'], 61200);
+    });
+  });
+
+  group('expense-edit-refused', skip: _phase != 'expense-edit-refused', () {
+    testWidgets('a closed period refuses the edit, and says so plainly', (
+      tester,
+    ) async {
+      await launch(tester);
+      await signIn(tester, 'giridhar@hki.com');
+      await expectSignedIn(tester, 'giridhar@hki.com');
+
+      final client = Supabase.instance.client;
+      final gateway = ExpenseGateway(client);
+
+      // A February document, recorded while the period is open.
+      final id = const Uuid().v4();
+      final created = await gateway.create(
+        arguments: {
+          'p_id': id,
+          'p_business_date': '2026-02-10',
+          'p_total_minor': 250000,
+          'p_notes': '$_acceptanceMarker: closed-period edit',
+          'p_allocations': [
+            {..._ccrKirana, 'amount_minor': 250000},
+          ],
+        },
+        mutationId: const Uuid().v4(),
+      );
+      expect(
+        created.isOk,
+        isTrue,
+        reason: 'setup: ${created.refusalOrNull?.message}',
+      );
+      _createdExpenses.add(id);
+
+      // The period is closed behind it. `period_close` takes no reason; only a *reopen*
+      // does, because closing is the ordinary end of a month while reopening a closed
+      // period is the deliberate act that has to be explained and audited (D-026).
+      await client.rpc<dynamic>(
+        'period_close',
+        params: {
+          'p_period_key': '2026-02',
+          'p_business_unit_id': _ccr,
+          'p_mutation_id': const Uuid().v4(),
+        },
+      );
+      addTearDown(() async {
+        await client.rpc<dynamic>(
+          'period_reopen',
+          params: {
+            'p_period_key': '2026-02',
+            'p_business_unit_id': _ccr,
+            'p_reason': '$_acceptanceMarker: restoring the fixture',
+          },
+        );
+      });
+
+      final row = await _expenseRow(id);
+      final refused = await gateway.update(
+        arguments: {
+          'p_id': id,
+          'p_business_date': '2026-02-10',
+          'p_total_minor': 260000,
+          'p_notes': '$_acceptanceMarker: closed-period edit attempt',
+          'p_allocations': [
+            {..._ccrKirana, 'amount_minor': 260000},
+          ],
+        },
+        baseRowVersion: row['row_version'] as int,
+        mutationId: const Uuid().v4(),
+      );
+
+      expect(refused.isRefused, isTrue);
+      expect(
+        refused.refusalOrNull!.kind,
+        RefusalKind.periodClosed,
+        reason:
+            'a closed period is its own answer — never dressed up as a conflict, '
+            'because the user can do nothing about a version they do not have',
+      );
+      expect(
+        refused.refusalOrNull!.message.toLowerCase(),
+        contains('closed'),
+        reason: 'and it says so in words a manager can act on',
+      );
+      expect(refused.refusalOrNull!.message, isNot(contains('SQLSTATE')));
+
+      // The beyond-window capability lifts the age rule and nothing else: the Owner
+      // holds it and is refused just the same.
+      expect(
+        (await _expenseRow(id))['total_amount_minor'],
+        250000,
+        reason: 'and the document is untouched',
+      );
+    });
+
+    testWidgets('an edit queued before a revocation is Rejected, not Conflict', (
+      tester,
+    ) async {
+      // The sequence the project lead named: edit offline, lose the permission, come
+      // back. Authority is refreshed first, the server declines the act itself, and
+      // the attempt is kept exactly as it was made.
+      await _admin.grantScope('hki.manager@example.com', 'manager', 'CCR');
+      addTearDown(() => _admin.revokeScope('hki.manager@example.com', 'CCR'));
+
+      await launch(tester);
+      await signIn(tester, 'hki.manager@example.com');
+      await expectSignedIn(tester, 'hki.manager@example.com');
+
+      final repository = ExpenseRepository(boot.database);
+      final id = await recordExpense(
+        tester,
+        amount: '390',
+        classification: const [
+          'Crystal Canopy Rooftop',
+          'F&B / Kitchen',
+          'Food Production',
+          'Kirana & Pulses',
+        ],
+        notes: 'revoked-before-delivery acceptance',
+      );
+      _createdExpenses.add(id);
+      await syncAndAwaitNumber(tester, id);
+
+      // Offline, they correct it.
+      _transport.online = false;
+      addTearDown(() => _transport.online = true);
+
+      final held = (await repository.load(id))!;
+      await repository.updateLocally(
+        ExpenseDocument(
+          id: id,
+          orgId: held.row.orgId,
+          businessDate: BusinessDate.tryParse(held.row.businessDate)!,
+          businessDateSource: BusinessDateSource.derived,
+          total: Money.fromRupees(410),
+          allocations: [
+            ExpenseAllocation.wholePeriod(
+              id: held.allocations.single.id,
+              businessUnitId: _ccr,
+              departmentId: _seedId('dept:CCR/FB'),
+              sectionId: _seedId('sec:CCR/FB/FOOD_PROD'),
+              categoryId: _kirana,
+              amount: Money.fromRupees(410),
+              businessDate: BusinessDate.tryParse(held.row.businessDate)!,
+              categoryLabel: 'Kirana & Pulses',
+            ),
+          ],
+          paymentStatus: PaymentStatus.unpaid,
+          createdByUserId: held.row.createdBy,
+          capturedAt: held.row.capturedAt,
+        ),
+        actorUserId: (await AuthorityStore(boot.database).ownerUserId())!,
+        mutationId: const Uuid().v4(),
+        baseRowVersion: held.row.rowVersion,
+        now: DateTime.now().toUtc(),
+      );
+      expect((await repository.load(id))!.syncState, isNot(SyncState.synced));
+
+      // Their Crystal Canopy grant is withdrawn while they are away.
+      await _admin.revokeScope('hki.manager@example.com', 'CCR');
+      _transport.online = true;
+
+      final settled = await pushUntilSettled(
+        tester,
+        id,
+        expected: {SyncState.rejected, SyncState.conflict},
+        timeout: const Duration(seconds: 180),
+      );
+      expect(
+        settled,
+        SyncState.rejected,
+        reason:
+            'a withdrawn permission is about the person and no retry will change '
+            'it — terminal Rejected, never Conflict (D-048, D-059)',
+      );
+
+      // And the attempt is still there to be looked at.
+      final intent = (await boot.outbox.allEntries()).singleWhere(
+        (q) => q.entityId == id && q.op == 'update',
+      );
+      expect(intent.status, OutboxStatus.rejected.name);
+      expect(
+        intent.lastError,
+        isNotNull,
+        reason: 'the server s own reason is kept with the attempt',
+      );
     });
   });
 
