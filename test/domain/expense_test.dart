@@ -464,7 +464,7 @@ void main() {
       contentType: 'image/jpeg',
       byteSize: bytes,
       contentHash: 'hash-$id',
-      uploadState: AttachmentUploadState.pending,
+      uploadState: AttachmentUploadState.staged,
     );
 
     test('five are allowed and six are not', () {
@@ -513,7 +513,7 @@ void main() {
         contentType: 'image/jpeg',
         byteSize: 1024,
         contentHash: 'h',
-        uploadState: AttachmentUploadState.pending,
+        uploadState: AttachmentUploadState.staged,
       );
       expect(staged.uploadState.isOnServer, isFalse);
       expect(
@@ -530,7 +530,7 @@ void main() {
             .isOnServer,
         isTrue,
       );
-      expect(AttachmentUploadState.failed.isOnServer, isFalse);
+      expect(AttachmentUploadState.retryNeeded.isOnServer, isFalse);
     });
   });
 

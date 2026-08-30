@@ -219,7 +219,7 @@ ExpenseAttachment stagedAttachment({
   contentType: contentType,
   byteSize: bytes,
   contentHash: 'sha256-$id',
-  uploadState: AttachmentUploadState.pending,
+  uploadState: AttachmentUploadState.staged,
   localStagingPath: '/staging/$id.jpg',
 );
 

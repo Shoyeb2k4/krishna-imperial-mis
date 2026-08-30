@@ -153,7 +153,7 @@ EditableDraft draftFor(LocalExpense expense) {
             contentHash: row.contentHash,
             uploadState: AttachmentUploadState.values.firstWhere(
               (state) => state.name == row.uploadState,
-              orElse: () => AttachmentUploadState.pending,
+              orElse: () => AttachmentUploadState.staged,
             ),
             storagePath: row.storagePath,
             localStagingPath: row.localPath,

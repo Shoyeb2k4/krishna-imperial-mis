@@ -147,28 +147,40 @@ class _AttachmentRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final (label, colour, icon) = switch (attachment.uploadState) {
-      AttachmentUploadState.pending => (
-        'Staged · will upload',
+    // The words come from the state itself, so the chip and the persisted lifecycle
+    // cannot disagree (D-073 §3). Only the colour and the icon are the strip's business.
+    final (colour, icon) = switch (attachment.uploadState) {
+      AttachmentUploadState.staged => (AppColors.syncPending, Icons.attachment),
+      AttachmentUploadState.waitingForExpense => (
         AppColors.syncPending,
         Icons.schedule,
       ),
+      AttachmentUploadState.pendingUpload => (
+        AppColors.syncPending,
+        Icons.cloud_upload_outlined,
+      ),
+      AttachmentUploadState.uploading => (
+        AppColors.syncPending,
+        Icons.cloud_sync_outlined,
+      ),
       AttachmentUploadState.uploaded => (
-        'Uploaded',
         AppColors.syncSynced,
         Icons.check_circle_outline,
       ),
       AttachmentUploadState.stagingReclaimed => (
-        'Uploaded',
         AppColors.syncSynced,
         Icons.cloud_done_outlined,
       ),
-      AttachmentUploadState.failed => (
-        'Upload failed · will retry',
+      AttachmentUploadState.retryNeeded => (
         AppColors.syncFailed,
         Icons.error_outline,
       ),
+      AttachmentUploadState.rejected => (
+        AppColors.negative,
+        Icons.block_outlined,
+      ),
     };
+    final label = attachment.uploadState.label;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.sm),

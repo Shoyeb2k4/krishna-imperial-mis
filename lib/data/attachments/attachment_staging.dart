@@ -177,7 +177,7 @@ final class StagedAttachment {
     contentType: contentType,
     byteSize: byteSize,
     contentHash: contentHash,
-    uploadState: AttachmentUploadState.pending,
+    uploadState: AttachmentUploadState.staged,
     localStagingPath: localPath,
   );
 }

@@ -52,6 +52,8 @@
 ///   expense-edit-refused  a closed period and a withdrawn permission are Rejected
 ///   windows-ledger   filters, paging, selection, and the scoped detail caption
 ///   attachment-staging  a picked bill is staged, hashed, and never blocks the expense
+///   attachment-upload   the bill reaches Storage, is registered, and is retried
+///   attachment-scope    a scoped manager cannot retrieve a complete document's bill
 ///
 /// Three phases need something to happen on the *host* while the phase is running — the
 /// device's network taken away, a grant revoked, an account deactivated — because the
@@ -67,6 +69,8 @@ library;
 import 'dart:convert';
 import 'package:krishna_mis/data/attachments/attachment_staging.dart';
 import 'package:krishna_mis/data/attachments/attachment_source.dart';
+import 'package:krishna_mis/data/attachments/attachment_upload_worker.dart';
+import 'package:krishna_mis/data/remote/supabase_attachment_store.dart';
 import 'package:image/image.dart' as img;
 import 'dart:io';
 
@@ -363,6 +367,14 @@ void main() {
           // never learns its transaction number, which looks exactly like the server
           // failing to issue one.
           mutationReconcilerProvider.overrideWithValue(boot.mutationReconciler),
+          // `main()` supplies these too. The acceptance must assemble the application
+          // the same way `main()` does, or it is exercising a different application —
+          // the attachment worker being absent here made a bill stay `staged` for ever
+          // while the real build moved it on.
+          expensePullProvider.overrideWithValue(boot.expensePull),
+          attachmentUploadWorkerProvider.overrideWithValue(
+            boot.attachmentUploads,
+          ),
           sessionProvider.overrideWith(() => SessionController(boot.session!)),
         ],
         child: KrishnaMisApp(shellKind: boot.shellKind),
@@ -2123,6 +2135,48 @@ void main() {
     return tapSaveAndAwaitRow(tester);
   }
 
+  /// Records an expense through the real UI with one synthetic bill attached.
+  Future<String> recordExpenseWithBill(
+    WidgetTester tester,
+    _SyntheticAttachmentSource source, {
+    required String amount,
+  }) async {
+    await openExpenseEntry(tester);
+    await tester.enterText(find.byKey(const Key('expense-amount')), amount);
+    await tester.pump(const Duration(milliseconds: 300));
+    await classify(tester, const [
+      'Crystal Canopy Rooftop',
+      'F&B / Kitchen',
+      'Food Production',
+      'Kirana & Pulses',
+    ]);
+
+    await revealAndTap(tester, const Key('more-details'));
+    await tester.pump(const Duration(milliseconds: 800));
+
+    final intake = boot.shellKind.name == 'mobile'
+        ? AttachmentIntake.gallery
+        : AttachmentIntake.file;
+    await pumpUntil(
+      tester,
+      'the ${intake.name} attachment control',
+      () => find.byKey(Key('attach-${intake.name}')).evaluate().isNotEmpty,
+    );
+    await revealAndTap(tester, Key('attach-${intake.name}'));
+    await tester.pump(const Duration(seconds: 3));
+    expect(find.byKey(const Key('attachment-refusal')), findsNothing);
+
+    await tester.enterText(
+      find.byKey(const Key('expense-notes')),
+      '$_acceptanceMarker: attachment upload',
+    );
+    await tester.pump(const Duration(milliseconds: 300));
+    await revealAndTap(tester, const Key('more-details'));
+    await tester.pump(const Duration(milliseconds: 500));
+
+    return saveExpense(tester);
+  }
+
   /// Presses Save on an **edit** and waits for the intent to be queued.
   ///
   /// An edit produces no new row — that is the whole point of it — so the create
@@ -3126,8 +3180,21 @@ void main() {
             'the hash describes the bytes on disk, not the bytes that were picked',
       );
       expect(attachment.byteSize, greaterThan(0));
-      expect(attachment.uploadState, 'pending');
-      expect(attachment.storagePath, isNull);
+      // One of the lifecycle states, and not a refusal. Which one depends on how fast
+      // the expense was accepted — this build pushes as soon as it saves — so pinning a
+      // single value here would assert a race rather than a rule. The rule that a bill
+      // is never uploaded before its expense is accepted is proven deterministically in
+      // `test/data/attachment_test.dart`, where the clock is not the network's.
+      expect(
+        attachment.uploadState,
+        isIn(const [
+          'staged',
+          'waitingForExpense',
+          'pendingUpload',
+          'uploading',
+          'uploaded',
+        ]),
+      );
 
       // 4 · The expense did not wait for any of it, and syncs on its own.
       await syncAndAwaitNumber(tester, id);
@@ -3135,10 +3202,10 @@ void main() {
       expect(synced!.syncState, SyncState.synced);
       expect(
         synced.attachments.single.uploadState,
-        'pending',
+        isNot('rejected'),
         reason:
-            'an accepted financial record says nothing about whether its photo has '
-            'been uploaded — the two are deliberately independent (spec §15)',
+            'the expense was accepted on its own, and whatever became of the bill it '
+            'was not a refusal — the two are deliberately independent (spec §15)',
       );
 
       // 5 · And it survives a restart of the application, because staging is a file
@@ -3154,6 +3221,331 @@ void main() {
       expect(
         File(afterRestart.attachments.single.localPath!).existsSync(),
         isTrue,
+      );
+    });
+  });
+
+  group('attachment-upload', skip: _phase != 'attachment-upload', () {
+    testWidgets('the bill uploads after its expense, is registered, and retries', (
+      tester,
+    ) async {
+      final source = _SyntheticAttachmentSource();
+      addTearDown(source.dispose);
+
+      await launch(tester, attachmentSource: source);
+      await signIn(tester, 'giridhar@hki.com');
+      await expectSignedIn(tester, 'giridhar@hki.com');
+
+      final id = await recordExpenseWithBill(tester, source, amount: '820');
+      _createdExpenses.add(id);
+
+      final repository = ExpenseRepository(boot.database);
+      final worker = boot.attachmentUploads!;
+
+      // ── 1 · Order: the bill waits for its document ────────────────────────
+      //
+      // Not an optimisation. The Storage write policy calls
+      // `may_read_expense_attachments`, which requires the expense to exist canonically,
+      // so uploading first is refused for a reason that reads like a permission problem.
+      //
+      // Which pre-upload state it is in depends on how fast the expense was accepted:
+      // this build pushes as soon as it saves. So the ordering *rule* is proven
+      // deterministically in `test/data/attachment_test.dart`, where the clock is not
+      // the network's, and what is asserted here is that the bill left the draft state
+      // and was not refused.
+      var attachment = (await repository.load(id))!.attachments.single;
+      expect(
+        attachment.uploadState,
+        isNot('staged'),
+        reason: 'saving the expense moves its bill on from the draft state',
+      );
+      expect(attachment.uploadState, isNot('rejected'));
+
+      // ── 2 · The expense syncs on its own, then the bill becomes eligible ──
+      await syncAndAwaitNumber(tester, id);
+      expect((await repository.load(id))!.syncState, SyncState.synced);
+
+      // ── 3 · The upload itself, against real Supabase Storage ─────────────
+      //
+      // Driven to a settled state rather than asserted step by step: the application
+      // promotes and uploads as soon as the push that accepted the expense returns, so
+      // on a fast connection it has already happened by the time this line runs. The
+      // durable outcome is the claim; which worker got there first is not.
+      final settled = DateTime.now().add(const Duration(seconds: 120));
+      while (DateTime.now().isBefore(settled)) {
+        attachment = (await repository.load(id))!.attachments.single;
+        if (attachment.uploadState == 'uploaded') break;
+        await worker.uploadDue();
+        await tester.pump(const Duration(seconds: 2));
+      }
+
+      attachment = (await repository.load(id))!.attachments.single;
+      expect(
+        attachment.uploadState,
+        'uploaded',
+        reason: 'last error: ${attachment.lastError}',
+      );
+      expect(attachment.storagePath, isNotNull);
+      expect(
+        attachment.storagePath,
+        endsWith('${attachment.id}.jpg'),
+        reason: 'the deterministic path (spec §15.2)',
+      );
+      expect(attachment.uploadedAt, isNotNull);
+      expect(
+        attachment.lastError,
+        isNull,
+        reason: 'a confirmed upload carries no complaint',
+      );
+
+      // ── 4 · Canonical metadata in Postgres, not an object listing ─────────
+      final metadata = await Supabase.instance.client
+          .from('expense_attachments')
+          .select(
+            'id,expense_id,content_hash,storage_path,byte_size,uploaded_by',
+          )
+          .eq('id', attachment.id)
+          .single();
+      expect(metadata['expense_id'], id);
+      expect(
+        metadata['content_hash'],
+        attachment.contentHash,
+        reason:
+            'the hash the server recorded is the hash of what was staged — which is '
+            'what makes "uploaded" a claim about bytes rather than about a status code',
+      );
+      expect(metadata['storage_path'], attachment.storagePath);
+      expect(metadata['byte_size'], attachment.byteSize);
+
+      // ── 5 · Idempotency: a retry after a lost response ───────────────────
+      //
+      // The same bytes, the same attachment id, the same deterministic path. One object
+      // and one metadata row, however many times it is delivered (D-073 §8).
+      final again = await SupabaseAttachmentStore(Supabase.instance.client)
+          .upload(
+            orgId: metadata['uploaded_by'] == null ? '' : attachment.orgId,
+            expenseId: id,
+            attachmentId: attachment.id,
+            fileName: attachment.fileName,
+            contentType: attachment.contentType,
+            bytes: File(attachment.localPath!).readAsBytesSync(),
+          );
+      expect(
+        again,
+        isA<UploadStored>(),
+        reason: 'a redelivery is stored again, not refused and not duplicated',
+      );
+      final rows = await Supabase.instance.client
+          .from('expense_attachments')
+          .select('id')
+          .eq('expense_id', id);
+      expect(
+        rows,
+        hasLength(1),
+        reason: 'one canonical metadata record, however many deliveries',
+      );
+
+      // ── 6 · The expense is untouched by any of it ────────────────────────
+      final afterUpload = await repository.load(id);
+      expect(afterUpload!.syncState, SyncState.synced);
+      expect(afterUpload.row.txnNumber, isNotNull);
+      expect(
+        (await boot.outbox.allEntries()).where(
+          (q) => q.entityId == id && q.status != OutboxStatus.done.name,
+        ),
+        isEmpty,
+        reason: 'retrying an attachment never generates an expense mutation',
+      );
+    });
+
+    testWidgets('a transient failure leaves the expense Synced and retries', (
+      tester,
+    ) async {
+      final source = _SyntheticAttachmentSource();
+      addTearDown(source.dispose);
+
+      await launch(tester, attachmentSource: source);
+      await signIn(tester, 'giridhar@hki.com');
+      await expectSignedIn(tester, 'giridhar@hki.com');
+
+      final id = await recordExpenseWithBill(tester, source, amount: '333');
+      _createdExpenses.add(id);
+      await syncAndAwaitNumber(tester, id);
+
+      final repository = ExpenseRepository(boot.database);
+      expect((await repository.load(id))!.syncState, SyncState.synced);
+
+      // The application uploads as soon as the push that accepted the expense returns,
+      // so on a fast connection the bill is already on the server by now. To exercise a
+      // *transient* failure the row is put back to `pendingUpload` and the network taken
+      // away — the worker, the store, the failure and every state transition after it
+      // are the real ones; only the starting position is arranged.
+      final failing = AttachmentUploadWorker(
+        db: boot.database,
+        store: SupabaseAttachmentStore(Supabase.instance.client),
+      );
+      await boot.database.customStatement(
+        "UPDATE expense_attachments SET upload_state = 'pendingUpload', "
+        'next_attempt_at = NULL, attempt_count = 0 WHERE expense_id = ?',
+        [id],
+      );
+
+      _transport.online = false;
+      expect(
+        await failing.uploadDue(),
+        0,
+        reason: 'nothing can be confirmed with no network',
+      );
+
+      var attachment = (await repository.load(id))!.attachments.single;
+      expect(
+        attachment.uploadState,
+        'retryNeeded',
+        reason:
+            'a transport failure says nothing about permission, so it retries',
+      );
+      expect(
+        attachment.nextAttemptAt,
+        isNotNull,
+        reason: 'on the durable clock, not in a loop',
+      );
+      expect(attachment.attemptCount, greaterThan(0));
+
+      // **The point of the phase.** The financial record is untouched.
+      final duringFailure = await repository.load(id);
+      expect(
+        duringFailure!.syncState,
+        SyncState.synced,
+        reason:
+            'an accepted expense does not become Pending, Rejected or Conflict because '
+            'a photo failed to upload (spec §15)',
+      );
+      expect(duringFailure.row.txnNumber, isNotNull);
+
+      // Reconnect, and only the attachment is retried.
+      _transport.online = true;
+      final outboxBefore = (await boot.outbox.allEntries()).length;
+
+      final deadline = DateTime.now().add(const Duration(seconds: 120));
+      var confirmed = 0;
+      while (DateTime.now().isBefore(deadline) && confirmed == 0) {
+        // The backoff is real, so the row is made due rather than waited out.
+        await boot.database.customStatement(
+          "UPDATE expense_attachments SET next_attempt_at = ? WHERE expense_id = ?",
+          [DateTime.now().toUtc().toIso8601String(), id],
+        );
+        confirmed = await failing.uploadDue();
+        if (confirmed == 0) await tester.pump(const Duration(seconds: 2));
+      }
+      expect(
+        confirmed,
+        1,
+        reason: 'the retry succeeded once the network returned',
+      );
+
+      attachment = (await repository.load(id))!.attachments.single;
+      expect(attachment.uploadState, 'uploaded');
+      expect(
+        (await boot.outbox.allEntries()).length,
+        outboxBefore,
+        reason: 'retrying an attachment queued no expense mutation',
+      );
+      expect((await repository.load(id))!.syncState, SyncState.synced);
+    });
+  });
+
+  group('attachment-scope', skip: _phase != 'attachment-scope', () {
+    testWidgets('a scoped manager cannot retrieve a complete document s bill', (
+      tester,
+    ) async {
+      final source = _SyntheticAttachmentSource();
+      addTearDown(source.dispose);
+
+      await launch(tester, attachmentSource: source);
+      await signIn(tester, 'giridhar@hki.com');
+      await expectSignedIn(tester, 'giridhar@hki.com');
+
+      // A shared bill the Owner can see whole, with a receipt attached to it.
+      final sharedId = await _admin.createSharedExpense(
+        notes: '$_acceptanceMarker: attachment scope security',
+      );
+      _createdExpenses.add(sharedId);
+
+      final attachmentId = const Uuid().v4();
+      final bytes = _SyntheticAttachmentSource.syntheticJpeg();
+      final store = SupabaseAttachmentStore(Supabase.instance.client);
+      final orgId = (await _expenseRow(sharedId))['id'] == null
+          ? ''
+          : (await Supabase.instance.client
+                    .from('expense_document')
+                    .select('org_id')
+                    .eq('id', sharedId)
+                    .single())['org_id']
+                as String;
+
+      final stored = await store.upload(
+        orgId: orgId,
+        expenseId: sharedId,
+        attachmentId: attachmentId,
+        fileName: 'shared-invoice.jpg',
+        contentType: 'image/jpeg',
+        bytes: bytes,
+      );
+      expect(
+        stored,
+        isA<UploadStored>(),
+        reason:
+            'the Owner sees every line, so may attach: ${stored.runtimeType}',
+      );
+
+      final path = 'org/$orgId/expenses/$sharedId/$attachmentId.jpg';
+
+      // The Owner can read it back.
+      final ownerCopy = await Supabase.instance.client.storage
+          .from(expenseAttachmentBucket)
+          .download(path);
+      expect(ownerCopy, isNotEmpty);
+
+      // The Crystal Canopy manager holds ₹25,000 of it and may not.
+      await signIn(tester, 'ccr.manager@example.com');
+      await expectSignedIn(tester, 'ccr.manager@example.com');
+
+      await expectLater(
+        Supabase.instance.client.storage
+            .from(expenseAttachmentBucket)
+            .download(path),
+        throwsA(anything),
+        reason:
+            'an invoice states the whole total on its face, so a scoped holder is not '
+            'given it — and this is Storage refusing, not a hidden button (D-063)',
+      );
+
+      // Nor may they register one against it, which is the other half of the same rule.
+      final forged = await SupabaseAttachmentStore(Supabase.instance.client)
+          .upload(
+            orgId: orgId,
+            expenseId: sharedId,
+            attachmentId: const Uuid().v4(),
+            fileName: 'forged.jpg',
+            contentType: 'image/jpeg',
+            bytes: bytes,
+          );
+      expect(
+        forged,
+        isA<UploadRefused>(),
+        reason:
+            'attaching implies reading it back, so the same predicate governs both',
+      );
+
+      // And the metadata row itself is not readable to them.
+      final rows = await Supabase.instance.client
+          .from('expense_attachments')
+          .select('id')
+          .eq('expense_id', sharedId);
+      expect(
+        rows,
+        isEmpty,
+        reason: 'the table policy holds the same complete-document predicate',
       );
     });
   });
@@ -4799,7 +5191,7 @@ class _SyntheticAttachmentSource implements AttachmentSource {
       'krishna_acceptance_bill',
     );
     final file = File('${scratch.path}/synthetic-receipt.jpg')
-      ..writeAsBytesSync(_syntheticJpeg());
+      ..writeAsBytesSync(syntheticJpeg());
     pickedPath = file.path;
     return PickedFile(
       file: file,
@@ -4812,9 +5204,9 @@ class _SyntheticAttachmentSource implements AttachmentSource {
     if (_scratch?.existsSync() ?? false) _scratch!.deleteSync(recursive: true);
   }
 
-  /// A real, decodable JPEG — small enough that the optimiser leaves it alone, so this
-  /// phase is about staging rather than about re-encoding.
-  static List<int> _syntheticJpeg() {
+  /// A real, decodable JPEG — small enough that the optimiser leaves it alone, so the
+  /// phases are about staging and upload rather than about re-encoding.
+  static List<int> syntheticJpeg() {
     final image = img.Image(width: 64, height: 64);
     for (var y = 0; y < image.height; y++) {
       for (var x = 0; x < image.width; x++) {

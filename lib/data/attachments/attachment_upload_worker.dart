@@ -108,18 +108,26 @@ class AttachmentUploadWorker {
   /// and nothing here can affect an expense's own sync state.
   Future<int> uploadDue({int limit = 5}) async {
     final now = clock();
+
+    // Attachments whose expense the server has since accepted become eligible. This is
+    // the ordering rule in D-073 §2, and it lives here rather than in the caller because
+    // the caller cannot know when an expense was accepted — the reconciler writes the
+    // transaction number in the data layer, and this query is what notices.
+    await promoteAcceptedExpenses();
+
     final due =
         await (db.select(db.expenseAttachments)
-              // A *pending* attachment is always due. A *failed* one is due only if it
-              // carries a retry time: a terminal refusal clears it deliberately, and
-              // treating that null as "due now" would retry a refusal forever — which an
-              // earlier version of this query did, until a test caught it.
+              // Only the two uploadable states, and only when their retry time has come.
+              //
+              // `rejected` is absent deliberately, and the check constraint keeps its
+              // `next_attempt_at` null: a null there was once read as "due now", which
+              // retried a terminal refusal for ever until a test caught it.
               ..where(
                 (t) =>
-                    (t.uploadState.equals('pending') &
+                    (t.uploadState.equals('pendingUpload') &
                         (t.nextAttemptAt.isNull() |
                             t.nextAttemptAt.isSmallerOrEqualValue(now))) |
-                    (t.uploadState.equals('failed') &
+                    (t.uploadState.equals('retryNeeded') &
                         t.nextAttemptAt.isNotNull() &
                         t.nextAttemptAt.isSmallerOrEqualValue(now)),
               )
@@ -132,6 +140,36 @@ class AttachmentUploadWorker {
     }
     return confirmed;
   }
+
+  /// Moves attachments whose expense has been accepted from `waitingForExpense` to
+  /// `pendingUpload`, and returns how many moved.
+  ///
+  /// "Accepted" means the server issued a transaction number and nothing is still queued
+  /// against the document — the same two facts the ledger uses to call an expense
+  /// `Synced`. Uploading before that is not merely early: the Storage write policy calls
+  /// `may_read_expense_attachments`, which requires the expense to exist canonically, so
+  /// the attempt would be refused for a reason that reads like a permission problem.
+  Future<int> promoteAcceptedExpenses() async {
+    return db.customUpdate(
+      "UPDATE expense_attachments SET upload_state = 'pendingUpload' "
+      "WHERE upload_state = 'waitingForExpense' AND expense_id IN ("
+      '  SELECT id FROM expenses '
+      '   WHERE txn_number IS NOT NULL AND pending_mutation_id IS NULL)',
+      updates: const {},
+    );
+  }
+
+  /// Marks an attachment ready to upload once its own expense is saved.
+  ///
+  /// Called when the expense is written locally: the bill stops being a draft's
+  /// [AttachmentUploadState.staged] file and starts waiting for the document it belongs
+  /// to.
+  Future<int> markWaitingForExpense(String expenseId) => db.customUpdate(
+    "UPDATE expense_attachments SET upload_state = 'waitingForExpense' "
+    "WHERE expense_id = ? AND upload_state = 'staged'",
+    variables: [Variable<String>(expenseId)],
+    updates: const {},
+  );
 
   Future<bool> _uploadOne(ExpenseAttachmentRow row, DateTime now) async {
     final path = row.localPath;
@@ -147,6 +185,15 @@ class AttachmentUploadWorker {
       );
       return false;
     }
+
+    // Persisted before the request goes out, so a crash mid-upload is recoverable rather
+    // than invisible. A row left `uploading` by a kill is picked up by the next pass,
+    // because the object write is idempotent on its deterministic path.
+    await (db.update(
+      db.expenseAttachments,
+    )..where((t) => t.id.equals(row.id))).write(
+      const ExpenseAttachmentsCompanion(uploadState: Value('uploading')),
+    );
 
     final bytes = await File(path).readAsBytes();
 
@@ -222,7 +269,10 @@ class AttachmentUploadWorker {
       db.expenseAttachments,
     )..where((t) => t.id.equals(row.id))).write(
       ExpenseAttachmentsCompanion(
-        uploadState: const Value('failed'),
+        // Two different answers, kept apart: one will be retried on the durable clock,
+        // the other never will. Collapsing them into a single `failed` is how a refusal
+        // comes to be retried for ever.
+        uploadState: Value(retryable ? 'retryNeeded' : 'rejected'),
         attemptCount: Value(attempt),
         lastError: Value(message),
         nextAttemptAt: Value(
@@ -231,6 +281,17 @@ class AttachmentUploadWorker {
       ),
     );
   }
+
+  /// Returns rows left `uploading` by a crash to `pendingUpload`.
+  ///
+  /// Called at start-up, exactly as the outbox recovers its own `inFlight` entries. Safe
+  /// because the object path is deterministic: re-uploading writes the same object again
+  /// rather than a second one (D-073 §8).
+  Future<int> recoverInterruptedUploads() => db.customUpdate(
+    "UPDATE expense_attachments SET upload_state = 'pendingUpload' "
+    "WHERE upload_state = 'uploading'",
+    updates: const {},
+  );
 
   /// Reclaims verified staging copies whose retention has elapsed.
   ///

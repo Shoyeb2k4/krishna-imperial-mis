@@ -30,6 +30,8 @@ import 'package:krishna_mis/data/sync/expense_mutation_endpoint.dart';
 import 'package:krishna_mis/data/sync/master_mutation_endpoint.dart';
 import 'package:krishna_mis/data/sync/outbox_repository.dart';
 import 'package:krishna_mis/domain/sync/pending_mutation.dart';
+import 'package:krishna_mis/data/attachments/attachment_upload_worker.dart';
+import 'package:krishna_mis/data/remote/supabase_attachment_store.dart';
 import 'package:krishna_mis/data/sync/expense_pull.dart';
 import 'package:krishna_mis/data/sync/reference_sync.dart';
 import 'package:krishna_mis/data/sync/scope_cache_purge.dart';
@@ -64,6 +66,7 @@ class BootstrapResult {
     required this.mutationEndpoint,
     required this.mutationReconciler,
     required this.expensePull,
+    required this.attachmentUploads,
   });
 
   final AppConfig config;
@@ -91,6 +94,12 @@ class BootstrapResult {
   /// Re-reads one expense through the projection the server is willing to show. Used by
   /// the conflict flow, where the point is to see what the record says *now*.
   final ExpensePull? expensePull;
+
+  /// Uploads bills, out of band from the financial records they belong to (D-073).
+  ///
+  /// Null with no backend configured, like every other remote capability: an offline-only
+  /// build stages attachments and has nowhere to send them.
+  final AttachmentUploadWorker? attachmentUploads;
 }
 
 /// Starts the application.
@@ -152,6 +161,7 @@ Future<BootstrapResult> bootstrap({http.Client? transport}) async {
   RemoteMutationEndpoint? mutationEndpoint;
   MutationReconciler? mutationReconciler;
   ExpensePull? expensePull;
+  AttachmentUploadWorker? attachmentUploads;
   if (config.hasBackend) {
     await Supabase.initialize(
       url: config.supabaseUrl,
@@ -178,6 +188,15 @@ Future<BootstrapResult> bootstrap({http.Client? transport}) async {
       expenseGateway,
     );
     expensePull = ExpensePull(db: database, gateway: expenseGateway);
+    attachmentUploads = AttachmentUploadWorker(
+      db: database,
+      store: SupabaseAttachmentStore(client),
+    );
+
+    // An upload interrupted by a kill is returned to the queue, exactly as the outbox
+    // recovers its own in-flight entries. Safe because the object path is deterministic:
+    // re-uploading writes the same object again rather than a second one.
+    await attachmentUploads.recoverInterruptedUploads();
     // One purge, shared by the session lifecycle and by reference sync, so a revocation
     // and a sign-out remove the same things by the same code. It can reclaim staged
     // attachment bytes: since D-068 a revoked document's original bill goes with it, and
@@ -211,6 +230,7 @@ Future<BootstrapResult> bootstrap({http.Client? transport}) async {
     mutationEndpoint: mutationEndpoint,
     mutationReconciler: mutationReconciler,
     expensePull: expensePull,
+    attachmentUploads: attachmentUploads,
     recoveredInFlightEntries: recovered,
     session: session,
   );

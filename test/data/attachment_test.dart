@@ -5,6 +5,7 @@ import 'dart:io';
 
 import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:drift/native.dart';
+import 'package:sqlite3/sqlite3.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
 import 'package:krishna_mis/data/attachments/attachment_staging.dart';
@@ -282,6 +283,94 @@ void main() {
     });
   });
 
+  group('the v10 lifecycle migration rewrites what it cannot copy', () {
+    test('old values are transformed during the copy, not after it', () async {
+      // Found by the Windows acceptance, on a machine that actually had a v9 database.
+      // The emulator is reinstalled between runs and always had a fresh one, so this
+      // only ever failed where real data existed — which is the whole reason the
+      // migration is exercised here against rows written under the old constraint.
+      final file = await createTempDatabaseFile();
+      addTearDown(() => file.parent.deleteSync(recursive: true));
+
+      // A v9-shaped attachments table, with the states v9 allowed.
+      final raw = sqlite3.open(file.path);
+      raw
+        ..execute('PRAGMA user_version = 9')
+        ..execute("""
+          CREATE TABLE expense_attachments (
+            id TEXT NOT NULL PRIMARY KEY,
+            org_id TEXT NOT NULL,
+            expense_id TEXT NOT NULL,
+            file_name TEXT NOT NULL,
+            content_type TEXT NOT NULL,
+            byte_size INTEGER NOT NULL,
+            content_hash TEXT NOT NULL,
+            local_path TEXT NULL,
+            upload_state TEXT NOT NULL DEFAULT 'pending',
+            storage_path TEXT NULL,
+            attempt_count INTEGER NOT NULL DEFAULT 0,
+            next_attempt_at TEXT NULL,
+            last_error TEXT NULL,
+            uploaded_at TEXT NULL,
+            reclaimable_after TEXT NULL,
+            uploaded_by TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            CHECK (upload_state IN ('pending','uploaded','stagingReclaimed','failed'))
+          )
+        """);
+      for (final row in const [
+        ('a1', 'pending', null, null),
+        ('a2', 'failed', '2026-06-15T10:00:00.000Z', null),
+        ('a3', 'failed', null, null),
+        // An already-uploaded row carries its path and time, as the constraint that has
+        // always been on this table requires.
+        ('a4', 'uploaded', null, 'org/o/expenses/e/a4.jpg'),
+      ]) {
+        raw.execute(
+          'INSERT INTO expense_attachments (id, org_id, expense_id, file_name, '
+          'content_type, byte_size, content_hash, upload_state, next_attempt_at, '
+          'storage_path, uploaded_at, uploaded_by, created_at, updated_at) '
+          "VALUES (?, 'o', 'e', 'b.jpg', 'image/jpeg', 10, 'h', ?, ?, ?, "
+          "CASE WHEN ? IS NULL THEN NULL ELSE '2026-06-15T09:30:00.000Z' END, "
+          "'u', '2026-06-15T09:00:00.000Z', '2026-06-15T09:00:00.000Z')",
+          [row.$1, row.$2, row.$3, row.$4, row.$4],
+        );
+      }
+      raw.close();
+
+      // Opening at v10 runs the migration.
+      final db = AppDatabase(NativeDatabase(file));
+      addTearDown(db.close);
+      final states = {
+        for (final r
+            in await db
+                .customSelect(
+                  'SELECT id, upload_state FROM expense_attachments',
+                )
+                .get())
+          r.data['id'] as String: r.data['upload_state'] as String,
+      };
+
+      expect(states['a1'], 'waitingForExpense');
+      expect(
+        states['a2'],
+        'retryNeeded',
+        reason: 'a retry time is the evidence that the failure was transient',
+      );
+      expect(
+        states['a3'],
+        'rejected',
+        reason: 'no retry time means it was refused, and must never be retried',
+      );
+      expect(
+        states['a4'],
+        'uploaded',
+        reason: 'unchanged states stay unchanged',
+      );
+    });
+  });
+
   group('upload is out of band, and confirmation is about bytes', () {
     late AppDatabase db;
     late ExpenseRepository expenses;
@@ -314,14 +403,85 @@ void main() {
         lines: [line(unit: ccrId, rupees: 200)],
         attachments: [staged.toDomain()],
       );
+      final mutationId = const Uuid().v4();
       await expenses.createLocally(
         expense,
+        actorUserId: 'user-1',
+        mutationId: mutationId,
+        now: clock,
+      );
+
+      // The attachment starts `staged` and becomes `waitingForExpense` when the document
+      // is saved; it becomes uploadable only once the server has accepted the expense.
+      // That ordering is the rule (D-073 §2) — the Storage write policy requires the
+      // expense to exist canonically — so the helper puts the document where every
+      // upload test needs it: accepted.
+      await workerFor().markWaitingForExpense(expenseId);
+      await expenses.reconcileAcceptance(
+        ExpenseAcceptance(
+          expenseId: expenseId,
+          txnNumber: 'KI-EXP-26-27-000003',
+          financialYear: 2026,
+          rowVersion: 2,
+          serverUpdatedAt: clock,
+        ),
+      );
+      await db.customStatement(
+        "UPDATE sync_outbox SET status = 'done' WHERE mutation_id = ?",
+        [mutationId],
+      );
+      return (expenseId, staged);
+    }
+
+    test('an attachment is not uploaded before its expense is accepted', () async {
+      // The ordering rule, asserted rather than assumed. Uploading first is not merely
+      // early: the Storage policy calls `may_read_expense_attachments`, which requires
+      // the expense to exist canonically, so the attempt would be refused for a reason
+      // that reads like a permission problem and is really an ordering one.
+      final expenseId = const Uuid().v4();
+      final staged = await service.stage(
+        source: sourceFile('bill.jpg', syntheticPhoto(200)),
+        expenseId: expenseId,
+      );
+      await expenses.createLocally(
+        expenseWith(
+          id: expenseId,
+          lines: [line(unit: ccrId, rupees: 200)],
+          attachments: [staged.toDomain()],
+        ),
         actorUserId: 'user-1',
         mutationId: const Uuid().v4(),
         now: clock,
       );
-      return (expenseId, staged);
-    }
+      await workerFor().markWaitingForExpense(expenseId);
+
+      expect(
+        await workerFor().uploadDue(),
+        0,
+        reason: 'the expense has no transaction number yet',
+      );
+      expect(
+        (await db.select(db.expenseAttachments).get()).single.uploadState,
+        'waitingForExpense',
+      );
+      expect(store.uploadAttempts, 0);
+
+      // The server accepts the expense, and the same worker promotes and uploads it.
+      await expenses.reconcileAcceptance(
+        ExpenseAcceptance(
+          expenseId: expenseId,
+          txnNumber: 'KI-EXP-26-27-000009',
+          financialYear: 2026,
+          rowVersion: 2,
+          serverUpdatedAt: clock,
+        ),
+      );
+      expect(await workerFor().uploadDue(), 1);
+      expect(
+        (await db.select(db.expenseAttachments).get()).single.uploadState,
+        'uploaded',
+      );
+    });
 
     test('a confirmed upload is verified, not merely accepted', () async {
       final (expenseId, staged) = await saveWithAttachment();
@@ -350,7 +510,7 @@ void main() {
       expect(await workerFor().uploadDue(), 0);
 
       final row = (await db.select(db.expenseAttachments).get()).single;
-      expect(row.uploadState, 'failed');
+      expect(row.uploadState, 'retryNeeded');
       expect(row.lastError, contains('did not match'));
       expect(
         row.storagePath,
@@ -395,7 +555,7 @@ void main() {
         );
 
         final row = (await db.select(db.expenseAttachments).get()).single;
-        expect(row.uploadState, 'failed');
+        expect(row.uploadState, 'retryNeeded');
         expect(row.attemptCount, 2);
         expect(
           row.nextAttemptAt,
@@ -430,7 +590,13 @@ void main() {
       await workerFor().uploadDue();
 
       final row = (await db.select(db.expenseAttachments).get()).single;
-      expect(row.uploadState, 'failed');
+      expect(
+        row.uploadState,
+        'rejected',
+        reason:
+            'a refusal is the server s considered answer, and is kept apart from a '
+            'transient failure precisely so it is never retried (D-073 §4)',
+      );
       expect(row.nextAttemptAt, isNull, reason: 'nothing to retry towards');
 
       clock = clock.add(const Duration(days: 7));

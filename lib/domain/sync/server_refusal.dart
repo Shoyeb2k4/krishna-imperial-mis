@@ -77,6 +77,9 @@ enum RefusalKind {
   /// `KM021`.
   editWindowExpired,
 
+  /// More attachments, or more bytes, than an expense may carry — `KM022`.
+  attachmentLimit,
+
   /// The transport failed, or the server said something this version does not know.
   unrecognised;
 
@@ -187,6 +190,7 @@ final class ServerRefusal implements Exception {
     'period_imbalance': RefusalKind.periodImbalance,
     'record_voided': RefusalKind.recordVoided,
     'edit_window_expired': RefusalKind.editWindowExpired,
+    'attachment_limit': RefusalKind.attachmentLimit,
   };
 
   static String _message(
@@ -204,6 +208,8 @@ final class ServerRefusal implements Exception {
     RefusalKind.editWindowExpired =>
       'This entry is older than the correction window and can no longer be '
           'changed here.',
+    RefusalKind.attachmentLimit =>
+      'This expense already carries as many attachments as it can hold.',
     RefusalKind.missingCapability => 'You do not have permission to do this.',
     RefusalKind.outOfUnitScope =>
       'You do not have permission to do this for this business unit.',

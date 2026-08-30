@@ -10849,7 +10849,7 @@ class $ExpenseAttachmentsTable extends ExpenseAttachments
     false,
     type: DriftSqlType.string,
     requiredDuringInsert: false,
-    defaultValue: const Constant('pending'),
+    defaultValue: const Constant('staged'),
   );
   static const VerificationMeta _storagePathMeta = const VerificationMeta(
     'storagePath',
@@ -11239,6 +11239,7 @@ class ExpenseAttachmentRow extends DataClass
   final String? localPath;
 
   /// `pending` | `uploaded` | `stagingReclaimed` | `failed`.
+  /// One of [AttachmentUploadState]. The lifecycle lives in that enum, not here.
   final String uploadState;
   final String? storagePath;
   final int attemptCount;

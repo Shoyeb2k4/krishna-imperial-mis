@@ -15,6 +15,7 @@ import 'package:krishna_mis/data/repositories/expense_repository.dart';
 import 'package:krishna_mis/data/repositories/master_repository.dart';
 import 'package:krishna_mis/data/repositories/tax_repository.dart';
 import 'package:krishna_mis/data/repositories/vendor_repository.dart';
+import 'package:krishna_mis/data/attachments/attachment_upload_worker.dart';
 import 'package:krishna_mis/data/sync/expense_pull.dart';
 import 'package:krishna_mis/data/sync/outbox_repository.dart';
 import 'package:krishna_mis/data/sync/sync_engine.dart';
@@ -53,6 +54,11 @@ final mutationReconcilerProvider = Provider<MutationReconciler?>((ref) => null);
 /// offline-only build has nothing to re-read from, and the screens that use this treat
 /// its absence as "cannot refresh right now" rather than as an error.
 final expensePullProvider = Provider<ExpensePull?>((ref) => null);
+
+/// Uploads attached bills, independently of the expenses they belong to (D-073).
+final attachmentUploadWorkerProvider = Provider<AttachmentUploadWorker?>(
+  (ref) => null,
+);
 
 final expenseRepositoryProvider = Provider<ExpenseRepository>(
   (ref) => ExpenseRepository(ref.watch(databaseProvider)),

@@ -213,19 +213,57 @@ final class ExpenseAllocation {
 }
 
 /// One attachment, and where its bytes currently are.
+/// One durable state per attachment, persisted, and the only place its lifecycle is
+/// written down (D-073 §3).
+///
+/// Deliberately not a set of booleans. `isUploading && !isUploaded && hasError` is four
+/// bits describing eight states, six of which are nonsense, and the two that matter —
+/// "waiting for its expense" and "refused permanently" — cannot be told apart at all.
+///
+/// The order below is the order a bill actually moves through:
+///
+/// ```
+///   staged ─▶ waitingForExpense ─▶ pendingUpload ─▶ uploading ─▶ uploaded
+///                                        ▲              │
+///                                        └─ retryNeeded ┘   └─▶ rejected
+///                                                                  (terminal)
+/// ```
 enum AttachmentUploadState {
-  /// Copied into app-private staging, not yet on the server.
-  pending,
+  /// Copied into app-private storage and hashed. The expense it belongs to has not been
+  /// saved yet, so there is nothing to attach it to.
+  staged,
 
-  /// On the server, and the server's copy has been hash-verified against the local one.
+  /// The expense is saved locally and queued, and the server has not accepted it.
+  ///
+  /// **Not uploadable yet, and this is a rule rather than an optimisation.** The Storage
+  /// write policy calls `may_read_expense_attachments`, which requires the expense to
+  /// exist canonically — so an upload attempted now would be refused for a reason that
+  /// looks like a permission problem and is really an ordering one (D-073 §2).
+  waitingForExpense,
+
+  /// The server has accepted the expense. The bill is eligible to be uploaded.
+  pendingUpload,
+
+  /// An upload is in flight. Persisted so a crash mid-upload is recoverable rather than
+  /// invisible.
+  uploading,
+
+  /// On the server, hash-verified against the local copy, and recorded as canonical
+  /// metadata in Postgres. All three, or it is not `uploaded`.
   uploaded,
 
   /// Uploaded, verified, and the full-resolution local staging copy has been reclaimed.
   /// The canonical copy is the server's; a thumbnail may still be cached locally.
   stagingReclaimed,
 
-  /// The upload keeps failing. Surfaced for a person; the expense itself is unaffected.
-  failed;
+  /// A transient failure. Carries a `nextAttemptAt`, and will be retried on the durable
+  /// backoff clock.
+  retryNeeded,
+
+  /// A terminal refusal — the server declined, or the local copy is gone or changed.
+  /// **Never retried automatically**, and deliberately carries no `nextAttemptAt`, because
+  /// a null there once meant "due now" and retried a refusal for ever.
+  rejected;
 
   static AttachmentUploadState fromName(String value) =>
       AttachmentUploadState.values.firstWhere(
@@ -240,6 +278,35 @@ enum AttachmentUploadState {
   bool get isOnServer =>
       this == AttachmentUploadState.uploaded ||
       this == AttachmentUploadState.stagingReclaimed;
+
+  /// Whether the upload worker may pick this row up.
+  ///
+  /// `staged` is excluded because there is no expense yet; `waitingForExpense` because
+  /// the server has not accepted it; `rejected` because it is terminal. The two that are
+  /// due are the two that are ready.
+  bool get isUploadable =>
+      this == AttachmentUploadState.pendingUpload ||
+      this == AttachmentUploadState.retryNeeded;
+
+  /// Whether this state means the bytes still exist only on this device.
+  bool get isLocalOnly => !isOnServer;
+
+  /// Whether a person needs to do something about it.
+  bool get needsAttention =>
+      this == AttachmentUploadState.retryNeeded ||
+      this == AttachmentUploadState.rejected;
+
+  /// What the interface says about it, in words a manager can act on.
+  String get label => switch (this) {
+    AttachmentUploadState.staged => 'Attached',
+    AttachmentUploadState.waitingForExpense => 'Waiting for the expense',
+    AttachmentUploadState.pendingUpload => 'Pending upload',
+    AttachmentUploadState.uploading => 'Uploading',
+    AttachmentUploadState.uploaded => 'Uploaded',
+    AttachmentUploadState.stagingReclaimed => 'Uploaded',
+    AttachmentUploadState.retryNeeded => 'Retry needed',
+    AttachmentUploadState.rejected => 'Not accepted',
+  };
 }
 
 /// The approved attachment limits (project-lead decision, 2026-08-29).

@@ -298,7 +298,8 @@ class ExpenseAttachments extends Table {
   TextColumn get localPath => text().nullable()();
 
   /// `pending` | `uploaded` | `stagingReclaimed` | `failed`.
-  TextColumn get uploadState => text().withDefault(const Constant('pending'))();
+  /// One of [AttachmentUploadState]. The lifecycle lives in that enum, not here.
+  TextColumn get uploadState => text().withDefault(const Constant('staged'))();
   TextColumn get storagePath => text().nullable()();
 
   IntColumn get attemptCount => integer().withDefault(const Constant(0))();
@@ -321,7 +322,11 @@ class ExpenseAttachments extends Table {
   @override
   List<String> get customConstraints => [
     'CHECK (byte_size > 0)',
-    "CHECK (upload_state IN ('pending','uploaded','stagingReclaimed','failed'))",
+    "CHECK (upload_state IN ('staged','waitingForExpense','pendingUpload',"
+        "'uploading','uploaded','stagingReclaimed','retryNeeded','rejected'))",
+    // A terminal refusal carries no retry time. A null there was once read as "due now",
+    // which retried a refusal for ever (D-073 §4).
+    "CHECK (upload_state <> 'rejected' OR next_attempt_at IS NULL)",
     // Confirmed means the server has it *and* the bytes matched.
     "CHECK (upload_state <> 'uploaded' OR (storage_path IS NOT NULL "
         'AND uploaded_at IS NOT NULL))',

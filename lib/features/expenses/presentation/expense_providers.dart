@@ -96,6 +96,8 @@ class ExpenseEntryController {
           now: DateTime.now().toUtc(),
         );
 
+    await _attachmentsAwaitExpense(document.id);
+
     // The ledger is a cached read model, so it has to be told. Without this a user
     // records an expense, returns to the ledger, and does not see it — which the
     // Windows acceptance found, and which reads as "my entry was lost" rather than as a
@@ -165,10 +167,22 @@ class ExpenseEntryController {
           now: DateTime.now().toUtc(),
         );
 
+    await _attachmentsAwaitExpense(document.id);
     _invalidateReadModel(document.id);
     _pushThenRefresh(document.id);
 
     return SaveOutcome(expenseId: document.id, queued: true);
+  }
+
+  /// Attachments stop being a draft's staged files and start waiting for their document.
+  ///
+  /// Called at save. A bill cannot be uploaded yet — the Storage policy requires the
+  /// expense to exist canonically — so it moves to `waitingForExpense`, and the worker
+  /// promotes it the moment the server accepts the document (D-073 §2).
+  Future<void> _attachmentsAwaitExpense(String expenseId) async {
+    await _ref
+        .read(attachmentUploadWorkerProvider)
+        ?.markWaitingForExpense(expenseId);
   }
 
   /// Pushes, and re-reads the ledger once the push has finished.
@@ -189,10 +203,17 @@ class ExpenseEntryController {
     unawaited(
       engine
           .pushOnce()
-          .then((_) => _invalidateReadModel(expenseId))
+          .then((_) async {
+            // The expense may have just been accepted, which is exactly what makes its
+            // attachments eligible. Uploading happens *after* the financial record and
+            // never blocks it (spec §15, D-073 §2).
+            await _ref.read(attachmentUploadWorkerProvider)?.uploadDue();
+            _invalidateReadModel(expenseId);
+          })
           .catchError(
             // A failed push is the outbox's problem, not the ledger's. The entry stays
-            // queued and visibly pending, which is already true on screen.
+            // queued and visibly pending, which is already true on screen. A failed
+            // upload is the attachment's own problem, on its own retry clock.
             (Object _) {},
           ),
     );

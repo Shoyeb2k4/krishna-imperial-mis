@@ -55,6 +55,10 @@ class AppDatabase extends _$AppDatabase {
   /// v8 — `expense_allocations.business_unit_id` becomes a soft pointer, for the reason
   ///      v5 existed: a per-user cache legitimately outlives the masters it names, and
   ///      `ON DELETE RESTRICT` made sign-out throw on a device holding expenses (D-068).
+  /// v10 — the attachment lifecycle becomes one durable state model (D-073): `staged`,
+  ///       `waitingForExpense`, `pendingUpload`, `uploading`, `uploaded`,
+  ///       `stagingReclaimed`, `retryNeeded`, `rejected`. A terminal refusal is
+  ///       constrained to carry no retry time.
   /// v9 — `expenses.scope_revoked_at`. A confirmed revocation now purges synced financial
   ///      cache for the revoked unit rather than retaining it, so the one thing that must
   ///      survive — a document still carrying the actor's own unsent, rejected or
@@ -64,7 +68,7 @@ class AppDatabase extends _$AppDatabase {
   /// Financial tables raise this number as they land, each with a migration step and a
   /// migration test (docs/RELEASE_CHECKLIST.md §C).
   @override
-  int get schemaVersion => 9;
+  int get schemaVersion => 10;
 
   /// Timestamps are stored as ISO-8601 **UTC text**, not as unix seconds.
   ///
@@ -132,6 +136,40 @@ class AppDatabase extends _$AppDatabase {
         // sign-out throw on any device that had synced an expense. Recreating the table
         // is the only way SQLite drops a foreign key; no value is transformed.
         await m.alterTable(TableMigration(expenseAllocations));
+      }
+      if (from < 10) {
+        // D-073 — the attachment lifecycle becomes one durable state model. The old four
+        // values could not say "waiting for its expense" or tell a transient failure from
+        // a terminal refusal, and the upload worker needs both.
+        //
+        // Existing rows are mapped conservatively: a `pending` attachment becomes
+        // `waitingForExpense`, because this migration cannot know whether its expense has
+        // been accepted and the worker will promote it as soon as one is. A `failed` row
+        // splits on the one piece of evidence it carries — a retry time means it was
+        // transient, its absence means it was refused.
+        // The values are rewritten **during** the copy, not after it.
+        //
+        // Recreating the table first and updating afterwards cannot work, and the
+        // Windows acceptance proved it on a device that actually had old rows: the new
+        // table carries the new CHECK, so copying `pending` into it fails — while
+        // rewriting beforehand would violate the *old* CHECK, which does not know the
+        // new names. A column transformer is the only point at which neither constraint
+        // is in the way.
+        await m.alterTable(
+          TableMigration(
+            expenseAttachments,
+            columnTransformer: {
+              expenseAttachments.uploadState: const CustomExpression<String>(
+                "CASE upload_state "
+                "WHEN 'pending' THEN 'waitingForExpense' "
+                "WHEN 'failed' THEN "
+                '  (CASE WHEN next_attempt_at IS NOT NULL '
+                "        THEN 'retryNeeded' ELSE 'rejected' END) "
+                'ELSE upload_state END',
+              ),
+            },
+          ),
+        );
       }
       if (from < 9) {
         // `expenses.scope_revoked_at` (D-068). Nothing is back-filled: every row that
