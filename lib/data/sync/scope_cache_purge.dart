@@ -78,6 +78,7 @@ final class ScopePurgeResult {
     this.documentsDowngraded = const {},
     this.documentsRetainedForUnsyncedWork = const {},
     this.stagingReclaimed = const {},
+    this.physicalReclaim,
   });
 
   /// Nothing happened, and why. Null when a purge actually ran.
@@ -89,7 +90,8 @@ final class ScopePurgeResult {
       documentsRemoved = const {},
       documentsDowngraded = const {},
       documentsRetainedForUnsyncedWork = const {},
-      stagingReclaimed = const {};
+      stagingReclaimed = const {},
+      physicalReclaim = null;
 
   final Set<String> revokedUnits;
 
@@ -118,6 +120,11 @@ final class ScopePurgeResult {
   /// transaction committed. Reported rather than assumed: file deletion is the one part
   /// of this that a database rollback could not have undone, so it happens last.
   final Set<String> stagingReclaimed;
+
+  /// What was done to the database's physical storage after the purge committed, so a
+  /// revoked figure is not left recoverable in a sidecar file. See
+  /// [ScopeCachePurge.reclaimPhysicalStorage].
+  final String? physicalReclaim;
 
   bool get didPurge => skippedReason == null && revokedUnits.isNotEmpty;
   int get totalRowsRemoved =>
@@ -297,6 +304,11 @@ class ScopeCachePurge {
       }
     }
 
+    // The rows are gone and the bytes are gone; what is left is the physical storage
+    // they occupied. See [reclaimPhysicalStorage] for why that is a separate step and
+    // why it runs here and not a line earlier.
+    final physicalReclaim = await reclaimPhysicalStorage();
+
     final outboxAfter = await _outboxCount();
     if (outboxAfter != outboxBefore) {
       // Not a recoverable situation: the one guarantee that must not bend has bent.
@@ -316,7 +328,59 @@ class ScopeCachePurge {
       documentsDowngraded: financial.downgraded,
       documentsRetainedForUnsyncedWork: financial.retained,
       stagingReclaimed: reclaimed,
+      physicalReclaim: physicalReclaim,
     );
+  }
+
+  /// Makes sure a revoked figure is not left recoverable in the database's *physical*
+  /// storage once the purge has committed.
+  ///
+  /// Deleting a row is a logical operation, and this project has already been caught
+  /// once by the difference: `PRAGMA secure_delete` had to be turned on because freed
+  /// pages in the main file kept the revoked ₹25,000 legible, which made the purge
+  /// weaker than the projection it protects (D-062, D-070). Secure delete handles the
+  /// main file. It does **not** handle SQLite's sidecar files, because those are written
+  /// by a different mechanism.
+  ///
+  /// Which sidecars exist depends on the journal mode:
+  ///
+  /// | Mode | Sidecars | What this does |
+  /// |---|---|---|
+  /// | `delete` (this project today) | a `-journal` during a write, removed at commit | nothing to do |
+  /// | `wal` | `-wal` and `-shm`, holding committed frames until a checkpoint | truncating checkpoint |
+  ///
+  /// The mode is **read** rather than assumed, so this stays correct if the project ever
+  /// moves to WAL for concurrency. A `-wal` file holds the old page images of everything
+  /// recently written, so after a revocation it is exactly where the deleted figures
+  /// would still be; `wal_checkpoint(TRUNCATE)` writes the frames back into the main
+  /// file — where secure delete applies — and truncates the WAL to zero.
+  ///
+  /// **It runs after the transaction, never inside one.** A checkpoint cannot truncate a
+  /// WAL that an open transaction is still reading, and a destructive checkpoint issued
+  /// mid-transaction is at best a no-op and at worst a corruption risk. That ordering is
+  /// the same reason staged files are reclaimed after the commit rather than during it.
+  ///
+  /// **On the cost.** A truncating checkpoint rewrites and re-creates the WAL, which is
+  /// far more expensive than an ordinary delete. It is deliberately *not* on the path of
+  /// every deletion — it happens only on a confirmed security revocation, which is rare
+  /// and is the one moment where leaving a recoverable figure behind is the failure that
+  /// matters.
+  Future<String> reclaimPhysicalStorage() async {
+    final mode = (await db.customSelect('PRAGMA journal_mode').getSingle())
+        .data
+        .values
+        .first
+        .toString()
+        .toLowerCase();
+
+    if (mode != 'wal') {
+      return 'journal_mode=$mode — no write-ahead log to reclaim';
+    }
+
+    final result = await db
+        .customSelect('PRAGMA wal_checkpoint(TRUNCATE)')
+        .getSingle();
+    return 'journal_mode=wal — truncating checkpoint: ${result.data}';
   }
 
   /// The financial half of a revocation (D-068).

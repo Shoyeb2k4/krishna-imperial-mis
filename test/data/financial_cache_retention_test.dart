@@ -20,6 +20,8 @@
 ///     ledger.
 library;
 
+import 'dart:io';
+
 import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -551,6 +553,157 @@ void main() {
         _containsPaise(after, 3300000),
         isTrue,
         reason: 'while the share this user still holds is untouched',
+      );
+    });
+  });
+
+  group('every persistence surface, not only the main file', () {
+    // D-070 asked for the byte-level guarantee across *all* of SQLite's on-disk
+    // surfaces, not just the database file. Which sidecars exist depends on the journal
+    // mode, so both modes are exercised: `delete`, which this project uses today, and
+    // `wal`, which it may use later for concurrency and where the revoked figures would
+    // otherwise sit in the log until something happened to check-point it.
+
+    /// Every file SQLite may have written for this database.
+    List<File> surfacesFor(File main) => [
+      main,
+      File('${main.path}-wal'),
+      File('${main.path}-shm'),
+      File('${main.path}-journal'),
+    ].where((f) => f.existsSync()).toList();
+
+    Future<File> databaseHoldingTheSharedBill({
+      required String journalMode,
+    }) async {
+      final file = await createTempDatabaseFile();
+      final owned = AppDatabase(NativeDatabase(file));
+      await owned.customStatement('PRAGMA journal_mode = $journalMode');
+      await owned.customStatement('PRAGMA foreign_keys = ON');
+      await seedMasterData(owned, now: now);
+      await ExpenseRepository(owned).createLocally(
+        sharedExpense(),
+        actorUserId: 'user-1',
+        mutationId: const Uuid().v4(),
+        now: now,
+      );
+      await owned.customStatement(
+        'UPDATE expenses SET pending_mutation_id = NULL, '
+        "txn_number = 'KI-EXP-26-27-000001', financial_year = 2026",
+      );
+      await owned.customStatement("UPDATE sync_outbox SET status = 'done'");
+      await owned.close();
+      return file;
+    }
+
+    for (final journalMode in const ['delete', 'wal']) {
+      test('in $journalMode mode the revoked share leaves every file', () async {
+        final file = await databaseHoldingTheSharedBill(
+          journalMode: journalMode,
+        );
+        addTearDown(() => file.parent.deleteSync(recursive: true));
+
+        final db = AppDatabase(NativeDatabase(file));
+        await db.customStatement('PRAGMA journal_mode = $journalMode');
+        await db.customStatement('PRAGMA foreign_keys = ON');
+
+        // Present before, in at least one surface, so the assertion afterwards is about
+        // the purge and not about a search that never found anything.
+        expect(
+          surfacesFor(
+            file,
+          ).any((f) => _containsPaise(f.readAsBytesSync(), 2500000)),
+          isTrue,
+          reason: 'the revoked share is on disk to begin with',
+        );
+
+        final result = await ScopeCachePurge(db).purgeUnits({ccrId});
+        expect(result.physicalReclaim, isNotNull);
+        expect(
+          result.physicalReclaim,
+          contains(journalMode),
+          reason: 'the mode is read, not assumed',
+        );
+
+        // Scanned with the database still **open**, deliberately. Closing it makes
+        // SQLite check-point and remove the WAL by itself, which would hide the very
+        // frames this test exists to look for — the control run proved exactly that:
+        // with the checkpoint removed and the scan after close, the test still passed.
+        // The realistic moment is also this one: the application is running, the purge
+        // has just happened, and the question is what is on the disk right now.
+        for (final surface in surfacesFor(file)) {
+          final bytes = surface.readAsBytesSync();
+          expect(
+            _containsPaise(bytes, 2500000),
+            isFalse,
+            reason:
+                "the revoked property's share survived in "
+                '${surface.path.split(Platform.pathSeparator).last}',
+          );
+          expect(
+            _containsPaise(bytes, 5800000),
+            isFalse,
+            reason:
+                'the invoice total survived in '
+                '${surface.path.split(Platform.pathSeparator).last}',
+          );
+        }
+
+        // And what the user still holds is untouched, in the main file.
+        expect(
+          _containsPaise(file.readAsBytesSync(), 3300000),
+          isTrue,
+          reason: 'the retained share is not collateral damage',
+        );
+        await db.close();
+      });
+    }
+
+    test('a truncating checkpoint is only issued in WAL mode', () async {
+      // The expensive step is deliberately not on the path of every ordinary delete.
+      final file = await databaseHoldingTheSharedBill(journalMode: 'delete');
+      addTearDown(() => file.parent.deleteSync(recursive: true));
+
+      final db = AppDatabase(NativeDatabase(file));
+      addTearDown(db.close);
+      final report = await ScopeCachePurge(db).reclaimPhysicalStorage();
+      expect(report, contains('no write-ahead log'));
+    });
+
+    test('the staged attachment directory goes with the document', () async {
+      // The bytes of a bill are not in the database at all, so no pragma reaches them.
+      final staging = Directory(
+        '${(await createTempDatabaseFile()).parent.path}/staging',
+      )..createSync(recursive: true);
+      addTearDown(() {
+        if (staging.parent.existsSync()) {
+          staging.parent.deleteSync(recursive: true);
+        }
+      });
+
+      final bill = File('${staging.path}/receipt.jpg')
+        ..writeAsBytesSync(List.filled(64, 7));
+      expect(bill.existsSync(), isTrue);
+
+      final expense = simpleExpense();
+      await synced(expense);
+      await attach(expense.id);
+
+      final removed = <String>[];
+      final purgeWithFiles = ScopeCachePurge(
+        db,
+        reclaimStaging: (expenseId) async {
+          removed.add(expenseId);
+          if (staging.existsSync()) staging.deleteSync(recursive: true);
+        },
+      );
+      await purgeWithFiles.purgeUnits({ccrId});
+
+      expect(removed, [expense.id]);
+      expect(
+        bill.existsSync(),
+        isFalse,
+        reason:
+            'an attachment the user may no longer retrieve is not left on disk',
       );
     });
   });
