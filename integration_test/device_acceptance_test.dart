@@ -55,6 +55,13 @@
 ///   attachment-upload   the bill reaches Storage, is registered, and is retried
 ///   attachment-scope    a scoped manager cannot retrieve a complete document's bill
 ///
+/// Two-device propagation, Android ⇄ Windows, run in order against one server:
+///   propagate-expense-a  Android records it and attaches a bill
+///   propagate-expense-b  Windows sees the same document and corrects it
+///   propagate-expense-c  Android sees the correction, and a stale edit conflicts
+///   propagate-expense-d  Windows voids it
+///   propagate-expense-e  Android sees VOIDED, with its evidence intact
+///
 /// Three phases need something to happen on the *host* while the phase is running — the
 /// device's network taken away, a grant revoked, an account deactivated — because the
 /// signed-in user is by definition not allowed to do any of those to themselves. The host
@@ -340,6 +347,21 @@ const _acceptanceMarker = 'Device acceptance';
 ///
 /// Deliberately **not** the cleanup mechanism: see [_acceptanceMarker].
 final List<String> _createdExpenses = [];
+
+/// The one document the two-device phases pass between them.
+///
+/// Fixed, because **each phase is its own process launch on its own machine** — there is
+/// no variable that survives from the Android run to the Windows one. The server is the
+/// only thing both can see, so the id is agreed in advance and the document is looked up
+/// rather than handed over. That is also what makes the assertions meaningful: "the same
+/// expense" means the same client-generated UUID (D-008), not a document that merely
+/// looks alike.
+const _twoDeviceExpenseId = 'c1a7f9e2-5b64-4d10-9f83-27ac41d6e5b0';
+const _twoDeviceAttachmentId = 'd2b8e0f3-6c75-4e21-8a94-38bd52e7f6c1';
+
+/// The version Android last saw, parked on the server in the document's own reference
+/// field so the conflict phase can submit a genuinely stale intent.
+String _staleVersionMarker(int version) => 'seen-v$version';
 
 /// A second fixed id, for work the *Owner* queues before a user switch.
 const _ownerQueuedMutationId = 'b5d0e91a-7c34-4a68-8e2f-19b7d3c05a44';
@@ -3231,6 +3253,274 @@ void main() {
     });
   });
 
+  // ── Two devices, one server ────────────────────────────────────────────────
+  //
+  // Run in order: a and c and e on Android, b and d on Windows. Each is a separate
+  // process on a separate machine, which is the point — nothing is shared but the
+  // backend, so every assertion is about what actually propagated.
+
+  group('propagate-expense-a', skip: _phase != 'propagate-expense-a', () {
+    testWidgets('Android records the document and attaches a bill', (
+      tester,
+    ) async {
+      final source = _SyntheticAttachmentSource();
+      addTearDown(source.dispose);
+
+      await launch(tester, attachmentSource: source);
+      await signIn(tester, 'giridhar@hki.com');
+      await expectSignedIn(tester, 'giridhar@hki.com');
+
+      // Any leftover from an earlier run is voided first, so the fixed id is free.
+      await _voidIfOpen(_twoDeviceExpenseId);
+
+      final gateway = ExpenseGateway(Supabase.instance.client);
+      final created = await gateway.create(
+        arguments: {
+          'p_id': _twoDeviceExpenseId,
+          'p_business_date': _today(),
+          'p_total_minor': 145000,
+          'p_notes': '$_acceptanceMarker: two-device propagation',
+          'p_allocations': [
+            {..._ccrKirana, 'amount_minor': 145000},
+          ],
+        },
+        mutationId: const Uuid().v4(),
+      );
+      expect(created.isOk, isTrue, reason: '${created.refusalOrNull?.message}');
+      _createdExpenses.add(_twoDeviceExpenseId);
+
+      // A bill, uploaded through the real stack so the other device can look for it.
+      final picked = await source.pick(AttachmentIntake.gallery);
+      final bytes = picked!.file.readAsBytesSync();
+      final orgId = await _orgIdOf(_twoDeviceExpenseId);
+      final stored = await SupabaseAttachmentStore(Supabase.instance.client)
+          .upload(
+            orgId: orgId,
+            expenseId: _twoDeviceExpenseId,
+            attachmentId: _twoDeviceAttachmentId,
+            fileName: 'two-device-receipt.jpg',
+            contentType: 'image/jpeg',
+            bytes: bytes,
+          );
+      expect(stored, isA<UploadStored>());
+
+      final row = await _expenseRow(_twoDeviceExpenseId);
+      expect(row['txn_number'], startsWith('KI-EXP-'));
+      debugPrint(
+        'propagate-a: ${row['txn_number']} at version ${row['row_version']}',
+      );
+    });
+  });
+
+  group('propagate-expense-b', skip: _phase != 'propagate-expense-b', () {
+    testWidgets('Windows sees the same document, and corrects it', (
+      tester,
+    ) async {
+      await launch(tester);
+      await signIn(tester, 'giridhar@hki.com');
+      await expectSignedIn(tester, 'giridhar@hki.com');
+
+      final pull = ExpensePull(
+        db: boot.database,
+        gateway: ExpenseGateway(Supabase.instance.client),
+      );
+      await pull.pullOne(_twoDeviceExpenseId);
+
+      final repository = ExpenseRepository(boot.database);
+      final local = await repository.load(_twoDeviceExpenseId);
+
+      // 1 · The same identity, the same number, the same money.
+      expect(local, isNotNull, reason: 'the document reached this device');
+      expect(local!.row.id, _twoDeviceExpenseId);
+      expect(local.row.txnNumber, startsWith('KI-EXP-'));
+      expect(local.documentTotal, Money.fromRupees(1450));
+
+      // 2 · And the same bill, readable because this user sees the whole document.
+      final metadata = await Supabase.instance.client
+          .from('expense_attachments')
+          .select('id,content_hash,storage_path')
+          .eq('id', _twoDeviceAttachmentId)
+          .single();
+      final downloaded = await Supabase.instance.client.storage
+          .from(expenseAttachmentBucket)
+          .download(metadata['storage_path'] as String);
+      expect(
+        sha256Of(downloaded),
+        metadata['content_hash'],
+        reason: 'the bytes the other device uploaded, byte for byte',
+      );
+
+      // 3 · Windows corrects it. The version Android last saw is parked in the
+      //     reference field, because nothing else survives between two machines.
+      final seenVersion = local.row.rowVersion;
+      final edited = await ExpenseGateway(Supabase.instance.client).update(
+        arguments: {
+          'p_id': _twoDeviceExpenseId,
+          'p_business_date': local.row.businessDate,
+          'p_total_minor': 167500,
+          'p_reference_number': _staleVersionMarker(seenVersion),
+          'p_notes': '$_acceptanceMarker: corrected on Windows',
+          'p_allocations': [
+            {..._ccrKirana, 'amount_minor': 167500},
+          ],
+        },
+        baseRowVersion: seenVersion,
+        mutationId: const Uuid().v4(),
+      );
+      expect(edited.isOk, isTrue, reason: '${edited.refusalOrNull?.message}');
+
+      final after = await _expenseRow(_twoDeviceExpenseId);
+      expect(after['total_amount_minor'], 167500);
+      expect(after['row_version'], greaterThan(seenVersion));
+    });
+  });
+
+  group('propagate-expense-c', skip: _phase != 'propagate-expense-c', () {
+    testWidgets('Android sees the correction, and a stale edit conflicts', (
+      tester,
+    ) async {
+      await launch(tester);
+      await signIn(tester, 'giridhar@hki.com');
+      await expectSignedIn(tester, 'giridhar@hki.com');
+
+      final repository = ExpenseRepository(boot.database);
+      final before = await repository.load(_twoDeviceExpenseId);
+
+      await ExpensePull(
+        db: boot.database,
+        gateway: ExpenseGateway(Supabase.instance.client),
+      ).pullOne(_twoDeviceExpenseId);
+
+      // 1 · The other device's correction arrived, on the same document.
+      final refreshed = await repository.load(_twoDeviceExpenseId);
+      expect(refreshed!.row.id, _twoDeviceExpenseId);
+      expect(
+        refreshed.documentTotal,
+        Money.fromRupees(1675),
+        reason: 'the figure Windows wrote',
+      );
+      if (before != null) {
+        expect(
+          refreshed.row.rowVersion,
+          greaterThan(before.row.rowVersion),
+          reason: 'and it arrived as a newer version, not a second record',
+        );
+      }
+      expect(
+        (await boot.database.select(boot.database.expenses).get()).where(
+          (e) => e.id == _twoDeviceExpenseId,
+        ),
+        hasLength(1),
+      );
+
+      // 2 · A stale intent — the version Android held before the pull, which Windows
+      //     parked in the reference field so this phase can name it exactly.
+      final stale =
+          int.tryParse(
+            (refreshed.row.referenceNumber ?? '').replaceAll('seen-v', ''),
+          ) ??
+          1;
+      final conflicted = await ExpenseGateway(Supabase.instance.client).update(
+        arguments: {
+          'p_id': _twoDeviceExpenseId,
+          'p_business_date': refreshed.row.businessDate,
+          'p_total_minor': 190000,
+          'p_notes': '$_acceptanceMarker: stale edit from Android',
+          'p_allocations': [
+            {..._ccrKirana, 'amount_minor': 190000},
+          ],
+        },
+        baseRowVersion: stale,
+        mutationId: const Uuid().v4(),
+      );
+
+      expect(conflicted.isRefused, isTrue);
+      expect(
+        conflicted.refusalOrNull!.kind,
+        RefusalKind.versionConflict,
+        reason:
+            'a stale version is a conflict about the record, and the other device s '
+            'correction is not overwritten (D-021)',
+      );
+
+      final unchanged = await _expenseRow(_twoDeviceExpenseId);
+      expect(
+        unchanged['total_amount_minor'],
+        167500,
+        reason: 'the Windows figure still stands',
+      );
+    });
+  });
+
+  group('propagate-expense-d', skip: _phase != 'propagate-expense-d', () {
+    testWidgets('Windows voids it', (tester) async {
+      await launch(tester);
+      await signIn(tester, 'accountant@example.com');
+      await expectSignedIn(tester, 'accountant@example.com');
+
+      final row = await _expenseRow(_twoDeviceExpenseId);
+      final voided = await ExpenseGateway(Supabase.instance.client).voidExpense(
+        expenseId: _twoDeviceExpenseId,
+        baseRowVersion: row['row_version'] as int,
+        reason: '$_acceptanceMarker: voided from the other device',
+        mutationId: const Uuid().v4(),
+      );
+      expect(voided.isOk, isTrue, reason: '${voided.refusalOrNull?.message}');
+      expect((await _expenseRow(_twoDeviceExpenseId))['voided_at'], isNotNull);
+    });
+  });
+
+  group('propagate-expense-e', skip: _phase != 'propagate-expense-e', () {
+    testWidgets('Android sees VOIDED, and the evidence is still there', (
+      tester,
+    ) async {
+      await launch(tester);
+      await signIn(tester, 'giridhar@hki.com');
+      await expectSignedIn(tester, 'giridhar@hki.com');
+
+      await ExpensePull(
+        db: boot.database,
+        gateway: ExpenseGateway(Supabase.instance.client),
+      ).pullOne(_twoDeviceExpenseId);
+
+      final repository = ExpenseRepository(boot.database);
+      final local = await repository.load(_twoDeviceExpenseId);
+
+      expect(local, isNotNull, reason: 'a void does not delete the record');
+      expect(local!.row.voidedAt, isNotNull);
+      expect(local.row.voidReason, contains(_acceptanceMarker));
+
+      // The attachment survives a void: the document remains, and so does its evidence
+      // (D-006, and the project lead's V1 rule).
+      final attachments = await Supabase.instance.client
+          .from('expense_attachments')
+          .select('id')
+          .eq('expense_id', _twoDeviceExpenseId);
+      expect(
+        attachments,
+        hasLength(1),
+        reason: 'voiding an expense keeps its bills',
+      );
+
+      // And it is immutable now, with the reason a user is actually given.
+      final refused = await ExpenseGateway(Supabase.instance.client).update(
+        arguments: {
+          'p_id': _twoDeviceExpenseId,
+          'p_business_date': local.row.businessDate,
+          'p_total_minor': 200000,
+          'p_notes': '$_acceptanceMarker: edit after void',
+          'p_allocations': [
+            {..._ccrKirana, 'amount_minor': 200000},
+          ],
+        },
+        baseRowVersion: local.row.rowVersion,
+        mutationId: const Uuid().v4(),
+      );
+      expect(refused.isRefused, isTrue);
+      expect(refused.refusalOrNull!.kind, RefusalKind.recordVoided);
+    });
+  });
+
   group('attachment-upload', skip: _phase != 'attachment-upload', () {
     testWidgets('the bill uploads after its expense, is registered, and retries', (
       tester,
@@ -5296,6 +5586,44 @@ Future<Map<String, dynamic>> _row(String table, String id) async =>
 /// on a shared bill is withheld by the view for the caller who may not see it (D-062).
 /// A separate helper from [_row] because the master tables and the expense projection
 /// have nothing in common but an id — asking for `code` here returns `42703`.
+/// Today, as the property's books would date it.
+String _today() {
+  final now = DateTime.now();
+  return '${now.year.toString().padLeft(4, '0')}-'
+      '${now.month.toString().padLeft(2, '0')}-'
+      '${now.day.toString().padLeft(2, '0')}';
+}
+
+/// The organisation an expense belongs to, read through the permitted projection.
+Future<String> _orgIdOf(String expenseId) async =>
+    (await Supabase.instance.client
+            .from('expense_document')
+            .select('org_id')
+            .eq('id', expenseId)
+            .single())['org_id']
+        as String;
+
+/// Voids a leftover document at a fixed id, so the two-device phases can be re-run.
+///
+/// Void rather than delete, as everywhere: financial history is corrected by void plus
+/// audit (spec §14, D-006), and a re-runnable acceptance is not a reason to make an
+/// exception.
+Future<void> _voidIfOpen(String expenseId) async {
+  final existing = await Supabase.instance.client
+      .from('expense_document')
+      .select('id,row_version,voided_at')
+      .eq('id', expenseId)
+      .maybeSingle();
+  if (existing == null || existing['voided_at'] != null) return;
+
+  await ExpenseGateway(Supabase.instance.client).voidExpense(
+    expenseId: expenseId,
+    baseRowVersion: existing['row_version'] as int,
+    reason: '$_acceptanceMarker: clearing the two-device fixture',
+    mutationId: const Uuid().v4(),
+  );
+}
+
 Future<Map<String, dynamic>> _expenseRow(String id) async => await Supabase
     .instance
     .client
