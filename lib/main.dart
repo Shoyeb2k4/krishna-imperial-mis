@@ -21,6 +21,7 @@ Future<void> main() async {
           outboxProvider.overrideWithValue(boot.outbox),
           mutationEndpointProvider.overrideWithValue(boot.mutationEndpoint),
           mutationReconcilerProvider.overrideWithValue(boot.mutationReconciler),
+          expensePullProvider.overrideWithValue(boot.expensePull),
           if (boot.session case final session?)
             sessionProvider.overrideWith(() => SessionController(session)),
         ],

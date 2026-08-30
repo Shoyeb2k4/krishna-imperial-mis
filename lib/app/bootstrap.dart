@@ -30,6 +30,7 @@ import 'package:krishna_mis/data/sync/expense_mutation_endpoint.dart';
 import 'package:krishna_mis/data/sync/master_mutation_endpoint.dart';
 import 'package:krishna_mis/data/sync/outbox_repository.dart';
 import 'package:krishna_mis/domain/sync/pending_mutation.dart';
+import 'package:krishna_mis/data/sync/expense_pull.dart';
 import 'package:krishna_mis/data/sync/reference_sync.dart';
 import 'package:krishna_mis/data/sync/scope_cache_purge.dart';
 import 'package:krishna_mis/app/session/session_controller.dart';
@@ -62,6 +63,7 @@ class BootstrapResult {
     required this.session,
     required this.mutationEndpoint,
     required this.mutationReconciler,
+    required this.expensePull,
   });
 
   final AppConfig config;
@@ -85,6 +87,10 @@ class BootstrapResult {
   /// Writes an accepted server answer back into the local read model. Null when there is
   /// no backend, in which case nothing is ever accepted.
   final MutationReconciler? mutationReconciler;
+
+  /// Re-reads one expense through the projection the server is willing to show. Used by
+  /// the conflict flow, where the point is to see what the record says *now*.
+  final ExpensePull? expensePull;
 }
 
 /// Starts the application.
@@ -145,6 +151,7 @@ Future<BootstrapResult> bootstrap({http.Client? transport}) async {
   SessionDependencies? session;
   RemoteMutationEndpoint? mutationEndpoint;
   MutationReconciler? mutationReconciler;
+  ExpensePull? expensePull;
   if (config.hasBackend) {
     await Supabase.initialize(
       url: config.supabaseUrl,
@@ -170,6 +177,7 @@ Future<BootstrapResult> bootstrap({http.Client? transport}) async {
       ExpenseRepository(database),
       expenseGateway,
     );
+    expensePull = ExpensePull(db: database, gateway: expenseGateway);
     // One purge, shared by the session lifecycle and by reference sync, so a revocation
     // and a sign-out remove the same things by the same code. It can reclaim staged
     // attachment bytes: since D-068 a revoked document's original bill goes with it, and
@@ -202,6 +210,7 @@ Future<BootstrapResult> bootstrap({http.Client? transport}) async {
     outbox: outbox,
     mutationEndpoint: mutationEndpoint,
     mutationReconciler: mutationReconciler,
+    expensePull: expensePull,
     recoveredInFlightEntries: recovered,
     session: session,
   );

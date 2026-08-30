@@ -101,6 +101,53 @@ class ExpenseEntryController {
 
     return SaveOutcome(expenseId: document.id, queued: true);
   }
+
+  /// Applies an edit to a document that already exists, and queues it (D-072).
+  ///
+  /// Deliberately the same shape as [save], because it is the same form and the same
+  /// rules — the only differences are the repository method it lands in and the version
+  /// it carries. The draft's own [ExpenseDraft.baseRowVersion] is used and nothing here
+  /// re-reads the row: an edit is judged against the version the person was looking at,
+  /// not against whatever a background pull has since written (§3, D-021).
+  Future<SaveOutcome> applyEdit(
+    ExpenseDraft draft, {
+    required MasterGraph graph,
+    required Principal principal,
+    required DateTime capturedAt,
+  }) async {
+    final baseRowVersion = draft.baseRowVersion;
+    if (baseRowVersion == null) {
+      throw StateError(
+        'this draft was not loaded from an existing document, so there is no '
+        'version to base an edit on',
+      );
+    }
+
+    final document = draft.toDocument(
+      orgId: _ref.read(organisationIdProvider),
+      createdByUserId: principal.userId,
+      // The original capture instant, not now: correcting a figure does not change when
+      // the entry was made, and `captured_at` is forensic metadata about that (D-019).
+      capturedAt: capturedAt,
+      labelFor: (categoryId) =>
+          graph.expenseCategory(categoryId)?.name ?? 'Category',
+    );
+
+    final mutationId = const Uuid().v7();
+    await _ref
+        .read(expenseRepositoryProvider)
+        .updateLocally(
+          document,
+          actorUserId: principal.userId,
+          mutationId: mutationId,
+          baseRowVersion: baseRowVersion,
+          now: DateTime.now().toUtc(),
+        );
+
+    unawaited(_ref.read(syncEngineProvider)?.pushOnce());
+
+    return SaveOutcome(expenseId: document.id, queued: true);
+  }
 }
 
 final expenseEntryControllerProvider = Provider<ExpenseEntryController>(

@@ -28,6 +28,8 @@ import 'package:krishna_mis/domain/auth/authorizer.dart';
 import 'package:krishna_mis/domain/auth/capability.dart';
 import 'package:krishna_mis/domain/expenses/expense_authorization.dart';
 import 'package:krishna_mis/domain/sync/sync_state.dart';
+import 'package:krishna_mis/features/expenses/presentation/expense_edit_loader.dart';
+import 'package:krishna_mis/features/expenses/presentation/widgets/edit_launcher.dart';
 import 'package:krishna_mis/domain/value_objects/business_date.dart';
 import 'package:krishna_mis/domain/value_objects/money.dart';
 import 'package:krishna_mis/features/expenses/presentation/expense_providers.dart';
@@ -83,12 +85,17 @@ class _Detail extends ConsumerWidget {
             detail: expense.row.pendingMutationId,
           ),
         if (expense.syncState == SyncState.conflict)
-          const _AttentionBanner(
+          _AttentionBanner(
             title: 'Conflict · someone else changed this',
             body:
                 'Your change was based on an earlier version of this expense. '
                 'Nothing has been overwritten. Review the current version and '
                 'apply your change again if it still applies.',
+            action: _BannerAction(
+              key: const Key('conflict-review-latest'),
+              label: 'Review latest',
+              onPressed: () => reviewLatestAfterConflict(context, ref, expense),
+            ),
           ),
 
         _Header(expense: expense),
@@ -369,6 +376,38 @@ class _Actions extends ConsumerWidget {
       businessDate: businessDate,
     );
 
+    // ── Edit ────────────────────────────────────────────────────────────────
+    //
+    // Two separate questions, and both must be yes.
+    //
+    // *Is this document editable at all?* A scoped share of a shared bill is read-only
+    // in V1 (the project lead's rule): the holder has their own ₹25,000 and not the
+    // ₹58,000, so they cannot reconcile the document, and nothing here goes looking for
+    // the missing figure. A voided document is immutable, and one the server has not
+    // accepted has no version to edit from.
+    //
+    // *May this person edit it?* The ordinary capability, scope, period and edit-window
+    // decision, predicted here and re-decided by the server, whose answer is final
+    // (D-037). Predicting it is what lets the control be absent rather than present and
+    // then refused.
+    final editRefusal = editRefusalFor(expense);
+    final mayEdit =
+        editRefusal == null &&
+        authorizer
+            .authorizeEditOf(
+              principal: principal,
+              businessUnitIds: {
+                for (final line in expense.allocations) line.businessUnitId,
+              },
+              periods: {
+                for (final part in expense.periodContributions)
+                  (unit: part.businessUnitId, periodKey: part.pnlPeriodKey),
+              },
+              record: record,
+              today: today,
+            )
+            .isAllowed;
+
     // Predicting eligibility, never deciding it. Asked from the pieces this device has —
     // a scoped reader cannot build the whole aggregate, and still needs to be told
     // whether Void would be permitted. The server re-checks on submission and its
@@ -391,7 +430,23 @@ class _Actions extends ConsumerWidget {
 
     return Wrap(
       spacing: AppSpacing.md,
+      runSpacing: AppSpacing.sm,
       children: [
+        if (mayEdit)
+          FilledButton.icon(
+            key: const Key('edit-expense'),
+            onPressed: () => openExpenseEditor(context, ref, expense),
+            icon: const Icon(Icons.edit_outlined, size: 16),
+            label: const Text('Edit expense'),
+          )
+        else if (editRefusal == EditRefusal.scopedProjection)
+          // Said plainly rather than left as an absent button. A manager who can see
+          // their share and no Edit control should know it is a rule and not a fault.
+          Text(
+            editRefusal!.message,
+            key: const Key('scoped-readonly-note'),
+            style: AppTypography.caption,
+          ),
         if (mayVoid)
           OutlinedButton.icon(
             key: const Key('void-expense'),
@@ -442,11 +497,16 @@ class _AttentionBanner extends StatelessWidget {
     required this.title,
     required this.body,
     this.detail,
+    this.action,
   });
 
   final String title;
   final String body;
   final String? detail;
+
+  /// An optional deliberate next step. Never an automatic one: a conflict is resolved by
+  /// a person looking at both figures, and the control says what it will do.
+  final _BannerAction? action;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -467,9 +527,33 @@ class _AttentionBanner extends StatelessWidget {
         ),
         const SizedBox(height: AppSpacing.xs),
         Text(body, style: AppTypography.bodyMuted),
+        if (action case final action?) ...[
+          const SizedBox(height: AppSpacing.sm),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: OutlinedButton(
+              key: action.key,
+              onPressed: action.onPressed,
+              child: Text(action.label),
+            ),
+          ),
+        ],
       ],
     ),
   );
+}
+
+/// A named action on an attention banner.
+class _BannerAction {
+  const _BannerAction({
+    required this.key,
+    required this.label,
+    required this.onPressed,
+  });
+
+  final Key key;
+  final String label;
+  final VoidCallback onPressed;
 }
 
 class _Field extends StatelessWidget {

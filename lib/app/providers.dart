@@ -15,6 +15,7 @@ import 'package:krishna_mis/data/repositories/expense_repository.dart';
 import 'package:krishna_mis/data/repositories/master_repository.dart';
 import 'package:krishna_mis/data/repositories/tax_repository.dart';
 import 'package:krishna_mis/data/repositories/vendor_repository.dart';
+import 'package:krishna_mis/data/sync/expense_pull.dart';
 import 'package:krishna_mis/data/sync/outbox_repository.dart';
 import 'package:krishna_mis/data/sync/sync_engine.dart';
 import 'package:krishna_mis/domain/sync/pending_mutation.dart';
@@ -45,6 +46,13 @@ final mutationEndpointProvider = Provider<RemoteMutationEndpoint?>(
 
 /// How an accepted answer gets written back into the local read model.
 final mutationReconcilerProvider = Provider<MutationReconciler?>((ref) => null);
+
+/// Re-reading one expense from the server, as the server is willing to show it.
+///
+/// Null when no backend is configured, like every other remote capability here — an
+/// offline-only build has nothing to re-read from, and the screens that use this treat
+/// its absence as "cannot refresh right now" rather than as an error.
+final expensePullProvider = Provider<ExpensePull?>((ref) => null);
 
 final expenseRepositoryProvider = Provider<ExpenseRepository>(
   (ref) => ExpenseRepository(ref.watch(databaseProvider)),

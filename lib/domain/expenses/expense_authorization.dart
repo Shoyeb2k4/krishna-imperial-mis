@@ -188,6 +188,62 @@ class ExpenseAuthorizer {
     return _authorizePeriods(principal, expense);
   }
 
+  /// May this principal edit this expense, judged from the pieces a reader holds?
+  ///
+  /// The counterpart of [authorizeVoidOf], and it exists for the same reason: an
+  /// interface has to decide whether to *offer* Edit before any draft is built. It
+  /// answers only the question about the person — capability, scope, the edit window and
+  /// the period lock. Whether the *document* can be edited at all (a scoped share, a
+  /// voided record, one the server has not accepted) is a separate question with a
+  /// separate answer, because those refusals hold however privileged the reader is.
+  ///
+  /// Unlike [authorizeEdit] this cannot check the *shape* privileges — a cross-unit
+  /// split needs `expense.allocate_cross_unit`, a deliberate period split needs
+  /// `expense.allocate_periods` — because the shape is a property of the edited
+  /// document, which does not exist yet. Those are checked when the draft is saved, and
+  /// again by the server. This is deliberately the weaker, earlier question: *may this
+  /// person be shown the button.*
+  ExpenseDecision authorizeEditOf({
+    required Principal principal,
+    required Set<String> businessUnitIds,
+    required Set<({String unit, String periodKey})> periods,
+    required RecordContext record,
+    required BusinessDate today,
+  }) {
+    for (final unit in businessUnitIds) {
+      final decision = authorizer.authorizeMutation(
+        principal: principal,
+        capability: principal.canAnywhere(Capability.expenseEditAll)
+            ? Capability.expenseEditAll
+            : Capability.expenseEditOwn,
+        businessUnitId: unit,
+        record: record,
+        today: today,
+      );
+      if (decision is Denied) {
+        return ExpenseDecision.denied(
+          ExpenseDenialReason.unitOutsideScope,
+          detail: unit,
+        );
+      }
+    }
+
+    for (final period in periods) {
+      if (authorizer.periodRegistry.stateFor(
+            periodKey: period.periodKey,
+            businessUnitId: period.unit,
+          ) ==
+          PeriodState.closed) {
+        return ExpenseDecision.denied(
+          ExpenseDenialReason.periodClosed,
+          detail: '${period.periodKey} · ${period.unit}',
+        );
+      }
+    }
+
+    return const ExpenseDecision.allowed();
+  }
+
   /// May this principal void this expense, and has a reason been given?
   ///
   /// See [VoidPolicy]. The edit window does not apply; the period lock absolutely does,

@@ -185,6 +185,8 @@ final class ExpenseDraft {
     this.accountingPeriodEnd,
     this.attachments = const [],
     this.isSplit = false,
+    this.baseRowVersion,
+    this.txnNumber,
   });
 
   /// A blank expense with one line ready to classify.
@@ -212,8 +214,71 @@ final class ExpenseDraft {
     ],
   );
 
+  /// The same form, loaded from a document that already exists (D-072).
+  ///
+  /// **Complete documents only.** A scoped projection is read-only in V1, and this
+  /// factory refuses one rather than leaving the caller to remember: a scoped record
+  /// deliberately does not carry the invoice total, so a draft built from it could not
+  /// reconcile, and the only ways to make it reconcile would be to invent the missing
+  /// figure or to submit a document that silently drops the other property's lines.
+  /// Both are worse than refusing.
+  ///
+  /// [rowVersion] is captured **here**, at load, and carried unchanged to submission
+  /// (§3). It is not refreshed if a background pull discovers a newer version while the
+  /// user is typing: that is precisely the situation a conflict exists to surface, and
+  /// silently re-basing the draft would let one person overwrite an edit they never saw.
+  factory ExpenseDraft.fromExisting({
+    required String id,
+    required int rowVersion,
+    required BusinessDate businessDate,
+    required Money total,
+    required List<AllocationDraft> allocations,
+    String? txnNumber,
+    String? vendorId,
+    PaymentStatus paymentStatus = PaymentStatus.unpaid,
+    BusinessDate? paymentDate,
+    String? paymentMethodId,
+    String? referenceNumber,
+    String? notes,
+    BusinessDate? accountingPeriodStart,
+    BusinessDate? accountingPeriodEnd,
+    List<ExpenseAttachment> attachments = const [],
+  }) => ExpenseDraft(
+    id: id,
+    businessDate: businessDate,
+    total: total,
+    allocations: allocations,
+    vendorId: vendorId,
+    paymentStatus: paymentStatus,
+    paymentDate: paymentDate,
+    paymentMethodId: paymentMethodId,
+    referenceNumber: referenceNumber,
+    notes: notes,
+    accountingPeriodStart: accountingPeriodStart,
+    accountingPeriodEnd: accountingPeriodEnd,
+    attachments: attachments,
+    // A document with more than one line, or with a deliberate period split, opens in
+    // the split view — otherwise the editor that hosts those rows is never built and
+    // the user would silently be shown a simplified form of their own document.
+    isSplit: allocations.length > 1 || allocations.any((a) => a.hasPeriodSplit),
+    baseRowVersion: rowVersion,
+    txnNumber: txnNumber,
+  );
+
   final String id;
   final BusinessDate businessDate;
+
+  /// The version this draft was loaded from, or null when it is a new document.
+  ///
+  /// Carried load → draft → submit, and never re-based (§3). Its presence is also what
+  /// [isEdit] means, so there is one fact rather than two that could disagree.
+  final int? baseRowVersion;
+
+  /// The server-issued number, for display while editing. Never generated locally.
+  final String? txnNumber;
+
+  /// Whether this draft corrects an existing document rather than creating one.
+  bool get isEdit => baseRowVersion != null;
 
   /// The invoice total. On a simple expense this *is* the single line's amount, and the
   /// two are kept in step so a routine user never sees the word "allocation".
@@ -295,6 +360,11 @@ final class ExpenseDraft {
         : (accountingPeriodEnd ?? this.accountingPeriodEnd),
     attachments: attachments ?? this.attachments,
     isSplit: isSplit ?? this.isSplit,
+    // Never a parameter. The version an edit is based on is fixed at load, and a
+    // `copyWith` is how every keystroke rebuilds the draft — offering it here is exactly
+    // how a background sync would come to re-base somebody's edit silently (§3).
+    baseRowVersion: baseRowVersion,
+    txnNumber: txnNumber,
   );
 
   // ── Editing ───────────────────────────────────────────────────────────────

@@ -263,6 +263,12 @@ void main() {
           reason: 'below about 1400px the figures on a bill start to go',
         );
       },
+      // Decoding, resizing and re-encoding a 4000px JPEG in pure Dart is genuinely
+      // CPU-bound, and on this machine it lands within a second of the 30s default.
+      // A test that passes at 29s is not passing for a reason — it is passing until the
+      // machine is busy, and then it reports a failure that says nothing about the code.
+      // The assertions above are untouched; only the clock is.
+      timeout: const Timeout(Duration(minutes: 3)),
     );
 
     test('a small photo is left alone', () async {

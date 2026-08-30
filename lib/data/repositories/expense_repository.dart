@@ -329,6 +329,203 @@ class ExpenseRepository {
     ],
   };
 
+  /// Applies an edit locally and queues it, atomically (D-072).
+  ///
+  /// The mirror of [createLocally], and deliberately the same shape: one transaction
+  /// writes the document, replaces its lines and contributions, and appends the outbox
+  /// entry. If any of it fails, none of it happened — the interface must never be able to
+  /// say an edit is safely queued when the intent was not committed.
+  ///
+  /// ## What is replaced, and what is not
+  ///
+  /// Lines and period contributions are **replaced wholesale**, because an edit can add,
+  /// remove, re-classify and re-split them at once, and reconciling a diff of financial
+  /// rows would be a second implementation of the arithmetic that `ExpenseDocument`
+  /// already enforces. The replacement happens inside the transaction, so there is no
+  /// moment at which the document has lines that do not add up to it.
+  ///
+  /// Attachments are **not** replaced. An uploaded bill is historical supporting
+  /// evidence; new ones may be added, and removing one is a separate audited operation
+  /// that V1 does not offer. So this method inserts attachment rows it has not seen
+  /// before and leaves every existing row exactly as it is, including its upload state —
+  /// re-writing that here would restart uploads that had already succeeded.
+  ///
+  /// [baseRowVersion] is the version the *user's screen* was loaded from, not whatever
+  /// the local row happens to say now. Passing it in rather than reading it here is what
+  /// makes a stale edit a conflict instead of an overwrite: a background pull may have
+  /// advanced the local row while the form was open, and the intent must still be judged
+  /// against what the person actually saw (§3, D-021).
+  Future<void> updateLocally(
+    ExpenseDocument expense, {
+    required String actorUserId,
+    required String mutationId,
+    required int baseRowVersion,
+    required DateTime now,
+  }) async {
+    final allocated = Money.sum(expense.allocations.map((a) => a.amount));
+    if (allocated != expense.total) {
+      throw ExpenseImbalance(
+        what: 'allocation lines on expense ${expense.id}',
+        expected: expense.total,
+        actual: allocated,
+      );
+    }
+
+    await _db.transaction(() async {
+      final existing = await (_db.select(
+        _db.expenses,
+      )..where((t) => t.id.equals(expense.id))).getSingleOrNull();
+      if (existing == null) {
+        throw StateError(
+          'expense ${expense.id} is not on this device, so there is nothing to edit',
+        );
+      }
+      // The complete-only rule, enforced where the write happens and not only where the
+      // button is drawn. A scoped row carries no document total by check constraint, so
+      // writing one back would either fail or, worse, publish the share the projection
+      // withheld (D-062, and the project lead's V1 read-only rule for scoped shares).
+      if (existing.visibility != 'complete') {
+        throw StateError(
+          'expense ${expense.id} is a scoped projection and is read-only',
+        );
+      }
+      if (existing.voidedAt != null) {
+        throw StateError('expense ${expense.id} is voided and is immutable');
+      }
+
+      await (_db.update(
+        _db.expenses,
+      )..where((t) => t.id.equals(expense.id))).write(
+        ExpensesCompanion(
+          businessDate: Value(expense.businessDate.iso),
+          businessDateSource: Value(expense.businessDateSource.name),
+          accountingPeriodStart: Value(expense.accountingPeriodStart?.iso),
+          accountingPeriodEnd: Value(expense.accountingPeriodEnd?.iso),
+          documentTotalMinor: Value(expense.total.paise),
+          visibleAmountMinor: Value(expense.total.paise),
+          isShared: Value(expense.isCrossUnit),
+          vendorId: Value(expense.vendorId),
+          paymentStatus: Value(expense.paymentStatus.name),
+          paymentDate: Value(expense.paymentDate?.iso),
+          paymentMethodId: Value(expense.paymentMethodId),
+          referenceNumber: Value(expense.referenceNumber),
+          notes: Value(expense.notes),
+          taxAmountMinor: Value(expense.taxAmount?.paise),
+          pendingMutationId: Value(mutationId),
+          updatedAt: Value(now),
+        ),
+      );
+
+      // Contributions first, then lines: children before parents, so nothing is ever
+      // orphaned even for the length of one statement.
+      await (_db.delete(
+        _db.expensePeriodAllocations,
+      )..where((t) => t.expenseId.equals(expense.id))).go();
+      await (_db.delete(
+        _db.expenseAllocations,
+      )..where((t) => t.expenseId.equals(expense.id))).go();
+
+      for (var i = 0; i < expense.allocations.length; i++) {
+        final line = expense.allocations[i];
+        await _db
+            .into(_db.expenseAllocations)
+            .insert(
+              ExpenseAllocationsCompanion.insert(
+                id: line.id,
+                orgId: expense.orgId,
+                expenseId: expense.id,
+                businessUnitId: line.businessUnitId,
+                departmentId: line.departmentId,
+                sectionId: line.sectionId,
+                categoryId: line.categoryId,
+                amountMinor: line.amount.paise,
+                categoryLabel: line.categoryLabel,
+                sortOrder: Value(i),
+                updatedAt: now,
+              ),
+            );
+
+        for (final part in line.periodContributions) {
+          await _db
+              .into(_db.expensePeriodAllocations)
+              .insert(
+                ExpensePeriodAllocationsCompanion.insert(
+                  id: part.id,
+                  orgId: expense.orgId,
+                  expenseId: expense.id,
+                  allocationId: line.id,
+                  businessUnitId: line.businessUnitId,
+                  accountingPeriodStart: part.periodStart.iso,
+                  accountingPeriodEnd: part.periodEnd.iso,
+                  amountMinor: part.amount.paise,
+                  pnlDate: part.pnlDate.iso,
+                  pnlPeriodKey: part.periodKey,
+                  isDerived: Value(part.isDerived),
+                  updatedAt: now,
+                ),
+              );
+        }
+      }
+
+      // Additions only. `insertOrIgnore` is the whole of the "existing attachments are
+      // not touched" rule, expressed where it cannot be forgotten.
+      for (final attachment in expense.attachments) {
+        await _db
+            .into(_db.expenseAttachments)
+            .insert(
+              ExpenseAttachmentsCompanion.insert(
+                id: attachment.id,
+                orgId: expense.orgId,
+                expenseId: expense.id,
+                fileName: attachment.fileName,
+                contentType: attachment.contentType,
+                byteSize: attachment.byteSize,
+                contentHash: attachment.contentHash,
+                localPath: Value(attachment.localStagingPath),
+                uploadState: Value(attachment.uploadState.name),
+                storagePath: Value(attachment.storagePath),
+                nextAttemptAt: Value(now),
+                uploadedBy: actorUserId,
+                createdAt: now,
+                updatedAt: now,
+              ),
+              mode: InsertMode.insertOrIgnore,
+            );
+      }
+
+      await _db
+          .into(_db.syncOutbox)
+          .insert(
+            SyncOutboxCompanion.insert(
+              mutationId: mutationId,
+              actorUserId: Value(actorUserId),
+              entityType: 'expense',
+              entityId: expense.id,
+              op: MutationOp.update.name,
+              payload: jsonEncode(_updatePayload(expense)),
+              baseRowVersion: Value(baseRowVersion),
+              nextAttemptAt: now,
+              status: OutboxStatus.pending.name,
+              createdAt: now,
+            ),
+            mode: InsertMode.insertOrIgnore,
+          );
+    });
+  }
+
+  /// The edit payload, in the shape `expense_update` takes.
+  ///
+  /// The same document as [_createPayload] minus the two fields an edit does not
+  /// restate: `p_business_date_source`, because how the *original* date was arrived at is
+  /// history and a correction has its own audit row, and `p_captured_at`, because the
+  /// capture instant of the original entry does not move when somebody fixes a figure.
+  static Map<String, Object?> _updatePayload(ExpenseDocument expense) {
+    final payload = Map<String, Object?>.from(_createPayload(expense))
+      ..remove('p_business_date_source')
+      ..remove('p_captured_at');
+    return payload;
+  }
+
   /// Marks an expense voided locally and queues the void, atomically.
   ///
   /// The void carries `base_row_version`, so a void issued from a stale view is a

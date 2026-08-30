@@ -27,7 +27,33 @@ import 'package:krishna_mis/features/expenses/presentation/widgets/classificatio
 import 'package:krishna_mis/features/expenses/presentation/widgets/expense_optional_details.dart';
 
 class ExpenseEntryPage extends ConsumerStatefulWidget {
-  const ExpenseEntryPage({super.key});
+  const ExpenseEntryPage({super.key}) : editing = null, capturedAt = null;
+
+  /// The same screen, opened on a document that already exists (D-072).
+  ///
+  /// Not a second form. The project lead's rule is explicit and it is also the only
+  /// maintainable choice: an edit screen that duplicated the reconciliation rules, the
+  /// period editor and the capability gates would be a second implementation of the
+  /// arithmetic that decides company profit. So the page takes a starting draft and
+  /// changes almost nothing else — the title, the button, and which repository method
+  /// the save lands in.
+  const ExpenseEntryPage.editing(
+    ExpenseDraft this.editing, {
+    required this.capturedAt,
+    super.key,
+  });
+
+  /// The loaded document, or null when this is a new expense.
+  final ExpenseDraft? editing;
+
+  /// The original entry's capture instant.
+  ///
+  /// Carried rather than re-taken. Correcting a figure does not change when the entry
+  /// was made, and `captured_at` is forensic metadata about exactly that (D-019). The
+  /// update payload does not restate it, so this value never reaches the server — it is
+  /// passed so the aggregate this screen builds is the document it claims to be, rather
+  /// than one wearing today's timestamp.
+  final DateTime? capturedAt;
 
   @override
   ConsumerState<ExpenseEntryPage> createState() => _ExpenseEntryPageState();
@@ -37,6 +63,8 @@ class _ExpenseEntryPageState extends ConsumerState<ExpenseEntryPage> {
   ExpenseDraft? _draft;
   bool _saving = false;
   String? _failure;
+
+  bool get _isEdit => widget.editing != null;
 
   /// Applies a change to whatever the draft is *now*.
   ///
@@ -56,7 +84,7 @@ class _ExpenseEntryPageState extends ConsumerState<ExpenseEntryPage> {
       backgroundColor: AppColors.paper,
       appBar: AppBar(
         backgroundColor: AppColors.paper,
-        title: const Text('Add expense'),
+        title: Text(_isEdit ? 'Edit expense' : 'Add expense'),
         elevation: 0,
       ),
       body: graphAsync.when(
@@ -82,7 +110,7 @@ class _ExpenseEntryPageState extends ConsumerState<ExpenseEntryPage> {
       );
     }
 
-    final draft = _draft ??= _startingDraft(graph, principal);
+    final draft = _draft ??= widget.editing ?? _startingDraft(graph, principal);
     final problems = draft.problemsFor(principal);
     final canSave = problems.isEmpty && !_saving;
 
@@ -209,17 +237,27 @@ class _ExpenseEntryPageState extends ConsumerState<ExpenseEntryPage> {
     });
 
     try {
-      final outcome = await ref
-          .read(expenseEntryControllerProvider)
-          .save(draft, graph: graph, principal: principal);
+      final controller = ref.read(expenseEntryControllerProvider);
+      final outcome = _isEdit
+          ? await controller.applyEdit(
+              draft,
+              graph: graph,
+              principal: principal,
+              capturedAt: widget.capturedAt ?? DateTime.now().toUtc(),
+            )
+          : await controller.save(draft, graph: graph, principal: principal);
 
       if (!mounted) return;
-      ref.read(lastUsedClassificationProvider.notifier).remember(draft);
+      // Only a *new* expense teaches the form what to offer next. Correcting last
+      // Tuesday's electricity bill should not change what tomorrow's entry pre-fills.
+      if (!_isEdit) {
+        ref.read(lastUsedClassificationProvider.notifier).remember(draft);
+      }
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            outcome.queued ? 'Saved · Pending sync' : 'Saved · Pending sync',
+            _isEdit ? 'Edit saved · Pending sync' : 'Saved · Pending sync',
           ),
           backgroundColor: AppColors.ink,
         ),
@@ -230,10 +268,13 @@ class _ExpenseEntryPageState extends ConsumerState<ExpenseEntryPage> {
       setState(() {
         _saving = false;
         // Nothing was written: the local save is one transaction, and it either
-        // committed or it did not.
-        _failure =
-            'This expense was not saved. Nothing has been recorded. '
-            '(${error.runtimeType})';
+        // committed or it did not. Saying so plainly matters more here than in a
+        // create — the document the user was correcting is still exactly as it was.
+        _failure = _isEdit
+            ? 'This edit was not saved. The expense is unchanged. '
+                  '(${error.runtimeType})'
+            : 'This expense was not saved. Nothing has been recorded. '
+                  '(${error.runtimeType})';
       });
     }
   }
