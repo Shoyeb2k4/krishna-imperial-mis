@@ -50,6 +50,8 @@
 ///   expense-edit-shared  a scoped share of a shared bill is read-only, UI and server
 ///   expense-edit-offline  edit with no network, queue it, reconnect, reconcile
 ///   expense-edit-refused  a closed period and a withdrawn permission are Rejected
+///   windows-ledger   filters, paging, selection, and the scoped detail caption
+///   attachment-staging  a picked bill is staged, hashed, and never blocks the expense
 ///
 /// Three phases need something to happen on the *host* while the phase is running — the
 /// device's network taken away, a grant revoked, an account deactivated — because the
@@ -63,6 +65,10 @@
 library;
 
 import 'dart:convert';
+import 'package:krishna_mis/data/attachments/attachment_staging.dart';
+import 'package:krishna_mis/data/attachments/attachment_source.dart';
+import 'package:image/image.dart' as img;
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -341,10 +347,15 @@ void main() {
   // ── Driving the real application ──────────────────────────────────────────
 
   /// Builds the app exactly as `main()` does, and waits for start-up to settle.
-  Future<void> launch(WidgetTester tester) async {
+  Future<void> launch(
+    WidgetTester tester, {
+    AttachmentSource? attachmentSource,
+  }) async {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          if (attachmentSource != null)
+            attachmentSourceProvider.overrideWithValue(attachmentSource),
           databaseProvider.overrideWithValue(boot.database),
           outboxProvider.overrideWithValue(boot.outbox),
           mutationEndpointProvider.overrideWithValue(boot.mutationEndpoint),
@@ -3017,6 +3028,349 @@ void main() {
     });
   });
 
+  // ── Attachments, up to the boundary the harness can honestly reach ─────────
+  //
+  // **What this does not claim.** The Android photo picker and the Windows file dialog
+  // are separate activities and OS dialogs; the Flutter test harness drives the
+  // application's own view and cannot drive either. So this injects a synthetic picked
+  // file at exactly the point the OS would have returned one — `AttachmentSource.pick`,
+  // the same shape of injection D-058 uses for the transport — and proves everything
+  // after it with the real staging, the real database and the real expense save.
+  //
+  // Driving the picker itself is a manual smoke test, recorded separately. Calling this
+  // proof that the OS picker works would be false, and the project lead asked
+  // specifically that it not be called that.
+
+  group('attachment-staging', skip: _phase != 'attachment-staging', () {
+    testWidgets('a picked bill is copied, hashed, and does not hold up the expense', (
+      tester,
+    ) async {
+      final source = _SyntheticAttachmentSource();
+      addTearDown(source.dispose);
+
+      await launch(tester, attachmentSource: source);
+      await signIn(tester, 'giridhar@hki.com');
+      await expectSignedIn(tester, 'giridhar@hki.com');
+
+      await openExpenseEntry(tester);
+      await tester.enterText(find.byKey(const Key('expense-amount')), '640');
+      await tester.pump(const Duration(milliseconds: 300));
+      await classify(tester, const [
+        'Crystal Canopy Rooftop',
+        'F&B / Kitchen',
+        'Food Production',
+        'Kirana & Pulses',
+      ]);
+
+      // Attach through the real control, which calls the real staging service.
+      await revealAndTap(tester, const Key('more-details'));
+      await tester.pump(const Duration(milliseconds: 800));
+
+      final intake = boot.shellKind.name == 'mobile'
+          ? AttachmentIntake.gallery
+          : AttachmentIntake.file;
+      await pumpUntil(
+        tester,
+        'the ${intake.name} attachment control',
+        () => find.byKey(Key('attach-${intake.name}')).evaluate().isNotEmpty,
+      );
+      await revealAndTap(tester, Key('attach-${intake.name}'));
+      await tester.pump(const Duration(seconds: 3));
+
+      expect(
+        find.byKey(const Key('attachment-refusal')),
+        findsNothing,
+        reason: 'a synthetic JPEG within the policy is accepted',
+      );
+
+      await tester.enterText(
+        find.byKey(const Key('expense-notes')),
+        '$_acceptanceMarker: attachment staging',
+      );
+      await tester.pump(const Duration(milliseconds: 300));
+      await revealAndTap(tester, const Key('more-details'));
+      await tester.pump(const Duration(milliseconds: 500));
+
+      final id = await saveExpense(tester);
+      _createdExpenses.add(id);
+
+      // 1 · The record of the bill is in the same transaction as the expense.
+      final repository = ExpenseRepository(boot.database);
+      final saved = await repository.load(id);
+      expect(saved!.attachments, hasLength(1));
+      final attachment = saved.attachments.single;
+
+      // 2 · The bytes were **copied** into app-private storage, not referenced where
+      //     the picker left them. A gallery or camera path can be revoked, moved or
+      //     cleaned between capture and upload.
+      expect(attachment.localPath, isNotNull);
+      expect(
+        attachment.localPath,
+        isNot(source.pickedPath),
+        reason: 'the staged copy is not the file the picker returned',
+      );
+      expect(File(attachment.localPath!).existsSync(), isTrue);
+      expect(
+        attachment.localPath!.contains(id),
+        isTrue,
+        reason: 'staging is per expense, so an abandoned draft is reclaimable',
+      );
+
+      // 3 · The hash is of what was staged, and it is what "uploaded" will later be a
+      //     claim about — an HTTP status is not the same claim.
+      expect(attachment.contentHash, hasLength(64));
+      expect(
+        attachment.contentHash,
+        sha256Of(File(attachment.localPath!).readAsBytesSync()),
+        reason:
+            'the hash describes the bytes on disk, not the bytes that were picked',
+      );
+      expect(attachment.byteSize, greaterThan(0));
+      expect(attachment.uploadState, 'pending');
+      expect(attachment.storagePath, isNull);
+
+      // 4 · The expense did not wait for any of it, and syncs on its own.
+      await syncAndAwaitNumber(tester, id);
+      final synced = await repository.load(id);
+      expect(synced!.syncState, SyncState.synced);
+      expect(
+        synced.attachments.single.uploadState,
+        'pending',
+        reason:
+            'an accepted financial record says nothing about whether its photo has '
+            'been uploaded — the two are deliberately independent (spec §15)',
+      );
+
+      // 5 · And it survives a restart of the application, because staging is a file
+      //     and a row, not a field on a widget.
+      final reopened = await bootstrap(transport: _transport);
+      addTearDown(() => reopened.database.close());
+      final afterRestart = await ExpenseRepository(reopened.database).load(id);
+      expect(afterRestart!.attachments, hasLength(1));
+      expect(
+        afterRestart.attachments.single.contentHash,
+        attachment.contentHash,
+      );
+      expect(
+        File(afterRestart.attachments.single.localPath!).existsSync(),
+        isTrue,
+      );
+    });
+  });
+
+  // ── The Windows ledger ─────────────────────────────────────────────────────
+
+  group('windows-ledger', skip: _phase != 'windows-ledger', () {
+    testWidgets('filters, paging and a detail panel that never lies about a share', (
+      tester,
+    ) async {
+      expect(
+        boot.shellKind.name,
+        isNot('mobile'),
+        reason:
+            'this phase is about the desktop ledger; run it with -d windows',
+      );
+
+      await launch(tester);
+      await signIn(tester, 'giridhar@hki.com');
+      await expectSignedIn(tester, 'giridhar@hki.com');
+
+      // Three documents with deliberately different shapes: one Crystal Canopy, one
+      // Hotel Krishna, one shared between them and paid.
+      final ccrId = await _admin.createCcrExpense(
+        notes: '$_acceptanceMarker: ledger CCR only',
+      );
+      final sharedId = await _admin.createSharedExpense(
+        notes: '$_acceptanceMarker: ledger shared bill',
+      );
+      _createdExpenses
+        ..add(ccrId)
+        ..add(sharedId);
+
+      final pull = ExpensePull(
+        db: boot.database,
+        gateway: ExpenseGateway(Supabase.instance.client),
+      );
+      await pull.pullOne(ccrId);
+      await pull.pullOne(sharedId);
+
+      final repository = ExpenseRepository(boot.database);
+
+      // ── Paging is done in SQL, not by loading the ledger into memory ────────
+      //
+      // Asserted against the repository rather than by counting rows on screen: the
+      // claim is about *where* the narrowing happens, and a screen showing 50 rows looks
+      // identical whether the database returned 50 or the application fetched ten
+      // thousand and threw most away (spec §27).
+      final firstPage = await repository.query(
+        const ExpenseFilter(),
+        limit: 2,
+        offset: 0,
+      );
+      final secondPage = await repository.query(
+        const ExpenseFilter(),
+        limit: 2,
+        offset: 2,
+      );
+      expect(firstPage, hasLength(lessThanOrEqualTo(2)));
+      expect(
+        firstPage
+            .map((e) => e.row.id)
+            .toSet()
+            .intersection(secondPage.map((e) => e.row.id).toSet()),
+        isEmpty,
+        reason:
+            'consecutive windows do not overlap, so the offset reached the query',
+      );
+
+      // ── The filter bar ──────────────────────────────────────────────────────
+      await pumpUntil(
+        tester,
+        'the Transactions destination',
+        () => visible('Transactions'),
+      );
+      await tester.tap(find.text('Transactions').last);
+      await tester.pump(const Duration(milliseconds: 900));
+      await pumpUntil(
+        tester,
+        'the ledger filter bar',
+        () => find.byKey(const Key('ledger-search')).evaluate().isNotEmpty,
+      );
+
+      final ccrNumber = (await _expenseRow(ccrId))['txn_number'] as String;
+      final sharedNumber =
+          (await _expenseRow(sharedId))['txn_number'] as String;
+
+      // Search by expense number narrows to one document.
+      await tester.enterText(find.byKey(const Key('ledger-search')), ccrNumber);
+      await tester.pump(const Duration(seconds: 2));
+      expect(showsText(ccrNumber), isTrue);
+      expect(
+        showsText(sharedNumber),
+        isFalse,
+        reason: 'the search reached the query, not just the eye',
+      );
+
+      await tester.enterText(find.byKey(const Key('ledger-search')), '');
+      await tester.pump(const Duration(seconds: 2));
+
+      // The business-unit filter.
+      await pumpUntil(
+        tester,
+        'the business unit filter',
+        () => find.byKey(const Key('ledger-unit-filter')).evaluate().isNotEmpty,
+      );
+      await tester.tap(find.byKey(const Key('ledger-unit-filter')));
+      await tester.pump(const Duration(milliseconds: 800));
+      await pumpUntil(
+        tester,
+        'Hotel Krishna Imperial in the filter',
+        () => visible('Hotel Krishna Imperial'),
+      );
+      await tester.tap(find.text('Hotel Krishna Imperial').last);
+      await tester.pump(const Duration(seconds: 2));
+
+      expect(
+        showsText(sharedNumber),
+        isTrue,
+        reason:
+            'a shared bill charges Hotel Krishna, so it belongs in this view',
+      );
+      expect(
+        showsText(ccrNumber),
+        isFalse,
+        reason: 'and a Crystal-Canopy-only document does not',
+      );
+
+      // Filters clear.
+      await pumpUntil(tester, 'Clear filters', () => visible('Clear filters'));
+      await tester.tap(find.text('Clear filters').last);
+      await tester.pump(const Duration(seconds: 2));
+      expect(showsText(ccrNumber), isTrue);
+      expect(showsText(sharedNumber), isTrue);
+
+      // Payment status and attention are offered as filters, and narrow the query.
+      expect(visible('Unpaid only'), isTrue);
+      expect(visible('Needs attention'), isTrue);
+      expect(visible('Include voided'), isTrue);
+
+      final unpaidOnly = await repository.query(
+        const ExpenseFilter(paymentStatus: 'unpaid'),
+      );
+      expect(
+        unpaidOnly.every((e) => e.row.paymentStatus == 'unpaid'),
+        isTrue,
+        reason: 'the payment filter is a predicate, not a label',
+      );
+
+      // ── Selection opens the detail, and the caption tells the truth ──────────
+      await tester.tap(find.textContaining(sharedNumber).first);
+      await tester.pump(const Duration(seconds: 2));
+      await pumpUntil(
+        tester,
+        'the detail panel',
+        () => find.byKey(const Key('amount-label')).evaluate().isNotEmpty,
+      );
+
+      // The Owner sees the whole document, so the caption reads TOTAL and the figure is
+      // the invoice.
+      expect(
+        (tester.widget<Text>(find.byKey(const Key('amount-label')))).data,
+        'TOTAL',
+      );
+      expect(
+        find
+            .descendant(
+              of: find.byType(ExpenseDetailPanel),
+              matching: find.textContaining('58,000'),
+            )
+            .evaluate(),
+        isNotEmpty,
+      );
+
+      // A scoped manager, on the same installation, must never see that caption on a
+      // share. This is the assertion the ledger phase exists for.
+      await signIn(tester, 'ccr.manager@example.com');
+      await expectSignedIn(tester, 'ccr.manager@example.com');
+      await ExpensePull(
+        db: boot.database,
+        gateway: ExpenseGateway(Supabase.instance.client),
+      ).pullOne(sharedId);
+
+      await openExpenseDetail(tester, sharedId);
+      await pumpUntil(
+        tester,
+        'the scoped detail panel',
+        () => find.byKey(const Key('scoped-explanation')).evaluate().isNotEmpty,
+      );
+      expect(
+        (tester.widget<Text>(find.byKey(const Key('amount-label')))).data,
+        'YOUR ALLOCATION',
+        reason:
+            'a share is never captioned TOTAL — the caption is the difference between '
+            'a true statement and a false one about the same number',
+      );
+      expect(
+        find
+            .descendant(
+              of: find.byType(ExpenseDetailPanel),
+              matching: find.textContaining('58,000'),
+            )
+            .evaluate(),
+        isEmpty,
+      );
+      expect(
+        find
+            .descendant(
+              of: find.byType(ExpenseDetailPanel),
+              matching: find.textContaining('25,000'),
+            )
+            .evaluate(),
+        isNotEmpty,
+      );
+    });
+  });
+
   group('expense-edit-offline', skip: _phase != 'expense-edit-offline', () {
     testWidgets('an edit made offline queues, survives, and reconciles once', (
       tester,
@@ -4423,3 +4777,50 @@ Future<int> _currentVersion(String departmentId) async {
 }
 
 String _two(int value) => value.toString().padLeft(2, '0');
+
+/// A file, at the exact point the OS picker would have returned one.
+///
+/// Not a fake of the staging service, the database or the upload: everything downstream
+/// of this is the real code path. What it replaces is the one step the Flutter test
+/// harness genuinely cannot drive — an Android photo-picker activity or a Windows file
+/// dialog, both of which are outside the application's own view.
+class _SyntheticAttachmentSource implements AttachmentSource {
+  _SyntheticAttachmentSource();
+
+  Directory? _scratch;
+  String? pickedPath;
+
+  @override
+  Set<AttachmentIntake> get available => AttachmentIntake.values.toSet();
+
+  @override
+  Future<PickedFile?> pick(AttachmentIntake intake) async {
+    final scratch = _scratch ??= Directory.systemTemp.createTempSync(
+      'krishna_acceptance_bill',
+    );
+    final file = File('${scratch.path}/synthetic-receipt.jpg')
+      ..writeAsBytesSync(_syntheticJpeg());
+    pickedPath = file.path;
+    return PickedFile(
+      file: file,
+      fileName: 'synthetic-receipt.jpg',
+      contentType: 'image/jpeg',
+    );
+  }
+
+  void dispose() {
+    if (_scratch?.existsSync() ?? false) _scratch!.deleteSync(recursive: true);
+  }
+
+  /// A real, decodable JPEG — small enough that the optimiser leaves it alone, so this
+  /// phase is about staging rather than about re-encoding.
+  static List<int> _syntheticJpeg() {
+    final image = img.Image(width: 64, height: 64);
+    for (var y = 0; y < image.height; y++) {
+      for (var x = 0; x < image.width; x++) {
+        image.setPixelRgb(x, y, (x * 4) % 256, (y * 4) % 256, 128);
+      }
+    }
+    return img.encodeJpg(image, quality: 80);
+  }
+}

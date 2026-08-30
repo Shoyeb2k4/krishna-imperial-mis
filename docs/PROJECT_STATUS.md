@@ -5,7 +5,7 @@ Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
-Last updated: **2026-08-30** (second checkpoint)
+Last updated: **2026-08-30** (third checkpoint — the expense edit surface)
 
 > A new session should be able to read this file and know exactly where work stopped.
 > This file — not chat history — is the checkpoint.
@@ -23,8 +23,9 @@ Every gate passed, including the ones that can only be passed by running the rea
 application: the Android package on a device, and the compiled Windows executable, both
 against the real `krishna-mis-dev` project, with the real development identities.
 
-**Phase 3 — Expense Engine: in progress. NOT complete, and one requested surface turns
-out not to exist (D-072).** Slices 1–7 are approved and
+**Phase 3 — Expense Engine: in progress. NOT complete. The expense edit surface is now
+built and proven on both clients (D-072, D-072a); a second gap of the same shape has been
+found in attachment upload (D-073) and needs the project lead's decision.** Slices 1–7 are approved and
 committed (`81ef239`, `03e8b93`); slices 8–13 — the Android entry surface, the Windows
 ledger and detail, edit/void, cross-business and cross-period allocation, and the audit
 presentation — are built and committed (`3871b9f`) and covered by host tests.
@@ -103,7 +104,7 @@ Blocked.**
 |---|---|---|
 | `dart format --set-exit-if-changed` | **Tested** | clean (140 files) |
 | `flutter analyze` | **Tested** | **No issues found** |
-| Host test suite | **Tested** | **616 tests, all passing** |
+| Host test suite | **Tested** | **651 tests, all passing** |
 | Secret scan — tree, git history, built binaries | **Tested** | clean — tree, history and rebuilt distributables; the scan now proves its own controls every run (D-069) |
 | Migration audit (search_path, API surface, policy boundary) | **Tested** | 14 host tests |
 | Backend schema parity (migrations vs the claims made about them) | **Tested** | 18 host tests |
@@ -138,7 +139,8 @@ Blocked.**
 | Attachments on either platform, end to end | **Not tested** | no acceptance phase written; host coverage only (18 tests) |
 | Windows ledger: filters, paging, detail projection | **Not tested** | no acceptance phase written; widget coverage only |
 | Two-device Android ⇄ Windows expense propagation | **Not tested** | create/refresh/void legs schedulable; edit and conflict legs blocked by D-072 |
-| Expense **edit** through the UI | **Blocked** | the surface does not exist in `lib/` (D-072); the server rule is proven |
+| Expense **edit** through the UI | **Tested** | `expense-edit` on both real clients: identity kept, version advanced, D+7/D+8, stale → Conflict (D-072a) |
+| Attachment **upload** end to end | **Blocked** | the application never uploads: no object store, no worker, no scheduling (D-073) |
 | D-068 financial cache retention | **Tested** | 3 tests on the real APK and 3 inside the real `.exe` |
 | Client and server agree on a business date at one instant | **Tested** | 10 host tests reading migration 0033's own assertion table |
 | Payment-date accrual through the application | **Tested** | `payment-accrual`: ₹80,000 to June, ₹0 to July, paid 5 July |
@@ -147,7 +149,7 @@ Blocked.**
 
 | Suite | Count | Result |
 |---|---|---|
-| Host (`flutter test`) | 616 | all passing |
+| Host (`flutter test`) | 651 | all passing |
 | Live backend against `krishna-mis-dev` (opt-in) | 19 | all passing |
 | Live expense suite against `krishna-mis-dev` (opt-in) | 16 | all passing |
 | Android Phase 2 device acceptance (real APK) | 19 | all passing |
@@ -161,7 +163,13 @@ Blocked.**
 | **Android cross-period (`cross-period`)** | **2** | **all passing** |
 | **Android payment-date accrual (`payment-accrual`)** | **1** | **all passing** |
 | **Acceptance fixture reversal (`expense-cleanup`, both platforms)** | **2** | **all passing** |
-| **Total** | **738** | **0 failing, 0 skipped-and-counted** |
+| **Expense edit (`expense-edit`, both platforms)** | **6** | **all passing** |
+| **Scoped-share edit security (`expense-edit-shared`, both)** | **2** | **all passing** |
+| **Offline edit (`expense-edit-offline`, both platforms)** | **2** | **all passing** |
+| **Edit refusals (`expense-edit-refused`, both platforms)** | **4** | **all passing** |
+| **Windows ledger (`windows-ledger`)** | **1** | **all passing** |
+| **Attachment staging (`attachment-staging`, both platforms)** | **2** | **all passing** |
+| **Total** | **790** | **0 failing, 0 skipped-and-counted** |
 
 The Phase 3 acceptance figures are four phases per platform — `expense-simple`,
 `expense-offline`, `expense-shared`, `expense-refusals` — each one process launch against
@@ -250,51 +258,45 @@ to. Full reasoning in `DECISIONS.md` D-067 … D-069.
 
 ## Acceptance still outstanding
 
-Written down rather than glossed. **A phase that has not run is not a phase that passed**,
-and one of the items below cannot run at all because the surface it would exercise is not
-built.
+**A phase that has not run is not a phase that passed**, and one item below cannot run at
+all because the application does not perform the operation it would exercise.
 
 ### Closed since the last checkpoint
 
 | Surface | Status | Evidence |
 |---|---|---|
-| D-068 financial cache retention, user switch | **Tested** | `d068-switch`, 2 tests, Android **and** Windows |
-| D-068 partial revocation (CCR+HKI → lose CCR) | **Tested** | `d068-revoke`, 1 test, Android **and** Windows |
-| Android cross-period entry through the UI | **Tested** | `cross-period`, 2 tests on the real APK |
-| Payment-date accrual through the UI | **Tested** | `payment-accrual`, 1 test on the real APK |
-| Client/server business-date agreement (D-067) | **Tested** | 10 host tests, reading migration 0033's own assertion table |
-| Acceptance fixture reversal | **Tested** | `expense-cleanup` now reverses and asserts; was a no-op (D-071) |
+| **Expense edit through the UI** (D-072) | **Tested** | `expense-edit`, 3 tests, Android **and** Windows |
+| Edit of a scoped shared bill — refused | **Tested** | `expense-edit-shared`, both platforms, UI **and** server |
+| Edit offline, restart, reconcile once | **Tested** | `expense-edit-offline`, both platforms |
+| Closed period and withdrawn permission | **Tested** | `expense-edit-refused`, 2 tests, both platforms |
+| D+7 / D+8 through a real client | **Tested** | inside `expense-edit`, with an identity that lacks the beyond-window capability |
+| Stale edit → `KM003` → Conflict, server value stands | **Tested** | inside `expense-edit`, both platforms |
+| Windows ledger: filters, paging, selection, scoped caption | **Tested** | `windows-ledger`, 1 test in the real `.exe` |
+| Attachment staging to the picker boundary | **Tested** | `attachment-staging`, both platforms |
+| D-070 physical purge across every SQLite surface | **Tested** | 3 host tests over `delete` **and** `wal`, with a positive control |
 
 ### Still outstanding
 
-1. **Attachments end to end on either platform** — *Not tested.* Staging, independent
-   upload, hash confirmation, transient-failure retry leaving the expense `Synced`, and a
-   scoped manager refused the complete-document object by Storage. Host coverage is 18
-   tests and the live suite proves the Storage refusal. **A note on what is provable:** the
-   OS file picker and the Android photo picker are separate activities/dialogs and cannot
-   be driven by the Flutter test harness. Everything *after* the picker returns a file can
-   be proven on device, by injecting at that boundary exactly as D-058 injects the
-   transport — and the limitation must be stated rather than papered over.
-2. **The Windows ledger** — *Not tested.* Filters, keyset paging against SQL rather than
-   an in-memory future, and the detail panel never labelling a scoped share as `TOTAL`.
-   Widget coverage only.
-3. **Void through the UI** — *Not tested.* Mandatory reason, blank reason refused, control
-   absent for a Manager. The server refusals are proven on both platforms; the surface is
-   not. The surface **does** exist, so this is schedulable work.
-4. **Two-device propagation**, Android ⇄ Windows, for expenses — *Not tested.* The create,
-   refresh and void legs are schedulable. The **edit** and **stale-conflict** legs are
-   blocked by item 5.
-5. **Expense edit through the UI — BLOCKED, the surface does not exist (D-072).** The
-   server RPC, its edit window, its beyond-window capability and its closed-period refusal
-   are all implemented and proven against `krishna-mis-dev`. What is missing is any client
-   path that can issue an update: `ExpenseRepository` has no update method, the detail
-   panel renders Void alone, and `ExpenseGateway.update` is called only from tests. The
-   earlier claim that slices 8–13 delivered "edit/void" is wrong about edit. **This needs
-   the project lead's decision** — build the slice, or descope it and stop claiming it.
-6. **Final distributable rebuild and binary secret scan** — *Not tested this checkpoint.*
-   Tree and git history are scanned clean, with the scanner's own controls passing on
-   every run; the APK and Windows bundle have not been rebuilt clean and rescanned since
-   these changes.
+1. **Attachment upload — BLOCKED, the application never uploads (D-073).** No
+   `AttachmentObjectStore` implementation exists outside the tests, `AttachmentUploadWorker`
+   is never constructed, and nothing schedules an upload. Staging, hashing and the server's
+   Storage policy are all proven; the upload between them is not performed. Successful
+   upload, hash confirmation, transient-failure retry and reconnect cannot be tested until
+   it is built. **Needs the project lead's decision.**
+2. **Manual picker smoke test, one per platform** — *Not done, and needs a person.* The
+   Android photo picker and the Windows file dialog are separate activities and OS dialogs;
+   the Flutter harness cannot drive them. `attachment-staging` injects a synthetic file at
+   exactly the point the picker returns one and proves everything after it. Confirming that
+   the picker itself opens, returns, and hands over a file is a human action.
+3. **Two-device propagation**, Android ⇄ Windows, for expenses — *Not tested.* Create,
+   refresh, edit, conflict and void legs are now all schedulable, because the edit surface
+   exists.
+4. **Ledger filters the UI does not offer** — the query layer supports date range,
+   department, section, category and vendor; the filter bar exposes search, business unit,
+   unpaid-only, needs-attention and include-voided. `windows-ledger` covers what exists.
+   Whether the rest belong in V1 is a product question, not a test gap.
+5. **Final distributable rebuild and binary secret scan** — *Not done this checkpoint.*
+   Tree and history scan clean with the scanner's own controls passing.
 
 ## Known issues
 
@@ -328,43 +330,43 @@ platforms run against it.
 
 ## Next exact task
 
-**Settle D-072 first**, because it decides how much of the rest there is. If the expense
-edit surface is to be built, it is a Phase 3 slice with its own design — draft loading from
-a possibly-scoped projection, allocation and period editing under the entry screen's
-reconciliation rules, `base_row_version` carried from load to submission, conflict
-presentation, and outbox reconciliation — and the two-device edit and conflict legs follow
-from it. If it is to be descoped, this document and the client-side edit-window rules must
-say so plainly.
+**Settle D-073**, the way D-072 was settled. If attachment upload is a Phase 3 slice it is
+a real one — a Supabase Storage implementation of `AttachmentObjectStore`, a place to
+schedule it on the outbox's own backoff clock, the D-063 predicate held on the read side,
+and `expense_attachments` rows synced back. If it is deferred, this document and the master
+spec's §15 must say so, and the interface must stop implying a bill has been filed
+anywhere but this device.
 
-Then, in the order that costs least:
+Then:
 
-1. Void through the Windows UI (the surface exists; one phase).
-2. The Windows ledger phase — filters, paging, and the scoped detail caption.
-3. Attachments: one phase per platform, injecting at the picker boundary and saying so.
-4. Two-device `propagate-expense-a` / `-b` for create, refresh and void.
-5. Rebuild clean distributables and scan the binaries.
-6. Re-run the whole gate set and close the phase.
+1. Two-device `propagate-expense` for create, refresh, edit, conflict and void.
+2. The two manual picker smoke tests — one on Android, one on Windows.
+3. Rebuild clean distributables and scan the binaries.
+4. Re-run the whole gate set, including the live backend and live expense suites, and
+   close the phase.
 
 ## Open questions for the project lead
 
 1. **Does a revoked scope take that property's cached expense history with it?**
-   **Answered 2026-08-30 — yes.** Recorded as D-070 and implemented: the purge runs at the
-   confirmed authority refresh and covers synced headers, allocations, contributions,
-   attachment metadata and the staged files, sparing only the actor's own unsent work.
-   Proven on both platforms.
+   **Answered 2026-08-30 — yes.** D-070, implemented and proven on both platforms.
 
-2. **Should the expense edit surface be built, or descoped? (D-072.)** New, and the more
-   consequential of the two. The server's `expense_update` — with the seven-day window,
-   the beyond-window capability and the closed-period refusal — is implemented and proven.
-   The client has no way to issue an edit: no repository method, no control, no route. So
-   D-026, D-065 and D-067 currently govern an operation a user cannot perform. Building it
-   is a Phase 3 slice, not a button, which is why it is being asked rather than assumed.
+2. **Should the expense edit surface be built, or descoped?**
+   **Answered 2026-08-30 — build it.** D-072a records the rules it was built to. Proven
+   on both real clients.
+
+3. **Is attachment upload a Phase 3 slice, or is V1 shipping with bills staged locally?
+   (D-073.)** New, and it blocks Phase 3 closure either way: if it is to be built, Phase 3
+   is not finished; if it is deferred, the documents and the interface have to stop
+   implying otherwise.
 
 ## Project lead actions required
 
-1. **Decide D-072 — build the expense edit surface, or descope it.** This one *does*
-   block: two of the acceptance surfaces you asked for exercise a client path that does
-   not exist, and no amount of test-writing can make them pass until it does.
+1. **Decide D-073 — build attachment upload, or defer it explicitly.** The same shape as
+   D-072, and it blocks closure the same way. Staging and the server's Storage policy are
+   both proven; nothing in the application carries a bill between them.
+2. **Two manual picker smoke tests, one per platform.** The harness cannot drive an OS
+   file dialog or the Android photo picker, and calling an injected boundary proof that it
+   can would be false. Everything after the picker returns is proven automatically.
 2. **Supply the first tax rule per revenue category** — Restaurant, Nandbhog, Room,
    Banquet — when the real treatment has been verified (D-043). Both applications
    currently show "No rule configured", which is correct and honest until then. This does

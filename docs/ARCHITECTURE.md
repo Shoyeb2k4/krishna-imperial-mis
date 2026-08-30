@@ -843,7 +843,28 @@ freed pages kept the revoked figures legible until something happened to overwri
 This was found by asserting on the bytes of the file rather than on the rows, and
 confirmed by turning the pragma off and watching the revoked ₹25,000 reappear.
 
-### 15.4 What the client still cannot do (D-072)
+### 15.4 The edit surface, and what the client still cannot do
+
+`expense_update` now has a producer. `ExpenseRepository.updateLocally` writes the document,
+replaces its lines and contributions and appends the outbox intent in one transaction;
+`ExpenseEntryPage.editing` is the same entry screen loaded from an existing document; the
+detail panel offers Edit when the document is complete and the person may edit it. The
+rules are D-072a's, and three of them are structural rather than conventional:
+
+* **complete-documents only** — `draftFor` refuses a scoped projection, `updateLocally`
+  refuses it again at the write, and the server refuses a forged attempt regardless;
+* **the version is captured at open and `copyWith` cannot move it**, so a background pull
+  cannot re-base an edit somebody is typing;
+* **lines and contributions are replaced wholesale inside the transaction**, so a document
+  never holds lines that do not add up to it.
+
+What the client still cannot do is **upload an attachment**. See D-073: staging, hashing
+and the server's Storage policy are all implemented and proven, and nothing between them
+carries the bytes — there is no `AttachmentObjectStore` implementation outside the tests,
+`AttachmentUploadWorker` is never constructed, and nothing schedules an upload. A bill
+attached on a real device stays on that device, `pending`, for ever.
+
+### 15.5 Superseded: what the client could not do before D-072 was answered
 
 `expense_update` exists on the server, with its edit window measured under the property's
 business date (§14). **No client can call it.** `ExpenseRepository` exposes no update,

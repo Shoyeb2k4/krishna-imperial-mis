@@ -1729,3 +1729,108 @@ proven; what cannot be proven is a client path that does not exist.
 it was recorded as, or to descope it explicitly — in which case `PROJECT_STATUS.md` must
 stop claiming it, and the edit window's client-side rules should say plainly that they
 predict a server operation the client cannot yet issue.
+
+**Answered 2026-08-30: build it.** The project lead directed that expense editing is part
+of the approved V1 model and must be operational before Phase 3 can close. Built and
+proven on both real clients — see the entry below for the rules he set with it, and the
+three defects that only an edit could expose.
+
+## D-072a — The rules the edit surface was built to
+**Date:** 2026-08-30 · **Status:** Accepted (project-lead decision)
+
+**A scoped share of a shared expense is read-only in V1.** A Crystal Canopy manager
+holding `Your allocation ₹25,000` of a ₹58,000 invoice may not open it in an editable
+form. They cannot reconcile a document whose total they are not entitled to see, and the
+three things that would make it possible are all refused: nothing reconstructs the
+withheld figure, nothing re-fetches the complete document because Edit was pressed, and
+"edit my allocation only" is a separate collaborative workflow that V1 does not have. The
+refusal lives in three places — the control is absent, `draftFor` returns
+`EditRefusal.scopedProjection`, and `updateLocally` refuses at the write — and the server
+refuses a forged attempt regardless, which is where the boundary actually is (D-037).
+
+A document wholly inside one property the user holds is `complete` *for them*, and is
+editable under the ordinary rules. "Complete" describes what this device was given, not
+how many properties the invoice charges.
+
+**One form, two modes.** `ExpenseEntryPage.editing` takes a draft loaded from an existing
+document. The reconciliation rules, the period editor, the capability gates and the
+allocation editor are the ones that already decide what a create may do. A second
+implementation of the arithmetic behind company profit is the thing that must not exist.
+
+**The version is captured once, at open, and never re-based.** `copyWith` cannot move it —
+every keystroke rebuilds the draft, so offering it there is precisely how a background
+sync would silently re-base somebody's edit. A stale intent therefore reaches the server
+as `KM003`, becomes `Conflict`, and the user is shown what they entered beside what the
+record now says, with one deliberate action: review the latest and apply the correction
+again. Nothing is merged; the server's copy is never overwritten.
+
+**Attachments are evidence, not form state.** An edit adds attachment rows and never
+replaces or removes them. V1 offers no destructive attachment removal at all.
+
+**Void stays a separate mutation**, unchanged: its own RPC, its own capability, a
+mandatory reason, `base_row_version`, and immutability afterwards.
+
+**Three defects the edit path exposed, none of which a create could have.**
+1. `reconcileAcceptance` wrote every field of the server's answer. `expense_update`
+   returns only `row_version`, so each edit erased the server-issued transaction number
+   locally and left an accepted document reading *Pending Sync* for ever. A field the
+   server did not state is now left alone.
+2. The detail surface served a **stale cached projection across a user switch** — an
+   Owner's complete ₹58,000 invoice shown to a scoped manager out of the Riverpod cache,
+   while the local row had already been correctly re-pulled as scoped. That is the D-062
+   leak arriving one layer above the read model. The expense read providers now depend on
+   the principal.
+3. Saving invalidated two of the three ledger surfaces, so a finance user on Windows
+   recorded an expense and the ledger did not list it.
+
+## D-073 — Attachment **upload** has no producer, and no object store
+**Date:** 2026-08-30 · **Status:** **Open — requires the project lead's decision**
+**Context:** Writing the attachment acceptance the project lead asked for (§19 of his
+D-072 instruction) found the same shape of gap D-072 recorded for editing: a mechanism
+that is implemented and tested, with nothing in the application that reaches it.
+
+What exists, and works:
+
+* `AttachmentStagingService` — copies a picked bill into app-private storage, re-encodes
+  oversized images, computes the SHA-256 of what it staged, enforces the per-expense and
+  per-document limits. Proven on both real clients (`attachment-staging`).
+* `AttachmentUploadWorker` — the deferred upload: backoff, hash confirmation, terminal
+  refusals, staging reclamation only after the server confirms *and* the hash matches.
+  Eighteen host tests.
+* The server half — the private `expense-attachments` bucket, the deterministic object
+  path, and the Storage policy that gates an original on `is_complete`, so a scoped
+  manager cannot download the whole bill (D-063). The live suite proves that refusal
+  against `krishna-mis-dev`.
+
+What does not exist, anywhere in `lib/`:
+
+* any implementation of `AttachmentObjectStore` — the only one in the repository is
+  `FakeObjectStore`, in `test/data/attachment_test.dart`;
+* any construction of `AttachmentUploadWorker`;
+* anything that schedules an upload, at start-up, after a save, or on reconnection.
+
+So a bill attached on a real device is staged, hashed and recorded — and never leaves the
+device. `expense_attachments.upload_state` stays `pending` for ever, and the Storage
+bucket the migrations create is never written to by the application.
+
+**What this blocks.** Four of the things §19 asks to be proven cannot be, because the
+application does not do them: a successful upload, the hash confirmation that turns
+`pending` into `uploaded`, a transient failure leaving the expense `Synced` while the
+attachment retries, and the reconnect that retries only the attachment. The acceptance
+that *can* run does, and says exactly where it stops: `attachment-staging` proves the
+picker boundary, the copy into app-private storage, the hash of what was staged, that the
+expense saves and syncs without waiting for any of it, and that the staged file survives a
+restart.
+
+**Why it is recorded rather than filled in.** Writing a Supabase Storage implementation of
+`AttachmentObjectStore` is not the whole of it. It needs the upload to be scheduled
+somewhere sensible (start-up, after save, on reconnection, on the same backoff clock as
+the outbox), it needs to hold the D-063 predicate on the read side too, and it touches how
+`expense_attachments` rows are synced back — none of which is a small unreviewed addition
+to a financial system, and none of which the project lead scoped in the D-072 instruction.
+
+**The decision required:** whether attachment upload is a Phase 3 slice to be built now —
+in which case Phase 3 cannot close until it is — or whether V1 ships with attachments
+staged locally and uploaded in a later phase, in which case `PROJECT_STATUS.md` and the
+master spec's §15 must say so plainly, and the UI must stop implying a bill has been
+filed anywhere but this device.
