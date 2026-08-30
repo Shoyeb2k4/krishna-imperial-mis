@@ -109,11 +109,14 @@ final expenseFilterProvider =
     );
 
 /// The ledger page, filtered and paged in SQL.
-final filteredExpensesProvider = FutureProvider<List<LocalExpense>>(
-  (ref) => ref
+final filteredExpensesProvider = FutureProvider<List<LocalExpense>>((ref) {
+  // Re-read on a change of principal for the same reason `recentExpensesProvider` does:
+  // a cached ledger must not outlive the session that filled it (D-072 acceptance).
+  ref.watch(principalProvider);
+  return ref
       .watch(expenseRepositoryProvider)
-      .query(ref.watch(expenseFilterProvider)),
-);
+      .query(ref.watch(expenseFilterProvider));
+});
 
 class ExpenseFilterBar extends ConsumerWidget {
   const ExpenseFilterBar({super.key});

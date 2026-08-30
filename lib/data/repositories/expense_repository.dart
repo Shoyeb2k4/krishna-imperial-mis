@@ -573,20 +573,36 @@ class ExpenseRepository {
 
   /// Writes the server's answer onto the local row.
   ///
-  /// Deliberately narrow: the transaction number, the version, the server timestamp and
-  /// the release of the pending link. It does **not** touch attachment upload state — an
-  /// accepted financial record says nothing about whether a photo has finished uploading,
-  /// and overwriting that here would restart uploads that had already succeeded.
+  /// Deliberately narrow: the version, the release of the pending link, and whatever
+  /// identifying values the server actually stated. It does **not** touch attachment
+  /// upload state — an accepted financial record says nothing about whether a photo has
+  /// finished uploading, and overwriting that here would restart uploads that had
+  /// already succeeded.
+  ///
+  /// **A field the server did not send is left alone.** This is not a detail. Different
+  /// RPCs answer with different shapes: `expense_create` issues the transaction number
+  /// and reports it, while `expense_update` returns only the new `row_version`, because a
+  /// correction does not renumber a document. Writing `null` over the number for every
+  /// edit erased the server-issued `KI-EXP-…` locally, left `txn_number` null beside a
+  /// cleared pending link, and so made a document that had just been accepted read as
+  /// *Pending Sync* for ever. Found by the first edit ever pushed from a client
+  /// (D-072) — the create path could not expose it, because a create states everything.
   Future<void> reconcileAcceptance(ExpenseAcceptance acceptance) async {
     await _db.transaction(() async {
       await (_db.update(
         _db.expenses,
       )..where((t) => t.id.equals(acceptance.expenseId))).write(
         ExpensesCompanion(
-          txnNumber: Value(acceptance.txnNumber),
-          financialYear: Value(acceptance.financialYear),
+          txnNumber: acceptance.txnNumber == null
+              ? const Value.absent()
+              : Value(acceptance.txnNumber),
+          financialYear: acceptance.financialYear == null
+              ? const Value.absent()
+              : Value(acceptance.financialYear),
           rowVersion: Value(acceptance.rowVersion),
-          serverUpdatedAt: Value(acceptance.serverUpdatedAt),
+          serverUpdatedAt: acceptance.serverUpdatedAt == null
+              ? const Value.absent()
+              : Value(acceptance.serverUpdatedAt),
           pendingMutationId: const Value(null),
           updatedAt: Value(DateTime.now().toUtc()),
         ),

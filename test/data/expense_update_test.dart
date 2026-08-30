@@ -553,6 +553,82 @@ void main() {
     });
   });
 
+  group('reconciling an edit keeps what the server did not restate', () {
+    test('an update response carries no number, and must not erase one', () async {
+      // `expense_create` issues the transaction number and reports it. `expense_update`
+      // returns only the new `row_version`, because a correction does not renumber a
+      // document. Treating that silence as "set it to null" wiped the KI-EXP- number
+      // locally and left the document reading Pending Sync for ever — found by the first
+      // edit ever pushed from a client, because a create states everything and so could
+      // never expose it.
+      final original = await accepted(simpleExpense(), rowVersion: 3);
+      expect(original.row.txnNumber, 'KI-EXP-26-27-000007');
+      expect(original.row.financialYear, 2026);
+
+      await repository.updateLocally(
+        edited(original, rupees: 750),
+        actorUserId: 'user-1',
+        mutationId: const Uuid().v4(),
+        baseRowVersion: original.row.rowVersion,
+        now: now,
+      );
+
+      // Exactly what `expense_update` answers with, and nothing more.
+      final acceptance = ExpenseAcceptance.fromResult(original.row.id, const {
+        'status': 'applied',
+        'entity_type': 'expense',
+        'entity_id': 'ignored',
+        'row_version': 4,
+      });
+      expect(acceptance, isNotNull);
+      expect(acceptance!.txnNumber, isNull);
+      expect(acceptance.financialYear, isNull);
+
+      await repository.reconcileAcceptance(acceptance);
+
+      final settled = await repository.load(original.row.id);
+      expect(
+        settled!.row.txnNumber,
+        'KI-EXP-26-27-000007',
+        reason: 'the number the server issued is not the update s to take away',
+      );
+      expect(settled.row.financialYear, 2026);
+      expect(settled.row.rowVersion, 4);
+      expect(settled.row.pendingMutationId, isNull);
+      expect(
+        settled.syncState,
+        SyncState.synced,
+        reason:
+            'an accepted edit reads as synced; it read as Pending Sync for ever while '
+            'the number was being erased',
+      );
+    });
+
+    test('a create response still writes the number it issues', () async {
+      final expense = simpleExpense();
+      await repository.createLocally(
+        expense,
+        actorUserId: 'user-1',
+        mutationId: const Uuid().v4(),
+        now: now,
+      );
+      expect((await repository.load(expense.id))!.row.txnNumber, isNull);
+
+      await repository.reconcileAcceptance(
+        ExpenseAcceptance.fromResult(expense.id, const {
+          'row_version': 1,
+          'txn_number': 'KI-EXP-26-27-000042',
+          'financial_year': 2026,
+        })!,
+      );
+
+      final saved = await repository.load(expense.id);
+      expect(saved!.row.txnNumber, 'KI-EXP-26-27-000042');
+      expect(saved.row.financialYear, 2026);
+      expect(saved.syncState, SyncState.synced);
+    });
+  });
+
   group('attachments are evidence, not form state', () {
     test('an existing uploaded attachment survives an edit untouched', () async {
       final original = await accepted(simpleExpense());

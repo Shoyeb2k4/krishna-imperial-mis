@@ -14,6 +14,7 @@ import 'package:krishna_mis/domain/auth/session_state.dart';
 import 'package:krishna_mis/domain/masters/master_graph.dart';
 import 'package:krishna_mis/domain/value_objects/business_date.dart';
 import 'package:krishna_mis/features/expenses/presentation/expense_draft.dart';
+import 'package:krishna_mis/features/expenses/presentation/expense_filters.dart';
 import 'package:uuid/uuid.dart';
 
 /// The signed-in user's organisation, as the server stated it.
@@ -95,11 +96,31 @@ class ExpenseEntryController {
           now: DateTime.now().toUtc(),
         );
 
+    // The ledger is a cached read model, so it has to be told. Without this a user
+    // records an expense, returns to the ledger, and does not see it — which the
+    // Windows acceptance found, and which reads as "my entry was lost" rather than as a
+    // stale cache. The void path has always done this; create and edit had not.
+    _invalidateReadModel(document.id);
+
     // Nudge the worker. It may do nothing — offline, or nothing due — and that is fine:
     // the entry is durable either way, which is the whole point of the outbox.
-    unawaited(_ref.read(syncEngineProvider)?.pushOnce());
+    _pushThenRefresh(document.id);
 
     return SaveOutcome(expenseId: document.id, queued: true);
+  }
+
+  /// Re-reads every surface that shows this document.
+  ///
+  /// **All three**, and the third is the one that was missed. Android's home surface
+  /// reads `recentExpensesProvider`; the Windows ledger reads `filteredExpensesProvider`;
+  /// the detail panel reads its own family entry. Invalidating two of the three meant a
+  /// finance user on Windows recorded an expense and the ledger simply did not list it —
+  /// found by the Windows edit acceptance, which could not open a document the ledger
+  /// never showed.
+  void _invalidateReadModel(String expenseId) {
+    _ref.invalidate(expenseDetailProvider(expenseId));
+    _ref.invalidate(recentExpensesProvider);
+    _ref.invalidate(filteredExpensesProvider);
   }
 
   /// Applies an edit to a document that already exists, and queues it (D-072).
@@ -144,9 +165,37 @@ class ExpenseEntryController {
           now: DateTime.now().toUtc(),
         );
 
-    unawaited(_ref.read(syncEngineProvider)?.pushOnce());
+    _invalidateReadModel(document.id);
+    _pushThenRefresh(document.id);
 
     return SaveOutcome(expenseId: document.id, queued: true);
+  }
+
+  /// Pushes, and re-reads the ledger once the push has finished.
+  ///
+  /// The invalidation *before* the push shows the entry immediately, pending. This one
+  /// is for what the push brings back: the server issues the transaction number, the
+  /// reconciler writes it in the data layer — where no provider can be reached — and
+  /// without this the ledger goes on showing a document as unnumbered and pending long
+  /// after it was accepted. Found by the Windows edit acceptance, which had to look up a
+  /// document by the number the ledger was not showing.
+  ///
+  /// Deliberately not awaited by the caller: a save is durable whether or not the push
+  /// succeeds, and making the screen wait for the network is the thing offline-first
+  /// exists to avoid.
+  void _pushThenRefresh(String expenseId) {
+    final engine = _ref.read(syncEngineProvider);
+    if (engine == null) return;
+    unawaited(
+      engine
+          .pushOnce()
+          .then((_) => _invalidateReadModel(expenseId))
+          .catchError(
+            // A failed push is the outbox's problem, not the ledger's. The entry stays
+            // queued and visibly pending, which is already true on screen.
+            (Object _) {},
+          ),
+    );
   }
 }
 
@@ -178,6 +227,7 @@ class ExpenseVoidController {
           );
       _ref.invalidate(expenseDetailProvider(expense.row.id));
       _ref.invalidate(recentExpensesProvider);
+      _ref.invalidate(filteredExpensesProvider);
       unawaited(_ref.read(syncEngineProvider)?.pushOnce());
       return true;
     } on Object {
@@ -191,13 +241,32 @@ final expenseVoidControllerProvider = Provider<ExpenseVoidController>(
 );
 
 /// The recent ledger, newest business date first.
-final recentExpensesProvider = FutureProvider<List<LocalExpense>>(
-  (ref) => ref.watch(expenseRepositoryProvider).list(limit: 50),
-);
+///
+/// Watches the signed-in principal, and not because the query needs it: these caches
+/// must not outlive the session that filled them. The device acceptance found the
+/// consequence of leaving them alone — an Owner opened a ₹58,000 shared invoice, a
+/// Crystal Canopy manager signed in on the same installation, and the detail surface
+/// served them the Owner's **complete** projection out of the cache. The local row had
+/// been correctly re-pulled as `scoped` with no document total; the screen was reading a
+/// value the database no longer held.
+///
+/// That is precisely the leak D-062 shapes the read model to make impossible, arriving
+/// one layer above it. Re-reading on a change of principal costs one local query and
+/// closes it.
+final recentExpensesProvider = FutureProvider<List<LocalExpense>>((ref) {
+  ref.watch(principalProvider);
+  return ref.watch(expenseRepositoryProvider).list(limit: 50);
+});
 
-final expenseDetailProvider = FutureProvider.family<LocalExpense?, String>(
-  (ref, id) => ref.watch(expenseRepositoryProvider).load(id),
-);
+/// One expense, re-read whenever the signed-in principal changes. See
+/// [recentExpensesProvider] for why that dependency is deliberate.
+final expenseDetailProvider = FutureProvider.family<LocalExpense?, String>((
+  ref,
+  id,
+) {
+  ref.watch(principalProvider);
+  return ref.watch(expenseRepositoryProvider).load(id);
+});
 
 /// Fire and forget, without the analyzer complaining that nobody awaited it.
 void unawaited(Future<void>? future) {}

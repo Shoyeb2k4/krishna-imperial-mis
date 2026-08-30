@@ -338,6 +338,78 @@ void main() {
     });
   });
 
+  group('the read cache does not outlive the session that filled it', () {
+    testWidgets('a user switch does not serve the previous user s projection', (
+      tester,
+    ) async {
+      // Found on a real device: an Owner opened a ₹58,000 shared invoice, a Crystal
+      // Canopy manager signed in on the same installation, and the detail surface served
+      // the Owner's *complete* projection out of the Riverpod cache — while the local row
+      // had already been correctly re-pulled as `scoped` with no document total. The
+      // database was right and the screen was a version behind, showing a figure the
+      // manager may not see. This pins it one layer above the read model.
+      final bill = sharedExpense();
+      await accepted(bill);
+
+      final owner = principalWith({
+        Capability.expenseViewAll,
+        Capability.expenseEditAll,
+      });
+      var principal = owner;
+
+      useTallSurface(tester);
+      final container = ProviderContainer(
+        overrides: [
+          databaseProvider.overrideWithValue(db),
+          principalProvider.overrideWith((ref) => principal),
+          currentBusinessDateProvider.overrideWithValue(today),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      // The Owner reads it complete.
+      final asOwner = await container.read(
+        expenseDetailProvider(bill.id).future,
+      );
+      expect(asOwner!.isScoped, isFalse);
+      expect(asOwner.documentTotal, Money.fromRupees(58000));
+
+      // The scope purge runs and the manager's own projection replaces it, exactly as
+      // the pull would write it.
+      await db.customStatement(
+        "UPDATE expenses SET visibility = 'scoped', document_total_minor = NULL, "
+        'visible_amount_minor = 2500000',
+      );
+      await db.customStatement(
+        'DELETE FROM expense_period_allocations WHERE business_unit_id = ?',
+        [hkiId],
+      );
+      await db.customStatement(
+        'DELETE FROM expense_allocations WHERE business_unit_id = ?',
+        [hkiId],
+      );
+
+      // A different person signs in.
+      principal = principalWith(
+        {Capability.expenseViewAll, Capability.expenseEditOwn},
+        units: {ccrId},
+        userId: 'user-2',
+      );
+      container.invalidate(principalProvider);
+
+      final asManager = await container.read(
+        expenseDetailProvider(bill.id).future,
+      );
+      expect(
+        asManager!.isScoped,
+        isTrue,
+        reason: 'the cache must not answer for the previous session',
+      );
+      expect(asManager.documentTotal, isNull);
+      expect(asManager.visibleAmount, Money.fromRupees(25000));
+    });
+  });
+
   group('a voided document is immutable, and says so', () {
     testWidgets('no Edit and no Void, only the note', (tester) async {
       final expense = await accepted(simpleExpense());

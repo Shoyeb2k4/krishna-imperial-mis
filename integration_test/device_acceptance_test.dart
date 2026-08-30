@@ -46,6 +46,8 @@
 ///   d068-revoke      losing one property of two: partial purge, downgrade, retention
 ///   cross-period     the ₹60,000 May/June split, entered through the real UI
 ///   payment-accrual  a June salary paid in July is June's cost and July's cash
+///   expense-edit     the D-072 edit surface: correct, D+7, D+8, and the version rule
+///   expense-edit-shared  a scoped share of a shared bill is read-only, UI and server
 ///
 /// Three phases need something to happen on the *host* while the phase is running — the
 /// device's network taken away, a grant revoked, an account deactivated — because the
@@ -73,6 +75,9 @@ import 'package:krishna_mis/app/session/session_controller.dart';
 import 'package:krishna_mis/data/remote/expense_gateway.dart';
 import 'package:krishna_mis/data/local/app_database.dart';
 import 'package:krishna_mis/data/repositories/expense_repository.dart';
+import 'package:krishna_mis/features/expenses/presentation/expense_filters.dart';
+import 'package:krishna_mis/features/expenses/presentation/expense_providers.dart';
+import 'package:krishna_mis/features/expenses/presentation/widgets/expense_detail_panel.dart';
 import 'package:krishna_mis/data/sync/expense_pull.dart';
 import 'package:krishna_mis/data/sync/sync_engine.dart';
 import 'package:krishna_mis/domain/expenses/expense_number.dart';
@@ -265,6 +270,17 @@ const _admin = _AdminClient();
 
 const _supabaseUrl = String.fromEnvironment('SUPABASE_URL');
 const _supabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
+
+/// The Crystal Canopy grocery classification, as an allocation payload.
+///
+/// One literal rather than one per phase: it is the same four ids every time, and a
+/// phase that mistypes one gets a foreign-key refusal that reads like a rule failing.
+Map<String, Object?> get _ccrKirana => {
+  'business_unit_id': _ccr,
+  'department_id': _seedId('dept:CCR/FB'),
+  'section_id': _seedId('sec:CCR/FB/FOOD_PROD'),
+  'category_id': _seedId('cat:CCR/FB/FOOD_PROD/KIRANA'),
+};
 
 /// The seeded master ids, derived the same way the migration derives them.
 String _seedId(String path) =>
@@ -1775,6 +1791,141 @@ void main() {
       .where((t) => t.contains('₹'))
       .toList();
 
+  /// Opens the detail surface for [expenseId] and waits for it.
+  ///
+  /// Both shells reach it the same way in the end — a ledger row — but the ledger is a
+  /// destination on Windows and a tab on Android, so the navigation differs and the
+  /// assertions afterwards do not.
+  Future<void> openExpenseDetail(WidgetTester tester, String expenseId) async {
+    if (boot.shellKind.name == 'mobile') {
+      await pumpUntil(
+        tester,
+        'the Transactions tab',
+        () => visible('Transactions'),
+      );
+      await tester.tap(find.text('Transactions').last);
+    } else {
+      await pumpUntil(
+        tester,
+        'the Transactions destination',
+        () => visible('Transactions'),
+      );
+      await tester.tap(find.text('Transactions').last);
+    }
+    await tester.pump(const Duration(milliseconds: 900));
+
+    final expense = await ExpenseRepository(boot.database).load(expenseId);
+    final reference = expense!.row.txnNumber ?? expenseId.substring(0, 8);
+    // The ledger is a cached read model, invalidated by this application whenever it
+    // saves, edits or voids. A transaction number issued later by the background sync
+    // worker arrives in the data layer, where no provider can be reached, so the list can
+    // legitimately be a moment behind — hence a wait rather than a single look.
+    Future<void> waitFor(Duration window) async {
+      final until = DateTime.now().add(window);
+      while (DateTime.now().isBefore(until) && !showsText(reference)) {
+        await tester.pump(const Duration(milliseconds: 500));
+      }
+    }
+
+    await waitFor(const Duration(seconds: 10));
+
+    if (!showsText(reference)) {
+      // The ledger is a cached read model. The application invalidates it when *it*
+      // saves, edits or voids; rows that arrive another way — a pull issued by this
+      // phase, or a transaction number written by this phase's own sync engine rather
+      // than the app's — leave the cache correct-but-stale, and a `FutureProvider` is
+      // not re-run merely by navigating back to it.
+      //
+      // So the cache is refreshed explicitly. This is the test telling the app to
+      // re-read data the *test* wrote behind it; it does not relax any assertion, and
+      // every security claim below is still made against what the application renders.
+      // The underlying limitation — a pull does not refresh the ledger — is recorded in
+      // PROJECT_STATUS rather than papered over here.
+      final container =
+          ProviderScope.containerOf(tester.element(find.byType(KrishnaMisApp)))
+            ..invalidate(filteredExpensesProvider)
+            ..invalidate(recentExpensesProvider);
+      container.invalidate(expenseDetailProvider(expenseId));
+      await tester.pump(const Duration(seconds: 1));
+      await waitFor(const Duration(seconds: 25));
+    }
+    if (!showsText(reference)) {
+      final rows = find
+          .byType(Text)
+          .evaluate()
+          .map((e) => (e.widget as Text).data)
+          .whereType<String>()
+          .where((t) => t.contains('KI-EXP') || t.contains('₹'))
+          .take(20)
+          .join(' | ');
+      fail('the ledger never listed $reference. It shows: $rows');
+    }
+    await tester.tap(find.textContaining(reference).first);
+    await tester.pump(const Duration(milliseconds: 900));
+
+    // Confirm it actually arrived. Almost every assertion made against a detail surface
+    // is about something being *absent*, and an absent control is indistinguishable
+    // from a screen that never opened — so a navigation that quietly failed would make
+    // those assertions pass while proving nothing.
+    final arrived = DateTime.now().add(const Duration(seconds: 20));
+    while (DateTime.now().isBefore(arrived)) {
+      if (find.byKey(const Key('amount-label')).evaluate().isNotEmpty) return;
+      await tester.pump(const Duration(milliseconds: 300));
+    }
+
+    final texts = find
+        .byType(Text)
+        .evaluate()
+        .map((e) => (e.widget as Text).data)
+        .whereType<String>()
+        .where((t) => t.trim().isNotEmpty)
+        .take(30)
+        .join(' | ');
+    fail(
+      'tapping $reference did not open the expense detail. On screen: $texts',
+    );
+  }
+
+  /// Pushes the outbox until [expenseId] reaches [expected], or gives up saying what it
+  /// actually reached.
+  Future<SyncState> pushUntilSettled(
+    WidgetTester tester,
+    String expenseId, {
+    required Set<SyncState> expected,
+    Duration timeout = const Duration(seconds: 120),
+  }) async {
+    final repository = ExpenseRepository(boot.database);
+    final engine = SyncEngine(
+      outbox: boot.outbox,
+      endpoint: boot.mutationEndpoint!,
+      reconciler: boot.mutationReconciler,
+      actorUserId: (await AuthorityStore(boot.database).ownerUserId())!,
+    );
+
+    var state = SyncState.pendingSync;
+    final deadline = DateTime.now().add(timeout);
+    while (DateTime.now().isBefore(deadline)) {
+      await engine.pushOnce();
+      state = (await repository.load(expenseId))!.syncState;
+      if (expected.contains(state)) return state;
+      await tester.pump(const Duration(seconds: 2));
+    }
+    // Say what the queue actually holds. "It did not sync" is not a diagnosis, and the
+    // outbox has the server's own reason written on it.
+    final entries = (await boot.outbox.allEntries())
+        .where((e) => e.entityId == expenseId)
+        .map(
+          (e) =>
+              '${e.op}/${e.status} attempts=${e.attemptCount} '
+              'base=${e.baseRowVersion} err=${e.lastError}',
+        )
+        .join(' · ');
+    fail(
+      'expense $expenseId settled at ${state.name}, expected one of '
+      '${expected.map((s) => s.name).join(", ")}. Outbox: $entries',
+    );
+  }
+
   /// Scrolls [key] into view if it is not already built, then taps it.
   ///
   /// The entry screen grows as a document does — opening a split adds rows above the
@@ -1957,6 +2108,50 @@ void main() {
       () => saveEnabled(tester),
     );
     return tapSaveAndAwaitRow(tester);
+  }
+
+  /// Presses Save on an **edit** and waits for the intent to be queued.
+  ///
+  /// An edit produces no new row — that is the whole point of it — so the create
+  /// helper's success condition ("one row appeared") can never be met and fails with a
+  /// message about a record that was never supposed to exist. The durable consequence of
+  /// an edit is an `update` intent in the outbox, written in the same transaction as the
+  /// local change, so that is what this waits for.
+  Future<void> saveEditedExpense(WidgetTester tester, String expenseId) async {
+    await pumpUntil(
+      tester,
+      'Save to become available',
+      () => saveEnabled(tester),
+    );
+    await tester.tap(find.byKey(const Key('save-expense')));
+
+    final deadline = DateTime.now().add(const Duration(seconds: 30));
+    while (DateTime.now().isBefore(deadline)) {
+      await tester.pump(const Duration(milliseconds: 250));
+
+      final refusal = find.textContaining('was not saved');
+      if (refusal.evaluate().isNotEmpty) {
+        fail(
+          'the edit was refused on screen: '
+          '${(refusal.evaluate().first.widget as Text).data}',
+        );
+      }
+
+      final queued = await boot.outbox.allEntries();
+      if (queued.any((q) => q.entityId == expenseId && q.op == 'update')) {
+        return;
+      }
+    }
+
+    final texts = find
+        .byType(Text)
+        .evaluate()
+        .map((e) => (e.widget as Text).data)
+        .whereType<String>()
+        .where((t) => t.trim().isNotEmpty)
+        .take(25)
+        .join(' | ');
+    fail('no update intent was queued for $expenseId. On screen: $texts');
   }
 
   Future<String> recordExpense(
@@ -2433,6 +2628,510 @@ void main() {
         isTrue,
         reason: '${accountantVoid.refusalOrNull?.message}',
       );
+    });
+  });
+
+  // ── D-072 · the expense edit surface ───────────────────────────────────────
+  //
+  // Until this slice the client had no way to issue an edit at all: the server RPC and
+  // its seven-day window were implemented and proven, and nothing in `lib/` could reach
+  // them. These phases exercise the path that was missing, on the real applications.
+
+  group('expense-edit', skip: _phase != 'expense-edit', () {
+    testWidgets('a correction keeps the identity and moves the version', (
+      tester,
+    ) async {
+      await launch(tester);
+      await signIn(tester, 'giridhar@hki.com');
+      await expectSignedIn(tester, 'giridhar@hki.com');
+
+      // A routine expense, accepted by the server, is where every edit starts.
+      final id = await recordExpense(
+        tester,
+        amount: '500',
+        classification: const [
+          'Crystal Canopy Rooftop',
+          'F&B / Kitchen',
+          'Food Production',
+          'Vegetables & Fruits',
+        ],
+        notes: 'edit acceptance',
+      );
+      _createdExpenses.add(id);
+      await syncAndAwaitNumber(tester, id);
+
+      final repository = ExpenseRepository(boot.database);
+      final before = await repository.load(id);
+      final numberBefore = before!.row.txnNumber;
+      final versionBefore = before.row.rowVersion;
+      expect(numberBefore, startsWith('KI-EXP-'));
+
+      // Through the real detail surface, not through the repository.
+      await openExpenseDetail(tester, id);
+      await pumpUntil(
+        tester,
+        'the Edit control',
+        () => find.byKey(const Key('edit-expense')).evaluate().isNotEmpty,
+      );
+      await revealAndTap(tester, const Key('edit-expense'));
+      await tester.pump(const Duration(milliseconds: 900));
+
+      await pumpUntil(
+        tester,
+        'the edit form, populated',
+        () => find.byKey(const Key('expense-amount')).evaluate().isNotEmpty,
+      );
+      expect(
+        visible('Edit expense'),
+        isTrue,
+        reason: 'the same screen, saying which mode it is in',
+      );
+      expect(
+        moneyTextsOnScreen(tester).any((t) => t.contains('500')),
+        isTrue,
+        reason: 'the form opens on the document s current values',
+      );
+
+      await tester.enterText(find.byKey(const Key('expense-amount')), '875');
+      await tester.pump(const Duration(milliseconds: 400));
+      await revealAndTap(tester, const Key('more-details'));
+      await tester.pump(const Duration(milliseconds: 700));
+      await pumpUntil(
+        tester,
+        'the reference field',
+        () => find.byKey(const Key('expense-reference')).evaluate().isNotEmpty,
+      );
+      await tester.enterText(
+        find.byKey(const Key('expense-reference')),
+        'INV-EDITED-1',
+      );
+      await tester.pump(const Duration(milliseconds: 400));
+      await revealAndTap(tester, const Key('more-details'));
+      await tester.pump(const Duration(milliseconds: 500));
+
+      await saveEditedExpense(tester, id);
+
+      // Locally: one document, the new figure, an update queued.
+      final localAfterSave = await repository.load(id);
+      expect(localAfterSave!.documentTotal, Money.fromRupees(875));
+      expect(localAfterSave.row.referenceNumber, 'INV-EDITED-1');
+      // Deliberately not "still pending". The application pushes as soon as it saves,
+      // and on a fast connection the edit can be delivered before this line runs — a
+      // race the product wins. What must be true either way is that the intent was
+      // written durably in the same transaction as the change, which is asserted next.
+      final queued = await boot.outbox.allEntries();
+      expect(
+        queued.where((q) => q.entityId == id && q.op == 'update'),
+        hasLength(1),
+        reason: 'the local edit and its intent are one transaction',
+      );
+      expect(
+        queued
+            .singleWhere((q) => q.entityId == id && q.op == 'update')
+            .baseRowVersion,
+        versionBefore,
+        reason: 'the version the user was looking at, carried to submission',
+      );
+
+      // On the server: accepted, same identity, same number, a higher version.
+      final settled = await pushUntilSettled(
+        tester,
+        id,
+        expected: {SyncState.synced},
+      );
+      expect(settled, SyncState.synced);
+
+      final after = await repository.load(id);
+      expect(after!.row.id, id, reason: 'the same expense, corrected');
+      expect(
+        after.row.txnNumber,
+        numberBefore,
+        reason: 'a correction does not renumber the document',
+      );
+      expect(
+        after.row.rowVersion,
+        greaterThan(versionBefore),
+        reason:
+            'the server advanced the version it will judge the next edit against',
+      );
+      expect(after.documentTotal, Money.fromRupees(875));
+      expect(
+        (await boot.database.select(boot.database.expenses).get()).where(
+          (e) => e.id == id,
+        ),
+        hasLength(1),
+        reason: 'exactly one local record, never a duplicate',
+      );
+    });
+
+    testWidgets('D+7 is accepted and D+8 is refused, at the server', (
+      tester,
+    ) async {
+      // The window is the server's rule and it is measured under the property's own
+      // business date (D-067). These two go through the real gateway rather than the
+      // form, because the *form* cannot offer an eight-day-old document to a user who
+      // has no beyond-window capability — which is itself asserted below.
+      // The documents are created **by the identity that will edit them**.
+      // `expense.edit.own` means own transactions, so a manager editing the Owner's
+      // document is refused for a reason that has nothing to do with the edit window —
+      // which is what the first version of this phase actually measured.
+      await launch(tester);
+      await signIn(tester, 'ccr.manager@example.com');
+      await expectSignedIn(tester, 'ccr.manager@example.com');
+
+      final gateway = ExpenseGateway(Supabase.instance.client);
+      final today = DateTime.now().toUtc().add(
+        const Duration(hours: 5, minutes: 30),
+      );
+
+      Future<String> createDatedDaysAgo(int days) async {
+        final date = DateTime.utc(
+          today.year,
+          today.month,
+          today.day,
+        ).subtract(Duration(days: days));
+        final id = const Uuid().v4();
+        final created = await gateway.create(
+          arguments: {
+            'p_id': id,
+            'p_business_date':
+                '${date.year.toString().padLeft(4, '0')}-'
+                '${date.month.toString().padLeft(2, '0')}-'
+                '${date.day.toString().padLeft(2, '0')}',
+            'p_total_minor': 120000,
+            'p_notes': '$_acceptanceMarker: edit window D+$days',
+            'p_allocations': [
+              {..._ccrKirana, 'amount_minor': 120000},
+            ],
+          },
+          mutationId: const Uuid().v4(),
+        );
+        expect(
+          created.isOk,
+          isTrue,
+          reason: 'setup failed: ${created.refusalOrNull?.message}',
+        );
+        _createdExpenses.add(id);
+        return id;
+      }
+
+      // ignore: unused_element
+      Future<Object?> editOf(String id, int days) async {
+        final date = DateTime.utc(
+          today.year,
+          today.month,
+          today.day,
+        ).subtract(Duration(days: days));
+        return gateway.update(
+          arguments: {
+            'p_id': id,
+            'p_business_date':
+                '${date.year.toString().padLeft(4, '0')}-'
+                '${date.month.toString().padLeft(2, '0')}-'
+                '${date.day.toString().padLeft(2, '0')}',
+            'p_total_minor': 130000,
+            'p_notes': '$_acceptanceMarker: edit window D+$days edited',
+            'p_allocations': [
+              {..._ccrKirana, 'amount_minor': 130000},
+            ],
+          },
+          baseRowVersion: 1,
+          mutationId: const Uuid().v4(),
+        );
+      }
+
+      final sevenDaysOld = await createDatedDaysAgo(7);
+      final eightDaysOld = await createDatedDaysAgo(8);
+
+      // The same manager edits them. They hold `expense.edit.own` and **not**
+      // `transaction.correct.beyond_window`, which is what makes the window the thing
+      // being measured rather than a capability difference.
+      final scoped = gateway;
+
+      // The version is read, never assumed: the server advances it while writing the
+      // allocations, so a hard-coded 1 is a conflict rather than a window test.
+      final sevenRow = await _expenseRow(sevenDaysOld);
+      final atSeven = await scoped.update(
+        arguments: {
+          'p_id': sevenDaysOld,
+          'p_business_date': sevenRow['business_date'],
+          'p_total_minor': 130000,
+          'p_notes': '$_acceptanceMarker: D+7 edited',
+          'p_allocations': [
+            {..._ccrKirana, 'amount_minor': 130000},
+          ],
+        },
+        baseRowVersion: sevenRow['row_version'] as int,
+        mutationId: const Uuid().v4(),
+      );
+      expect(
+        atSeven.isOk,
+        isTrue,
+        reason:
+            'D+7 is inside the window (D-065): ${atSeven.refusalOrNull?.message}',
+      );
+
+      final eightRow = await _expenseRow(eightDaysOld);
+      final atEight = await scoped.update(
+        arguments: {
+          'p_id': eightDaysOld,
+          'p_business_date': eightRow['business_date'],
+          'p_total_minor': 130000,
+          'p_notes': '$_acceptanceMarker: D+8 edited',
+          'p_allocations': [
+            {..._ccrKirana, 'amount_minor': 130000},
+          ],
+        },
+        baseRowVersion: eightRow['row_version'] as int,
+        mutationId: const Uuid().v4(),
+      );
+      expect(atEight.isRefused, isTrue, reason: 'D+8 is outside the window');
+      expect(
+        atEight.refusalOrNull!.kind,
+        RefusalKind.editWindowExpired,
+        reason: 'the KM021 case, branched on by kind rather than by string',
+      );
+      expect(
+        atEight.refusalOrNull!.message,
+        isNot(contains('SQLSTATE')),
+        reason: 'no database text ever reaches a user',
+      );
+
+      // And an Accountant, who holds the beyond-window capability, may still correct it
+      // while the period is open.
+      await signIn(tester, 'accountant@example.com');
+      await expectSignedIn(tester, 'accountant@example.com');
+      final beyondRow = await _expenseRow(eightDaysOld);
+      final beyond = await ExpenseGateway(Supabase.instance.client).update(
+        arguments: {
+          'p_id': eightDaysOld,
+          'p_business_date': beyondRow['business_date'],
+          'p_total_minor': 140000,
+          'p_notes': '$_acceptanceMarker: D+8 corrected beyond window',
+          'p_allocations': [
+            {..._ccrKirana, 'amount_minor': 140000},
+          ],
+        },
+        baseRowVersion: beyondRow['row_version'] as int,
+        mutationId: const Uuid().v4(),
+      );
+      expect(
+        beyond.isOk,
+        isTrue,
+        reason:
+            'transaction.correct.beyond_window lifts the age rule and nothing else: '
+            '${beyond.refusalOrNull?.message}',
+      );
+    });
+
+    testWidgets('a stale edit is a Conflict, and nothing is overwritten', (
+      tester,
+    ) async {
+      await launch(tester);
+      await signIn(tester, 'giridhar@hki.com');
+      await expectSignedIn(tester, 'giridhar@hki.com');
+
+      final id = await recordExpense(
+        tester,
+        amount: '640',
+        classification: const [
+          'Crystal Canopy Rooftop',
+          'F&B / Kitchen',
+          'Food Production',
+          'Vegetables & Fruits',
+        ],
+        notes: 'stale edit acceptance',
+      );
+      _createdExpenses.add(id);
+      await syncAndAwaitNumber(tester, id);
+
+      final repository = ExpenseRepository(boot.database);
+      final loaded = await repository.load(id);
+      final staleVersion = loaded!.row.rowVersion;
+
+      // Somebody else corrects it first — the server is now ahead of this device.
+      final elsewhere = await ExpenseGateway(Supabase.instance.client).update(
+        arguments: {
+          'p_id': id,
+          'p_business_date': loaded.row.businessDate,
+          'p_total_minor': 99900,
+          'p_notes': '$_acceptanceMarker: corrected by someone else',
+          'p_allocations': [
+            {..._ccrKirana, 'amount_minor': 99900},
+          ],
+        },
+        baseRowVersion: staleVersion,
+        mutationId: const Uuid().v4(),
+      );
+      expect(elsewhere.isOk, isTrue);
+
+      // This device still holds the old version and submits against it.
+      final held = (await repository.load(id))!;
+      await repository.updateLocally(
+        ExpenseDocument(
+          id: id,
+          orgId: held.row.orgId,
+          businessDate: BusinessDate.tryParse(held.row.businessDate)!,
+          businessDateSource: BusinessDateSource.derived,
+          total: Money.fromRupees(777),
+          allocations: [
+            ExpenseAllocation.wholePeriod(
+              id: held.allocations.single.id,
+              businessUnitId: _ccr,
+              departmentId: _seedId('dept:CCR/FB'),
+              sectionId: _seedId('sec:CCR/FB/FOOD_PROD'),
+              categoryId: _seedId('cat:CCR/FB/FOOD_PROD/VEG_FRUITS'),
+              amount: Money.fromRupees(777),
+              businessDate: BusinessDate.tryParse(held.row.businessDate)!,
+              categoryLabel: 'Vegetables & Fruits',
+            ),
+          ],
+          paymentStatus: PaymentStatus.unpaid,
+          createdByUserId: held.row.createdBy,
+          capturedAt: held.row.capturedAt,
+        ),
+        actorUserId: (await AuthorityStore(boot.database).ownerUserId())!,
+        mutationId: const Uuid().v4(),
+        baseRowVersion: staleVersion,
+        now: DateTime.now().toUtc(),
+      );
+
+      final settled = await pushUntilSettled(
+        tester,
+        id,
+        expected: {SyncState.conflict, SyncState.rejected},
+      );
+      expect(
+        settled,
+        SyncState.conflict,
+        reason:
+            'a stale version is a conflict about the record, never a rejection about '
+            'the person (D-021)',
+      );
+
+      // The server's value stands. Nothing was merged and nothing was overwritten.
+      final server = await _expenseRow(id);
+      expect(server['total_amount_minor'], 99900);
+    });
+  });
+
+  group('expense-edit-shared', skip: _phase != 'expense-edit-shared', () {
+    testWidgets('a scoped share is read-only, in the UI and at the server', (
+      tester,
+    ) async {
+      await launch(tester);
+      await signIn(tester, 'giridhar@hki.com');
+      await expectSignedIn(tester, 'giridhar@hki.com');
+
+      final sharedId = await _admin.createSharedExpense(
+        notes: '$_acceptanceMarker: edit security, shared bill',
+      );
+      _createdExpenses.add(sharedId);
+
+      final pull = ExpensePull(
+        db: boot.database,
+        gateway: ExpenseGateway(Supabase.instance.client),
+      );
+      await pull.pullOne(sharedId);
+
+      // The Owner holds the whole document and may edit it.
+      final repository = ExpenseRepository(boot.database);
+      final complete = await repository.load(sharedId);
+      expect(complete!.row.visibility, 'complete');
+      await openExpenseDetail(tester, sharedId);
+      await pumpUntil(
+        tester,
+        'the Edit control for a complete document',
+        () => find.byKey(const Key('edit-expense')).evaluate().isNotEmpty,
+      );
+
+      // The Crystal Canopy manager holds a share of it, and may not.
+      await signIn(tester, 'ccr.manager@example.com');
+      await expectSignedIn(tester, 'ccr.manager@example.com');
+      await ExpensePull(
+        db: boot.database,
+        gateway: ExpenseGateway(Supabase.instance.client),
+      ).pullOne(sharedId);
+
+      final scoped = await repository.load(sharedId);
+      expect(scoped!.row.visibility, 'scoped');
+      expect(scoped.row.documentTotalMinor, isNull);
+      expect(scoped.visibleAmount, Money.fromRupees(25000));
+
+      await openExpenseDetail(tester, sharedId);
+
+      // Anchor first. Every assertion below is about something being *absent*, and an
+      // absent control is indistinguishable from a screen that never opened — so the
+      // scoped rendering is positively identified before anything is denied.
+      await pumpUntil(
+        tester,
+        'the scoped detail panel',
+        () => find.byKey(const Key('scoped-explanation')).evaluate().isNotEmpty,
+        timeout: const Duration(seconds: 30),
+      );
+      // Scoped to the detail panel. On Windows the ledger sits beside it and
+      // legitimately lists other documents, so asserting over the whole screen would be
+      // asserting something this test is not about.
+      bool inDetail(String text) => find
+          .descendant(
+            of: find.byType(ExpenseDetailPanel),
+            matching: find.textContaining(text),
+          )
+          .evaluate()
+          .isNotEmpty;
+
+      expect(
+        inDetail('25,000'),
+        isTrue,
+        reason: 'the share this manager may see is on the document',
+      );
+      expect(
+        inDetail('58,000'),
+        isFalse,
+        reason: 'and the invoice total is not',
+      );
+      expect(inDetail('33,000'), isFalse, reason: 'nor the other share');
+
+      expect(
+        find.byKey(const Key('edit-expense'), skipOffstage: false),
+        findsNothing,
+        reason:
+            'a partial projection cannot be reconciled, so it is read-only in V1 '
+            'however many edit capabilities the holder has',
+      );
+      expect(
+        find.byKey(const Key('scoped-readonly-note'), skipOffstage: false),
+        findsOneWidget,
+        reason: 'and the rule is stated rather than left as an absent button',
+      );
+
+      // The server enforces it regardless of what a modified client attempts.
+      final forged = await ExpenseGateway(Supabase.instance.client).update(
+        arguments: {
+          'p_id': sharedId,
+          'p_business_date': '2026-06-15',
+          'p_total_minor': 2500000,
+          'p_notes': '$_acceptanceMarker: forged scoped edit',
+          'p_allocations': [
+            {..._ccrKirana, 'amount_minor': 2500000},
+          ],
+        },
+        baseRowVersion: scoped.row.rowVersion,
+        mutationId: const Uuid().v4(),
+      );
+      expect(
+        forged.isRefused,
+        isTrue,
+        reason:
+            'hiding the control is not the security boundary; the server is (D-037)',
+      );
+      expect(forged.refusalOrNull!.message, isNot(contains('SQLSTATE')));
+
+      // And the document still says what it said.
+      await signIn(tester, 'giridhar@hki.com');
+      await expectSignedIn(tester, 'giridhar@hki.com');
+      final unchanged = await _expenseRow(sharedId);
+      expect(unchanged['total_amount_minor'], 5800000);
     });
   });
 
@@ -3396,6 +4095,23 @@ Future<Map<String, dynamic>> _row(String table, String id) async =>
         .select('id,code,name,row_version,archived_at')
         .eq('id', id)
         .single();
+
+/// One expense, read through the projection a client is allowed to read.
+///
+/// Never `expenses`: no client role holds SELECT on the base table, and the header total
+/// on a shared bill is withheld by the view for the caller who may not see it (D-062).
+/// A separate helper from [_row] because the master tables and the expense projection
+/// have nothing in common but an id — asking for `code` here returns `42703`.
+Future<Map<String, dynamic>> _expenseRow(String id) async => await Supabase
+    .instance
+    .client
+    .from('expense_document')
+    .select(
+      'id,txn_number,business_date,total_amount_minor,visible_amount_minor,'
+      'is_complete,row_version,voided_at,notes',
+    )
+    .eq('id', id)
+    .single();
 
 /// The department's current `row_version`, read the way any client would.
 Future<int> _currentVersion(String departmentId) async {
