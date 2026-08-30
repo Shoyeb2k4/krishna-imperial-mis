@@ -1834,3 +1834,98 @@ in which case Phase 3 cannot close until it is — or whether V1 ships with atta
 staged locally and uploaded in a later phase, in which case `PROJECT_STATUS.md` and the
 master spec's §15 must say so plainly, and the UI must stop implying a bill has been
 filed anywhere but this device.
+
+**Answered 2026-08-31: build it.** Attachment staging without upload is not enough for V1,
+because the interface already presents an attachment lifecycle and the master spec treats
+bills as durable supporting evidence. Built and proven on both real clients — see the
+entry below for what it took, and for the security defect the acceptance found on the way.
+
+## D-073a — What attachment upload is, as built
+**Date:** 2026-08-31 · **Status:** Accepted (project-lead decision)
+
+**Two writes, and an upload is not finished until both have happened.** Putting bytes in
+the private bucket does not put a bill in the books. `SupabaseAttachmentStore` uploads the
+object and then calls `attachment_register`, and only when the metadata row exists does
+the worker call the attachment `uploaded`. Postgres remains the canonical record; the
+Storage listing is not the ledger (spec §23).
+
+**Order is a rule, not an optimisation.** An attachment is `waitingForExpense` until the
+server has accepted the expense it belongs to, because the Storage write policy calls
+`may_read_expense_attachments`, which requires the document to exist canonically. Upload
+before that is refused for a reason that reads like a permission problem and is really an
+ordering one. The financial record never waits for the bill in return: an expense that is
+`Synced` stays `Synced` while its attachment says *Retry needed*.
+
+**One durable state model** (local schema v10): `staged`, `waitingForExpense`,
+`pendingUpload`, `uploading`, `uploaded`, `stagingReclaimed`, `retryNeeded`, `rejected`.
+The four values it replaces could express neither "waiting for its expense" nor the
+difference between a transient failure and a terminal refusal, and the worker needs both.
+A `rejected` row carries no `next_attempt_at`, enforced by a check constraint, because a
+null there once meant "due now" and retried a refusal for ever.
+
+**Idempotent by construction.** The object path is derived from the expense and attachment
+ids and written with `upsert`, and `attachment_register` replays on its mutation id and
+refuses a second registration of the same id with different content. A retry after a lost
+response leaves one object and one metadata row.
+
+**Authorisation is the server's.** The signed-in user's own session, no service-role key,
+a private bucket, and the same complete-document predicate (D-063) on the object, on the
+metadata row, and in the RPC. Limits are enforced server-side as well as in the form.
+
+**A real defect the acceptance found.** The `expense_attachments` **table** policy asked
+"does a line of this document lie outside my scope?" — but `expense_allocations` RLS hides
+exactly those rows from the caller, so the predicate was *vacuously true* for precisely the
+users it existed to exclude. Storage refused a scoped manager the invoice image while the
+metadata table handed them the row. Migration 0036 points the policy at the same
+`security definer` predicate the Storage policies use, which is what its own comment had
+claimed since 0031. A policy subquery runs with the caller's privileges — the same fact
+that broke every table in D-045, arriving in a new place.
+
+## D-074 — Sign-out leaves synced expenses browsable on a long-lived installation
+**Date:** 2026-08-31 · **Status:** **Open — a defect, found by the D-073 regression**
+
+**Symptom.** On the Windows machine, whose local database persists across runs and had
+accumulated a dozen synced expenses, `d068-switch` fails: after the Owner signs out and a
+Crystal Canopy manager signs in, twelve Crystal Canopy documents are still browsable, and
+none of them is stamped `scope_revoked_at`. Cached business units at that point are
+`CCR` alone.
+
+**Why it was not seen before.** The Android emulator reinstalls the application on every
+`flutter test` run, so its database is nearly empty and the sign-out purge has almost
+nothing to remove; the assertion passed for want of anything to fail on. The Windows
+build keeps its database, which is exactly the shared back-office workstation D-054 added
+the sign-out control for — the case the rule exists to protect.
+
+**What is already ruled out.** The purge itself is correct in isolation: a host test that
+seeds three accepted expenses and calls `purgeAllScopedCache` removes all three, reports
+`3 documents removed`, and leaves the outbox intact. So the deletion logic is not the
+defect.
+
+**What the evidence points to.** `SessionController.signOut` calls
+`purgeAllScopedCache()` unguarded, and then `store.clear()`. If the purge throws, neither
+completes. The end state observed — units reduced to `CCR` while CCR documents survive —
+is what would follow if the sign-out purge failed and the *next* user's ordinary authority
+refresh then purged only the units they had lost (Hotel Krishna), leaving everything
+Crystal Canopy behind. That is consistent but not yet proven; the throw itself has not
+been captured.
+
+**Why it is being recorded rather than guessed at.** Two candidate causes are visible and
+neither should be picked without evidence: the staged-attachment reclaimer now wired into
+the purge (file deletion on Windows can fail on a locked file), and the growth of the
+`IN (...)` variable lists as the document count rises. Choosing one and "fixing" it would
+be indistinguishable from choosing wrongly, because the symptom would disappear either way
+on a freshly installed device.
+
+**Severity.** Real but bounded. What survives is documents the *next* user is themselves
+entitled to — every row observed was Crystal Canopy, and the manager signing in was the
+Crystal Canopy manager. The Owner's shared ₹58,000 invoice is not among them in the
+observed run. It is nonetheless a failure of the rule as written: D-053 and D-070 say the
+previous user's scoped financial cache goes at sign-out, and on this installation it does
+not.
+
+**What it blocks.** Phase 3 closure. `d068-switch` on Windows is a failing acceptance
+phase and is reported as failing, not skipped.
+
+**Next step.** Capture the exception: wrap the sign-out purge so the failure is logged
+rather than swallowed by whatever currently absorbs it, and re-run on the Windows
+installation with its accumulated database. The fix follows from what it says.

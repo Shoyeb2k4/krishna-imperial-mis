@@ -2875,24 +2875,26 @@ void main() {
       await expectSignedIn(tester, 'ccr.manager@example.com');
 
       final gateway = ExpenseGateway(Supabase.instance.client);
-      final today = DateTime.now().toUtc().add(
-        const Duration(hours: 5, minutes: 30),
+
+      // The **property's** business date, not the IST wall-clock date. D-067's whole
+      // point is that the two differ, and this phase proved it on itself: run after
+      // midnight IST but before the 05:00 cut-off, a document dated eight wall-clock
+      // days ago is only seven trading days old, and the server correctly accepted the
+      // edit this phase expected it to refuse. The date is now derived the way the
+      // server derives it, from the same instant.
+      final propertyToday = BusinessDate.fromInstant(
+        DateTime.now().toUtc(),
+        timeZoneId: 'Asia/Kolkata',
+        cutoff: const BusinessDayCutoff(hour: 5, minute: 0),
       );
 
       Future<String> createDatedDaysAgo(int days) async {
-        final date = DateTime.utc(
-          today.year,
-          today.month,
-          today.day,
-        ).subtract(Duration(days: days));
+        final date = propertyToday.addDays(-days);
         final id = const Uuid().v4();
         final created = await gateway.create(
           arguments: {
             'p_id': id,
-            'p_business_date':
-                '${date.year.toString().padLeft(4, '0')}-'
-                '${date.month.toString().padLeft(2, '0')}-'
-                '${date.day.toString().padLeft(2, '0')}',
+            'p_business_date': date.iso,
             'p_total_minor': 120000,
             'p_notes': '$_acceptanceMarker: edit window D+$days',
             'p_allocations': [
@@ -2908,31 +2910,6 @@ void main() {
         );
         _createdExpenses.add(id);
         return id;
-      }
-
-      // ignore: unused_element
-      Future<Object?> editOf(String id, int days) async {
-        final date = DateTime.utc(
-          today.year,
-          today.month,
-          today.day,
-        ).subtract(Duration(days: days));
-        return gateway.update(
-          arguments: {
-            'p_id': id,
-            'p_business_date':
-                '${date.year.toString().padLeft(4, '0')}-'
-                '${date.month.toString().padLeft(2, '0')}-'
-                '${date.day.toString().padLeft(2, '0')}',
-            'p_total_minor': 130000,
-            'p_notes': '$_acceptanceMarker: edit window D+$days edited',
-            'p_allocations': [
-              {..._ccrKirana, 'amount_minor': 130000},
-            ],
-          },
-          baseRowVersion: 1,
-          mutationId: const Uuid().v4(),
-        );
       }
 
       final sevenDaysOld = await createDatedDaysAgo(7);
@@ -5054,20 +5031,69 @@ void main() {
           (await boot.database.select(boot.database.syncOutbox).get()).length;
 
       await signOutThroughTheUi(tester);
+
+      // Immediately after sign-out, before anybody else has signed in or pulled
+      // anything. This is the moment D-053 is about: the previous user's scoped cache is
+      // gone while the device still knows whose it was.
+      final afterSignOut = await ExpenseRepository(
+        boot.database,
+      ).list(limit: 200);
+      final unitsAfterSignOut = await boot.database
+          .select(boot.database.businessUnits)
+          .get();
+      expect(
+        afterSignOut,
+        isEmpty,
+        reason:
+            'sign-out purges the scoped financial cache (D-053, D-070). Left '
+            '${afterSignOut.length} document(s); cached units after: '
+            '${unitsAfterSignOut.length}',
+      );
+
       await signIn(tester, 'ccr.manager@example.com');
       await expectSignedIn(tester, 'ccr.manager@example.com');
 
       // 1 · Nothing financial is inherited. Not the total, not the other property's
       //     share, not the line, not the contribution, not the attachment record.
       final db = boot.database;
+      final repository = ExpenseRepository(db);
+
+      // **Browsable**, which is the claim D-070 actually makes — not "no row exists".
+      // A document still carrying the actor's own unsent, rejected or conflicted intent
+      // is retained on purpose, stamped, and taken out of every canonical read; an
+      // earlier version of this assertion demanded an empty table and failed the moment
+      // a previous phase left a conflicted edit behind, which is the retention rule
+      // working exactly as designed.
+      final browsable = await repository.list();
       expect(
-        await db.select(db.expenses).get(),
+        browsable,
         isEmpty,
-        reason: "the Owner's document must not be browsable by the next user",
+        reason:
+            "the Owner's document must not be browsable by the next user. Still "
+            'browsable: ${browsable.length} document(s), '
+            '${browsable.where((e) => e.row.scopeRevokedAt == null).length} of them '
+            'unstamped',
       );
-      expect(await db.select(db.expenseAllocations).get(), isEmpty);
-      expect(await db.select(db.expensePeriodAllocations).get(), isEmpty);
-      expect(await db.select(db.expenseAttachments).get(), isEmpty);
+      expect(
+        await repository.query(const ExpenseFilter(includeVoided: true)),
+        isEmpty,
+        reason: 'and no filter combination reaches it either',
+      );
+
+      for (final retained in await db.select(db.expenses).get()) {
+        expect(
+          retained.scopeRevokedAt,
+          isNotNull,
+          reason:
+              'the only rows that may survive are those kept for unsent work, and '
+              'every one of them is stamped (D-070)',
+        );
+      }
+      expect(
+        await repository.contributionTotal(periodKey: '2026-08'),
+        Money.zero,
+        reason: 'nothing retained contributes to a figure',
+      );
 
       // 2 · And the reference-data rule from Phase 2 still holds alongside it.
       expect(
@@ -5122,8 +5148,9 @@ void main() {
       await expectSignedIn(tester, 'hki.manager@example.com');
 
       final db = boot.database;
-      expect(await db.select(db.expenses).get(), isEmpty);
-      expect(await db.select(db.expenseAllocations).get(), isEmpty);
+      // Browsable, not "no row exists": a document carrying the actor's own unsent work
+      // is retained on purpose and stamped (D-070).
+      expect(await ExpenseRepository(db).list(), isEmpty);
       expect(
         (await db.select(db.businessUnits).get()).map((u) => u.id).toSet(),
         {_hki},
