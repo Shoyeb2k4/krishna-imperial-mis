@@ -412,7 +412,19 @@ the expense it belongs to, and `rejected` because a terminal refusal must never 
 
 ## 6. Revenue
 
+> **Superseded as a design, 2026-08-31 — and not yet built either way.** The sketch below
+> is the Phase 0 flat-record model: one entry, one rate, one gross amount. Phase 4's
+> approved plan replaces it with a **document-plus-components** model (D-078 … D-087),
+> because one day's revenue in one category can carry more than one tax treatment — room
+> tax varying by accommodation value, restaurant treatment depending on a premises status,
+> banquet invoicing more than one kind of supply. §6.1 records the approved shape.
+>
+> The sketch is retained rather than deleted because this document's Phase 0 sections are
+> the record of what was originally proposed, and the difference between the two is
+> instructive. **Neither is implemented**: no revenue table exists in `krishna-mis-dev`.
+
 ```sql
+-- Phase 0 sketch. Superseded by §6.1. Not built.
 revenue_entries (
   id uuid pk, org_id uuid not null,
   txn_number text not null,
@@ -465,6 +477,155 @@ non-unique index supports that lookup:
 create index on revenue_entries (org_id, business_unit_id, revenue_category_id, business_date)
   where status = 'active';
 ```
+
+### 6.1 The approved Phase 4 model — planned, not built
+
+Approved 2026-08-31 as the planning baseline (D-078 … D-087). **Nothing below exists**:
+no table, no RPC, no migration. Phase 4 is blocked on verified revenue tax and billing
+configuration.
+
+**The document and its components.** A revenue entry is a header with one or more
+components, exactly as an expense is a header with one or more allocation lines (D-003).
+A simple day is one component; a day carrying two tax treatments is two.
+
+```sql
+-- PLANNED, NOT BUILT
+revenue_entries (
+  id uuid pk,                               -- client-generated UUID v7 (D-008)
+  org_id uuid not null,
+  txn_number text not null,                 -- server-issued KI-REV-26-27-000001 (D-085)
+  business_unit_id uuid not null,
+  revenue_category_id uuid not null,
+  business_date date not null,              -- derived under D-067, persisted
+  business_date_source text not null,
+  captured_at timestamptz not null,         -- device instant, forensic only
+  pnl_period_key text not null,
+  entry_kind text not null default 'daily_summary'
+      check (entry_kind in ('daily_summary','shift','import','correction')),
+  source_reference text, notes text,
+  status text not null default 'active',
+  voided_at timestamptz, voided_by uuid, void_reason text,
+  created_by uuid not null, created_at timestamptz not null default now(),
+  updated_by uuid, updated_at timestamptz not null default now(),
+  row_version int not null default 1, change_seq bigint not null,
+  unique (org_id, txn_number)
+)
+
+-- PLANNED, NOT BUILT
+revenue_components (
+  id uuid pk, org_id uuid not null,
+  revenue_entry_id uuid not null references revenue_entries(id) on delete cascade,
+
+  -- what the operator actually typed, and as what (D-080)
+  entered_amount_minor bigint not null check (entered_amount_minor >= 0),
+  entered_basis text not null
+      check (entered_basis in ('inclusive_total','pre_tax','none')),
+
+  -- what was derived from it, once, half-up, and stored
+  gross_amount_minor bigint not null check (gross_amount_minor >= 0),
+  tax_amount_minor   bigint not null default 0 check (tax_amount_minor >= 0),
+  net_amount_minor   bigint not null,
+
+  -- the rule that produced them, snapshotted (D-017, D-080)
+  tax_rule_id uuid not null references revenue_tax_rules(id),
+  tax_rate_bp int not null,
+  tax_treatment text not null
+      check (tax_treatment in ('inclusive','exclusive','none')),
+
+  -- the facts that selected that rule, so the choice is explainable (D-079)
+  value_band_min_minor bigint, value_band_max_minor bigint,
+  supply_subtype_id uuid references revenue_supply_subtypes(id),
+  premises_status_code text,
+
+  check (net_amount_minor = gross_amount_minor - tax_amount_minor),
+  check (tax_amount_minor <= gross_amount_minor)
+)
+```
+
+`SUM(components.gross) = header total` is enforced by a **deferred constraint trigger**,
+the same mechanism that holds `SUM(allocations) = expense.amount`. No paisa may disappear
+or be duplicated.
+
+**Conditional tax rules (D-079).** `revenue_tax_rates` is extended — or replaced by
+`revenue_tax_rules` — with nullable discriminators. A null means the rule does not depend
+on that dimension; resolution is most-specific-match, deterministic, and **refuses
+ambiguity rather than tiebreaking it**:
+
+```sql
+-- PLANNED, NOT BUILT
+revenue_tax_rules (
+  id uuid pk, org_id uuid not null,
+  revenue_category_id uuid not null,
+  effective_from date not null, effective_to date,
+
+  rate_bp int not null,
+  treatment text not null check (treatment in ('inclusive','exclusive','none')),
+  input_basis text not null
+      check (input_basis in ('inclusive_total','pre_tax','none')),
+
+  -- nullable discriminators: null = this rule does not depend on that dimension
+  value_band_min_minor bigint, value_band_max_minor bigint,
+  supply_subtype_id uuid references revenue_supply_subtypes(id),
+  premises_status_code text,
+
+  created_by uuid not null, created_at timestamptz not null default now(),
+  row_version int not null default 1
+)
+```
+
+An exclusion constraint refuses two rules that could both match the same facts on the same
+date, so ambiguity is impossible to configure rather than merely unlikely to be hit.
+
+**Two supporting masters.**
+
+```sql
+-- PLANNED, NOT BUILT. Ships EMPTY (D-083).
+revenue_supply_subtypes (
+  id uuid pk, org_id uuid not null,
+  revenue_category_id uuid not null,
+  code text not null, label text not null,
+  archived_at timestamptz,
+  unique (org_id, revenue_category_id, code)
+)
+
+-- PLANNED, NOT BUILT. Configured business data, never inferred (D-082).
+business_unit_tax_status (
+  id uuid pk, org_id uuid not null,
+  business_unit_id uuid not null,
+  effective_from date not null,
+  status_code text not null,
+  note text,
+  created_by uuid not null, created_at timestamptz not null default now()
+)
+```
+
+**No rate, band, subtype or status is seeded.** D-043 is unchanged and now covers all four:
+the timelines start empty, both applications show *"No rule configured"*, and an
+unresolvable or ambiguous rule refuses the save (D-084).
+
+**The reporting projection (D-087).** One row per component, so tax buckets survive into
+reporting rather than being flattened:
+
+```sql
+-- PLANNED, NOT BUILT
+revenue_period_contributions (
+  org_id, business_unit_id, revenue_category_id,
+  supply_subtype_id, value_band_min_minor, value_band_max_minor,
+  pnl_period_key,
+  gross_minor, tax_minor, net_minor
+)
+```
+
+The mirror of `expense_period_contributions` (D-060). Phase 4 populates it; **Phase 5
+consumes it**, and Phase 4 builds no P&L.
+
+**Server boundary, following Phase 2/3 exactly.** `authenticated` gets no `SELECT` on
+`revenue_entries`; reads go through a `revenue_document` projection. Writes go through
+reviewed `SECURITY DEFINER` RPCs — `revenue_create`, `revenue_update`, `revenue_void`,
+`revenue_correct_business_date` — each re-checking capability, business-unit scope, period
+lock, edit window and `base_row_version`, each resolving tax **server-side as the
+authority**, and each added to the declared API surface the migration invariant asserts in
+both directions (D-044).
 
 ## 7. Period control
 

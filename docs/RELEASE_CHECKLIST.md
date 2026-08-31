@@ -355,3 +355,66 @@ to a person.
       that the production picker had never been implemented, after a full green automated
       attachment acceptance (D-077). Keep it manual, keep it per-release, and do not let a
       green suite argue you out of running it.
+
+## M. Revenue write gate (planned — Phase 4, not built)
+
+**Nothing in this section is implemented.** It is recorded with the approved Phase 4
+architecture (D-078 … D-087) so the gate exists before the code does, rather than being
+written afterwards to describe whatever was built.
+
+### M.1 Tax resolution
+
+- [ ] A category with **no applicable rule** refuses the save, and the message names which
+      condition could not be satisfied
+- [ ] A **configured 0%** and a **configured `none`** both save, and are displayed as
+      decisions — never as "no rule configured"
+- [ ] Two rules that could both match the same facts on the same date are **refused at
+      configuration time** by constraint
+- [ ] An ambiguous resolution at entry time refuses the save; nothing is tiebroken
+- [ ] A rule requiring a premises status, with none configured, refuses
+- [ ] A component whose value band no rule covers refuses
+- [ ] The same facts resolve identically on the client and on the server
+
+### M.2 Amount basis and arithmetic
+
+- [ ] `inclusive_total`: the operator's figure is the customer total; tax is extracted and
+      `net = gross − tax`
+- [ ] `pre_tax`: the operator's figure is pre-tax; `gross = net + tax`
+- [ ] The input field's **label follows the configured rule** and is never universally
+      "Gross"
+- [ ] `entered_amount_minor` and `entered_basis` are stored beside the derived trio, so a
+      historical figure can be explained without consulting the current rule table
+- [ ] Rounding is half-up, once, at the component; aggregates sum stored paise
+- [ ] `SUM(components) = header` is refused by the deferred trigger when violated
+- [ ] No `double` appears anywhere in the revenue path
+
+### M.3 Historical stability
+
+- [ ] Changing a tax rule today does **not** move any previously recorded figure
+- [ ] A new date-effective rule applies from its effective date and not before
+
+### M.4 Room, Banquet, Nandbhog
+
+- [ ] Room with one rule in force renders **one** amount field
+- [ ] Room with two bands renders two, labelled with the **configured** boundary — no
+      threshold constant appears in application code
+- [ ] Banquet with no configured subtypes behaves as an ordinary category
+- [ ] Nandbhog is a Crystal Canopy revenue category, not a business unit
+
+### M.5 Offline
+
+- [ ] With the required rules cached, a revenue entry saves offline and queues atomically
+- [ ] With the required configuration **absent**, the local save refuses and **nothing is
+      queued**
+- [ ] The offline resolver is the same code as the online one
+
+### M.6 Lifecycle, as expenses
+
+- [ ] Edit within the window by capability; beyond it only with
+      `transaction.correct.beyond_window`
+- [ ] Closed period refuses create, edit and void, with its own reason
+- [ ] Stale `base_row_version` is a Conflict, not an overwrite
+- [ ] Void requires capability, a mandatory reason and `base_row_version`
+- [ ] Redelivery of the same `mutation_id` yields one record
+- [ ] `KI-REV-…` numbering is server-issued and does not share the expense sequence
+- [ ] Attachments are optional and reuse the D-073a pipeline unchanged

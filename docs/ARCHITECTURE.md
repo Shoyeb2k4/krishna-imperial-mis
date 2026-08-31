@@ -5,8 +5,8 @@ Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
-Status: **Sections 1–12 proposed (Phase 0, revised); section 13 describes what is built
-and verified.** Sections 6, 5.3 and 8 carry the project lead's mandated corrections.
+Status: **Sections 1–12 proposed (Phase 0, revised); sections 13–16 describe what is built
+and verified; section 17 is the approved Phase 4 plan and is NOT built.** Sections 6, 5.3 and 8 carry the project lead's mandated corrections.
 Implementation status is tracked in `PROJECT_STATUS.md`.
 Last updated: 2026-08-31
 
@@ -987,3 +987,143 @@ transport injection — and the limitation is stated rather than papered over. C
 proof that the picker itself was automated would be false, so it is not called that: it is
 recorded as a manual smoke test, one per platform, and until a person runs it, it is
 reported as pending rather than passed.
+
+---
+
+## 17. Revenue Engine — approved plan, not built (2026-08-31)
+
+**Status: planning baseline only.** No Phase 4 code, migration, table, RPC, widget,
+provider, test or dependency exists. This section records the architecture the project lead
+approved so it survives the conversation that produced it, and so the next session starts
+from the design rather than re-deriving it. Decisions D-078 … D-087.
+
+Phase 4 is **blocked on verified revenue tax and billing configuration** — see
+`PROJECT_STATUS.md`.
+
+### 17.1 The shape, and why it is not a flat header
+
+The first proposal had revenue as one row with one rate. Four separate corrections from the
+project lead all broke it in the same way: **one day's revenue, in one category, can carry
+more than one tax treatment.** Room tax may vary by accommodation value; restaurant
+treatment may depend on a premises status; banquet may invoice more than one kind of supply.
+
+So revenue takes the shape expenses already have (D-003, D-078):
+
+```
+        Revenue Entry  (document — date, unit, category, entry kind, notes, actor)
+          │
+          ├── Revenue Component   entered amount + basis
+          │                       → gross / tax / net
+          │                       → the rule snapshot that produced them
+          └── Revenue Component   (only when the day genuinely carries a second treatment)
+
+        SUM(components) = header      deferred constraint trigger
+```
+
+A simple Nandbhog day is one component and is exactly as fast to enter as before. One model,
+one write path, one reconciliation rule — instead of a per-category branch in the code that
+computes company revenue.
+
+### 17.2 Conditional tax resolution (D-079)
+
+Five dimensions, and only five. A rule declares conditions; an entry supplies facts.
+
+```
+        facts from the entry                 conditions on the rule
+        ────────────────────                 ──────────────────────
+        revenue category          ─────►     revenue_category_id       (always)
+        business date (D-067)     ─────►     effective_from / _to      (always)
+        the component's amount    ─────►     value_band_min/max        (nullable)
+        chosen supply subtype     ─────►     supply_subtype_id         (nullable)
+        configured premises status ────►     premises_status_code      (nullable)
+```
+
+**Null means the rule does not depend on that dimension.** Resolution is
+most-specific-match, and three properties are load-bearing:
+
+* **bounded, not an expression language** — a general rules engine in the path that computes
+  profit would be unauditable and is the speculative module the directive forbids. A sixth
+  dimension is a migration and a decision;
+* **deterministic** — same facts, same date, same answer, client and server, for ever;
+* **ambiguity refuses** — overlapping rules are rejected by constraint at configuration
+  time, and an ambiguous resolution refuses the save. Never a tiebreak.
+
+No GST legislation lives in Dart, and none in a widget. The dimensions are a schema; the
+rates, bands, subtypes and statuses are configured data.
+
+### 17.3 The entered amount has a basis (D-080)
+
+The rule states which number the operator is being asked for, and the **field label follows
+the rule** rather than always reading "Gross":
+
+| Basis | Operator types | Derived, in exact integer paise |
+|---|---|---|
+| `inclusive_total` | customer total, tax included | `tax = round_half_up(entered × rate_bp ÷ (10000 + rate_bp))`; `net = entered − tax`; `gross = entered` |
+| `pre_tax` | the amount before tax | `tax = round_half_up(entered × rate_bp ÷ 10000)`; `gross = entered + tax`; `net = entered` |
+| `none` | the amount | `tax = 0`; `gross = net = entered` |
+
+Both what was typed (`entered_amount_minor`, `entered_basis`) and what was derived
+(`gross`, `tax`, `net`) are stored, beside the rule snapshot. That is what lets a figure be
+explained years later without consulting a rule table that may since have changed. Rounding
+is half-up, once, at the component; aggregates sum stored paise and never re-apply a rate.
+
+### 17.4 Room, Restaurant, Banquet, Nandbhog
+
+**Room (D-081)** — manual-first, one figure per tariff band that had business that day. No
+room-by-room data and no PMS. **The form derives its own fields from the configured rules**:
+one rule in force means one field; two bands mean two, labelled with the configured
+boundary. No threshold is a constant in application code.
+
+**Restaurant (D-082)** — where treatment depends on a premises or financial-year status,
+that status is a date-effective configured master, entered by the Owner from what the
+accountant states. The application never infers it. A rule requiring one, with none
+configured, refuses the save.
+
+**Banquet (D-083)** — `revenue_supply_subtypes` exists and **ships empty**. No subtypes
+configured means no subtype field and ordinary behaviour; subtypes configured means a
+selector and per-subtype rules. The hinge exists; no speculative subtype is invented.
+
+**Nandbhog (D-024)** — a revenue category under Crystal Canopy Rooftop, not a business unit,
+with **no assumed tax treatment**.
+
+### 17.5 No rule, or an ambiguous rule, refuses (D-084)
+
+Refusal covers every failure mode: no category/date rule, an uncovered value band, a
+required subtype not chosen, a required premises status not configured, and two rules that
+both match. **"No rule configured" stays permanently distinct from a configured `0%` and
+from a configured `none`.** The first is a gap; the others are decisions somebody made.
+Collapsing them silently overstates Net Sales, and Net Sales feeds Operating Profit.
+
+### 17.6 Offline (D-086)
+
+`ReferenceSync` must cache the revenue tax rules, their condition discriminators, the
+supply-subtype master and the premises-status timeline. Online and offline use **the same
+deterministic domain resolver**, so they cannot drift.
+
+If the required configuration is not cached, the local save is **refused and nothing is
+queued** — a deliberate departure from the expense engine, where a local save always
+succeeds. An expense's correctness does not depend on configuration the device may lack; a
+revenue figure's does, and a rejected entry sitting in somebody's outbox is worse than being
+told at the time that it cannot yet be recorded.
+
+### 17.7 Reporting interface (D-087)
+
+`revenue_period_contributions`, one row per **component**, carrying org, unit, category,
+supply subtype, value band, `pnl_period_key`, and gross / tax / net. The mirror of
+`expense_period_contributions` (D-060), so Phase 5's engines sum one shape per side.
+Component grain is kept deliberately: tax buckets survive into reporting instead of being
+flattened at the door.
+
+**Phase 4 populates this interface. Phase 4 does not build the P&L** — that is Phase 5,
+with the parity suite D-020 requires.
+
+### 17.8 Unchanged, reused as proven
+
+Business date under D-067 (unit timezone and cut-off, never the device clock, never the
+database session's `current_date`). Capability-based edit with the 7-day window and
+`transaction.correct.beyond_window` for corrections beyond it; period locks always
+authoritative; stale write → `Conflict`; closed period → rejected with its own reason
+(D-021, D-026, D-065). Void by capability only, with a mandatory reason and
+`base_row_version`. Attachments optional, reusing the D-073a pipeline with no second upload
+architecture. Server-issued numbering over client UUID v7 identity, on its own sequence
+(D-085). Other Income is out of V1. Integer paise everywhere.

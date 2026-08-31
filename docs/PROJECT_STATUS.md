@@ -23,6 +23,18 @@ Every gate passed, including the ones that can only be passed by running the rea
 application: the Android package on a device, and the compiled Windows executable, both
 against the real `krishna-mis-dev` project, with the real development identities.
 
+**Phase 4 — Revenue Engine: PLANNED · ARCHITECTURE APPROVED · IMPLEMENTATION NOT
+STARTED · BLOCKED ON VERIFIED REVENUE TAX/BILLING CONFIGURATION.**
+
+Not in progress. No Phase 4 code, migration, table, RPC, widget, provider, test or
+dependency exists. The approved architecture is recorded in `ARCHITECTURE.md` §17,
+`DATABASE_SCHEMA.md` §6.1 and decisions **D-078 … D-087**, so it survives the conversation
+that produced it. What blocks it is not engineering: it is the real tax and billing
+configuration for the four V1 revenue categories, listed under **Project lead actions
+required**.
+
+---
+
 **Phase 3 — Expense Engine: COMPLETE.** All four gates are closed:
 
 | Gate | Status |
@@ -432,37 +444,86 @@ declaration that Phase 3 is closed.
 - Bundled licensed fonts — the type scale is fixed; the family is a one-line swap.
 - The period-close console. Enforcement is built into the write path; the console is a
   later phase.
+- **Other Income** — out of V1 scope (spec §28/§29); revenue V1 is Restaurant, Nandbhog,
+  Room and Banquet only.
+- **The P&L and reporting engines** — Phase 5. Phase 4 defines and populates
+  `revenue_period_contributions` and builds no reporting (D-087).
 
 ## Next exact task
 
-**Phase 4 — Revenue Engine.** The architecture and implementation plan are prepared and
-awaiting the project lead's approval; **no Phase 4 code has been written.**
+**Wait for the revenue tax and billing configuration.** Phase 4's architecture is approved
+and recorded (`ARCHITECTURE.md` §17, `DATABASE_SCHEMA.md` §6.1, D-078 … D-087); its
+implementation is **not started** and must not start before that configuration arrives.
 
-Phase 4 cannot be *completed* without one input only he can give: the real tax rule for
-each of the four V1 revenue categories — Restaurant, Nandbhog, Room and Banquet — each
-with a rate, a treatment (`inclusive` / `exclusive` / `none`) and an effective-from date.
-Nothing is assumed and no rate is seeded (D-043). Entry surfaces can be built before the
-rules arrive; a Net Sales figure cannot be produced without them, and will not be invented.
+The dependency is genuine rather than procedural. The tax model's *shape* is settled, but
+its dimensions were chosen to fit real treatments — value bands for Room, supply subtypes
+for Banquet, a premises status for Restaurant. Building the resolver, the entry surfaces
+and the acceptance suite against imagined rules would mean discovering at acceptance that
+the real configuration needs a dimension nobody planned for, which is the expensive way to
+find out.
+
+What *could* proceed without it, if the project lead wants Phase 4 started in parallel: the
+schema, the RPC boundary, the outbox and gateway wiring, and the ledger surfaces are all
+independent of which rates exist. The entry form and every tax assertion are not. That is a
+decision for him, not one to be taken by starting.
 
 ## Open questions for the project lead
 
 **None for Phase 3.** All were answered and implemented: revoked-scope financial retention
 (D-070), the expense edit surface (D-072a), and attachment upload (D-073a).
 
-**One for Phase 4**, and it is a genuine business fact rather than a design choice: the tax
-rule for each revenue category. See *Project lead actions required* below.
+**One for Phase 4**, and it is a genuine business fact rather than a design choice: the
+real tax and billing configuration for Restaurant, Nandbhog, Room and Banquet. The eleven
+questions are in *Project lead actions required* below, phrased in terms of what current
+invoices show. **Phase 4 implementation is blocked on it**, and no rate, band, subtype or
+premises status will be invented in the meantime (D-043, D-084).
 
 ## Project lead actions required
 
 1. ~~Two manual picker smoke tests.~~ **Done, 2026-08-31 — both PASS.**
-2. **Supply the first tax rule per revenue category — now blocking Phase 4's completion.**
-   Restaurant, Nandbhog, Room and Banquet each need a **rate**, a **treatment**
-   (`inclusive` / `exclusive` / `none`) and an **effective-from date**. No rate is seeded
-   and none is assumed (D-043); both applications show *"No rule configured"*, which is
-   correct and honest until the real treatment is verified. Do not assume two categories
-   share a treatment, and if the treatment depends on something else — a room tariff
-   threshold, for instance — say so, because that is a different model and needs deciding
-   before it is built rather than after.
+2. **The revenue tax and billing configuration — this is what blocks Phase 4.**
+
+   These are questions about **what your current paperwork says**, not about tax law. Your
+   accountant is the authority; nothing here asks you to interpret legislation, and no rate
+   will be assumed or seeded from any answer that is not given (D-043, D-084). Scans or
+   typed-out lines from **one invoice per category** answer most of it at once.
+
+   *Restaurant (Crystal Canopy Rooftop)*
+   1. On a recent restaurant bill, what GST percentage is printed?
+   2. Is the menu price the final amount the guest pays, or is GST added at the bottom?
+   3. Has your accountant ever said the restaurant rate depends on anything other than what
+      was sold — anything reviewed or chosen at the start of a financial year?
+
+   *Room (Hotel Krishna Imperial)*
+   4. Do any room invoices show a **different** GST percentage from others? If so, which
+      percentages appear?
+   5. If they differ, what decides it — and what per-room-per-night value does your
+      accountant use as the boundary?
+   6. Is the room rate on the invoice what the guest pays including GST, or before GST?
+
+   *Banquet (Hotel Krishna Imperial)*
+   7. On a recent banquet invoice, is it **one line**, or split — hall/rental separately
+      from food/catering, or billed as a package?
+   8. What GST percentage appears against each line?
+
+   *Nandbhog (Crystal Canopy Rooftop)*
+   9. What does Nandbhog represent on an invoice — is it billed on the same restaurant
+      bill, or does it have its own? What GST appears on it?
+
+   *All four*
+   10. From what date should each treatment apply? (If it has been unchanged for a long
+       time, the start of the current financial year is a fine answer.)
+   11. In your existing monthly management report, are the sales figures you record the
+       **customer total including GST**, or the pre-tax figure?
+
+   **One consequence to agree before it reaches a manager:** if room tax genuinely varies
+   by tariff, the Daily Room Revenue entry becomes two figures instead of one on days when
+   both bands apply (D-081). Small, but a real change to a daily routine.
+
+   Nothing in this list is turned into a decision until you supply it. Unanswered means the
+   category stays *"No rule configured"* and revenue entry for it refuses — which is the
+   approved behaviour, not a defect.
+
 3. **Optional decision:** whether archiving should also offer a *confirmed* cascade for a
    whole subtree (D-039).
 

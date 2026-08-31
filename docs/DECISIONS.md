@@ -2231,3 +2231,277 @@ feature that reached two real devices, through a full green automated acceptance
 without existing — and of the one check that found it. **The manual gate stays in the
 release checklist for every release**, and a green automated suite is not grounds for
 skipping it: the suite was green the whole time.
+
+---
+
+# Phase 4 — Revenue Engine: approved planning baseline (2026-08-31)
+
+The ten entries below are the **approved planning baseline for Phase 4**. None of them is
+implemented. Phase 4 has not begun and is blocked on verified revenue tax and billing
+configuration from the project lead. They are recorded now because the repository, not the
+conversation, is the source of project state (`CLAUDE.md` §1).
+
+## D-078 — Revenue is a document with components, because one day's revenue can carry more than one tax treatment
+**Date:** 2026-08-31 · **Status:** **Approved as the planning baseline. NOT implemented.**
+
+**Context.** The first Phase 4 proposal modelled revenue as a flat header: one entry, one
+rate, one gross amount. The project lead rejected that shape and supplied the corrections
+that break it — conditional tax resolution, room tax varying by accommodation value,
+restaurant treatment depending on a premises or financial-year status, and banquet
+potentially invoicing more than one kind of supply.
+
+Every one of those corrections breaks the flat header in the **same way**: *one day's
+revenue, in one category, can carry more than one tax treatment.* A single rate on the
+header cannot represent that, and adding a second rate to the header would be exactly the
+header-level classification mistake D-003 rejected for expenses.
+
+**Decision — revenue takes the shape expenses already have.**
+
+```
+Revenue Entry  (document)
+  └── Revenue Component  (1..n)
+```
+
+The header carries: `id` (client-generated UUID v7), `txn_number` (server-issued on
+acceptance), `org_id`, `business_unit_id`, `revenue_category_id`, `business_date`,
+`entry_kind`, `notes`, `created_by`, `row_version`, `voided_at` / `void_reason`, and the
+usual sync metadata.
+
+Each component carries **what was entered, and everything needed to explain what was
+derived from it**:
+
+```
+entered_amount_minor, entered_basis
+gross_amount_minor, tax_amount_minor, net_amount_minor   -- CHECK net = gross - tax
+tax_rule_id, tax_rate_bp, tax_treatment                  -- the rule snapshot
+value_band_min_minor, value_band_max_minor               -- the facts that
+supply_subtype_id, premises_status_code                  -- selected that rule
+```
+
+`SUM(components) = header` is enforced by a deferred constraint trigger, exactly as
+`SUM(allocations) = expense.amount` is. Money is integer paise throughout; no binary
+floating point touches a stored or computed amount.
+
+**Why this shape rather than a special case per category.** A simple Nandbhog day is
+**one** component and is exactly as fast to enter as before. A room day spanning two tariff
+bands is two. A banquet split between hall and catering is two. One model, one write path,
+one reconciliation rule — rather than a per-category branch in the place where company
+revenue is computed. It also reuses reasoning already proven in this repository instead of
+inventing a second document shape.
+
+**Alternatives rejected:** a second rate on the header (cannot represent three categories'
+needs at once, and repeats the D-003 mistake); one entry per band with no grouping
+(destroys "what was the day's room revenue?" as a first-class fact and invites double
+counting); requiring room-by-room PMS data (out of V1 scope, spec §29, and unnecessary to
+compute the tax).
+
+**Consequence for the master spec.** Spec §8 describes a revenue *record* carrying gross,
+tax and net directly. The component model refines that, and does not contradict §8.2, which
+already permits multiple records per category per day. **The spec text will need amending
+when Phase 4 is implemented** — that is a change to a binding governance document, so it is
+recorded here as required and is deliberately **not** made now, while Phase 4 is unapproved
+for implementation.
+
+## D-079 — Conditional tax resolution: five bounded dimensions, deterministic, refusing ambiguity
+**Date:** 2026-08-31 · **Status:** **Approved as the planning baseline. NOT implemented.**
+
+**Context.** D-017 keyed a tax rule on `(revenue_category, effective_date)`. The project
+lead's real business situation does not fit that: room tax may depend on accommodation
+value per unit per day, restaurant treatment may depend on a premises or financial-year
+status, and banquet may depend on which kind of supply was invoiced.
+
+**Decision.** A rule is chosen by matching **facts** the entry supplies against
+**conditions** the rule declares, over exactly five dimensions:
+
+| Dimension | Where the fact comes from |
+|---|---|
+| revenue category | the entry |
+| business date | the entry, under D-067 semantics |
+| value band | the component's own amount |
+| supply subtype | chosen on the component |
+| premises tax status | configured per business unit, date-effective |
+
+`revenue_tax_rules` gains nullable discriminator columns. **A null means the rule does not
+depend on that dimension**, and resolution is most-specific-match.
+
+**Three properties are load-bearing, and each is a deliberate refusal of a more flexible
+design.**
+
+1. **A bounded set of dimensions, not an expression language.** A general rules engine in
+   the path that computes company profit would be unauditable, untestable at its
+   boundaries, and precisely the speculative module `CLAUDE.md` forbids. Adding a sixth
+   dimension is a migration and a decision, made deliberately and once.
+2. **Resolution is deterministic.** The same facts on the same date give the same answer,
+   on the client and on the server, for ever. A report that changes its mind is worse than
+   a report that refuses.
+3. **Ambiguity is refused, never tiebroken.** Two rules that could both match the same
+   facts on the same date are rejected by a database constraint at configuration time, and
+   an ambiguous resolution at entry time refuses the save. Picking one arbitrarily would
+   silently apply a rate nobody approved.
+
+**No GST legislation is encoded in Dart, and none in a Flutter widget.** The dimensions are
+a schema; the rates, bands, subtypes and statuses are configured data supplied from
+verified business information. The resolver is one pure-Dart implementation in
+`domain/`, used identically online and offline.
+
+## D-080 — The entered amount has an explicit basis, and both what was typed and what was derived are stored
+**Date:** 2026-08-31 · **Status:** **Approved as the planning baseline. NOT implemented.**
+
+**Context.** The first proposal was incoherent, and the project lead caught it: it named
+`gross_amount_minor` as the core stored field and had the Android form ask for "Gross",
+while an exclusive tax treatment starts from the **pre-tax** amount. Those cannot all be
+true at once.
+
+**Decision.** The rule states the **input basis**, and the record stores what the operator
+actually typed alongside the figures derived from it.
+
+| Basis | The operator types | Derivation, in exact integer paise |
+|---|---|---|
+| `inclusive_total` | the customer total, tax included | `tax = round_half_up(entered × rate_bp ÷ (10000 + rate_bp))`; `net = entered − tax`; `gross = entered` |
+| `pre_tax` | the amount before tax | `tax = round_half_up(entered × rate_bp ÷ 10000)`; `gross = entered + tax`; `net = entered` |
+| `none` | the amount | `tax = 0`; `gross = net = entered` |
+
+Rounding is half-up, applied **once, at the component**, and stored. Aggregates sum stored
+paise and never re-apply a rate to a total (D-017).
+
+**The field label follows the configured rule** — "Customer total (incl. GST)" or "Pre-tax
+amount" — and is never universally labelled "Gross". A manager who has to guess which
+number the form wants will eventually guess wrong, and the two answers differ by exactly
+the tax.
+
+Storing `entered_amount_minor` and `entered_basis` beside the derived trio is what makes a
+figure explainable years later without consulting a rule table that may since have changed:
+the record states what was typed, under which basis, against which rule, at what rate.
+
+## D-081 — Room revenue is manual-first, in value-band components
+**Date:** 2026-08-31 · **Status:** **Approved as the planning baseline. NOT implemented.**
+
+**Decision.** The manager enters one figure per tariff band that had business that day. No
+room-by-room data, and no PMS (spec §29).
+
+```
+Room Revenue · 15 June 2026
+  Band: up to <configured boundary>    ₹42,000   -> rule A
+  Band: above <configured boundary>    ₹23,000   -> rule B
+  ------------------------------------------------
+  Daily Room Revenue                   ₹65,000
+```
+
+**The form derives its own fields from the configured rules.** One rule in force for Room
+on that date means one field, and entry is as fast as it ever was; two bands mean two
+fields, labelled with the configured boundary. **No threshold is a constant in application
+code** — the boundary is a property of the rule, so a change in the real treatment is a
+configuration change rather than a release.
+
+The band describes accommodation value *per room per day*, which is a fact about the tariff
+rather than about the day's total. Recording it on the component preserves exactly the
+information a differential treatment needs and nothing more: it does not reconstruct a PMS,
+and it does not discard the distinction the tax depends on.
+
+**A consequence the project lead should see before a manager does:** on days when two bands
+apply, the daily room entry becomes two figures instead of one. That is a real, if small,
+change to a daily routine, and it is flagged rather than presented as a surprise.
+
+## D-082 — Premises tax status is configured business data, never inferred
+**Date:** 2026-08-31 · **Status:** **Approved as the planning baseline. NOT implemented.**
+
+**Decision.** A date-effective master, `business_unit_tax_status` —
+`(business_unit_id, effective_from, status_code, note)` — records a premises or
+financial-year tax status where the real treatment depends on one. Rules may name a
+`premises_status_code`.
+
+**The application never derives, infers or defaults this.** It is entered by the Owner from
+what the accountant states, it is audited, and it is date-effective, so a change at the
+start of a financial year cannot restate the previous year's Net Sales.
+
+If a rule requires a premises status and none is configured for that unit on that business
+date, the save is **refused** (D-084). Guessing it would be inventing a business fact,
+which `CLAUDE.md` prohibits outright.
+
+## D-083 — Banquet supply subtype: the extensibility point exists and ships empty
+**Date:** 2026-08-31 · **Status:** **Approved as the planning baseline. NOT implemented.**
+
+**Decision.** `revenue_supply_subtypes` — `(revenue_category_id, code, label,
+archived_at)` — is created and **ships with no rows**.
+
+* No subtypes configured for a category → no subtype field on the form, and rules with a
+  null subtype match. Banquet behaves as an ordinary category.
+* Subtypes configured → the component gains a subtype selector, and rules may differ per
+  subtype.
+
+The hinge therefore exists and is exercised by tests, and **no speculative subtype is
+invented**. Hall-only, catering and composite packages are all plausible and are
+deliberately *not* seeded: what Hotel Krishna Imperial actually invoices is a business fact
+to be supplied from real invoices, not guessed from what hotels generally do.
+
+## D-084 — An unresolvable or ambiguous tax rule refuses the save
+**Date:** 2026-08-31 · **Status:** **Approved (project-lead decision). NOT implemented.**
+
+**Decision.** If the resolver cannot produce **exactly one** applicable rule, the revenue
+entry is refused — locally and on the server. Every failure mode is covered:
+
+* no rule for the category on that business date;
+* a component whose value band no rule covers;
+* a required supply subtype not chosen;
+* a required premises status not configured;
+* **two or more rules that both match** — ambiguity, never a tiebreak.
+
+The message is *"No tax rule configured for this revenue entry."*, naming which condition
+could not be satisfied.
+
+**"No rule configured" stays permanently distinct from a configured `0%` and from a
+configured `none` / not-taxable.** The first is a gap in configuration; the other two are
+decisions somebody made and can defend. Collapsing them is how Net Sales gets silently
+overstated — and Net Sales feeds Operating Profit.
+
+**Alternatives rejected:** treating absence as 0% (overstates profit, invisibly); recording
+with an `unresolved` treatment and excluding it from reports (creates rows that exist but
+cannot be reported, which is worse than not having them).
+
+## D-085 — Revenue has its own number sequence
+**Date:** 2026-08-31 · **Status:** **Approved (project-lead decision). NOT implemented.**
+
+**Decision.** `KI-REV-26-27-000001` — organisation-wide, server-issued on canonical
+acceptance, and **not shared with the expense sequence**. Offline entries carry their
+client-generated UUID v7 identity until the server accepts them (D-008), exactly as
+expenses do.
+
+## D-086 — Offline revenue resolves tax from cached configuration, or refuses
+**Date:** 2026-08-31 · **Status:** **Approved as the planning baseline. NOT implemented.**
+
+**Decision.** `ReferenceSync` gains four things to cache: revenue tax rules, their
+condition discriminators, the supply-subtype master, and the business-unit premises-status
+timeline. Offline resolution uses **the same deterministic domain resolver** as online —
+one implementation over cached data, so the two cannot drift.
+
+If the required configuration is not cached, the local save is **refused and nothing is
+queued**.
+
+This is a deliberate departure from the expense engine, where a local save always succeeds,
+and the reason is worth stating: an expense's correctness does not depend on configuration
+the device might lack, and a revenue figure's does. A queued entry whose tax could not be
+computed would be refused by the server anyway, and a rejected revenue entry sitting in
+somebody's outbox is worse than being told, at the time, that it cannot yet be recorded.
+
+The client never invents a rate, never defaults one, and never rounds a figure differently
+from the way the server would.
+
+## D-087 — The revenue reporting contribution shape is defined in Phase 4 and consumed in Phase 5
+**Date:** 2026-08-31 · **Status:** **Approved as the planning baseline. NOT implemented.**
+
+**Decision.** `revenue_period_contributions` — one row **per component**:
+
+```
+org_id, business_unit_id, revenue_category_id,
+supply_subtype_id, value_band_min_minor, value_band_max_minor,
+pnl_period_key,
+gross_minor, tax_minor, net_minor
+```
+
+The mirror of `expense_period_contributions` (D-060), so the Phase 5 engines sum one shape
+per side of the P&L. Keeping the component grain means **tax buckets survive into
+reporting** rather than being flattened at the door, which is what makes "why did room tax
+change this month?" an answerable question.
+
+**Phase 4 defines and populates this interface. Phase 4 does not build the P&L or the
+reporting engines** — that is Phase 5, with the parity suite D-020 requires.
