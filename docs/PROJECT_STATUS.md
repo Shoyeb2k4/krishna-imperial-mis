@@ -5,7 +5,7 @@ Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
-Last updated: **2026-08-31** (sixth checkpoint — the attachment picker, which did not exist)
+Last updated: **2026-08-31** — **PHASE 3 COMPLETE**
 
 > A new session should be able to read this file and know exactly where work stopped.
 > This file — not chat history — is the checkpoint.
@@ -23,32 +23,38 @@ Every gate passed, including the ones that can only be passed by running the rea
 application: the Android package on a device, and the compiled Windows executable, both
 against the real `krishna-mis-dev` project, with the real development identities.
 
-**Phase 3 — Expense Engine: implementation and automated acceptance otherwise complete;
-the native attachment picker failed manual acceptance on both platforms and has been
-rebuilt.** The phase is **NOT closed**: the two manual picker smoke tests must now be run
-against the corrected builds.
+**Phase 3 — Expense Engine: COMPLETE.** All four gates are closed:
 
-**What the manual test found, and it is the most important finding of the phase.** On a
-real Samsung Galaxy A06 5G and inside the real `krishna_mis.exe`, the expense form said
-*"Attaching a bill is not available on this device yet."* No picker opened, on either
-platform. The cause was not a permission, a plugin misconfiguration or a platform quirk:
-**the picker had never been implemented.** `lib/` contained one `AttachmentSource` —
+| Gate | Status |
+|---|---|
+| Implementation | **Complete** |
+| Automated acceptance | **Complete** — 674 host tests, 48 acceptance tests across 37 real process launches on both platforms, live backend 19, live expense 16 |
+| Manual native-picker acceptance | **Complete** — Android **PASS**, Windows **PASS** (2026-08-31) |
+| Clean candidate artefacts | **Verified** — built without acceptance defines, scanned, installed and launch-verified on both platforms |
+
+**Production distribution remains Phase 9**: release signing with the project lead's
+keystore, the AAB path, and the Windows installer are not part of this phase and are not
+claimed by it. What is claimed is that the expense engine works, end to end, on both real
+clients against a real backend.
+
+**The manual picker acceptance is worth reading rather than ticking.** It failed the first
+time, on both platforms, and it failed for the reason no automated test could see: the
+picker had never been implemented (D-077). `lib/` held one `AttachmentSource` —
 `UnavailableAttachmentSource` — the provider defaulted to it, a comment promised a
-bootstrap would replace it, and no replacement was ever written. There was no picker
-plugin in `pubspec.yaml` at all.
+bootstrap would replace it, and nothing ever did. Every attachment test passed throughout,
+because each overrode that provider with a synthetic source; **none read what production
+resolves.** D-073 therefore shipped through a full green acceptance phase with no real
+picker behind it, and that fact stays in this record rather than being tidied away — it is
+the strongest evidence in the project for why a boundary the harness cannot cross needs a
+person to cross it.
 
-**Every attachment test passed throughout**, because each one overrode the provider with a
-synthetic source. That injection is correct and necessary — the OS picker is a separate
-activity the harness cannot drive. What was missing is the assertion in between: **no test
-ever read what production resolves.** The suite proved the entire pipeline behind a
-boundary that had nothing attached to it. Full reasoning in D-077; the general rule is
-that *a test which supplies the thing it is testing proves the consumer, never the
-supplier.*
+It was fixed, re-accepted automatically on both real clients, rebuilt clean, and then
+passed by hand:
 
-Fixed: real adapters for both platforms (Android's system Photo Picker and the Storage
-Access Framework, Windows' native `IFileOpenDialog`), the provider resolves them itself
-with no bootstrap step to forget, and six host tests assert the production resolution for
-both shipped platforms. Reintroducing the defect fails five of them — verified.
+* **Android** — the real system Photo Picker opened and returned the selected image to
+  Krishna Imperial MIS, shown **Attached**.
+* **Windows** — the real native Windows file dialog opened and returned the selected file,
+  shown **Attached**.
 
 Phase 0 complete and committed (`3a4502f`). Phase 1 complete. Phase 2 backend integration
 checkpointed at `58526c0`, completed at `1ba1e3a`, and closed by the acceptance addendum
@@ -126,6 +132,36 @@ manager neither the object nor its metadata row (D-063).
 property's synced figures out of the browsable cache, keeping the actor's own unsent work —
 and keeping it *theirs*.
 
+*The server boundary.* `authenticated` holds **no `SELECT` on `public.expenses`**; the read
+path is the `expense_document` projection, which withholds the header total from a
+unit-scoped caller because on a two-property bill `total − own share` is the other share.
+Every financial write goes through a reviewed `SECURITY DEFINER` RPC — `expense_create`,
+`expense_update`, `expense_void`, `expense_correct_business_date`, `attachment_register` —
+each re-checking capability, unit scope, period lock, edit window and `base_row_version`
+server-side, and each on the declared API surface the migration invariant asserts in both
+directions (D-044).
+
+*Transaction numbering* is **server-issued**: the client generates the UUID v7 identity
+offline (D-008) and the server assigns the human-readable `KI-EXP-…` number when it accepts
+the document. An edit returns only `row_version`, so reconciliation leaves fields the server
+did not restate alone — writing them all back erased the number on every edit until D-072a
+caught it.
+
+*Attachments* carry an eight-state client lifecycle (`staged` → `waitingForExpense` →
+`pendingUpload` → `uploading` → `uploaded` → `stagingReclaimed`, with `retryNeeded` and a
+terminal `rejected`), a private Supabase Storage bucket at a deterministic path, and
+`attachment_register` as the **only** writer of `expense_attachments` — so Postgres, not a
+bucket listing, is the record of what evidence exists (`ARCHITECTURE.md` §16).
+
+*The pickers* (D-077): Android's system Photo Picker and the Storage Access Framework;
+Windows' native `IFileOpenDialog`. No storage permission is declared or requested, and
+`CAMERA` is deliberately not declared.
+
+*Acceptance hygiene.* Two defects in the suite itself were found and fixed rather than
+worked around: a missed tap that reported as a sync defect (D-075), and a two-device chain
+keyed on a fixed primary key that could pass exactly once, because a void does not free a
+key (D-076).
+
 ## Verified
 
 Labels used exactly as defined: **Implemented / Tested / Partially tested / Not tested /
@@ -172,7 +208,8 @@ Blocked.**
 | Attachments end to end — stage, upload, register, verify, retry | **Tested** | `attachment-staging` + `attachment-upload` on both real clients, against real Supabase Storage (D-073a) |
 | Attachment read authorisation — a scoped manager refused (D-063) | **Tested** | `attachment-scope`, both platforms: the object, the metadata row **and** the right to attach |
 | Production picker **wiring**, both platforms | **Tested** | 6 host tests asserting what production resolves; the assertion that was missing while the picker did not exist (D-077) |
-| The OS file / photo picker itself | **MANUAL — PENDING SHOYEB CONFIRMATION** | **failed the first manual test on both platforms — the picker did not exist (D-077).** Rebuilt; awaiting a retest against the corrected builds |
+| The OS file / photo picker itself, Android | **Tested — manual, PASS** | 2026-08-31, real Galaxy A06 5G: the system Photo Picker opened and returned the image, shown **Attached**. Failed the first attempt — see D-077 |
+| The OS file / photo picker itself, Windows | **Tested — manual, PASS** | 2026-08-31, real `krishna_mis.exe`: the native file dialog opened and returned the file, shown **Attached**. Failed the first attempt — see D-077 |
 | Windows ledger: the complete filter surface, keyset paging, scoped detail caption | **Tested** | `windows-ledger`, incl. the filter-dependency rule and a scoped share never captioned `TOTAL` |
 | Two-device Android ⇄ Windows expense propagation | **Tested** | `propagate-expense-a…e`: create with a bill, correct, stale edit conflicts, void, evidence still there |
 | Expense **edit** through the UI | **Tested** | `expense-edit` on both real clients: identity kept, version advanced, D+7/D+8, stale → Conflict (D-072a) |
@@ -345,18 +382,10 @@ reported as failed rather than re-run until it is convenient.
 
 ### Still outstanding
 
-1. **Manual native-picker smoke test, one per platform** — **MANUAL — PENDING SHOYEB
-   CONFIRMATION.**
-
-   The first attempt **FAILED on both platforms** and is recorded as failed, not retried
-   into silence: the picker did not exist (D-077). It has been built, the automated
-   attachment acceptance re-run green on both real clients, and fresh clean artefacts
-   installed and launch-verified. **The retest has not been run**, so nothing here claims
-   it passes.
-
-   This remains the only thing between the current state and Phase 3 closure — and it is
-   worth noting that it is the *second* time this manual test has been the thing that
-   caught what the automated suite could not.
+**Nothing.** The manual native-picker smoke tests were the last item and both passed on
+2026-08-31 (Android **PASS**, Windows **PASS**). Their first attempt is recorded as
+**FAILED** above and in D-077, and stays recorded: it is the finding that justifies the
+whole practice of keeping a manual gate for a boundary the harness cannot drive.
 
 ## Known issues
 
@@ -406,57 +435,34 @@ declaration that Phase 3 is closed.
 
 ## Next exact task
 
-**Two manual picker smoke tests. Nothing else.** Every automated task in Phase 3 is done
-and green, and the clean candidate artefacts are built, scanned and launch-verified —
-their exact paths are under *Build status*. The remaining work is thirty seconds of a
-person's attention on each platform.
+**Phase 4 — Revenue Engine.** The architecture and implementation plan are prepared and
+awaiting the project lead's approval; **no Phase 4 code has been written.**
 
-When both are confirmed:
-
-1. Record both results here and tick L.8's last line in `RELEASE_CHECKLIST.md`.
-2. Re-run the lightweight consistency gate that documentation changes actually require —
-   `dart format`, `flutter analyze`, the host suite and the tree/history secret scan. The
-   device acceptance does not need re-running for a documentation change, and re-running it
-   would be ceremony rather than evidence.
-3. Commit `feat: complete phase 3 expense engine`, mark Phase 3 complete, and produce a
-   Phase 4 Revenue Engine **plan only**.
-
-Phase 4 needs the tax rules below before it can be finished, so that decision is the first
-thing to settle when it opens.
+Phase 4 cannot be *completed* without one input only he can give: the real tax rule for
+each of the four V1 revenue categories — Restaurant, Nandbhog, Room and Banquet — each
+with a rate, a treatment (`inclusive` / `exclusive` / `none`) and an effective-from date.
+Nothing is assumed and no rate is seeded (D-043). Entry surfaces can be built before the
+rules arrive; a Net Sales figure cannot be produced without them, and will not be invented.
 
 ## Open questions for the project lead
 
-**None outstanding.** All three have been answered and implemented:
+**None for Phase 3.** All were answered and implemented: revoked-scope financial retention
+(D-070), the expense edit surface (D-072a), and attachment upload (D-073a).
 
-1. Does a revoked scope take that property's cached expense history with it? —
-   **Yes** (D-070).
-2. Should the expense edit surface be built, or descoped? — **Built** (D-072a).
-3. Is attachment upload a Phase 3 slice? — **Yes, built** (D-073a).
-
-What remains is two manual smoke tests, not a decision and not a defect.
+**One for Phase 4**, and it is a genuine business fact rather than a design choice: the tax
+rule for each revenue category. See *Project lead actions required* below.
 
 ## Project lead actions required
 
-1. **Two manual picker smoke tests, one per platform — about thirty seconds each.**
-   The harness cannot drive an OS file dialog or the Android photo picker, and calling an
-   injected boundary proof that it can would be false. Everything *after* the picker
-   returns a file is proven automatically, on both platforms.
-
-   *Android:* open the dev build, tap **+ → Add expense**, enter any amount, choose a
-   classification, open **More details**, tap **Choose a photo** (or **Take a photo**),
-   pick any image, and confirm it returns to Krishna Imperial MIS with the file listed and
-   labelled **Attached**.
-
-   *Windows:* open `krishna_mis.exe`, **Transactions → Add expense**, enter an amount and
-   classification, open **More details**, click **Choose a file**, pick any image or PDF,
-   and confirm it returns with the file listed and labelled **Attached**.
-
-   Neither needs to be saved or synced — the question is only whether the OS picker hands
-   the file back.
-2. **Supply the first tax rule per revenue category** — Restaurant, Nandbhog, Room,
-   Banquet — when the real treatment has been verified (D-043). Both applications
-   currently show "No rule configured", which is correct and honest until then. This does
-   not block Phase 3, but **Phase 4 revenue entry cannot be completed without it.**
+1. ~~Two manual picker smoke tests.~~ **Done, 2026-08-31 — both PASS.**
+2. **Supply the first tax rule per revenue category — now blocking Phase 4's completion.**
+   Restaurant, Nandbhog, Room and Banquet each need a **rate**, a **treatment**
+   (`inclusive` / `exclusive` / `none`) and an **effective-from date**. No rate is seeded
+   and none is assumed (D-043); both applications show *"No rule configured"*, which is
+   correct and honest until the real treatment is verified. Do not assume two categories
+   share a treatment, and if the treatment depends on something else — a room tariff
+   threshold, for instance — say so, because that is a different model and needs deciding
+   before it is built rather than after.
 3. **Optional decision:** whether archiving should also offer a *confirmed* cascade for a
    whole subtree (D-039).
 

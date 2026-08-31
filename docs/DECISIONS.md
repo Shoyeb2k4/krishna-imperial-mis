@@ -2216,3 +2216,18 @@ URI at any time, and a receipt that vanished between capture and upload was neve
 *pending* rather than assumed to pass, and they are the reason this was found before the
 phase closed rather than after. That was the right call and it is worth keeping: a
 boundary the harness cannot cross is a boundary a person has to.
+
+---
+
+**Manual acceptance, 2026-08-31 — both platforms PASS.**
+
+* **Android**, real Samsung Galaxy A06 5G: the system Photo Picker opened and returned the
+  selected image to Krishna Imperial MIS, shown **Attached**.
+* **Windows**, real `krishna_mis.exe`: the native Windows file dialog opened and returned
+  the selected file, shown **Attached**.
+
+The failed first attempt above is not amended and not softened. It is the record of a
+feature that reached two real devices, through a full green automated acceptance phase,
+without existing — and of the one check that found it. **The manual gate stays in the
+release checklist for every release**, and a green automated suite is not grounds for
+skipping it: the suite was green the whole time.

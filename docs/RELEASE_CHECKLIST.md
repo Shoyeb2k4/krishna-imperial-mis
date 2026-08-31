@@ -346,6 +346,12 @@ to a person.
 - [ ] A scoped manager is refused the object, the metadata row **and** the right to attach
 - [ ] A revocation removes the bill's metadata and its staged bytes; a **void** keeps both
 - [ ] Staging bytes are reclaimed after confirmation, and after the retention window
-- [ ] **Manual, once per platform:** the real OS picker returns a file to the entry form.
-      The automated suite injects at the point the picker returns and proves everything
-      after it; it does not drive the picker, and must not be reported as if it did.
+- [x] **Manual, once per platform:** the real OS picker returns a file to the entry form.
+      **Android PASS · Windows PASS, 2026-08-31.** The automated suite injects at the point
+      the picker returns and proves everything after it; it does not drive the picker, and
+      must not be reported as if it did.
+
+      **This line earned its place.** Its first run FAILED on both platforms and exposed
+      that the production picker had never been implemented, after a full green automated
+      attachment acceptance (D-077). Keep it manual, keep it per-release, and do not let a
+      green suite argue you out of running it.
