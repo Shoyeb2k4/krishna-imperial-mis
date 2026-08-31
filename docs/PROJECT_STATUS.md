@@ -128,7 +128,7 @@ Blocked.**
 | `flutter analyze` | **Tested** | **No issues found** |
 | Host test suite | **Tested** | **668 tests, all passing** |
 | Secret scan — tree and git history | **Tested** | clean; the scan proves its own controls on every run (D-069) |
-| Secret scan — rebuilt distributable binaries | **Not tested** | deferred with the clean rebuild until the picker tests are confirmed |
+| Secret scan — rebuilt clean binaries | **Tested** | tree, git history and built artefacts all clean, with the scanner's controls passing |
 | Migration audit (search_path, API surface, policy boundary) | **Tested** | 14 host tests |
 | Backend schema parity (migrations vs the claims made about them) | **Tested** | 18 host tests |
 | Live backend suite against `krishna-mis-dev` | **Tested** | **19 tests** across 7 phases |
@@ -158,7 +158,7 @@ Blocked.**
 | Edit window under the property's business date (D-067) | **Tested** | migration 0033 asserts 04:59 / 05:00 / 05:15 / 23:59 / 00:01; live suite re-run green |
 | Device timezone cannot influence a business date | **Tested** | `business_date_test.dart`, pinned to the same instant the server asserts |
 | Secret scan — tree and git history | **Tested** | clean; the scanner's own controls pass on every run (D-069) |
-| Secret scan — **rebuilt distributable** APK + Windows Release | **Not tested** | deferred with the clean rebuild until the picker tests are confirmed |
+| Secret scan — **rebuilt clean** APK, extracted APK tree, Windows Release bundle | **Tested** | clean; also verified by a direct byte search of `kernel_blob.bin` (89.6 MB) and `app.so` (9.4 MB) for each development password — nil in both |
 | Android cross-period entry through the UI | **Tested** | `cross-period`: ₹60,000 → May ₹30,000 / June ₹30,000, plus an odd-paise split reconciling exactly |
 | Attachments end to end — stage, upload, register, verify, retry | **Tested** | `attachment-staging` + `attachment-upload` on both real clients, against real Supabase Storage (D-073a) |
 | Attachment read authorisation — a scoped manager refused (D-063) | **Tested** | `attachment-scope`, both platforms: the object, the metadata row **and** the right to attach |
@@ -330,7 +330,9 @@ reported as failed rather than re-run until it is convenient.
 
 1. **Manual native-picker smoke test, one per platform** — **MANUAL — PENDING SHOYEB
    CONFIRMATION.** Not *passed*, and not *failed*: not run, because it needs a person at
-   the machine and the project lead does not currently have PC access. The Android photo
+   the machine. The clean candidate artefacts are built, scanned and waiting; their paths
+   are under *Build status*, and the Android package is already installed on the connected
+   emulator. The Android photo
    picker and the Windows file dialog are separate activities the Flutter harness cannot
    drive. The automated suite injects a synthetic file at exactly the point the picker
    returns one and proves everything after it — which is not the same claim, and is not
@@ -392,18 +394,23 @@ declaration that Phase 3 is closed.
 
 ## Next exact task
 
-**Nothing, until the two picker smoke tests are run.** Every automated task in Phase 3 is
-done and green. The work that remains is thirty seconds of a person's attention on each
-platform, described below.
+**Two manual picker smoke tests. Nothing else.** Every automated task in Phase 3 is done
+and green, and the clean candidate artefacts are built, scanned and launch-verified —
+their exact paths are under *Build status*. The remaining work is thirty seconds of a
+person's attention on each platform.
 
-When those are confirmed:
+When both are confirmed:
 
-1. Tick L.8's last line in `RELEASE_CHECKLIST.md` and mark the picker rows **Tested** here.
-2. Rebuild clean distributables without the acceptance identity defines and re-scan the
-   binaries — the acceptance builds carry the development passwords in `kernel_blob.bin`
-   by construction and are never distributable (D-069).
-3. Declare Phase 3 complete and open Phase 4 — which needs the tax rules below before it
-   can finish.
+1. Record both results here and tick L.8's last line in `RELEASE_CHECKLIST.md`.
+2. Re-run the lightweight consistency gate that documentation changes actually require —
+   `dart format`, `flutter analyze`, the host suite and the tree/history secret scan. The
+   device acceptance does not need re-running for a documentation change, and re-running it
+   would be ceremony rather than evidence.
+3. Commit `feat: complete phase 3 expense engine`, mark Phase 3 complete, and produce a
+   Phase 4 Revenue Engine **plan only**.
+
+Phase 4 needs the tax rules below before it can be finished, so that decision is the first
+thing to settle when it opens.
 
 ## Open questions for the project lead
 
@@ -448,12 +455,32 @@ password, service-role key, database password, private key or signing password i
 
 | Target | Status |
 |---|---|
-| Android (debug, dev flavour) | **Built, installed, and driven on an emulator against the real backend** |
+| Android (debug, dev flavour) | **Built clean, installed and launch-verified** — `app-dev-debug.apk`, arm64-v8a/armeabi-v7a/x86_64, debug-key signed |
 | Android (release APK / AAB) | Not attempted — Phase 9, needs the project lead's keystore |
 | Windows (debug) | **Built, launched, and driven against the real backend** |
-| Windows (release) | **Built** — `krishna_mis.exe`; last scanned clean at the previous checkpoint |
+| Windows (release) | **Built clean and launch-verified** — complete bundle at `build/windows/x64/runner/Release/` |
 | Windows installer | Not attempted — Phase 9 |
-| Clean distributable rebuild + binary scan | **Not done at this checkpoint** — deferred with the picker confirmation |
+| Clean Phase 3 candidate artefacts | **Built and scanned clean** — no acceptance identity defines; both launch to the normal login screen |
+
+**Clean Phase 3 candidate artefacts (2026-08-31).** Built with the environment config
+only — **no acceptance identity defines** — then scanned and launch-verified:
+
+| | |
+|---|---|
+| Android | `build/app/outputs/flutter-apk/app-dev-debug.apk` — `in.krishnaimperial.mis.dev`, versionCode 1, versionName `1.0.0-dev`, debug-key signed, arm64-v8a + armeabi-v7a + x86_64 |
+| Windows | `build/windows/x64/runner/Release/` — `krishna_mis.exe` with every plugin DLL, `flutter_windows.dll`, `sqlite3mc.dll` and `data/` beside it. **No installer exists yet** (Phase 9); the executable runs from inside that folder |
+
+Both were launched and reach the **normal sign-in screen with empty fields**. The clean
+Android package contains no development identity, no `PHASE` define and no acceptance
+harness. One string, `device_acceptance_test`, does appear once in the debug
+`kernel_blob.bin` — it is the text of the **doc comment in `lib/app/bootstrap.dart`** that
+explains why the acceptance transport is unreachable from a shipped build, which debug
+kernels retain. Proven by reading the surrounding bytes rather than assumed, and the
+`no_hardcoded_authority_test` suite independently asserts that `main()` passes no transport.
+
+These are Phase 3 **candidate** artefacts for the manual picker tests, not production
+release artefacts: release signing is still Phase 9 and the Android release build falls
+back to the debug key by design until the project lead's keystore exists.
 
 **Acceptance builds are not distributable.** Driving the acceptance suite compiles the
 development identity passwords into `kernel_blob.bin`; the scanner proves it, and proved it
