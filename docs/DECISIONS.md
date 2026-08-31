@@ -1688,7 +1688,9 @@ Verified: a run ends with `reversed N of N`, and the assertion that none remain 
 what would fail if it ever stopped working.
 
 ## D-072 — The expense **edit** surface does not exist, and that is a Phase 3 gap
-**Date:** 2026-08-30 · **Status:** **Open — requires the project lead's decision**
+**Date:** 2026-08-30 · **Status:** **Answered 2026-08-30 — build it. See D-072a for the
+rules it was built to, and `PROJECT_STATUS.md` for the acceptance.** The text below is the
+question as it was put, and is left unedited because this log is append-only.
 **Context:** `PROJECT_STATUS.md` records Phase 3 slices 8–13 as "the Android entry
 surface, the Windows ledger and detail, **edit/void**, cross-business and cross-period
 allocation, and the audit presentation … built and committed (`3871b9f`)". Writing the
@@ -1784,7 +1786,9 @@ mandatory reason, `base_row_version`, and immutability afterwards.
    recorded an expense and the ledger did not list it.
 
 ## D-073 — Attachment **upload** has no producer, and no object store
-**Date:** 2026-08-30 · **Status:** **Open — requires the project lead's decision**
+**Date:** 2026-08-30 · **Status:** **Answered 2026-08-31 — build it, do not defer it. See
+D-073a for what was built and `ARCHITECTURE.md` §16 for how it works.** The text below is
+the question as it was put, and is left unedited.
 **Context:** Writing the attachment acceptance the project lead asked for (§19 of his
 D-072 instruction) found the same shape of gap D-072 recorded for editing: a mechanism
 that is implemented and tested, with nothing in the application that reaches it.
@@ -1881,8 +1885,13 @@ metadata table handed them the row. Migration 0036 points the policy at the same
 claimed since 0031. A policy subquery runs with the caller's privileges — the same fact
 that broke every table in D-045, arriving in a new place.
 
-## D-074 — Sign-out leaves synced expenses browsable on a long-lived installation
-**Date:** 2026-08-31 · **Status:** **Open — a defect, found by the D-073 regression**
+## D-074 — A retained document belongs to whoever queued it
+**Date:** 2026-08-31 · **Status:** **Accepted — root cause found, fixed and proven on both
+platforms.** Recorded first as an open defect under the title *"sign-out leaves synced
+expenses browsable on a long-lived installation"*; the investigation below is left exactly
+as it was written, including the hypothesis it disproved, because this log is append-only
+and a wrong first guess that was checked is worth more to the next reader than a tidy one
+that was not.
 
 **Symptom.** On the Windows machine, whose local database persists across runs and had
 accumulated a dozen synced expenses, `d068-switch` fails: after the Owner signs out and a
@@ -1929,3 +1938,198 @@ phase and is reported as failing, not skipped.
 **Next step.** Capture the exception: wrap the sign-out purge so the failure is logged
 rather than swallowed by whatever currently absorbs it, and re-run on the Windows
 installation with its accumulated database. The fix follows from what it says.
+
+---
+
+**Resolved 2026-08-31. The hypothesis above was wrong, and checking it is what found the
+real cause.**
+
+**What the evidence actually said.** A diagnostic phase run inside the real
+`krishna_mis.exe`, against the Windows installation with its accumulated database, called
+the sign-out purge exactly as sign-out calls it and captured the result rather than the
+symptom:
+
+```
+D074 purge OK: 2 units, 51 rows, 0 documents removed,
+               12 retained for unsynced work, 69 outbox entries preserved
+D074 expensesAfter: 12   stamped: 12   browsable: 0
+D074 retainedActors: 71c18507-…, 749daa31-…
+```
+
+**The purge did not throw.** It completed, and it was right: all twelve documents carried
+outstanding outbox intent, so D-070 retains them, and all twelve were correctly stamped
+`scope_revoked_at` and unbrowsable. The end state at sign-out was exactly as specified.
+
+The exposure happened one step later, and in the opposite direction from the one being
+looked for. When the next user signed in, `ReferenceSync` refreshed authority, and
+`ScopeCachePurge._restoreBrowsability` cleared `scope_revoked_at` on every retained
+document whose business units were inside *the incoming user's* scope. Every document was
+Crystal Canopy; the incoming user was the Crystal Canopy manager; so the restore un-hid
+all twelve — and `retainedActors` shows they were queued by **two different people**.
+
+**The rule that was missing.** D-070 says a retained document is kept because it is the
+actor's own unsent work and exists nowhere else. That is a statement about *whose* it is,
+and the restore tested only *where* it was. Scope is necessary and it is not sufficient:
+holding a property does not make somebody the author of another person's queued intent.
+
+**Decision.** Restoring browsability requires **both** conditions:
+
+* every line of the document is inside the confirmed scope again — unchanged; and
+* **this actor still has outstanding work on it**, established through
+  `sync_outbox.actor_user_id`, which has recorded who queued each intent since D-050.
+
+An org-wide grant covers every unit by construction (D-025) and is therefore *no* evidence
+of authorship, so the ownership test applies to it identically — a wider grant restores
+nothing that a narrower one would not.
+
+A document whose intent has since completed stays stamped and is simply re-pulled from the
+server on the next sync. That is the correct source for a canonical projection, and it is
+the difference the whole retention policy turns on: the server can hand back a synced
+document, and can never hand back an intent it never received.
+
+**Fail closed at sign-out (the second half).** `SessionController.signOut` called
+`purgeAllScopedCache()` unguarded. The hypothesis that it threw was wrong here, but the
+shape of the risk was real — a cleanup failure must not leave the previous user's figures
+readable. `signOut` now falls back to `quarantineAllDocuments()`, which stamps every
+remaining document without deleting one: nothing browsable, nothing destroyed, which is
+the safe half of both guarantees. The session ends and the authority store clears either
+way, so a cleanup failure can never leave protected navigation usable, and the original
+error still propagates rather than being swallowed.
+
+**Positive control.** Four host tests pin the ownership rule — another user does not
+inherit retained work, its own actor does, an org-wide holder does not, and a document
+whose work has finished stays stamped — plus two on quarantine. Removing the ownership
+predicate fails three of them, which is what makes them a control rather than a
+description.
+
+**Why the Android runs had been passing.** The emulator reinstalls the application on
+every run, so its database was nearly empty and the restore had almost nothing to hand to
+the wrong person. The Windows build keeps its database between runs — which is precisely
+the shared back-office workstation D-054 added the sign-out control for, and the case the
+rule exists to protect. **A test whose fixture is recreated every run cannot see a defect
+that needs history to exist.**
+
+**Verified:** `d068-switch` and `d068-revoke` pass on the Windows installation with its
+accumulated database — the run that failed — and on Android.
+
+One acceptance assertion changed with it, and the change is the fix working:
+`d068-revoke` asserted `retained.single`, which assumed the device held exactly one
+retained document. Since the restore stopped handing other people's work away, an
+installation that has been used before legitimately holds several, so the assertion now
+names the document it means.
+
+## D-075 — A tap that misses is fatal, and an unexplained acceptance failure is diagnosed before it is re-run
+**Date:** 2026-08-31 · **Status:** Accepted
+**Context:** `expense-edit-offline` failed once in a batch and passed on its own
+afterwards, and `PROJECT_STATUS.md` recorded it as an intermittent failure whose cause had
+not been captured. The project lead's instruction was explicit: *do not normalise
+unexplained flakiness at a financial synchronisation boundary.* Investigating it found
+**three** distinct causes wearing one symptom, which is the reason the batch looked random.
+
+**Cause 1 — a missed tap, reported thirty seconds later as a sync defect.** The failing
+run's log carries the real evidence:
+
+```
+Warning: A call to tap() … derived an Offset (757.3, 642.4) that would not hit test
+The hit test result at that offset is: … RenderAbsorbPointer … RenderOffstage …
+```
+
+The Save button was present and enabled, and the route was still animating in, so the
+`ModalRoute`'s `AbsorbPointer` took the pointer. Flutter treats a missed tap as a
+**warning**. The test therefore continued, waited thirty seconds for the outbox intent
+that the un-pressed button never produced, and failed with *"no update intent was
+queued"* — which reads exactly like a defect in the edit-to-outbox path, and is not one.
+
+**A warning is the wrong severity for this.** A tap that lands on nothing invalidates
+every assertion after it, and at this boundary it impersonates the class of defect the
+suite exists to detect. Two changes: `WidgetController.hitTestWarningShouldBeFatal` is set
+for the whole acceptance suite, so a miss fails where it happens; and taps go through
+`tapWhenHittable`, which waits for `finder.hitTestable()` — a hit test at the widget's
+centre actually reaching it — rather than for the weaker conditions *present* and
+*enabled*, which a transition satisfies while swallowing the pointer.
+
+**Cause 2 — the host's own network.** Three Android phases and one Windows phase failed
+without reaching the application shell, and the Windows one named it outright:
+`SocketException: The semaphore timeout period has expired (errno = 121)`, raised by the
+harness's plain `package:http` admin client, which contains no application code at all.
+Measured directly from the host, with `curl` and nothing else involved:
+
+```
+try1..try7   total≈0.13s   http=401
+try8         connect=15.07s
+try9, try10  connect failed, 20s timeout
+```
+
+The path to the project was dropping while those phases ran, and recovered afterwards.
+**That is not a product defect, a harness race, or a startup budget**, and the only honest
+handling is to name it, re-run the affected phases, and report the result of the run that
+had a network.
+
+**Cause 3 — a start-up budget that was genuinely tight.** Reaching the shell means a real
+sign-in, `my_authority`, a full reference pull and the scope purge against a live project;
+measured in isolation the phase completes in 24–34 seconds. The budget is raised, and the
+reason it is safe to raise is written beside it: this is the *only* generous wait in the
+suite, and no assertion about a financial outcome is given the same latitude — those wait
+for a durable consequence and fail if it does not arrive.
+
+**Consequences.** The three causes are distinguishable now, which they were not before: a
+missed tap fails at the tap, a network failure names the socket, and a slow start-up has
+room. Repeated runs of the phase pass in 24–34 seconds each.
+
+**The general rule this is recorded for.** *An acceptance failure is diagnosed before it is
+re-run.* Re-running first and reporting the green is how the missed tap would have survived
+— it passed on the very next attempt, and the defect it was hiding was in the test's own
+severity settings rather than in the product. The same instinct that made D-071's cleanup a
+no-op and D-068's classification guard vacuous is at work here: **a check whose failure
+mode is a warning is a check that will one day be ignored.**
+
+## D-076 — An acceptance phase that can only pass once is not a regression test
+**Date:** 2026-08-31 · **Status:** Accepted
+**Context:** The two-device chain (`propagate-expense-a…e`) ran green when it was written
+and failed on its **second** run, with:
+
+```
+duplicate key value violates unique constraint "expenses_pkey"
+```
+
+Five processes on two machines need a shared handle on one document, and the handle chosen
+was a **hard-coded primary key**. Leg *a* voided any leftover before creating — the comment
+even said "so the fixed id is free" — and that is precisely the mistake: a void does not
+free a primary key. It is not supposed to. Financial history is corrected by void plus
+audit and never by deleting rows (D-006), and no client role holds DELETE on a financial
+table, correctly.
+
+So the phase was structurally single-use. It reported *passing* the day it was written and
+could never pass again, which is the worst of both: a green tick that decays into a
+failure unrelated to the product.
+
+**Decision.** The shared handle is the **marker in the document's notes**, which is
+already how `expense-cleanup` finds what a run created (D-071) — the one identifier that
+survives a process boundary without being written into the schema. Leg *a* voids any open
+leftovers, then creates with a fresh UUID v7; legs *b*–*e* resolve the newest open
+document carrying that marker. If none exists they fail with a message that says leg *a*
+must run first, on Android, rather than with a foreign-key error about a row nobody was
+looking at.
+
+**Consequences.** The chain is repeatable against a database that never deletes a
+financial row — which is every database this project will ever have. Old runs' documents
+remain, voided, in the audit trail, exactly as D-066 says they should.
+
+**Two further instances of the same mistake, found by fixing the first.** The
+**attachment** id was fixed too, for the same reason and with the same consequence. And
+the marker itself was matched with equality, while leg *b*'s whole job is to **correct**
+the document — which rewrites its notes and destroyed the handle the remaining legs
+depended on. The marker is now a prefix that every leg preserves, and leg *e*, which
+exists to watch the document be voided, looks it up including voided ones.
+
+That last one is worth naming separately: the handle was destroyed *by the operation
+under test*. A test fixture identifier must survive everything the test does to the
+fixture, and "everything the test does" is exactly what nobody checks when the first run
+is green.
+
+**The general rule.** *A fixture identifier must be unique per run unless the fixture can
+actually be removed*, and in this project financial fixtures cannot be. The same
+reasoning that makes the product correct — void, never delete — makes a fixed-key fixture
+a defect. Two related findings in this phase have the same shape: D-071's cleanup that
+never ran, and D-068's classification guard that compared a list against itself. Each was
+a check that looked like it worked.

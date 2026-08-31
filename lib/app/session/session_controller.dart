@@ -133,12 +133,26 @@ class SessionController extends SessionNotifier {
   ///
   /// Nothing is lost by purging: the same user signing back in re-pulls what they are
   /// entitled to, and offline they would have no cached authority to work under anyway.
+  /// **Fails closed.** If the purge cannot complete, the previous user's figures must
+  /// not simply remain readable because a cleanup step threw (D-074). Nothing is
+  /// destroyed on that path either — the fallback quarantines every remaining document
+  /// instead, which satisfies the safe half of both guarantees: unbrowsable, and not
+  /// deleted. The next successful purge clears it in the ordinary way.
+  ///
+  /// The authority store is cleared regardless, because a session that could not be
+  /// cleaned up is emphatically not one to leave signed in.
   @override
   Future<void> signOut() async {
     await _deps.auth.signOut();
-    await _deps.purge.purgeAllScopedCache();
-    await _deps.store.clear();
-    state = const SessionState.unauthenticated();
+    try {
+      await _deps.purge.purgeAllScopedCache();
+    } on Object {
+      await _deps.purge.quarantineAllDocuments();
+      rethrow;
+    } finally {
+      await _deps.store.clear();
+      state = const SessionState.unauthenticated();
+    }
   }
 
   /// Re-asks the server what the current user may do — on reconnect, or on demand.

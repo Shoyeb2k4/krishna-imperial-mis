@@ -356,8 +356,19 @@ final List<String> _createdExpenses = [];
 /// rather than handed over. That is also what makes the assertions meaningful: "the same
 /// expense" means the same client-generated UUID (D-008), not a document that merely
 /// looks alike.
-const _twoDeviceExpenseId = 'c1a7f9e2-5b64-4d10-9f83-27ac41d6e5b0';
-const _twoDeviceAttachmentId = 'd2b8e0f3-6c75-4e21-8a94-38bd52e7f6c1';
+/// The two-device chain runs as five separate processes on two machines, so its legs
+/// need a shared handle on one document.
+///
+/// It used to be a **fixed primary key**, which made the chain pass exactly once. Voiding
+/// the leftover — which leg *a* dutifully did — does not free a primary key, and no client
+/// role holds DELETE on a financial table, correctly (D-006). So the second run of the
+/// chain died on `duplicate key value violates unique constraint "expenses_pkey"`, and a
+/// phase that can only ever pass once is not a regression test.
+///
+/// The handle is now the marker in the document's notes, which is already how
+/// `expense-cleanup` finds what a run created (D-071). Leg *a* creates a fresh UUID; the
+/// later legs look up the newest open document carrying this marker.
+const _twoDeviceMarker = '$_acceptanceMarker: two-device propagation';
 
 /// The version Android last saw, parked on the server in the document's own reference
 /// field so the conflict phase can submit a genuinely stale intent.
@@ -367,6 +378,13 @@ String _staleVersionMarker(int version) => 'seen-v$version';
 const _ownerQueuedMutationId = 'b5d0e91a-7c34-4a68-8e2f-19b7d3c05a44';
 
 void main() {
+  // A tap that lands on nothing is a *warning* by default, and the test then fails much
+  // later on whatever the tap was supposed to cause — which at a financial synchronisation
+  // boundary reads exactly like a sync defect. It is not one: the usual cause is a route
+  // still animating, whose `AbsorbPointer` swallows the pointer while the button is
+  // findable and enabled. Make the miss fatal, so it is reported where it happens.
+  WidgetController.hitTestWarningShouldBeFatal = true;
+
   final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
   binding.framePolicy = LiveTestWidgetsFlutterBindingFramePolicy.fullyLive;
 
@@ -427,6 +445,21 @@ void main() {
       await tester.pump(const Duration(milliseconds: 150));
     }
     fail('timed out waiting for: $what');
+  }
+
+  /// Taps [key] once it can genuinely receive a pointer.
+  ///
+  /// `enabled` and `present` are not the same thing as `hittable`: during a route
+  /// transition the widget is in the tree, the button reports itself enabled, and the
+  /// route's `AbsorbPointer` takes the pointer instead. `hitTestable()` matches only when
+  /// a hit test at the widget's centre actually reaches it, which is the real condition.
+  Future<void> tapWhenHittable(WidgetTester tester, Finder finder) async {
+    await pumpUntil(
+      tester,
+      'the control to become hittable',
+      () => finder.hitTestable().evaluate().isNotEmpty,
+    );
+    await tester.tap(finder.hitTestable());
   }
 
   bool visible(String text) => find.text(text).evaluate().isNotEmpty;
@@ -563,12 +596,21 @@ void main() {
   );
 
   /// The shell is only ever reached through a session the server vouched for.
+  ///
+  /// The budget is generous on purpose, and it is the *only* wait in this file that is.
+  /// Reaching the shell means a real sign-in, `my_authority`, a full reference pull and
+  /// the scope purge, against a live project, on a machine that is often compiling the
+  /// next phase at the same time; measured in isolation it takes 24–34 seconds. Two
+  /// phases in one long sequential batch exceeded 60 and passed on their own immediately
+  /// afterwards. Widening a *start-up* budget removes a failure mode that says nothing
+  /// about the product. No assertion about a financial outcome is given the same
+  /// latitude — those wait for a durable consequence and fail if it does not arrive.
   Future<void> expectSignedIn(WidgetTester tester, String email) async {
     await pumpUntil(
       tester,
       'the application shell for $email',
       () => visible('SIGNED IN') || visible('Home') || visible('Overview'),
-      timeout: const Duration(seconds: 60),
+      timeout: const Duration(minutes: 3),
     );
   }
 
@@ -1774,7 +1816,7 @@ void main() {
         .map((e) => e.id)
         .toSet();
 
-    await tester.tap(find.byKey(const Key('save-expense')));
+    await tapWhenHittable(tester, find.byKey(const Key('save-expense')));
 
     // The save is a transaction against an encrypted database on a phone; it takes as
     // long as it takes. Poll rather than guess at a duration.
@@ -1985,6 +2027,45 @@ void main() {
   /// optional-details section — so a control that is on screen for a routine expense is
   /// below the fold for a split one. A plain `tap` there fails with "found 0 widgets",
   /// which reads like the control is missing rather than merely out of view.
+  /// Opens the optional-details section, and does nothing if it is already open.
+  ///
+  /// Tapping the `ExpansionTile` itself is wrong twice over. Its render box spans the
+  /// whole tile, so once the section is expanded the centre of that box is somewhere in
+  /// the body rather than on the header — the tap misses, and used to do so silently.
+  /// And on an **edit** draft the section often opens by itself, because the document
+  /// already carries a vendor or notes; a tap then *collapses* it, hiding the very fields
+  /// the test is about.
+  ///
+  /// So: check whether it is already open, scroll it into view if the phone's form has it
+  /// below the fold, and tap the header's own title rather than the tile.
+  Future<void> openMoreDetails(WidgetTester tester) async {
+    if (find.byKey(const Key('expense-notes')).evaluate().isNotEmpty) return;
+
+    const tile = Key('more-details');
+    if (find.byKey(tile).evaluate().isEmpty) {
+      await tester.scrollUntilVisible(
+        find.byKey(tile),
+        200,
+        scrollable: find.byType(Scrollable).first,
+        maxScrolls: 40,
+      );
+      await tester.pump(const Duration(milliseconds: 400));
+    }
+    await tester.ensureVisible(find.byKey(tile));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    final header = find.descendant(
+      of: find.byKey(tile),
+      matching: find.text('More details'),
+    );
+    await tapWhenHittable(tester, header);
+    await pumpUntil(
+      tester,
+      'the optional details to open',
+      () => find.byKey(const Key('expense-notes')).evaluate().isNotEmpty,
+    );
+  }
+
   Future<void> revealAndTap(WidgetTester tester, Key key) async {
     if (find.byKey(key).evaluate().isEmpty) {
       await tester.scrollUntilVisible(
@@ -1997,7 +2078,7 @@ void main() {
     }
     await tester.ensureVisible(find.byKey(key));
     await tester.pump(const Duration(milliseconds: 300));
-    await tester.tap(find.byKey(key));
+    await tapWhenHittable(tester, find.byKey(key));
   }
 
   /// The raw text currently in each accounting-period amount field, in screen order.
@@ -2179,7 +2260,7 @@ void main() {
       'Kirana & Pulses',
     ]);
 
-    await revealAndTap(tester, const Key('more-details'));
+    await openMoreDetails(tester);
     await tester.pump(const Duration(milliseconds: 800));
 
     final intake = boot.shellKind.name == 'mobile'
@@ -2199,7 +2280,7 @@ void main() {
       '$_acceptanceMarker: attachment upload',
     );
     await tester.pump(const Duration(milliseconds: 300));
-    await revealAndTap(tester, const Key('more-details'));
+    await openMoreDetails(tester);
     await tester.pump(const Duration(milliseconds: 500));
 
     return saveExpense(tester);
@@ -2218,7 +2299,7 @@ void main() {
       'Save to become available',
       () => saveEnabled(tester),
     );
-    await tester.tap(find.byKey(const Key('save-expense')));
+    await tapWhenHittable(tester, find.byKey(const Key('save-expense')));
 
     final deadline = DateTime.now().add(const Duration(seconds: 30));
     while (DateTime.now().isBefore(deadline)) {
@@ -2267,7 +2348,7 @@ void main() {
     // time cleanup starts. Typing it through the real field also exercises the
     // progressive-disclosure section on the way past, which is where notes live
     // (spec §18 — accrual and metadata fields stay out of the fast path).
-    await tester.tap(find.byKey(const Key('more-details')));
+    await openMoreDetails(tester);
     await tester.pump(const Duration(milliseconds: 600));
     await pumpUntil(
       tester,
@@ -2279,7 +2360,7 @@ void main() {
       '$_acceptanceMarker: $notes',
     );
     await tester.pump(const Duration(milliseconds: 300));
-    await tester.tap(find.byKey(const Key('more-details')));
+    await openMoreDetails(tester);
     await tester.pump(const Duration(milliseconds: 500));
 
     await classify(tester, classification);
@@ -2789,7 +2870,7 @@ void main() {
 
       await tester.enterText(find.byKey(const Key('expense-amount')), '875');
       await tester.pump(const Duration(milliseconds: 400));
-      await revealAndTap(tester, const Key('more-details'));
+      await openMoreDetails(tester);
       await tester.pump(const Duration(milliseconds: 700));
       await pumpUntil(
         tester,
@@ -2801,7 +2882,7 @@ void main() {
         'INV-EDITED-1',
       );
       await tester.pump(const Duration(milliseconds: 400));
-      await revealAndTap(tester, const Key('more-details'));
+      await openMoreDetails(tester);
       await tester.pump(const Duration(milliseconds: 500));
 
       await saveEditedExpense(tester, id);
@@ -3122,7 +3203,7 @@ void main() {
       ]);
 
       // Attach through the real control, which calls the real staging service.
-      await revealAndTap(tester, const Key('more-details'));
+      await openMoreDetails(tester);
       await tester.pump(const Duration(milliseconds: 800));
 
       final intake = boot.shellKind.name == 'mobile'
@@ -3147,7 +3228,7 @@ void main() {
         '$_acceptanceMarker: attachment staging',
       );
       await tester.pump(const Duration(milliseconds: 300));
-      await revealAndTap(tester, const Key('more-details'));
+      await openMoreDetails(tester);
       await tester.pump(const Duration(milliseconds: 500));
 
       final id = await saveExpense(tester);
@@ -3247,16 +3328,18 @@ void main() {
       await signIn(tester, 'giridhar@hki.com');
       await expectSignedIn(tester, 'giridhar@hki.com');
 
-      // Any leftover from an earlier run is voided first, so the fixed id is free.
-      await _voidIfOpen(_twoDeviceExpenseId);
+      // Any leftover from an earlier run is voided so it cannot be mistaken for this
+      // one; the new document gets its own id, because a void does not free a key.
+      await _voidTwoDeviceLeftovers();
+      final twoDeviceId = const Uuid().v7();
 
       final gateway = ExpenseGateway(Supabase.instance.client);
       final created = await gateway.create(
         arguments: {
-          'p_id': _twoDeviceExpenseId,
+          'p_id': twoDeviceId,
           'p_business_date': _today(),
           'p_total_minor': 145000,
-          'p_notes': '$_acceptanceMarker: two-device propagation',
+          'p_notes': _twoDeviceMarker,
           'p_allocations': [
             {..._ccrKirana, 'amount_minor': 145000},
           ],
@@ -3264,24 +3347,26 @@ void main() {
         mutationId: const Uuid().v4(),
       );
       expect(created.isOk, isTrue, reason: '${created.refusalOrNull?.message}');
-      _createdExpenses.add(_twoDeviceExpenseId);
+      _createdExpenses.add(twoDeviceId);
 
       // A bill, uploaded through the real stack so the other device can look for it.
+      // Its id is per-run for the same reason the document's is (D-076).
+      final twoDeviceAttachmentId = const Uuid().v7();
       final picked = await source.pick(AttachmentIntake.gallery);
       final bytes = picked!.file.readAsBytesSync();
-      final orgId = await _orgIdOf(_twoDeviceExpenseId);
+      final orgId = await _orgIdOf(twoDeviceId);
       final stored = await SupabaseAttachmentStore(Supabase.instance.client)
           .upload(
             orgId: orgId,
-            expenseId: _twoDeviceExpenseId,
-            attachmentId: _twoDeviceAttachmentId,
+            expenseId: twoDeviceId,
+            attachmentId: twoDeviceAttachmentId,
             fileName: 'two-device-receipt.jpg',
             contentType: 'image/jpeg',
             bytes: bytes,
           );
       expect(stored, isA<UploadStored>());
 
-      final row = await _expenseRow(_twoDeviceExpenseId);
+      final row = await _expenseRow(twoDeviceId);
       expect(row['txn_number'], startsWith('KI-EXP-'));
       debugPrint(
         'propagate-a: ${row['txn_number']} at version ${row['row_version']}',
@@ -3297,18 +3382,20 @@ void main() {
       await signIn(tester, 'giridhar@hki.com');
       await expectSignedIn(tester, 'giridhar@hki.com');
 
+      final twoDeviceId = await _twoDeviceDocumentId();
+
       final pull = ExpensePull(
         db: boot.database,
         gateway: ExpenseGateway(Supabase.instance.client),
       );
-      await pull.pullOne(_twoDeviceExpenseId);
+      await pull.pullOne(twoDeviceId);
 
       final repository = ExpenseRepository(boot.database);
-      final local = await repository.load(_twoDeviceExpenseId);
+      final local = await repository.load(twoDeviceId);
 
       // 1 · The same identity, the same number, the same money.
       expect(local, isNotNull, reason: 'the document reached this device');
-      expect(local!.row.id, _twoDeviceExpenseId);
+      expect(local!.row.id, twoDeviceId);
       expect(local.row.txnNumber, startsWith('KI-EXP-'));
       expect(local.documentTotal, Money.fromRupees(1450));
 
@@ -3316,7 +3403,7 @@ void main() {
       final metadata = await Supabase.instance.client
           .from('expense_attachments')
           .select('id,content_hash,storage_path')
-          .eq('id', _twoDeviceAttachmentId)
+          .eq('expense_id', twoDeviceId)
           .single();
       final downloaded = await Supabase.instance.client.storage
           .from(expenseAttachmentBucket)
@@ -3332,11 +3419,11 @@ void main() {
       final seenVersion = local.row.rowVersion;
       final edited = await ExpenseGateway(Supabase.instance.client).update(
         arguments: {
-          'p_id': _twoDeviceExpenseId,
+          'p_id': twoDeviceId,
           'p_business_date': local.row.businessDate,
           'p_total_minor': 167500,
           'p_reference_number': _staleVersionMarker(seenVersion),
-          'p_notes': '$_acceptanceMarker: corrected on Windows',
+          'p_notes': '$_twoDeviceMarker — corrected on Windows',
           'p_allocations': [
             {..._ccrKirana, 'amount_minor': 167500},
           ],
@@ -3346,7 +3433,7 @@ void main() {
       );
       expect(edited.isOk, isTrue, reason: '${edited.refusalOrNull?.message}');
 
-      final after = await _expenseRow(_twoDeviceExpenseId);
+      final after = await _expenseRow(twoDeviceId);
       expect(after['total_amount_minor'], 167500);
       expect(after['row_version'], greaterThan(seenVersion));
     });
@@ -3360,17 +3447,19 @@ void main() {
       await signIn(tester, 'giridhar@hki.com');
       await expectSignedIn(tester, 'giridhar@hki.com');
 
+      final twoDeviceId = await _twoDeviceDocumentId();
+
       final repository = ExpenseRepository(boot.database);
-      final before = await repository.load(_twoDeviceExpenseId);
+      final before = await repository.load(twoDeviceId);
 
       await ExpensePull(
         db: boot.database,
         gateway: ExpenseGateway(Supabase.instance.client),
-      ).pullOne(_twoDeviceExpenseId);
+      ).pullOne(twoDeviceId);
 
       // 1 · The other device's correction arrived, on the same document.
-      final refreshed = await repository.load(_twoDeviceExpenseId);
-      expect(refreshed!.row.id, _twoDeviceExpenseId);
+      final refreshed = await repository.load(twoDeviceId);
+      expect(refreshed!.row.id, twoDeviceId);
       expect(
         refreshed.documentTotal,
         Money.fromRupees(1675),
@@ -3385,7 +3474,7 @@ void main() {
       }
       expect(
         (await boot.database.select(boot.database.expenses).get()).where(
-          (e) => e.id == _twoDeviceExpenseId,
+          (e) => e.id == twoDeviceId,
         ),
         hasLength(1),
       );
@@ -3399,7 +3488,7 @@ void main() {
           1;
       final conflicted = await ExpenseGateway(Supabase.instance.client).update(
         arguments: {
-          'p_id': _twoDeviceExpenseId,
+          'p_id': twoDeviceId,
           'p_business_date': refreshed.row.businessDate,
           'p_total_minor': 190000,
           'p_notes': '$_acceptanceMarker: stale edit from Android',
@@ -3420,7 +3509,7 @@ void main() {
             'correction is not overwritten (D-021)',
       );
 
-      final unchanged = await _expenseRow(_twoDeviceExpenseId);
+      final unchanged = await _expenseRow(twoDeviceId);
       expect(
         unchanged['total_amount_minor'],
         167500,
@@ -3435,15 +3524,17 @@ void main() {
       await signIn(tester, 'accountant@example.com');
       await expectSignedIn(tester, 'accountant@example.com');
 
-      final row = await _expenseRow(_twoDeviceExpenseId);
+      final twoDeviceId = await _twoDeviceDocumentId();
+
+      final row = await _expenseRow(twoDeviceId);
       final voided = await ExpenseGateway(Supabase.instance.client).voidExpense(
-        expenseId: _twoDeviceExpenseId,
+        expenseId: twoDeviceId,
         baseRowVersion: row['row_version'] as int,
         reason: '$_acceptanceMarker: voided from the other device',
         mutationId: const Uuid().v4(),
       );
       expect(voided.isOk, isTrue, reason: '${voided.refusalOrNull?.message}');
-      expect((await _expenseRow(_twoDeviceExpenseId))['voided_at'], isNotNull);
+      expect((await _expenseRow(twoDeviceId))['voided_at'], isNotNull);
     });
   });
 
@@ -3455,13 +3546,17 @@ void main() {
       await signIn(tester, 'giridhar@hki.com');
       await expectSignedIn(tester, 'giridhar@hki.com');
 
+      // Leg (d) voided it, which is the thing this leg is here to see, so the lookup
+      // has to include voided documents.
+      final twoDeviceId = await _twoDeviceDocumentId(includeVoided: true);
+
       await ExpensePull(
         db: boot.database,
         gateway: ExpenseGateway(Supabase.instance.client),
-      ).pullOne(_twoDeviceExpenseId);
+      ).pullOne(twoDeviceId);
 
       final repository = ExpenseRepository(boot.database);
-      final local = await repository.load(_twoDeviceExpenseId);
+      final local = await repository.load(twoDeviceId);
 
       expect(local, isNotNull, reason: 'a void does not delete the record');
       expect(local!.row.voidedAt, isNotNull);
@@ -3472,7 +3567,7 @@ void main() {
       final attachments = await Supabase.instance.client
           .from('expense_attachments')
           .select('id')
-          .eq('expense_id', _twoDeviceExpenseId);
+          .eq('expense_id', twoDeviceId);
       expect(
         attachments,
         hasLength(1),
@@ -3482,7 +3577,7 @@ void main() {
       // And it is immutable now, with the reason a user is actually given.
       final refused = await ExpenseGateway(Supabase.instance.client).update(
         arguments: {
-          'p_id': _twoDeviceExpenseId,
+          'p_id': twoDeviceId,
           'p_business_date': local.row.businessDate,
           'p_total_minor': 200000,
           'p_notes': '$_acceptanceMarker: edit after void',
@@ -4715,7 +4810,7 @@ void main() {
       expect(saveEnabled(tester), isTrue);
 
       // 4 · Saved, accepted by the server, and numbered.
-      await revealAndTap(tester, const Key('more-details'));
+      await openMoreDetails(tester);
       await tester.pump(const Duration(milliseconds: 700));
       await pumpUntil(
         tester,
@@ -4727,7 +4822,7 @@ void main() {
         '$_acceptanceMarker: cross-period May/June',
       );
       await tester.pump(const Duration(milliseconds: 300));
-      await revealAndTap(tester, const Key('more-details'));
+      await openMoreDetails(tester);
       await tester.pump(const Duration(milliseconds: 500));
 
       final id = await saveExpense(tester);
@@ -4823,7 +4918,7 @@ void main() {
         reason: 'the proposal reconciles to the paisa before anyone edits it',
       );
 
-      await revealAndTap(tester, const Key('more-details'));
+      await openMoreDetails(tester);
       await tester.pump(const Duration(milliseconds: 700));
       await pumpUntil(
         tester,
@@ -4835,7 +4930,7 @@ void main() {
         '$_acceptanceMarker: odd-paise split',
       );
       await tester.pump(const Duration(milliseconds: 300));
-      await revealAndTap(tester, const Key('more-details'));
+      await openMoreDetails(tester);
       await tester.pump(const Duration(milliseconds: 500));
 
       final id = await saveExpense(tester);
@@ -4896,7 +4991,7 @@ void main() {
 
       // Paid, on 5 July, for work that belongs to June. Payment lives behind the
       // progressive disclosure precisely because it is not part of the fast path.
-      await revealAndTap(tester, const Key('more-details'));
+      await openMoreDetails(tester);
       await tester.pump(const Duration(milliseconds: 900));
       // The payment *section* exists as soon as the details open; the method and date
       // controls do not exist until the document is marked paid, because unpaid carries
@@ -4913,7 +5008,7 @@ void main() {
         '$_acceptanceMarker: June salary paid 5 July',
       );
       await tester.pump(const Duration(milliseconds: 300));
-      await revealAndTap(tester, const Key('more-details'));
+      await openMoreDetails(tester);
       await tester.pump(const Duration(milliseconds: 500));
 
       final id = await saveExpense(tester);
@@ -5326,7 +5421,13 @@ void main() {
       );
       final retained = await repository.listRetainedAfterRevocation();
       expect(retained.map((e) => e.row.id), contains(unsent.id));
-      expect(retained.single.allocations, hasLength(1));
+      // Named rather than `.single`: an installation that has been used before
+      // legitimately holds other retained work, and since D-074 it keeps holding it
+      // rather than being handed to whoever signs in next.
+      expect(
+        retained.firstWhere((e) => e.row.id == unsent.id).allocations,
+        hasLength(1),
+      );
       expect(
         (await db.select(db.syncOutbox).get()).length,
         outboxBefore,
@@ -5635,20 +5736,46 @@ Future<String> _orgIdOf(String expenseId) async =>
 /// Void rather than delete, as everywhere: financial history is corrected by void plus
 /// audit (spec §14, D-006), and a re-runnable acceptance is not a reason to make an
 /// exception.
-Future<void> _voidIfOpen(String expenseId) async {
-  final existing = await Supabase.instance.client
+/// The id of the document the two-device chain is currently about.
+///
+/// Found by its marker rather than hard-coded, so the chain can run more than once
+/// against a database that never deletes a financial row. The newest **open** one is the
+/// current run's; older voided ones are left where they are, because voiding is how this
+/// project retires a document and the audit trail keeps them (D-006, D-066).
+Future<String> _twoDeviceDocumentId({bool includeVoided = false}) async {
+  // A *prefix* match, not equality: leg (b) corrects the document and rewrites its notes,
+  // so the marker has to survive being edited. Every leg that writes notes keeps this
+  // prefix and appends to it.
+  var query = Supabase.instance.client
       .from('expense_document')
-      .select('id,row_version,voided_at')
-      .eq('id', expenseId)
-      .maybeSingle();
-  if (existing == null || existing['voided_at'] != null) return;
+      .select('id,created_at,voided_at')
+      .like('notes', '$_twoDeviceMarker%');
+  if (!includeVoided) query = query.isFilter('voided_at', null);
+  final rows = await query.order('created_at', ascending: false).limit(1);
+  if (rows.isEmpty) {
+    fail(
+      'no open two-device document exists. Leg (a) creates it and must run first, on '
+      'Android, before this leg.',
+    );
+  }
+  return rows.first['id'] as String;
+}
 
-  await ExpenseGateway(Supabase.instance.client).voidExpense(
-    expenseId: expenseId,
-    baseRowVersion: existing['row_version'] as int,
-    reason: '$_acceptanceMarker: clearing the two-device fixture',
-    mutationId: const Uuid().v4(),
-  );
+/// Voids every open document left by an earlier two-device run.
+Future<void> _voidTwoDeviceLeftovers() async {
+  final rows = await Supabase.instance.client
+      .from('expense_document')
+      .select('id,row_version')
+      .like('notes', '$_twoDeviceMarker%')
+      .isFilter('voided_at', null);
+  for (final row in rows) {
+    await ExpenseGateway(Supabase.instance.client).voidExpense(
+      expenseId: row['id'] as String,
+      baseRowVersion: row['row_version'] as int,
+      reason: '$_acceptanceMarker: clearing the previous two-device fixture',
+      mutationId: const Uuid().v4(),
+    );
+  }
 }
 
 Future<Map<String, dynamic>> _expenseRow(String id) async => await Supabase

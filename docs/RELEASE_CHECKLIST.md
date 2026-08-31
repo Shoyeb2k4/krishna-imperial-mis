@@ -312,3 +312,40 @@ signed application, not asserted from shared code.
       terminal `Rejected`, never `Conflict`, and is not retried forever
 - [ ] Attachment upload failure never changes the expense's own state
 
+
+### L.7 Expense correction through the client (D-072a)
+
+The server's `expense_update` was proven long before anything could call it. These lines
+are about the client path, which is where the concurrency semantics are actually exposed
+to a person.
+
+- [ ] A correction keeps the document's identity: same id, same `KI-EXP` number, and the
+      row version moves
+- [ ] `base_row_version` is captured when the draft opens and **cannot** be re-based by a
+      background pull while somebody is typing
+- [ ] A stale edit is presented as a conflict for a person to resolve — never merged, and
+      never last-writer-wins
+- [ ] An edit made offline queues, survives an app restart, and reconciles **once**
+- [ ] A **scoped** share of a shared bill is read-only: no Edit control, the draft loader
+      refuses it, and the server refuses a forged attempt regardless
+- [ ] Editing lines and period contributions replaces them wholesale, so a document never
+      holds lines that do not add up to it
+- [ ] Void remains a distinct action with a mandatory reason — an edit is not a soft void
+
+### L.8 Attachment upload (D-073)
+
+- [ ] A bill uploads only **after** the server has accepted its expense, and the states in
+      between say so (`waitingForExpense` → `pendingUpload`)
+- [ ] The object lands at its deterministic path and is registered through
+      `attachment_register`, which refuses a size or SHA-256 that disagrees with the object
+- [ ] Redelivery produces **one** object and **one** metadata row
+- [ ] A transient failure leaves the expense `Synced` and the bill `retryNeeded`, on the
+      durable backoff clock, and an explicit retry works
+- [ ] `rejected` is terminal, carries no `nextAttemptAt`, and is never retried automatically
+- [ ] A crash mid-upload recovers at start-up rather than leaving `uploading` for ever
+- [ ] A scoped manager is refused the object, the metadata row **and** the right to attach
+- [ ] A revocation removes the bill's metadata and its staged bytes; a **void** keeps both
+- [ ] Staging bytes are reclaimed after confirmation, and after the retention window
+- [ ] **Manual, once per platform:** the real OS picker returns a file to the entry form.
+      The automated suite injects at the point the picker returns and proves everything
+      after it; it does not drive the picker, and must not be reported as if it did.

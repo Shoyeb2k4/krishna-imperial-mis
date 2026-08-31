@@ -708,6 +708,151 @@ void main() {
     });
   });
 
+  group('D-074 — a retained document belongs to whoever queued it', () {
+    /// A document left retained by a revocation, with `user-1`'s unsent work on it.
+    Future<ExpenseDocument> retainedWorkOf(String actor) async {
+      final expense = simpleExpense();
+      await repository.createLocally(
+        expense,
+        actorUserId: actor,
+        mutationId: const Uuid().v4(),
+        now: now,
+      );
+      await purge.purgeUnits({ccrId});
+      expect(
+        (await db.select(db.expenses).getSingle()).scopeRevokedAt,
+        isNotNull,
+      );
+      return expense;
+    }
+
+    test('another user signing in does not un-hide it', () async {
+      // The exact sequence the Windows acceptance found (D-074): documents are correctly
+      // stamped at sign-out, then the next user signs in, their scope covers the same
+      // property, and a scope-only restore hands them somebody else's retained work.
+      final expense = await retainedWorkOf('user-1');
+
+      await purge.applyTo(
+        AuthorityRefresh.confirmed(
+          AuthoritySnapshot(
+            userId: 'user-2',
+            orgId: seedOrgId,
+            resolvedAt: now,
+            grants: [
+              CapabilityGrant(Capability.expenseViewAll, businessUnitId: ccrId),
+            ],
+          ),
+        ),
+        previous: snapshot({ccrId}),
+      );
+
+      expect(
+        await repository.list(),
+        isEmpty,
+        reason:
+            "user-2 holds Crystal Canopy, but this is user-1's unsent work and is not "
+            'theirs to browse',
+      );
+      expect(
+        (await db.select(db.expenses).getSingle()).scopeRevokedAt,
+        isNotNull,
+        reason: 'the stamp stays until its own actor returns',
+      );
+      expect(
+        await repository.load(expense.id),
+        isNotNull,
+        reason: 'and nothing was destroyed — it is still user-1 s to reconcile',
+      );
+    });
+
+    test('its own actor signing back in does un-hide it', () async {
+      final expense = await retainedWorkOf('user-1');
+
+      await purge.applyTo(
+        AuthorityRefresh.confirmed(snapshot({ccrId, hkiId})),
+        previous: snapshot({hkiId}),
+      );
+
+      final visible = await repository.list();
+      expect(visible.map((e) => e.row.id), contains(expense.id));
+      expect((await db.select(db.expenses).getSingle()).scopeRevokedAt, isNull);
+    });
+
+    test('an org-wide holder does not inherit it either', () async {
+      // A wider grant covers every *unit*. It does not make somebody the author of
+      // another person's queued intent.
+      await retainedWorkOf('user-1');
+
+      await purge.applyTo(
+        AuthorityRefresh.confirmed(
+          AuthoritySnapshot(
+            userId: 'user-2',
+            orgId: seedOrgId,
+            resolvedAt: now,
+            grants: const [CapabilityGrant(Capability.expenseViewAll)],
+          ),
+        ),
+        previous: snapshot({ccrId}),
+      );
+
+      expect(await repository.list(), isEmpty);
+    });
+
+    test('a document whose work has finished stays stamped', () async {
+      // Its intent is delivered, so there is nothing left to reconcile and nothing to
+      // un-hide it for. The server re-sends the document on the next pull, which is
+      // where a canonical projection is supposed to come from.
+      await retainedWorkOf('user-1');
+      await db.customStatement("UPDATE sync_outbox SET status = 'done'");
+
+      await purge.applyTo(
+        AuthorityRefresh.confirmed(snapshot({ccrId, hkiId})),
+        previous: snapshot({hkiId}),
+      );
+
+      expect(await repository.list(), isEmpty);
+    });
+  });
+
+  group('D-074 — cleanup that fails, fails closed', () {
+    test('quarantine hides every document without deleting one', () async {
+      await synced(sharedExpense());
+      await synced(simpleExpense());
+      expect(await repository.list(), hasLength(2));
+
+      final hidden = await purge.quarantineAllDocuments();
+
+      expect(hidden, 2);
+      expect(
+        await repository.list(),
+        isEmpty,
+        reason: 'nothing browsable after a cleanup failure',
+      );
+      expect(
+        await db.select(db.expenses).get(),
+        hasLength(2),
+        reason: 'and nothing destroyed — the safe half of both guarantees',
+      );
+      expect(
+        await repository.contributionTotal(periodKey: '2026-06'),
+        Money.zero,
+      );
+    });
+
+    test('it is idempotent, and leaves an existing stamp alone', () async {
+      await synced(simpleExpense());
+      await purge.quarantineAllDocuments();
+      final firstStamp =
+          (await db.select(db.expenses).getSingle()).scopeRevokedAt;
+
+      expect(await purge.quarantineAllDocuments(), 0);
+      expect(
+        (await db.select(db.expenses).getSingle()).scopeRevokedAt,
+        firstStamp,
+      );
+    });
+  });
+
   group('restoring the scope makes retained work browsable again', () {
     test(
       'a confirmed authority that covers the unit clears the stamp',

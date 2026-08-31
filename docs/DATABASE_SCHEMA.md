@@ -383,13 +383,32 @@ reconciles exactly — never applied silently (D-034).
 expense_attachments (
   id uuid pk, org_id uuid not null,
   expense_id uuid not null references expenses(id) on delete restrict,
-  storage_path text,                        -- org/{org}/expenses/{expense}/{id}.{ext}
+  storage_path text not null,               -- org/{org}/expenses/{expense}/{id}.{ext}
   file_name text not null, mime_type text not null,
-  byte_size bigint, content_sha256 text,
-  upload_state text not null default 'pending',  -- pending | uploaded | failed
+  byte_size bigint not null, content_sha256 text not null,
   uploaded_at timestamptz, created_by uuid, created_at timestamptz
 )
 ```
+
+**A row here means an uploaded, hash-verified bill and nothing else** (D-073). It is
+written only by `public.attachment_register`, which the client calls *after* the object
+is in the bucket, passing the size and SHA-256 it computed locally; the RPC refuses if
+they disagree with the stored object. So Postgres — not a Storage bucket listing — is the
+financial record of what evidence exists, and there is no `upload_state` column on the
+server, because a half-uploaded bill is a client concern and has no canonical existence.
+
+Read authorisation is the same predicate as the header projection, on both the table and
+the Storage object: a user who receives a **scoped** view of a shared expense receives
+neither. The attachment is the whole bill and states the whole total (D-063).
+
+The client's side of it is a durable eight-state machine on the local
+`expense_attachments` table — `staged`, `waitingForExpense`, `pendingUpload`,
+`uploading`, `uploaded`, `stagingReclaimed`, `retryNeeded`, `rejected` — recording where
+a bill is between the picker and the bucket. Two of those encode rules rather than
+progress: `waitingForExpense` because an upload is refused until the server has accepted
+the expense it belongs to, and `rejected` because a terminal refusal must never carry a
+`nextAttemptAt` — a null there once meant "due now" and retried a refusal for ever. See
+`ARCHITECTURE.md` §16.
 
 ## 6. Revenue
 

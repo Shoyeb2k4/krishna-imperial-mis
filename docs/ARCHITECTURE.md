@@ -8,7 +8,7 @@ the application role named **Owner** is a separate concept — D-057)
 Status: **Sections 1–12 proposed (Phase 0, revised); section 13 describes what is built
 and verified.** Sections 6, 5.3 and 8 carry the project lead's mandated corrections.
 Implementation status is tracked in `PROJECT_STATUS.md`.
-Last updated: 2026-08-30
+Last updated: 2026-08-31
 
 ---
 
@@ -843,7 +843,12 @@ freed pages kept the revoked figures legible until something happened to overwri
 This was found by asserting on the bytes of the file rather than on the rows, and
 confirmed by turning the pragma off and watching the revoked ₹25,000 reappear.
 
-### 15.4 The edit surface, and what the client still cannot do
+### 15.4 The edit surface (D-072a)
+
+This subsection sits under §15 for historical reasons — it was written when the edit gap
+was still open and the revocation work was what surrounded it. The rules are the edit
+surface's own.
+
 
 `expense_update` now has a producer. `ExpenseRepository.updateLocally` writes the document,
 replaces its lines and contributions and appends the outbox intent in one transaction;
@@ -858,11 +863,8 @@ rules are D-072a's, and three of them are structural rather than conventional:
 * **lines and contributions are replaced wholesale inside the transaction**, so a document
   never holds lines that do not add up to it.
 
-What the client still cannot do is **upload an attachment**. See D-073: staging, hashing
-and the server's Storage policy are all implemented and proven, and nothing between them
-carries the bytes — there is no `AttachmentObjectStore` implementation outside the tests,
-`AttachmentUploadWorker` is never constructed, and nothing schedules an upload. A bill
-attached on a real device stays on that device, `pending`, for ever.
+Attachment upload — the gap this section used to end on — is built and proven; it has its
+own section below.
 
 ### 15.5 Superseded: what the client could not do before D-072 was answered
 
@@ -873,3 +875,87 @@ the detail panel offers Void alone, and nothing in `lib/` ever constructs a
 producer. The seven-day window is therefore, today, a rule about an operation the
 applications cannot perform. Recorded rather than quietly filled in, because building it
 is a Phase 3 slice with real concurrency semantics attached.
+
+---
+
+## 16. Attachments, from the picker to the bucket (2026-08-31)
+
+§5.4 sketched the upload as four steps. D-073 built it, and three of the four turned out to
+carry a rule rather than a mechanism.
+
+### 16.1 Ordering: a bill cannot precede the expense it is evidence for
+
+The Storage write policy calls `may_read_expense_attachments`, which requires the expense
+to **exist canonically on the server**. An upload attempted while the expense is still
+queued is therefore refused — and refused with something that looks like a permission
+error while really being an ordering one.
+
+So ordering is represented rather than hoped for. A freshly staged bill on an unsaved
+expense is `staged`; once the expense is queued it is `waitingForExpense`; only when the
+server has *accepted* the expense does `promoteAcceptedExpenses()` move it to
+`pendingUpload`, which is the first state the upload worker will look at. The worker's due
+query cannot see the other two, so the invalid attempt is not merely avoided by the
+caller — it is unavailable.
+
+### 16.2 The state machine is durable, and two of its states encode rules
+
+```
+staged ─▶ waitingForExpense ─▶ pendingUpload ─▶ uploading ─▶ uploaded ─▶ stagingReclaimed
+                                     ▲              │
+                                     └── retryNeeded ┘        rejected  (terminal)
+```
+
+`uploading` is persisted, so a crash mid-upload is recoverable rather than invisible:
+`recoverInterruptedUploads()` returns it to `pendingUpload` at start-up, which is safe
+because the object path is deterministic and re-uploading overwrites rather than
+duplicating.
+
+`rejected` is terminal and **deliberately carries no `nextAttemptAt`**, enforced by a table
+check constraint. A null there once meant "due now", so a refusal retried for ever — the
+constraint is in the schema rather than in the worker because the worker is where the bug
+was.
+
+### 16.3 Postgres is the record of what evidence exists — not a bucket listing
+
+An object in a bucket is a file. The financial claim *"this expense has a verified bill"*
+is a row in `expense_attachments`, written **only** by `public.attachment_register`, which
+the client calls after the object lands, passing the byte size and SHA-256 it computed
+locally. The RPC compares them against the stored object and refuses on disagreement, so a
+truncated or substituted upload cannot be registered.
+
+The consequence that matters for reporting: the canonical answer to "is there a bill?"
+comes from the same database, under the same RLS, as the expense — never from listing a
+bucket, which no policy makes authoritative and no transaction makes consistent.
+
+### 16.4 The two independences
+
+**An attachment never blocks its expense.** A transient upload failure leaves the expense
+`Synced` and the bill `retryNeeded`; the ledger is unaffected. This is asserted on both
+platforms rather than argued.
+
+**An expense never re-uploads its attachment.** The upload is not part of the expense's
+outbox intent, so an expense redelivery does not re-send bytes, and a re-uploaded object
+overwrites itself at its deterministic path instead of creating a second one. One object,
+one metadata row, however many times either half is retried.
+
+### 16.5 What a revocation and a void each do to a bill
+
+A revocation (D-070) takes attachments with it — metadata rows *and* staged bytes — on the
+same predicate that governs the header: complete-document-only (D-063). A partially
+revoked shared bill loses its attachment as part of the downgrade, because the image
+states the whole total.
+
+A **void** does not. Voiding is how financial history is corrected, and the evidence for
+what was recorded is precisely what an audit needs afterwards. The bill stays, the
+document is excluded from every aggregate, and both facts remain inspectable.
+
+### 16.6 What the harness can and cannot prove
+
+Everything above is proven on both real clients against `krishna-mis-dev`. The **OS
+picker** is not: the Android photo picker and the Windows file dialog are separate
+activities the Flutter test harness cannot drive. A synthetic file is injected at exactly
+the point the picker returns one — the same technique, and the same honesty, as D-058's
+transport injection — and the limitation is stated rather than papered over. Calling that
+proof that the picker itself was automated would be false, so it is not called that: it is
+recorded as a manual smoke test, one per platform, and until a person runs it, it is
+reported as pending rather than passed.

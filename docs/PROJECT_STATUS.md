@@ -5,7 +5,7 @@ Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
-Last updated: **2026-08-31** (fourth checkpoint — edit surface and attachment upload)
+Last updated: **2026-08-31** (fifth checkpoint — D-074 closed, automated acceptance green)
 
 > A new session should be able to read this file and know exactly where work stopped.
 > This file — not chat history — is the checkpoint.
@@ -23,34 +23,23 @@ Every gate passed, including the ones that can only be passed by running the rea
 application: the Android package on a device, and the compiled Windows executable, both
 against the real `krishna-mis-dev` project, with the real development identities.
 
-**Phase 3 — Expense Engine: in progress. NOT complete.** Both gaps the project lead was
-asked about are now built and proven on real clients: the expense **edit** surface
-(D-072, D-072a) and attachment **upload** (D-073, D-073a), together with the complete
-Windows ledger filter surface and two-device propagation. One defect found by the final
-regression is open and blocks closure: **D-074 — on a long-lived installation, sign-out
-leaves synced expenses browsable.** Slices 1–7 are approved and
-committed (`81ef239`, `03e8b93`); slices 8–13 — the Android entry surface, the Windows
-ledger and detail, edit/void, cross-business and cross-period allocation, and the audit
-presentation — are built and committed (`3871b9f`) and covered by host tests.
+**Phase 3 — Expense Engine: implementation and automated acceptance complete. The phase
+is NOT closed**, because two manual native-picker smoke tests need a person and have not
+been run (see *Project lead actions required*).
 
-**Device acceptance is under way and is partly done.** The core lifecycle is proven on both
-real clients against `krishna-mis-dev`: routine entry, the full offline round trip, the
-shared-bill scoped projection, and the refusal set (closed period, stale-version conflict,
-who may void). Three defects were found and fixed, one of them a server-side correctness
-bug in the edit window that no host test could have caught (D-067), one a crash on sign-out
-(D-068), and one in the secret scanner itself (D-069).
+Everything the project lead asked to be built in Phase 3 exists and is proven on both real
+clients against `krishna-mis-dev`: the expense **edit** surface (D-072a), attachment
+**upload** end to end (D-073a), the complete Windows ledger filter surface, two-device
+propagation, and the D-070 revocation policy. The one defect the previous checkpoint left
+open — **D-074** — is closed, and its root cause was not the one the checkpoint predicted.
 
-**What remains before Phase 3 can be called complete** is listed under *Acceptance still
-outstanding* below. It is deliberately not glossed: several requested surfaces have no
-acceptance phase written yet, and a phase that has not run is not a phase that passed.
-
-Six decisions were recorded during it, three of them corrections the project lead required
-or the work exposed: period contributions as the only reporting source (D-060), cross-unit
-allocation as its own capability (D-061), the local read model as a deliberate sibling of
-the server schema rather than a copy (D-062), attachments as complete-document-only
-(D-063), historical usage surviving a void (D-064), and the edit window's exact boundary
-(D-065). D-066 records how development acceptance events are recognised without weakening
-audit integrity.
+D-074 is worth reading rather than skimming, because the fix changed a rule. The sign-out
+purge was never broken; documents were correctly stamped and unbrowsable. What was wrong
+came one step later: when the **next** user signed in, retained documents were un-hidden on
+the strength of scope alone, with no test of who had queued them. A retained document is
+somebody's unsent work (D-070), so ownership is now part of the predicate, established
+through `sync_outbox.actor_user_id`. Sign-out additionally fails closed: if cleanup throws,
+every document is quarantined — nothing browsable, nothing destroyed.
 
 Phase 0 complete and committed (`3a4502f`). Phase 1 complete. Phase 2 backend integration
 checkpointed at `58526c0`, completed at `1ba1e3a`, and closed by the acceptance addendum
@@ -98,6 +87,36 @@ configuration UI on both platforms, built around the rename distinction in D-038
 
 *Corrections forced by the device acceptance (D-052 … D-056)* — see **Defects found** below.
 
+**Phase 3 — Expense Engine** (implementation and automated acceptance; not formally
+closed — see the top of this document).
+
+*The document model.* Expenses as a header plus allocation lines (D-003), with every line
+carrying at least one **period contribution** so there is exactly one place the money lives
+and double counting is structurally unavailable rather than avoided by careful queries
+(D-060). Cross-unit and cross-period splitting compose without either knowing about the
+other, each behind its own capability (D-061, D-034).
+
+*The local read model as a deliberate sibling of the server schema* (D-062) — a scoped row
+cannot carry a document total, enforced by a SQLite check constraint, so the covert channel
+the server projection closes cannot be reopened by a cache that stored the total anyway.
+Proven by reading the **bytes** of three separate databases.
+
+*The write path.* Atomic local create with the outbox intent in the same transaction;
+idempotent delivery; `base_row_version` on every mutation; response-loss recovery; terminal
+`Rejected` distinct from `Conflict`.
+
+*The surfaces.* Android entry, the Windows ledger with its complete filter surface and
+keyset paging, the detail panel, cross-period and cross-unit editors, the audit
+presentation, **expense edit** (D-072a) and **void**.
+
+*Attachments end to end* (D-073a): staging, hashing, ordered upload, registration in
+Postgres, hash verification, durable retry, and read authorisation that gives a scoped
+manager neither the object nor its metadata row (D-063).
+
+*Retention on revocation* (D-070, D-074): a confirmed revocation takes the revoked
+property's synced figures out of the browsable cache, keeping the actor's own unsent work —
+and keeping it *theirs*.
+
 ## Verified
 
 Labels used exactly as defined: **Implemented / Tested / Partially tested / Not tested /
@@ -105,10 +124,11 @@ Blocked.**
 
 | Item | Status | Evidence |
 |---|---|---|
-| `dart format --set-exit-if-changed` | **Tested** | clean (140 files) |
+| `dart format --set-exit-if-changed` | **Tested** | clean (145 files) |
 | `flutter analyze` | **Tested** | **No issues found** |
-| Host test suite | **Tested** | **662 tests, all passing** |
-| Secret scan — tree, git history, built binaries | **Tested** | clean — tree, history and rebuilt distributables; the scan now proves its own controls every run (D-069) |
+| Host test suite | **Tested** | **668 tests, all passing** |
+| Secret scan — tree and git history | **Tested** | clean; the scan proves its own controls on every run (D-069) |
+| Secret scan — rebuilt distributable binaries | **Not tested** | deferred with the clean rebuild until the picker tests are confirmed |
 | Migration audit (search_path, API surface, policy boundary) | **Tested** | 14 host tests |
 | Backend schema parity (migrations vs the claims made about them) | **Tested** | 18 host tests |
 | Live backend suite against `krishna-mis-dev` | **Tested** | **19 tests** across 7 phases |
@@ -137,14 +157,16 @@ Blocked.**
 | Windows expense acceptance — the same four phases | **Tested** | 4 phases inside the real `krishna_mis.exe` |
 | Edit window under the property's business date (D-067) | **Tested** | migration 0033 asserts 04:59 / 05:00 / 05:15 / 23:59 / 00:01; live suite re-run green |
 | Device timezone cannot influence a business date | **Tested** | `business_date_test.dart`, pinned to the same instant the server asserts |
-| Secret scan — tree, history, **rebuilt distributable** APK + Windows Release | **Tested** | clean; scanner self-test proves its own controls, verified by breaking it |
+| Secret scan — tree and git history | **Tested** | clean; the scanner's own controls pass on every run (D-069) |
+| Secret scan — **rebuilt distributable** APK + Windows Release | **Not tested** | deferred with the clean rebuild until the picker tests are confirmed |
 | Android cross-period entry through the UI | **Tested** | `cross-period`: ₹60,000 → May ₹30,000 / June ₹30,000, plus an odd-paise split reconciling exactly |
-| Attachments on either platform, end to end | **Not tested** | no acceptance phase written; host coverage only (18 tests) |
-| Windows ledger: filters, paging, detail projection | **Not tested** | no acceptance phase written; widget coverage only |
-| Two-device Android ⇄ Windows expense propagation | **Not tested** | create/refresh/void legs schedulable; edit and conflict legs blocked by D-072 |
+| Attachments end to end — stage, upload, register, verify, retry | **Tested** | `attachment-staging` + `attachment-upload` on both real clients, against real Supabase Storage (D-073a) |
+| Attachment read authorisation — a scoped manager refused (D-063) | **Tested** | `attachment-scope`, both platforms: the object, the metadata row **and** the right to attach |
+| The OS file / photo picker itself | **MANUAL — pending** | cannot be driven by the harness; injected at the picker boundary and stated as such (`ARCHITECTURE.md` §16.6) |
+| Windows ledger: the complete filter surface, keyset paging, scoped detail caption | **Tested** | `windows-ledger`, incl. the filter-dependency rule and a scoped share never captioned `TOTAL` |
+| Two-device Android ⇄ Windows expense propagation | **Tested** | `propagate-expense-a…e`: create with a bill, correct, stale edit conflicts, void, evidence still there |
 | Expense **edit** through the UI | **Tested** | `expense-edit` on both real clients: identity kept, version advanced, D+7/D+8, stale → Conflict (D-072a) |
-| Attachment **upload** end to end | **Blocked** | the application never uploads: no object store, no worker, no scheduling (D-073) |
-| D-068 financial cache retention | **Tested** | 3 tests on the real APK and 3 inside the real `.exe` |
+| D-070/D-074 financial cache retention and ownership | **Tested** | `d068-switch` + `d068-revoke`, 3 on the real APK and 3 inside the real `.exe`, the Windows ones against a database that had accumulated across runs |
 | Client and server agree on a business date at one instant | **Tested** | 10 host tests reading migration 0033's own assertion table |
 | Payment-date accrual through the application | **Tested** | `payment-accrual`: ₹80,000 to June, ₹0 to July, paid 5 July |
 
@@ -152,45 +174,47 @@ Blocked.**
 
 | Suite | Count | Result |
 |---|---|---|
-| Host (`flutter test`) | 662 | all passing |
-| Live backend against `krishna-mis-dev` (opt-in) | 19 | all passing |
-| Live expense suite against `krishna-mis-dev` (opt-in) | 16 | all passing |
+| Host (`flutter test`) | 668 | all passing |
+| Live backend against `krishna-mis-dev` (opt-in) | 19 | all passing — re-run in full |
+| Live expense suite against `krishna-mis-dev` (opt-in) | 16 | all passing — re-run in full |
 | Android Phase 2 device acceptance (real APK) | 19 | all passing |
 | Windows Phase 2 acceptance (real executable) | 18 | all passing |
 | Windows shell (real executable) | 15 | all passing |
 | Encryption on device — Android 8, Windows 8 | 16 | all passing |
-| **Android Phase 3 expense acceptance (real APK)** | **4** | **all passing** |
-| **Windows Phase 3 expense acceptance (real executable)** | **4** | **all passing** |
-| **D-068 retention, Android (`d068-switch`, `d068-revoke`)** | **3** | **all passing** |
-| **D-068 retention, Windows (`d068-switch`, `d068-revoke`)** | **3** | **all passing** |
-| **Android cross-period (`cross-period`)** | **2** | **all passing** |
-| **Android payment-date accrual (`payment-accrual`)** | **1** | **all passing** |
-| **Acceptance fixture reversal (`expense-cleanup`, both platforms)** | **2** | **all passing** |
-| **Expense edit (`expense-edit`, both platforms)** | **6** | **all passing** |
-| **Scoped-share edit security (`expense-edit-shared`, both)** | **2** | **all passing** |
-| **Offline edit (`expense-edit-offline`, both platforms)** | **2** | **all passing** |
-| **Edit refusals (`expense-edit-refused`, both platforms)** | **4** | **all passing** |
-| **Windows ledger (`windows-ledger`)** | **1** | **all passing** |
-| **Attachment staging (`attachment-staging`, both platforms)** | **2** | **all passing** |
-| **Attachment upload (`attachment-upload`, both platforms)** | **4** | **all passing** |
-| **Attachment scope security (`attachment-scope`, both platforms)** | **2** | **all passing** |
-| **Two-device propagation (`propagate-expense-a…e`)** | **5** | **all passing** |
-| **`d068-switch` on Windows** | **1** | **FAILING — D-074** |
-| **Total** | **821** | **1 failing (D-074), 0 skipped-and-counted** |
+| **Core expense acceptance, Windows** (`expense-simple`, `-offline`, `-shared`, `-refusals`) | **4** | **all passing** |
+| **Core expense acceptance, Android** (the same four) | **4** | **all passing** |
+| **Expense edit, Windows** (`expense-edit`) | **3** | **all passing** |
+| **Expense edit, Android** (`expense-edit`) | **3** | **all passing** |
+| **Offline edit** (`expense-edit-offline`, both platforms) | **2** | **all passing** |
+| **Edit refusals** (`expense-edit-refused`, both platforms) | **4** | **all passing** |
+| **Scoped-share edit security** (`expense-edit-shared`, both platforms) | **2** | **all passing** |
+| **Windows ledger** (`windows-ledger`) | **1** | **all passing** |
+| **Attachment staging** (`attachment-staging`, both platforms) | **2** | **all passing** |
+| **Attachment upload** (`attachment-upload`, both platforms) | **4** | **all passing** |
+| **Attachment scope security** (`attachment-scope`, both platforms) | **2** | **all passing** |
+| **D-070 retention** (`d068-switch`, `d068-revoke`, both platforms) | **6** | **all passing** |
+| **Android cross-period** (`cross-period`) | **2** | **all passing** |
+| **Payment-date accrual** (`payment-accrual`) | **1** | **all passing** |
+| **Two-device propagation** (`propagate-expense-a…e`) | **5** | **all passing** |
+| **Acceptance fixture reversal** (`expense-cleanup`, both platforms) | **2** | **all passing** — 162 accumulated documents voided, then `reversed 0 of 0` on the second platform |
+| **Development fixture restoration** (`propagate-restore`) | **1** | **all passing** |
+| *(Phase 3 acceptance subtotal — the bold rows above, not an extra suite)* | *48* | *all passing* |
+| **Total** | **819** | **0 failing, 0 skipped-and-counted** |
 
-The Phase 3 acceptance figures are four phases per platform — `expense-simple`,
-`expense-offline`, `expense-shared`, `expense-refusals` — each one process launch against
-the real backend. **Skipped phases are not counted**, and the surfaces listed as *Not
-tested* above contribute nothing to this total, because they have no phase to run.
+Each acceptance phase is **one process launch of the real application** against
+`krishna-mis-dev`. A phase reports its own tests as passing and every other phase as
+skipped; **only the phase that ran contributes**, so nothing in this total is a phase that
+did not execute.
 
-**Two suites in this table were not re-run at this checkpoint** and are carried forward
-from the previous one: the live backend suite (19) and the live expense suite (16). They
-were green when last run and nothing in this change touches the RPCs they exercise, but
-"carried forward" is not "re-verified", and they are named here so the total cannot be
-read as a claim that everything in it ran today.
+**Everything in this table was run at this checkpoint.** Nothing is carried forward — the
+two live suites that were carried forward last time (19 backend, 16 expense) were re-run
+in full, and the live backend suite's seven phases were driven with their real
+administrative acts in between (revoke, restore, grant, revoke) rather than skipped.
 
-Skipped phases are *not* counted. Each acceptance phase reports its own tests as passing
-and every other phase as skipped; only the phase that ran contributes to the total above.
+**What is *not* in this total, and why.** The two native-picker smoke tests. They cannot
+be automated — the OS picker is a separate activity — and a manual test nobody has run is
+not a passing test. They are recorded as **MANUAL — PENDING SHOYEB CONFIRMATION** and
+counted nowhere.
 
 ## Defects found and fixed during the Phase 2 acceptance
 
@@ -262,6 +286,27 @@ to. Full reasoning in `DECISIONS.md` D-067 … D-069.
    returns an empty report both when nothing is due and when a cycle is already running.
    Now asserts the durable consequence — nothing applied, the intent still queued with a
    recorded attempt, no number invented locally.
+7. **A retained document was handed to whoever signed in next** (D-074). Restoring
+   browsability tested scope and not ownership, so on a shared workstation the previous
+   user's unsent work became browsable to the next person whose scope happened to overlap.
+   Ownership is now part of the predicate, via `sync_outbox.actor_user_id`. Found only on
+   the Windows machine, because its database persists between runs and the emulator's does
+   not.
+8. **Sign-out did not fail closed.** `purgeAllScopedCache()` was called unguarded. It was
+   not in fact throwing — the D-074 hypothesis was wrong — but a cleanup failure must not
+   leave the previous user's figures readable, so it now falls back to quarantining every
+   document: nothing browsable, nothing destroyed, and the original error still propagates.
+9. **The v10 attachment-state migration recreated the table before rewriting its values**,
+   which only failed on the machine that had real v9 rows to migrate. Fixed with a
+   `columnTransformer`, and pinned by a v9→v10 test.
+10. **An attachment-metadata policy was vacuously true for scoped users.** It searched for
+    rows that RLS had already hidden from it, so it could neither permit nor refuse
+    anything. The same shape as D-068's classification guard and D-071's cleanup: *a rule
+    that nothing evaluates is a comment.* Fixed in migration 0036.
+11. **A missed tap was reported thirty seconds later as a sync defect** (D-075). Flutter
+    treats a tap that lands on nothing as a warning; the test carried on and failed on the
+    outbox intent the un-pressed button never produced. Missed taps are now fatal in the
+    acceptance suite, and taps wait for hit-testability rather than for *enabled*.
 
 ## Acceptance still outstanding
 
@@ -283,32 +328,29 @@ reported as failed rather than re-run until it is convenient.
 
 ### Still outstanding
 
-1. **D-074 — sign-out leaves synced expenses browsable on a long-lived installation.**
-   *Failing, not skipped.* `d068-switch` fails on the Windows machine, whose database
-   persists between runs; it passes on Android, whose database is reinstalled every run
-   and so has almost nothing for the purge to remove. The purge itself is correct in
-   isolation (host test). The cause is in the sign-out path and has not been captured.
-   **This blocks Phase 3 closure.**
-2. **Manual native-picker smoke test, one per platform** — *Not done, and needs a person.*
-   The Android photo picker and the Windows file dialog are separate activities the
-   Flutter harness cannot drive. `attachment-staging` injects a synthetic file at exactly
-   the point the picker returns one and proves everything after it. The exact steps for
-   Shoyeb are in **Project lead actions required** below.
-3. **Final distributable rebuild and binary secret scan** — *Not done this checkpoint.*
-   Tree and git history scan clean, with the scanner's own controls passing every run.
-4. **Live backend suite (19) and live expense suite (16)** — *Not re-run at this
-   checkpoint.* They are named here so the totals below cannot be read as a claim that
-   everything in them ran today.
-5. **An intermittent failure worth naming.** `expense-edit-offline` failed once inside a
-   batch run and passed three times in isolation afterwards. The batch captured only its
-   last line, so the failure's cause was not recorded. Reported rather than dismissed.
+1. **Manual native-picker smoke test, one per platform** — **MANUAL — PENDING SHOYEB
+   CONFIRMATION.** Not *passed*, and not *failed*: not run, because it needs a person at
+   the machine and the project lead does not currently have PC access. The Android photo
+   picker and the Windows file dialog are separate activities the Flutter harness cannot
+   drive. The automated suite injects a synthetic file at exactly the point the picker
+   returns one and proves everything after it — which is not the same claim, and is not
+   reported as if it were (D-073, `ARCHITECTURE.md` §16.6). The exact steps are in
+   **Project lead actions required** below, and they take about thirty seconds each.
+
+   **This is the only thing standing between the current state and Phase 3 closure.**
+
+Nothing else is outstanding. The items this section carried at the previous checkpoint —
+D-074, the un-re-run live suites, and the unexplained `expense-edit-offline` failure — are
+all closed, and the last of those turned out to be three different causes rather than one
+(D-075).
 
 ## Known issues
 
 1. **`flutter_secure_storage` pinned to 9.2.4.** 11.x requires `compileSdk 37`; this
    toolchain has Android SDK 36 (D-031). Revisit when the SDK moves.
 2. **`riverpod_lint` / `custom_lint` deferred** — analyzer conflict with `drift_dev`
-   (D-032). Revisit at Phase 3.
+   (D-032). Checked again at the end of Phase 3 and still unresolved upstream; revisit at
+   Phase 5.
 3. **The Windows Overview placeholder names both properties in its description copy.** A
    scoped Manager therefore sees the words "Hotel Krishna Imperial" on a screen that holds
    none of that property's data. Not a data leak — business unit names are not secret — but
@@ -316,11 +358,26 @@ reported as failed rather than re-run until it is convenient.
    Worth revisiting when the Overview becomes a real dashboard in Phase 6.
 4. **Windows local-key protection relies on user-scoped DPAPI**, not hardware (D-036).
    Accepted for V1, mitigated as recorded.
+5. **The host widget suite does not yet make a missed tap fatal.** The acceptance suite
+   now does (D-075), and the setting is one line. It is not applied to `test/` in this
+   change because doing so at the end of a phase would surface an unknown number of latent
+   misses with no time to judge them, and a rushed judgement about a financial widget test
+   is worse than a recorded follow-up. Worth doing at the start of Phase 4, when there is
+   room to look at whatever it finds.
+6. **The host machine's network path to `krishna-mis-dev` drops intermittently.** Measured
+   with `curl`, no application involved: seven requests at ~0.13 s, then a 15-second
+   connect, then two outright failures. It caused four acceptance phases to fail during
+   this checkpoint and all four passed on re-run. Not a product issue and not a test
+   issue — recorded so the next person who sees a phase fail at sign-in checks the network
+   before rewriting a test (D-075).
 
 ## Blockers
 
 **None.** The backend is provisioned, the migrations are applied and committed, and both
-platforms run against it.
+platforms run against it. The one item that is not done — the manual picker smoke tests —
+needs the project lead at a machine, and is listed under *Project lead actions required*
+rather than here, because nothing is blocked from proceeding by it except the formal
+declaration that Phase 3 is closed.
 
 ## Deferred (by design)
 
@@ -335,19 +392,18 @@ platforms run against it.
 
 ## Next exact task
 
-**Find D-074's exception.** `SessionController.signOut` calls `purgeAllScopedCache()`
-unguarded and then `store.clear()`; if the purge throws, neither finishes, and the end
-state observed on Windows is what that would produce. Log the failure instead of letting
-it be absorbed, re-run `d068-switch` on the Windows installation with its accumulated
-database, and fix what it names. Two candidates are visible — the staged-attachment
-reclaimer now wired into the purge, and the growth of the `IN (...)` lists — and picking
-one without the exception would be indistinguishable from picking wrongly.
+**Nothing, until the two picker smoke tests are run.** Every automated task in Phase 3 is
+done and green. The work that remains is thirty seconds of a person's attention on each
+platform, described below.
 
-Then:
+When those are confirmed:
 
-1. The two manual picker smoke tests (below), which need Shoyeb.
-2. Rebuild clean distributables and scan the binaries.
-3. Re-run the whole gate set, including the two live suites, and close the phase.
+1. Tick L.8's last line in `RELEASE_CHECKLIST.md` and mark the picker rows **Tested** here.
+2. Rebuild clean distributables without the acceptance identity defines and re-scan the
+   binaries — the acceptance builds carry the development passwords in `kernel_blob.bin`
+   by construction and are never distributable (D-069).
+3. Declare Phase 3 complete and open Phase 4 — which needs the tax rules below before it
+   can finish.
 
 ## Open questions for the project lead
 
@@ -358,7 +414,7 @@ Then:
 2. Should the expense edit surface be built, or descoped? — **Built** (D-072a).
 3. Is attachment upload a Phase 3 slice? — **Yes, built** (D-073a).
 
-What remains is a defect (D-074) and two manual smoke tests, not a decision.
+What remains is two manual smoke tests, not a decision and not a defect.
 
 ## Project lead actions required
 
@@ -395,50 +451,79 @@ password, service-role key, database password, private key or signing password i
 | Android (debug, dev flavour) | **Built, installed, and driven on an emulator against the real backend** |
 | Android (release APK / AAB) | Not attempted — Phase 9, needs the project lead's keystore |
 | Windows (debug) | **Built, launched, and driven against the real backend** |
-| Windows (release) | **Built** — `krishna_mis.exe`, scanned clean |
+| Windows (release) | **Built** — `krishna_mis.exe`; last scanned clean at the previous checkpoint |
 | Windows installer | Not attempted — Phase 9 |
+| Clean distributable rebuild + binary scan | **Not done at this checkpoint** — deferred with the picker confirmation |
 
 **Acceptance builds are not distributable.** Driving the acceptance suite compiles the
 development identity passwords into `kernel_blob.bin`; the scanner proves it, and proved it
 again this phase. The artefacts that survive a run are rebuilt without the identity defines
-and re-scanned before anything is called distributable.
+and re-scanned before anything is called distributable. **The binaries currently on this
+machine are acceptance builds and are not distributable**, which is why the clean rebuild
+is listed above as not done rather than quietly assumed: there is nothing to be gained from
+rebuilding and scanning artefacts that will be rebuilt again after the picker tests.
 
 ## Database migration status
 
-**Local Drift schema v9.** v1 `app_meta` and `sync_outbox`; v2 masters and period locks;
+**Local Drift schema v10.** v1 `app_meta` and `sync_outbox`; v2 masters and period locks;
 v3–v4 the Phase 2 master refinements; v5 makes `vendors.default_business_unit_id` and
 `default_category_id` soft pointers rather than foreign keys, because a per-user cache
 legitimately holds a vendor whose usual property is one this user cannot see (D-049); v6
-adds `sync_outbox.actor_user_id` (D-050); v7 adds the four expense tables; **v8 makes
-`expense_allocations.business_unit_id` a soft pointer** for the same reason v5 existed —
+adds `sync_outbox.actor_user_id` (D-050); v7 adds the four expense tables; v8 makes
+`expense_allocations.business_unit_id` a soft pointer for the same reason v5 existed —
 the scope purge legitimately removes a unit while synced history stays, and the foreign key
-made sign-out throw (D-068); **v9 adds `expenses.scope_revoked_at`**, because a confirmed
-revocation now purges synced financial cache (D-070) and the one thing that must survive —
-a document still carrying the actor's own unsent intent — needs somewhere to say it is
-retained for that reason and is not browsable financial data. The local database now also
-sets `PRAGMA secure_delete = ON`, so a purge does not leave the revoked property's figures
-legible in freed pages.
+made sign-out throw (D-068); v9 adds `expenses.scope_revoked_at`, because a confirmed
+revocation purges synced financial cache (D-070) and a document still carrying the actor's
+own unsent intent needs somewhere to say it is retained for that reason and is not
+browsable financial data; **v10 widens the attachment upload state** from three values to
+the eight the real lifecycle has (D-073), and adds the constraint that a `rejected` bill
+carries no `nextAttemptAt` — a null there once meant "due now", so a terminal refusal
+retried for ever.
 
-**Postgres: 32 migrations, all applied to `krishna-mis-dev` and all committed.** 0033
-measures the edit window under the property's business date instead of the database
-session's calendar date (D-067). The live suite asserts the repository and the server agree
-(D-056).
+The v10 migration rewrites the existing values during the table copy rather than after it,
+using a `columnTransformer`. That distinction only mattered on Windows, whose database
+held real v9 rows; the Android emulator reinstalls each run and would never have caught
+it — the same asymmetry that hid D-074. A v9→v10 test now pins it.
+
+The local database sets `PRAGMA secure_delete = ON`, so a purge does not leave the revoked
+property's figures legible in freed pages, and `PRAGMA foreign_keys = ON`.
+
+**Postgres: 35 migrations, all applied to `krishna-mis-dev` and all committed.** 0033
+measures the edit window under the property's business date (D-067). 0034 adds
+`attachment_register` — the only writer of `expense_attachments`, verifying the size and
+SHA-256 against the stored object. 0035 restates the reviewed API surface to include it,
+which the invariant refused to let me skip (D-044). 0036 fixes an attachment-metadata
+policy that was **vacuously true** for scoped users: it hunted for rows that RLS had
+already hidden from it, so it could neither permit nor refuse anything. The live suite
+asserts the repository and the server agree (D-056).
 
 ## Last important decision
 
-**D-070 — a confirmed revocation now takes the revoked property's figures with it.** The
-open question D-068 left for the project lead is answered, and answered the other way:
-synced financial data for a revoked unit leaves the browsable local cache at the authority
-refresh, not at the next sign-out. What survives is narrower and sharper — the actor's own
-unsent, rejected or conflicted intent, retained whole, stamped, and excluded from every
-canonical financial read, because it exists nowhere else.
+**D-074 — a retained document belongs to whoever queued it.** D-070 established that a
+confirmed revocation takes the revoked property's synced figures out of the browsable
+cache, keeping only the actor's own unsent work because it exists nowhere else. That is a
+statement about *whose* a document is. The code that gave a document back tested only
+*where* it was.
 
-Two things fell out of implementing it. A partially revoked shared bill has to be
-*downgraded*, not merely trimmed: a complete header beside one surviving line publishes the
-share that was just revoked. And the purge was, as first written, weaker than the
-projection it protects — SQLite left the deleted figures legible in freed pages until
-`PRAGMA secure_delete` was turned on, which a byte-level test found and a deliberate
-un-fix confirmed.
+So when a user signed out and the next one signed in, every retained document whose
+business units fell inside the incoming user's scope was un-hidden for them — including
+documents queued by somebody else, on a shared workstation, which is the exact machine
+D-054 added the sign-out control for. Ownership is now part of the predicate, established
+through `sync_outbox.actor_user_id` (D-050). An org-wide grant covers every unit by
+construction and is therefore no evidence of authorship, so it is tested identically.
+
+Two things fell out of it, and both are the more general lesson.
+
+**The first hypothesis was wrong, and checking it is what found the cause.** The previous
+checkpoint recorded, plausibly, that the sign-out purge was throwing. A diagnostic run on
+the real Windows installation showed the purge completing correctly and stamping all
+twelve documents — the exposure was one step later, in the opposite direction. Had the
+"fix" been applied to the hypothesis instead of to the evidence, the symptom would have
+disappeared on a freshly installed device and the defect would have shipped.
+
+**A test whose fixture is recreated every run cannot see a defect that needs history.**
+Android reinstalls the app each run and passed throughout. Windows keeps its database and
+failed. The persistent installation was the honest one.
 
 ## Master Spec version
 

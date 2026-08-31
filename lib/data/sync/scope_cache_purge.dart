@@ -194,33 +194,69 @@ class ScopeCachePurge {
     return purgeUnits(revoked);
   }
 
-  /// Clears `scope_revoked_at` on documents every line of which is inside [snapshot]'s
-  /// scope again. Returns how many rows were freed.
+  /// Clears `scope_revoked_at` on retained documents that belong to **this** actor and
+  /// whose every line is inside [snapshot]'s scope again. Returns how many were freed.
   ///
-  /// An org-wide holder covers everything by construction (D-025), so the predicate for
-  /// them is simply "any retained row". For a scoped holder the test is `NOT EXISTS a
-  /// line outside the scope` — the strict reading, so a partially restored shared bill
-  /// stays hidden until every property it charges is reachable again.
+  /// The scope test alone is not enough, and D-074 is what that cost. A retained document
+  /// is somebody's *unsent work*, kept because it exists nowhere else (D-070). Restoring
+  /// it on scope alone means the next person to sign in with overlapping scope has the
+  /// previous user's retained documents un-hidden for them — which is exactly what the
+  /// Windows acceptance found: an Owner signed out, twelve documents were correctly
+  /// stamped and unbrowsable, a Crystal Canopy manager signed in, and every Crystal
+  /// Canopy document was un-stamped again because *the units matched*.
+  ///
+  /// So ownership is part of the predicate. The link is the outbox, which has recorded
+  /// who queued each intent since D-050: a document is restored only while this actor
+  /// still has outstanding work on it. A document whose work has since completed stays
+  /// stamped and is simply re-pulled from the server, which is where it came from.
+  ///
+  /// An org-wide holder covers every *unit* by construction (D-025) — it does not make
+  /// them the author of somebody else's queued intent, so the ownership test applies to
+  /// them too.
   Future<int> _restoreBrowsability(AuthoritySnapshot snapshot) async {
+    const ownedByThisActor =
+        'EXISTS (SELECT 1 FROM sync_outbox o '
+        "          WHERE o.entity_type = 'expense' AND o.entity_id = expenses.id "
+        "            AND o.status <> 'done' AND o.actor_user_id = ?)";
+
     if (snapshot.holdsOrgWideGrant) {
       return db.customUpdate(
         'UPDATE expenses SET scope_revoked_at = NULL '
-        'WHERE scope_revoked_at IS NOT NULL',
+        'WHERE scope_revoked_at IS NOT NULL AND $ownedByThisActor',
+        variables: [Variable<String>(snapshot.userId)],
         updates: const {},
       );
     }
+
     final units = snapshot.scopedUnits;
     if (units.isEmpty) return 0;
     return db.customUpdate(
       'UPDATE expenses SET scope_revoked_at = NULL '
-      'WHERE scope_revoked_at IS NOT NULL AND NOT EXISTS ('
-      '  SELECT 1 FROM expense_allocations a '
-      '  WHERE a.expense_id = expenses.id '
-      '    AND a.business_unit_id NOT IN ${_in(units)})',
-      variables: [for (final unit in units) Variable<String>(unit)],
+      'WHERE scope_revoked_at IS NOT NULL AND $ownedByThisActor '
+      '  AND NOT EXISTS ('
+      '    SELECT 1 FROM expense_allocations a '
+      '     WHERE a.expense_id = expenses.id '
+      '       AND a.business_unit_id NOT IN ${_in(units)})',
+      variables: [
+        Variable<String>(snapshot.userId),
+        for (final unit in units) Variable<String>(unit),
+      ],
       updates: const {},
     );
   }
+
+  /// Stamps every remaining financial document as unbrowsable, without deleting any.
+  ///
+  /// The fail-closed path (D-074). If a purge cannot complete — a locked staging file, a
+  /// database error, anything — the wrong outcome is to carry on with the previous user's
+  /// figures still readable. This is the fallback: nothing is destroyed, and nothing is
+  /// browsable, which is the safe half of both guarantees. A successful purge afterwards
+  /// clears it in the ordinary way.
+  Future<int> quarantineAllDocuments() => db.customUpdate(
+    'UPDATE expenses SET scope_revoked_at = ? WHERE scope_revoked_at IS NULL',
+    variables: [Variable<DateTime>(DateTime.now().toUtc())],
+    updates: const {},
+  );
 
   /// The deletion itself, for a set of units already established as revoked.
   ///
