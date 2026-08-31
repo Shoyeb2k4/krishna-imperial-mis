@@ -5,10 +5,13 @@
 /// `main()` with the instances bootstrap produced.
 library;
 
+import 'dart:io';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:krishna_mis/data/local/app_database.dart';
 import 'package:krishna_mis/data/repositories/local_master_usage_reader.dart';
 import 'package:krishna_mis/data/attachments/attachment_source.dart';
+import 'package:krishna_mis/data/attachments/platform_attachment_source.dart';
 import 'package:krishna_mis/data/attachments/attachment_staging.dart';
 import 'package:krishna_mis/data/local/encrypted_database.dart';
 import 'package:krishna_mis/data/repositories/expense_repository.dart';
@@ -72,11 +75,19 @@ final attachmentStagingProvider = Provider<AttachmentStagingService>(
   ),
 );
 
-/// The platform's way of producing a file. Overridden in `main()` per target; the
-/// default offers nothing, so a screen built before the platform plugins land degrades
-/// to "no attachment" rather than to a crash.
+/// The platform's way of producing a file.
+///
+/// This **resolves the real adapter itself** rather than defaulting to "unavailable" and
+/// relying on a bootstrap to replace it. The previous arrangement did the latter, the
+/// replacement was never written, and the application shipped through a full acceptance
+/// phase telling users that attaching a bill was not available on their device — while
+/// every attachment test passed, because each one overrode this provider with a synthetic
+/// source (D-077).
+///
+/// A default that is *wrong but harmless-looking* is worse than no default. Tests still
+/// override this provider at the same boundary; nothing in production has to remember to.
 final attachmentSourceProvider = Provider<AttachmentSource>(
-  (ref) => const UnavailableAttachmentSource(),
+  (ref) => attachmentSourceFor(Platform.operatingSystem),
 );
 
 /// The push worker, bound to whoever is signed in.

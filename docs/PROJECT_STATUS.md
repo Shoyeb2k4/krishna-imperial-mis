@@ -5,7 +5,7 @@ Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
-Last updated: **2026-08-31** (fifth checkpoint — D-074 closed, automated acceptance green)
+Last updated: **2026-08-31** (sixth checkpoint — the attachment picker, which did not exist)
 
 > A new session should be able to read this file and know exactly where work stopped.
 > This file — not chat history — is the checkpoint.
@@ -23,23 +23,32 @@ Every gate passed, including the ones that can only be passed by running the rea
 application: the Android package on a device, and the compiled Windows executable, both
 against the real `krishna-mis-dev` project, with the real development identities.
 
-**Phase 3 — Expense Engine: implementation and automated acceptance complete. The phase
-is NOT closed**, because two manual native-picker smoke tests need a person and have not
-been run (see *Project lead actions required*).
+**Phase 3 — Expense Engine: implementation and automated acceptance otherwise complete;
+the native attachment picker failed manual acceptance on both platforms and has been
+rebuilt.** The phase is **NOT closed**: the two manual picker smoke tests must now be run
+against the corrected builds.
 
-Everything the project lead asked to be built in Phase 3 exists and is proven on both real
-clients against `krishna-mis-dev`: the expense **edit** surface (D-072a), attachment
-**upload** end to end (D-073a), the complete Windows ledger filter surface, two-device
-propagation, and the D-070 revocation policy. The one defect the previous checkpoint left
-open — **D-074** — is closed, and its root cause was not the one the checkpoint predicted.
+**What the manual test found, and it is the most important finding of the phase.** On a
+real Samsung Galaxy A06 5G and inside the real `krishna_mis.exe`, the expense form said
+*"Attaching a bill is not available on this device yet."* No picker opened, on either
+platform. The cause was not a permission, a plugin misconfiguration or a platform quirk:
+**the picker had never been implemented.** `lib/` contained one `AttachmentSource` —
+`UnavailableAttachmentSource` — the provider defaulted to it, a comment promised a
+bootstrap would replace it, and no replacement was ever written. There was no picker
+plugin in `pubspec.yaml` at all.
 
-D-074 is worth reading rather than skimming, because the fix changed a rule. The sign-out
-purge was never broken; documents were correctly stamped and unbrowsable. What was wrong
-came one step later: when the **next** user signed in, retained documents were un-hidden on
-the strength of scope alone, with no test of who had queued them. A retained document is
-somebody's unsent work (D-070), so ownership is now part of the predicate, established
-through `sync_outbox.actor_user_id`. Sign-out additionally fails closed: if cleanup throws,
-every document is quarantined — nothing browsable, nothing destroyed.
+**Every attachment test passed throughout**, because each one overrode the provider with a
+synthetic source. That injection is correct and necessary — the OS picker is a separate
+activity the harness cannot drive. What was missing is the assertion in between: **no test
+ever read what production resolves.** The suite proved the entire pipeline behind a
+boundary that had nothing attached to it. Full reasoning in D-077; the general rule is
+that *a test which supplies the thing it is testing proves the consumer, never the
+supplier.*
+
+Fixed: real adapters for both platforms (Android's system Photo Picker and the Storage
+Access Framework, Windows' native `IFileOpenDialog`), the provider resolves them itself
+with no bootstrap step to forget, and six host tests assert the production resolution for
+both shipped platforms. Reintroducing the defect fails five of them — verified.
 
 Phase 0 complete and committed (`3a4502f`). Phase 1 complete. Phase 2 backend integration
 checkpointed at `58526c0`, completed at `1ba1e3a`, and closed by the acceptance addendum
@@ -126,7 +135,7 @@ Blocked.**
 |---|---|---|
 | `dart format --set-exit-if-changed` | **Tested** | clean (145 files) |
 | `flutter analyze` | **Tested** | **No issues found** |
-| Host test suite | **Tested** | **668 tests, all passing** |
+| Host test suite | **Tested** | **674 tests, all passing** |
 | Secret scan — tree and git history | **Tested** | clean; the scan proves its own controls on every run (D-069) |
 | Secret scan — rebuilt clean binaries | **Tested** | tree, git history and built artefacts all clean, with the scanner's controls passing |
 | Migration audit (search_path, API surface, policy boundary) | **Tested** | 14 host tests |
@@ -162,7 +171,8 @@ Blocked.**
 | Android cross-period entry through the UI | **Tested** | `cross-period`: ₹60,000 → May ₹30,000 / June ₹30,000, plus an odd-paise split reconciling exactly |
 | Attachments end to end — stage, upload, register, verify, retry | **Tested** | `attachment-staging` + `attachment-upload` on both real clients, against real Supabase Storage (D-073a) |
 | Attachment read authorisation — a scoped manager refused (D-063) | **Tested** | `attachment-scope`, both platforms: the object, the metadata row **and** the right to attach |
-| The OS file / photo picker itself | **MANUAL — pending** | cannot be driven by the harness; injected at the picker boundary and stated as such (`ARCHITECTURE.md` §16.6) |
+| Production picker **wiring**, both platforms | **Tested** | 6 host tests asserting what production resolves; the assertion that was missing while the picker did not exist (D-077) |
+| The OS file / photo picker itself | **MANUAL — PENDING SHOYEB CONFIRMATION** | **failed the first manual test on both platforms — the picker did not exist (D-077).** Rebuilt; awaiting a retest against the corrected builds |
 | Windows ledger: the complete filter surface, keyset paging, scoped detail caption | **Tested** | `windows-ledger`, incl. the filter-dependency rule and a scoped share never captioned `TOTAL` |
 | Two-device Android ⇄ Windows expense propagation | **Tested** | `propagate-expense-a…e`: create with a bill, correct, stale edit conflicts, void, evidence still there |
 | Expense **edit** through the UI | **Tested** | `expense-edit` on both real clients: identity kept, version advanced, D+7/D+8, stale → Conflict (D-072a) |
@@ -174,7 +184,7 @@ Blocked.**
 
 | Suite | Count | Result |
 |---|---|---|
-| Host (`flutter test`) | 668 | all passing |
+| Host (`flutter test`) | 674 | all passing |
 | Live backend against `krishna-mis-dev` (opt-in) | 19 | all passing — re-run in full |
 | Live expense suite against `krishna-mis-dev` (opt-in) | 16 | all passing — re-run in full |
 | Android Phase 2 device acceptance (real APK) | 19 | all passing |
@@ -307,6 +317,13 @@ to. Full reasoning in `DECISIONS.md` D-067 … D-069.
     treats a tap that lands on nothing as a warning; the test carried on and failed on the
     outbox intent the un-pressed button never produced. Missed taps are now fatal in the
     acceptance suite, and taps wait for hit-testability rather than for *enabled*.
+12. **The attachment picker was never implemented, on either platform** (D-077). The only
+    `AttachmentSource` in `lib/` was `UnavailableAttachmentSource`; the provider defaulted
+    to it and the promised bootstrap override was never written. Found by the project
+    lead's manual test, after the automated attachment acceptance had reported the
+    pipeline complete on both real clients — because every one of those tests overrode the
+    provider and none read what production resolves.
+
 
 ## Acceptance still outstanding
 
@@ -329,22 +346,17 @@ reported as failed rather than re-run until it is convenient.
 ### Still outstanding
 
 1. **Manual native-picker smoke test, one per platform** — **MANUAL — PENDING SHOYEB
-   CONFIRMATION.** Not *passed*, and not *failed*: not run, because it needs a person at
-   the machine. The clean candidate artefacts are built, scanned and waiting; their paths
-   are under *Build status*, and the Android package is already installed on the connected
-   emulator. The Android photo
-   picker and the Windows file dialog are separate activities the Flutter harness cannot
-   drive. The automated suite injects a synthetic file at exactly the point the picker
-   returns one and proves everything after it — which is not the same claim, and is not
-   reported as if it were (D-073, `ARCHITECTURE.md` §16.6). The exact steps are in
-   **Project lead actions required** below, and they take about thirty seconds each.
+   CONFIRMATION.**
 
-   **This is the only thing standing between the current state and Phase 3 closure.**
+   The first attempt **FAILED on both platforms** and is recorded as failed, not retried
+   into silence: the picker did not exist (D-077). It has been built, the automated
+   attachment acceptance re-run green on both real clients, and fresh clean artefacts
+   installed and launch-verified. **The retest has not been run**, so nothing here claims
+   it passes.
 
-Nothing else is outstanding. The items this section carried at the previous checkpoint —
-D-074, the un-re-run live suites, and the unexplained `expense-edit-offline` failure — are
-all closed, and the last of those turned out to be three different causes rather than one
-(D-075).
+   This remains the only thing between the current state and Phase 3 closure — and it is
+   worth noting that it is the *second* time this manual test has been the thing that
+   caught what the automated suite could not.
 
 ## Known issues
 
@@ -462,25 +474,23 @@ password, service-role key, database password, private key or signing password i
 | Windows installer | Not attempted — Phase 9 |
 | Clean Phase 3 candidate artefacts | **Built and scanned clean** — no acceptance identity defines; both launch to the normal login screen |
 
-**Clean Phase 3 candidate artefacts (2026-08-31).** Built with the environment config
-only — **no acceptance identity defines** — then scanned and launch-verified:
+**Clean Phase 3 candidate artefacts (2026-08-31, rebuilt with the picker).** Built with
+the environment config only — **no acceptance identity defines** — then scanned and
+launch-verified:
 
 | | |
 |---|---|
-| Android | `build/app/outputs/flutter-apk/app-dev-debug.apk` — `in.krishnaimperial.mis.dev`, versionCode 1, versionName `1.0.0-dev`, debug-key signed, arm64-v8a + armeabi-v7a + x86_64 |
-| Windows | `build/windows/x64/runner/Release/` — `krishna_mis.exe` with every plugin DLL, `flutter_windows.dll`, `sqlite3mc.dll` and `data/` beside it. **No installer exists yet** (Phase 9); the executable runs from inside that folder |
+| Android | `build/app/outputs/flutter-apk/app-dev-debug.apk` — `in.krishnaimperial.mis.dev`, versionCode 1, versionName `1.0.0-dev`, debug-key signed, arm64-v8a + armeabi-v7a + x86_64. Installed on the project lead's Galaxy A06 5G **as an update**: `firstInstallTime` unchanged, so no data was lost |
+| Windows | `build/windows/x64/runner/Release/` — `krishna_mis.exe` with every plugin DLL beside it, now including `file_selector_windows_plugin.dll`. **No installer exists yet** (Phase 9); run the executable from inside that folder |
 
-Both were launched and reach the **normal sign-in screen with empty fields**. The clean
-Android package contains no development identity, no `PHASE` define and no acceptance
-harness. One string, `device_acceptance_test`, does appear once in the debug
-`kernel_blob.bin` — it is the text of the **doc comment in `lib/app/bootstrap.dart`** that
-explains why the acceptance transport is unreachable from a shipped build, which debug
-kernels retain. Proven by reading the surrounding bytes rather than assumed, and the
-`no_hardcoded_authority_test` suite independently asserts that `main()` passes no transport.
+Both launch to the **normal sign-in screen with empty fields**. Direct byte searches of
+`kernel_blob.bin` (90.1 MB) and `app.so` (10.5 MB) find **zero** development passwords and
+do find `AndroidAttachmentSource`, `WindowsAttachmentSource` and `useAndroidPhotoPicker` —
+so the adapters are demonstrably compiled in rather than assumed to be.
 
-These are Phase 3 **candidate** artefacts for the manual picker tests, not production
-release artefacts: release signing is still Phase 9 and the Android release build falls
-back to the debug key by design until the project lead's keystore exists.
+An acceptance run rebuilds the APK **with** the identity defines, so the clean build is
+made after the last acceptance phase and re-scanned; the ordering is deliberate, and the
+artefact that went to the phone is the post-acceptance clean one.
 
 **Acceptance builds are not distributable.** Driving the acceptance suite compiles the
 development identity passwords into `kernel_blob.bin`; the scanner proves it, and proved it

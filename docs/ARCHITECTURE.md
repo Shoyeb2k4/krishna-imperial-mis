@@ -949,7 +949,35 @@ A **void** does not. Voiding is how financial history is corrected, and the evid
 what was recorded is precisely what an audit needs afterwards. The bill stays, the
 document is excluded from every aggregate, and both facts remain inspectable.
 
-### 16.6 What the harness can and cannot prove
+### 16.6 The picker itself, and the gap that hid in this very section
+
+An earlier version of this section said the OS picker cannot be driven by the harness, that
+a synthetic file is injected at the point the picker returns one, and that the limitation
+is stated rather than papered over. All of that was true. It was also, as written,
+**describing a picker that did not exist** — see D-077. The injection was proving the
+pipeline behind a boundary with nothing on the other side of it, and this document said so
+in a way that read like diligence.
+
+The correction is not more prose. It is that the production resolution is now a plain
+function of the operating-system name:
+
+```
+        attachmentSourceFor('android')  -> AndroidAttachmentSource
+        attachmentSourceFor('windows')  -> WindowsAttachmentSource
+        attachmentSourceFor(anything)   -> UnavailableAttachmentSource
+```
+
+so a **host** test asserts both shipped platforms resolve something that can actually pick
+a file, without either device. `attachmentSourceProvider` calls that function directly:
+there is no bootstrap step to forget, because forgetting it is exactly what happened.
+
+Android uses the system **Photo Picker** (opt-in; the plugin defaults to an intent that
+reads the media store and drags a storage permission with it) and the **Storage Access
+Framework** for documents. Windows uses the native **`IFileOpenDialog`**. No storage
+permission is declared or requested on Android, and `CAMERA` is deliberately not declared
+either — `ACTION_IMAGE_CAPTURE` needs no permission unless the app asks for one.
+
+### 16.7 What the harness can and cannot prove
 
 Everything above is proven on both real clients against `krishna-mis-dev`. The **OS
 picker** is not: the Android photo picker and the Windows file dialog are separate

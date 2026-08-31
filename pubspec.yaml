@@ -59,6 +59,10 @@ dependencies:
   collection: ^1.19.1
   meta: ^1.18.0
   sqlite3: ^3.5.2
+  file_selector: ^1.1.0
+  image_picker: ^1.2.3
+  image_picker_android: ^0.8.13+21
+  image_picker_platform_interface: ^2.11.1
 
 dev_dependencies:
   flutter_test:

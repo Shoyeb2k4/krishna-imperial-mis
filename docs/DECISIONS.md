@@ -2133,3 +2133,86 @@ reasoning that makes the product correct — void, never delete — makes a fixe
 a defect. Two related findings in this phase have the same shape: D-071's cleanup that
 never ran, and D-068's classification guard that compared a list against itself. Each was
 a check that looked like it worked.
+
+## D-077 — The attachment picker was never implemented, and every attachment test passed anyway
+**Date:** 2026-08-31 · **Status:** Accepted — defect found by the project lead's manual
+acceptance, on both platforms, after the automated suite reported the attachment pipeline
+complete.
+
+**Symptom.** On a real Samsung Galaxy A06 5G and inside the real `krishna_mis.exe`, the
+expense form's attachment area said:
+
+> Attaching a bill is not available on this device yet.
+
+No picker opened, on either platform. Expense creation itself worked.
+
+**Root cause, stated exactly.** `lib/` contained **one** implementation of
+`AttachmentSource`: `UnavailableAttachmentSource`, whose `available` is the empty set and
+whose `pick` returns null. `attachmentSourceProvider` defaulted to it, with a comment
+saying *"Overridden in `main()` per target"* and *"the bootstrap installs a real one per
+platform"*. **No such override was ever written.** `AttachmentStrip` renders the
+unavailable message when `source.available.isEmpty`, so the message was the correct
+rendering of a correctly-read provider — the defect was one layer below the UI, in wiring
+that did not exist. There was also no picker plugin in `pubspec.yaml` at all: no
+`image_picker`, no `file_selector`, no `file_picker`. Nothing was misconfigured. The
+feature was absent.
+
+**Why the automated acceptance did not catch it, which is the more important half.**
+Every attachment test — 18 host tests and three acceptance phases on each platform —
+overrode `attachmentSourceProvider` with `_SyntheticAttachmentSource`, injecting a file at
+exactly the point a picker would return one. That injection is *correct*: the OS picker is
+a separate activity the Flutter harness cannot drive, and D-058 established injecting at
+the boundary as the honest technique. `ARCHITECTURE.md` §16.6 even says in as many words
+that the picker itself is not proven and must be smoke-tested by a person.
+
+What was missing is the assertion in between. **No test ever read what production
+resolves.** Every test replaced the provider; none checked what it would have returned.
+The suite proved the whole pipeline behind a boundary while the boundary had nothing
+attached to it, and reported that as attachment upload working end to end.
+
+This is the third instance of one pattern in Phase 3, and by now it deserves its name:
+D-071's cleanup phase that ran `expect(true, isTrue)`, D-068's classification guard that
+compared a list against itself, and now a provider whose production value nothing read.
+**A test that supplies the thing it is testing proves the consumer, never the supplier.**
+
+**Decision — the wiring resolves itself, and the resolution is asserted.**
+
+1. `attachmentSourceFor(String operatingSystem)` returns `AndroidAttachmentSource` for
+   `android` and `WindowsAttachmentSource` for `windows`. It is a plain function of a
+   string rather than a read of `Platform` inside a widget, **so a host test can assert
+   both production branches without either device** — which is precisely the test that
+   was impossible to write before, and precisely the one that was missing.
+2. `attachmentSourceProvider` calls it directly. There is no "bootstrap must remember to
+   override" step, because that step is what was forgotten. A default that is wrong but
+   harmless-looking is worse than no default.
+3. `test/data/attachment_source_wiring_test.dart` asserts that neither shipped platform
+   resolves to an empty `available` set, that each matches what `intakesFor` claims its
+   shell offers, and that the provider needs no override. Reintroducing the defect fails
+   five of its six tests — verified by doing exactly that.
+
+**The platform adapters.**
+
+* **Android** — `image_picker` for camera and gallery with
+  `ImagePickerAndroid.useAndroidPhotoPicker = true`, which is **opt-in and defaults to
+  false**; without it the plugin falls back to an intent that reads the media store, which
+  is what drags a storage permission in behind it. Documents go through `file_selector`,
+  which on Android is the Storage Access Framework. **No storage permission is declared or
+  requested**, and none is needed by either path. `CAMERA` is deliberately *not* declared
+  either: `ACTION_IMAGE_CAPTURE` needs no permission unless the app declares one, and
+  declaring it would create an obligation to request it.
+* **Windows** — `file_selector` over the native `IFileOpenDialog`. No custom browser, no
+  elevation.
+
+Both offer the one accepted-type list (`AttachmentTypes`) rather than a second copy of it,
+so adding a supported type cannot be done in the policy and forgotten in the picker.
+
+**What is unchanged.** Everything after selection is the D-073a pipeline exactly as built:
+staging into app-private storage, hashing, `waitingForExpense`, `pendingUpload`, upload,
+`attachment_register`, hash confirmation, `uploaded`. No second upload architecture, and
+the picker returns a throwaway handle that nothing retains — the OS may revoke a content
+URI at any time, and a receipt that vanished between capture and upload was never kept.
+
+**Consequence for how this phase reports itself.** The manual picker tests were listed as
+*pending* rather than assumed to pass, and they are the reason this was found before the
+phase closed rather than after. That was the right call and it is worth keeping: a
+boundary the harness cannot cross is a boundary a person has to.
