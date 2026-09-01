@@ -219,12 +219,26 @@ class RevenueValueBands extends Table {
 
   /// Immutable, like every master code (D-035).
   TextColumn get code => text()();
+
+  /// Editable, for a rename that preserves meaning — the D-038 distinction, unchanged.
   TextColumn get label => text()();
 
-  /// The tariff boundaries this band describes, per unit per day. Displayed and
-  /// snapshotted; **never compared against a revenue amount** (D-094).
+  /// The tariff boundaries this band describes, per unit per day.
+  ///
+  /// **Write-once** (D-100). Editing a boundary in place would retroactively redefine
+  /// what every effective-dated rule referencing this band applied to — including for
+  /// dates already recorded — with nothing saying it had changed. A boundary change is a
+  /// *different band*: create a new one and point [supersededByBandId] at it.
+  ///
+  /// Displayed and snapshotted; **never compared against a revenue amount** (D-094).
   IntColumn get floorMinor => integer().nullable()();
   IntColumn get ceilingMinor => integer().nullable()();
+
+  /// The band that replaced this one, when its boundaries changed.
+  ///
+  /// Makes the lineage explicit, so a later reader can tell "this band replaced that one"
+  /// from "an unrelated band appeared". Soft pointer, like every other cache reference.
+  TextColumn get supersededByBandId => text().nullable()();
 
   DateTimeColumn get archivedAt => dateTime().nullable()();
   IntColumn get rowVersion => integer().withDefault(const Constant(1))();
@@ -238,6 +252,8 @@ class RevenueValueBands extends Table {
     'CHECK (floor_minor IS NULL OR floor_minor >= 0)',
     'CHECK (ceiling_minor IS NULL OR floor_minor IS NULL '
         'OR ceiling_minor > floor_minor)',
+    // A band that describes no range at all is a label pretending to be a discriminator.
+    'CHECK (floor_minor IS NOT NULL OR ceiling_minor IS NOT NULL)',
   ];
 }
 

@@ -185,8 +185,8 @@ void main() {
       );
       await db.customStatement(
         'INSERT INTO revenue_value_bands (id, org_id, revenue_category_id, '
-        'code, label, row_version, updated_at) '
-        "VALUES ('band-1', 'org-1', 'cat-x', 'LOW', 'Lower', 1, "
+        'code, label, floor_minor, ceiling_minor, row_version, updated_at) '
+        "VALUES ('band-1', 'org-1', 'cat-x', 'LOW', 'Lower', 0, 750000, 1, "
         "'2026-06-01T00:00:00.000Z')",
       );
       await db.customStatement(

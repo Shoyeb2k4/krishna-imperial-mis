@@ -111,6 +111,7 @@ class AppDatabase extends _$AppDatabase {
       // schemas that predate conditional rules and then drop it at v11.
       await _createRevenueEntryTotalsView();
       await _createRevenueIndexes();
+      await _createImmutableBandTrigger();
     },
     onUpgrade: (m, from, to) async {
       if (from < 2) {
@@ -210,6 +211,7 @@ class AppDatabase extends _$AppDatabase {
         await m.createTable(revenueSupplySubtypes);
         await m.createTable(businessUnitTaxStatuses);
         await _createRevenueEntryTotalsView();
+        await _createImmutableBandTrigger();
         await _replaceTaxRateUniqueIndex();
         await m.addColumn(revenueTaxRates, revenueTaxRates.inputBasis);
         await m.addColumn(revenueTaxRates, revenueTaxRates.valueBandId);
@@ -269,6 +271,30 @@ class AppDatabase extends _$AppDatabase {
     '  LEFT JOIN revenue_components c ON c.revenue_entry_id = e.id '
     ' GROUP BY e.id',
   );
+
+  /// Refuses an in-place change to what a value band *means*.
+  ///
+  /// A band's tariff boundaries are write-once (D-100). Editing them would retroactively
+  /// redefine what every effective-dated rule referencing the band applied to — for dates
+  /// already recorded as well as future ones — and nothing would say it had happened. A
+  /// boundary change is a different band; create one and set `superseded_by_band_id`.
+  ///
+  /// A trigger rather than a convention, because "do not edit this" in a comment is the
+  /// class of rule this project has repeatedly found nobody evaluates (D-068, D-077).
+  /// The label stays editable: a rename that preserves meaning is D-038's permitted case.
+  Future<void> _createImmutableBandTrigger() => customStatement('''
+    CREATE TRIGGER IF NOT EXISTS trg_value_band_bounds_immutable
+    BEFORE UPDATE ON revenue_value_bands
+    FOR EACH ROW WHEN
+          OLD.floor_minor IS NOT NEW.floor_minor
+       OR OLD.ceiling_minor IS NOT NEW.ceiling_minor
+       OR OLD.code IS NOT NEW.code
+       OR OLD.revenue_category_id IS NOT NEW.revenue_category_id
+    BEGIN
+      SELECT RAISE(ABORT,
+        'a value band boundary is write-once: create a new band and supersede this one');
+    END
+  ''');
 
   /// Indexes for the queries the revenue surfaces actually run.
   Future<void> _createRevenueIndexes() async {

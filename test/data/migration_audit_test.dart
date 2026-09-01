@@ -165,7 +165,17 @@ void main() {
         'expense_period_allocations',
         'expense_attachments',
       };
-      const laterPhases = {'revenue_entries', 'approval_requests'};
+      // Phase 4 landed, so revenue is no longer "a later phase". The guard keeps its
+      // teeth by naming what is still ahead: nothing from Phase 5 reporting or the
+      // deferred approval workflow may appear before its phase is authorised.
+      const phase4 = {
+        'revenue_entries',
+        'revenue_components',
+        'revenue_value_bands',
+        'revenue_supply_subtypes',
+        'business_unit_tax_statuses',
+      };
+      const laterPhases = {'approval_requests', 'report_snapshots'};
 
       final created = <String>{};
       for (final m in _migrations()) {
@@ -180,6 +190,11 @@ void main() {
         phase3.difference(created),
         isEmpty,
         reason: 'the Phase 3 expense schema is incomplete',
+      );
+      expect(
+        phase4.difference(created),
+        isEmpty,
+        reason: 'the Phase 4 revenue schema is incomplete',
       );
       expect(
         created.intersection(laterPhases),

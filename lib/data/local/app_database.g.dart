@@ -14473,6 +14473,17 @@ class $RevenueValueBandsTable extends RevenueValueBands
     type: DriftSqlType.int,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _supersededByBandIdMeta =
+      const VerificationMeta('supersededByBandId');
+  @override
+  late final GeneratedColumn<String> supersededByBandId =
+      GeneratedColumn<String>(
+        'superseded_by_band_id',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
   static const VerificationMeta _archivedAtMeta = const VerificationMeta(
     'archivedAt',
   );
@@ -14516,6 +14527,7 @@ class $RevenueValueBandsTable extends RevenueValueBands
     label,
     floorMinor,
     ceilingMinor,
+    supersededByBandId,
     archivedAt,
     rowVersion,
     updatedAt,
@@ -14587,6 +14599,15 @@ class $RevenueValueBandsTable extends RevenueValueBands
         ),
       );
     }
+    if (data.containsKey('superseded_by_band_id')) {
+      context.handle(
+        _supersededByBandIdMeta,
+        supersededByBandId.isAcceptableOrUnknown(
+          data['superseded_by_band_id']!,
+          _supersededByBandIdMeta,
+        ),
+      );
+    }
     if (data.containsKey('archived_at')) {
       context.handle(
         _archivedAtMeta,
@@ -14644,6 +14665,10 @@ class $RevenueValueBandsTable extends RevenueValueBands
         DriftSqlType.int,
         data['${effectivePrefix}ceiling_minor'],
       ),
+      supersededByBandId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}superseded_by_band_id'],
+      ),
       archivedAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}archived_at'],
@@ -14673,12 +14698,26 @@ class RevenueValueBandRow extends DataClass
 
   /// Immutable, like every master code (D-035).
   final String code;
+
+  /// Editable, for a rename that preserves meaning — the D-038 distinction, unchanged.
   final String label;
 
-  /// The tariff boundaries this band describes, per unit per day. Displayed and
-  /// snapshotted; **never compared against a revenue amount** (D-094).
+  /// The tariff boundaries this band describes, per unit per day.
+  ///
+  /// **Write-once** (D-100). Editing a boundary in place would retroactively redefine
+  /// what every effective-dated rule referencing this band applied to — including for
+  /// dates already recorded — with nothing saying it had changed. A boundary change is a
+  /// *different band*: create a new one and point [supersededByBandId] at it.
+  ///
+  /// Displayed and snapshotted; **never compared against a revenue amount** (D-094).
   final int? floorMinor;
   final int? ceilingMinor;
+
+  /// The band that replaced this one, when its boundaries changed.
+  ///
+  /// Makes the lineage explicit, so a later reader can tell "this band replaced that one"
+  /// from "an unrelated band appeared". Soft pointer, like every other cache reference.
+  final String? supersededByBandId;
   final DateTime? archivedAt;
   final int rowVersion;
   final DateTime updatedAt;
@@ -14690,6 +14729,7 @@ class RevenueValueBandRow extends DataClass
     required this.label,
     this.floorMinor,
     this.ceilingMinor,
+    this.supersededByBandId,
     this.archivedAt,
     required this.rowVersion,
     required this.updatedAt,
@@ -14707,6 +14747,9 @@ class RevenueValueBandRow extends DataClass
     }
     if (!nullToAbsent || ceilingMinor != null) {
       map['ceiling_minor'] = Variable<int>(ceilingMinor);
+    }
+    if (!nullToAbsent || supersededByBandId != null) {
+      map['superseded_by_band_id'] = Variable<String>(supersededByBandId);
     }
     if (!nullToAbsent || archivedAt != null) {
       map['archived_at'] = Variable<DateTime>(archivedAt);
@@ -14729,6 +14772,9 @@ class RevenueValueBandRow extends DataClass
       ceilingMinor: ceilingMinor == null && nullToAbsent
           ? const Value.absent()
           : Value(ceilingMinor),
+      supersededByBandId: supersededByBandId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(supersededByBandId),
       archivedAt: archivedAt == null && nullToAbsent
           ? const Value.absent()
           : Value(archivedAt),
@@ -14750,6 +14796,9 @@ class RevenueValueBandRow extends DataClass
       label: serializer.fromJson<String>(json['label']),
       floorMinor: serializer.fromJson<int?>(json['floorMinor']),
       ceilingMinor: serializer.fromJson<int?>(json['ceilingMinor']),
+      supersededByBandId: serializer.fromJson<String?>(
+        json['supersededByBandId'],
+      ),
       archivedAt: serializer.fromJson<DateTime?>(json['archivedAt']),
       rowVersion: serializer.fromJson<int>(json['rowVersion']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
@@ -14766,6 +14815,7 @@ class RevenueValueBandRow extends DataClass
       'label': serializer.toJson<String>(label),
       'floorMinor': serializer.toJson<int?>(floorMinor),
       'ceilingMinor': serializer.toJson<int?>(ceilingMinor),
+      'supersededByBandId': serializer.toJson<String?>(supersededByBandId),
       'archivedAt': serializer.toJson<DateTime?>(archivedAt),
       'rowVersion': serializer.toJson<int>(rowVersion),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
@@ -14780,6 +14830,7 @@ class RevenueValueBandRow extends DataClass
     String? label,
     Value<int?> floorMinor = const Value.absent(),
     Value<int?> ceilingMinor = const Value.absent(),
+    Value<String?> supersededByBandId = const Value.absent(),
     Value<DateTime?> archivedAt = const Value.absent(),
     int? rowVersion,
     DateTime? updatedAt,
@@ -14791,6 +14842,9 @@ class RevenueValueBandRow extends DataClass
     label: label ?? this.label,
     floorMinor: floorMinor.present ? floorMinor.value : this.floorMinor,
     ceilingMinor: ceilingMinor.present ? ceilingMinor.value : this.ceilingMinor,
+    supersededByBandId: supersededByBandId.present
+        ? supersededByBandId.value
+        : this.supersededByBandId,
     archivedAt: archivedAt.present ? archivedAt.value : this.archivedAt,
     rowVersion: rowVersion ?? this.rowVersion,
     updatedAt: updatedAt ?? this.updatedAt,
@@ -14810,6 +14864,9 @@ class RevenueValueBandRow extends DataClass
       ceilingMinor: data.ceilingMinor.present
           ? data.ceilingMinor.value
           : this.ceilingMinor,
+      supersededByBandId: data.supersededByBandId.present
+          ? data.supersededByBandId.value
+          : this.supersededByBandId,
       archivedAt: data.archivedAt.present
           ? data.archivedAt.value
           : this.archivedAt,
@@ -14830,6 +14887,7 @@ class RevenueValueBandRow extends DataClass
           ..write('label: $label, ')
           ..write('floorMinor: $floorMinor, ')
           ..write('ceilingMinor: $ceilingMinor, ')
+          ..write('supersededByBandId: $supersededByBandId, ')
           ..write('archivedAt: $archivedAt, ')
           ..write('rowVersion: $rowVersion, ')
           ..write('updatedAt: $updatedAt')
@@ -14846,6 +14904,7 @@ class RevenueValueBandRow extends DataClass
     label,
     floorMinor,
     ceilingMinor,
+    supersededByBandId,
     archivedAt,
     rowVersion,
     updatedAt,
@@ -14861,6 +14920,7 @@ class RevenueValueBandRow extends DataClass
           other.label == this.label &&
           other.floorMinor == this.floorMinor &&
           other.ceilingMinor == this.ceilingMinor &&
+          other.supersededByBandId == this.supersededByBandId &&
           other.archivedAt == this.archivedAt &&
           other.rowVersion == this.rowVersion &&
           other.updatedAt == this.updatedAt);
@@ -14874,6 +14934,7 @@ class RevenueValueBandsCompanion extends UpdateCompanion<RevenueValueBandRow> {
   final Value<String> label;
   final Value<int?> floorMinor;
   final Value<int?> ceilingMinor;
+  final Value<String?> supersededByBandId;
   final Value<DateTime?> archivedAt;
   final Value<int> rowVersion;
   final Value<DateTime> updatedAt;
@@ -14886,6 +14947,7 @@ class RevenueValueBandsCompanion extends UpdateCompanion<RevenueValueBandRow> {
     this.label = const Value.absent(),
     this.floorMinor = const Value.absent(),
     this.ceilingMinor = const Value.absent(),
+    this.supersededByBandId = const Value.absent(),
     this.archivedAt = const Value.absent(),
     this.rowVersion = const Value.absent(),
     this.updatedAt = const Value.absent(),
@@ -14899,6 +14961,7 @@ class RevenueValueBandsCompanion extends UpdateCompanion<RevenueValueBandRow> {
     required String label,
     this.floorMinor = const Value.absent(),
     this.ceilingMinor = const Value.absent(),
+    this.supersededByBandId = const Value.absent(),
     this.archivedAt = const Value.absent(),
     this.rowVersion = const Value.absent(),
     required DateTime updatedAt,
@@ -14917,6 +14980,7 @@ class RevenueValueBandsCompanion extends UpdateCompanion<RevenueValueBandRow> {
     Expression<String>? label,
     Expression<int>? floorMinor,
     Expression<int>? ceilingMinor,
+    Expression<String>? supersededByBandId,
     Expression<DateTime>? archivedAt,
     Expression<int>? rowVersion,
     Expression<DateTime>? updatedAt,
@@ -14930,6 +14994,8 @@ class RevenueValueBandsCompanion extends UpdateCompanion<RevenueValueBandRow> {
       if (label != null) 'label': label,
       if (floorMinor != null) 'floor_minor': floorMinor,
       if (ceilingMinor != null) 'ceiling_minor': ceilingMinor,
+      if (supersededByBandId != null)
+        'superseded_by_band_id': supersededByBandId,
       if (archivedAt != null) 'archived_at': archivedAt,
       if (rowVersion != null) 'row_version': rowVersion,
       if (updatedAt != null) 'updated_at': updatedAt,
@@ -14945,6 +15011,7 @@ class RevenueValueBandsCompanion extends UpdateCompanion<RevenueValueBandRow> {
     Value<String>? label,
     Value<int?>? floorMinor,
     Value<int?>? ceilingMinor,
+    Value<String?>? supersededByBandId,
     Value<DateTime?>? archivedAt,
     Value<int>? rowVersion,
     Value<DateTime>? updatedAt,
@@ -14958,6 +15025,7 @@ class RevenueValueBandsCompanion extends UpdateCompanion<RevenueValueBandRow> {
       label: label ?? this.label,
       floorMinor: floorMinor ?? this.floorMinor,
       ceilingMinor: ceilingMinor ?? this.ceilingMinor,
+      supersededByBandId: supersededByBandId ?? this.supersededByBandId,
       archivedAt: archivedAt ?? this.archivedAt,
       rowVersion: rowVersion ?? this.rowVersion,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -14989,6 +15057,9 @@ class RevenueValueBandsCompanion extends UpdateCompanion<RevenueValueBandRow> {
     if (ceilingMinor.present) {
       map['ceiling_minor'] = Variable<int>(ceilingMinor.value);
     }
+    if (supersededByBandId.present) {
+      map['superseded_by_band_id'] = Variable<String>(supersededByBandId.value);
+    }
     if (archivedAt.present) {
       map['archived_at'] = Variable<DateTime>(archivedAt.value);
     }
@@ -15014,6 +15085,7 @@ class RevenueValueBandsCompanion extends UpdateCompanion<RevenueValueBandRow> {
           ..write('label: $label, ')
           ..write('floorMinor: $floorMinor, ')
           ..write('ceilingMinor: $ceilingMinor, ')
+          ..write('supersededByBandId: $supersededByBandId, ')
           ..write('archivedAt: $archivedAt, ')
           ..write('rowVersion: $rowVersion, ')
           ..write('updatedAt: $updatedAt, ')
@@ -25722,6 +25794,7 @@ typedef $$RevenueValueBandsTableCreateCompanionBuilder =
       required String label,
       Value<int?> floorMinor,
       Value<int?> ceilingMinor,
+      Value<String?> supersededByBandId,
       Value<DateTime?> archivedAt,
       Value<int> rowVersion,
       required DateTime updatedAt,
@@ -25736,6 +25809,7 @@ typedef $$RevenueValueBandsTableUpdateCompanionBuilder =
       Value<String> label,
       Value<int?> floorMinor,
       Value<int?> ceilingMinor,
+      Value<String?> supersededByBandId,
       Value<DateTime?> archivedAt,
       Value<int> rowVersion,
       Value<DateTime> updatedAt,
@@ -25811,6 +25885,11 @@ class $$RevenueValueBandsTableFilterComposer
 
   ColumnFilters<int> get ceilingMinor => $composableBuilder(
     column: $table.ceilingMinor,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get supersededByBandId => $composableBuilder(
+    column: $table.supersededByBandId,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -25892,6 +25971,11 @@ class $$RevenueValueBandsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get supersededByBandId => $composableBuilder(
+    column: $table.supersededByBandId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get archivedAt => $composableBuilder(
     column: $table.archivedAt,
     builder: (column) => ColumnOrderings(column),
@@ -25959,6 +26043,11 @@ class $$RevenueValueBandsTableAnnotationComposer
 
   GeneratedColumn<int> get ceilingMinor => $composableBuilder(
     column: $table.ceilingMinor,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get supersededByBandId => $composableBuilder(
+    column: $table.supersededByBandId,
     builder: (column) => column,
   );
 
@@ -26040,6 +26129,7 @@ class $$RevenueValueBandsTableTableManager
                 Value<String> label = const Value.absent(),
                 Value<int?> floorMinor = const Value.absent(),
                 Value<int?> ceilingMinor = const Value.absent(),
+                Value<String?> supersededByBandId = const Value.absent(),
                 Value<DateTime?> archivedAt = const Value.absent(),
                 Value<int> rowVersion = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
@@ -26052,6 +26142,7 @@ class $$RevenueValueBandsTableTableManager
                 label: label,
                 floorMinor: floorMinor,
                 ceilingMinor: ceilingMinor,
+                supersededByBandId: supersededByBandId,
                 archivedAt: archivedAt,
                 rowVersion: rowVersion,
                 updatedAt: updatedAt,
@@ -26066,6 +26157,7 @@ class $$RevenueValueBandsTableTableManager
                 required String label,
                 Value<int?> floorMinor = const Value.absent(),
                 Value<int?> ceilingMinor = const Value.absent(),
+                Value<String?> supersededByBandId = const Value.absent(),
                 Value<DateTime?> archivedAt = const Value.absent(),
                 Value<int> rowVersion = const Value.absent(),
                 required DateTime updatedAt,
@@ -26078,6 +26170,7 @@ class $$RevenueValueBandsTableTableManager
                 label: label,
                 floorMinor: floorMinor,
                 ceilingMinor: ceilingMinor,
+                supersededByBandId: supersededByBandId,
                 archivedAt: archivedAt,
                 rowVersion: rowVersion,
                 updatedAt: updatedAt,

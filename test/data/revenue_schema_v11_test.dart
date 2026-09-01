@@ -451,6 +451,123 @@ void main() {
     );
   });
 
+  group('a value band means one thing for ever (D-100)', () {
+    late AppDatabase db;
+
+    setUp(() => db = AppDatabase(NativeDatabase.memory()));
+    tearDown(() => db.close());
+
+    Future<void> band(String id, {int? floor, int? ceiling = 750000}) async {
+      await db.customStatement(
+        'INSERT INTO revenue_categories (id, org_id, business_unit_id, code, '
+        'name, sort_order, row_version, updated_at) '
+        "VALUES ('cat-room', 'org-1', 'unit-hki', 'ROOM', 'Room', 1, 1, "
+        "'2026-06-15T09:00:00.000Z') ON CONFLICT DO NOTHING",
+      );
+      await db.customStatement(
+        'INSERT INTO revenue_value_bands (id, org_id, revenue_category_id, '
+        'code, label, floor_minor, ceiling_minor, row_version, updated_at) '
+        "VALUES (?, 'org-1', 'cat-room', ?, 'Lower', ?, ?, 1, "
+        "'2026-06-15T09:00:00.000Z')",
+        [id, id.toUpperCase(), floor, ceiling],
+      );
+    }
+
+    setUp(() async {
+      await db.customStatement(
+        'INSERT INTO business_units (id, org_id, code, name, kind, timezone, '
+        'business_day_cutoff, sort_order, row_version, updated_at) '
+        "VALUES ('unit-hki', 'org-1', 'HKI', 'Hotel Krishna', 'hotel', "
+        "'Asia/Kolkata', '05:00', 1, 1, '2026-06-01T00:00:00.000Z')",
+      );
+    });
+
+    test('its boundaries cannot be edited in place', () async {
+      // The Slice 4 audit caught this before it reached Postgres. Editing a boundary
+      // would retroactively redefine what every effective-dated rule referencing the band
+      // applied to — for dates already recorded — with nothing saying it had changed.
+      await band('band-a');
+
+      await expectLater(
+        db.customStatement(
+          "UPDATE revenue_value_bands SET ceiling_minor = 900000 "
+          "WHERE id = 'band-a'",
+        ),
+        throwsA(anything),
+        reason: 'a boundary change is a different band, not an edit',
+      );
+
+      final row = await db
+          .customSelect('SELECT ceiling_minor FROM revenue_value_bands')
+          .getSingle();
+      expect(row.data['ceiling_minor'], 750000);
+    });
+
+    test('neither can its code or its category', () async {
+      await band('band-b');
+      await expectLater(
+        db.customStatement(
+          "UPDATE revenue_value_bands SET code = 'OTHER' WHERE id = 'band-b'",
+        ),
+        throwsA(anything),
+      );
+    });
+
+    test('the label stays editable — a rename that preserves meaning', () async {
+      // D-038's permitted case, unchanged: fixing a spelling is not redefining a band.
+      await band('band-c');
+      await db.customStatement(
+        "UPDATE revenue_value_bands SET label = 'Lower tariff' WHERE id = 'band-c'",
+      );
+      final row = await db
+          .customSelect('SELECT label FROM revenue_value_bands')
+          .getSingle();
+      expect(row.data['label'], 'Lower tariff');
+    });
+
+    test(
+      'a boundary change is expressed by superseding, and stays auditable',
+      () async {
+        await band('band-old');
+        await band('band-new', ceiling: 900000);
+        await db.customStatement(
+          "UPDATE revenue_value_bands SET superseded_by_band_id = 'band-new' "
+          "WHERE id = 'band-old'",
+        );
+
+        final lineage = await db
+            .customSelect(
+              'SELECT id, ceiling_minor, superseded_by_band_id '
+              'FROM revenue_value_bands',
+            )
+            .get();
+        expect(lineage, hasLength(2));
+        final superseded = lineage.firstWhere(
+          (r) => r.data['id'] == 'band-old',
+        );
+        expect(
+          superseded.data['superseded_by_band_id'],
+          'band-new',
+          reason:
+              'the chain says "replaced by", not "an unrelated band appeared"',
+        );
+        expect(
+          superseded.data['ceiling_minor'],
+          750000,
+          reason: 'and the superseded band still says what it always meant',
+        );
+      },
+    );
+
+    test('a band describing no range at all is refused', () async {
+      await expectLater(
+        band('band-empty', ceiling: null),
+        throwsA(anything),
+        reason: 'a label pretending to be a discriminator',
+      );
+    });
+  });
+
   group('cache classification stays exhaustive', () {
     test('every v11 table is classified', () async {
       final db = AppDatabase(NativeDatabase.memory());

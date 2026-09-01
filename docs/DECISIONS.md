@@ -3120,3 +3120,90 @@ Ambiguity is decided where the facts are — by the resolver at read time, and
 authoritatively by the server (D-095). **This is a cache; it stores what the server sent.**
 A cache that second-guesses its source with a weaker rule than the source's own is a cache
 that eventually rejects the truth.
+
+## D-100 — A value band's boundaries are write-once
+**Date:** 2026-09-01 · **Status:** Accepted — **a defect found by the Slice 4 audit of
+Slice 3, corrected before it was mirrored into Postgres**
+
+**Context.** The project lead required Slice 4 to inspect the local v11 band model *before*
+reproducing it on the server, and specifically to determine whether it could safely
+represent a future boundary change. It could not.
+
+`revenue_value_bands.floor_minor` and `ceiling_minor` were plain mutable columns with a
+`row_version`. Nothing stopped an administrator editing a ceiling from ₹7,500 to ₹9,000 in
+place. Historical components would have kept their own snapshots and so would have stayed
+correct — but the **configuration** would have become unexplainable, and worse:
+
+> Every effective-dated rule referencing that band would have been retroactively
+> redefined. A rule that applied to "the lower band" in June would suddenly apply to a
+> different range of tariffs — **for dates already recorded** — and nothing anywhere would
+> say it had changed.
+
+That is a rule whose applicability was rewritten after the fact, which is the exact class
+of harm the date-effective model exists to prevent.
+
+**Decision — immutable bands, superseded rather than edited.** `floor_minor`,
+`ceiling_minor`, `code` and `revenue_category_id` are **write-once**, enforced by a
+trigger on both the SQLite mirror and Postgres. A boundary change creates a **new band**,
+and the old one points at it through `superseded_by_band_id`, so the lineage says
+"replaced by" rather than leaving an unrelated-looking row.
+
+The `label` stays editable: a rename that preserves meaning is D-038's permitted case, and
+fixing a spelling is not redefining a band.
+
+A band must also describe *some* range — a row with neither floor nor ceiling is a label
+pretending to be a discriminator, and is refused.
+
+**Alternatives considered.** *Effective-dated band definitions* — band identity stable,
+bounds versioned by date — are strictly more expressive and were rejected as premature:
+they add a second date dimension to resolution, which the bounded-dimensions discipline
+(D-079) says to add deliberately and only when a verified need exists. No band exists yet
+and no boundary change is known. Immutability gives the same auditability with none of
+that complexity, and the more expressive design remains reachable later.
+
+**Consequence for collision detection.** Because a band's range is fixed for ever, two
+rules can be compared by their bands' **tariff ranges** rather than merely by band id
+(brief §5). `app.revenue_rules_overlap` does exactly that: two distinct band rows whose
+ranges overlap are treated as overlapping applicability, so distinct ids cannot hide
+overlapping financial applicability. That comparison would be unsound against mutable
+bounds — which is another way of saying this decision is what makes the collision
+algorithm trustworthy.
+
+**How it was found.** By doing what the brief asked: reading the Slice 3 schema instead of
+assuming the previous slice got it right. The same instruction found D-098 and D-099. It is
+worth noting that three of Phase 4's five architecture findings came from auditing the
+*previous* slice rather than from writing new code.
+
+## D-101 — Slice 4 findings: the invariant catches what review does not
+**Date:** 2026-09-01 · **Status:** Recorded
+
+Two security-relevant defects reached a working, tested state in Slice 4 and were caught by
+assertions rather than by reading.
+
+**1 · Four `app` functions were left executable by client roles.** Postgres grants EXECUTE
+to PUBLIC on every new function. The migration wrote explicit revokes for the helpers that
+were front of mind — `resolve_revenue_rule`, `revenue_compute`, `next_revenue_number`,
+`lock_revenue_category`, `revenue_financial_year`, `assert_revenue_rules_unambiguous` — and
+therefore restricted **nothing** for `refuse_band_redefinition`,
+`assert_revenue_has_components`, `guard_revenue_rule_write` and `revenue_rules_overlap`.
+
+The API-surface invariant (D-044) refused to apply, naming all four. This is the *same
+finding as D-044 itself*, one phase later, in a new place: a default privilege is not a
+guard, it is a default. The list is now restated with the revokes beside it.
+
+**2 · The read projection was unusable for every authorised user.** `revenue_document` was
+first written `with (security_invoker = true)`, which runs the view with the **caller's**
+privileges — and the caller deliberately holds no SELECT on `revenue_entries`. Every
+authorised read failed with `permission denied for table revenue_entries`.
+
+The correct pattern was already in the repository: `expense_document` is a
+`security_barrier` view that runs as its owner and carries its **own** authorisation
+predicate, which is what keeps the base tables ungranted while the projection stays the
+only way in. Caught by the live security test on its first run, not by review of the SQL.
+
+**The pattern worth naming.** Both defects were invisible to inspection and obvious to an
+assertion. Neither would have been found by a more careful reading of the migration,
+because in both cases the code says what its author meant — it is the *environment's
+defaults* (PUBLIC EXECUTE, and what `security_invoker` implies about privileges) that
+differ from the intent. That is the argument for keeping invariants that fail the deploy
+rather than tests that describe the deploy.

@@ -23,7 +23,7 @@ Every gate passed, including the ones that can only be passed by running the rea
 application: the Android package on a device, and the compiled Windows executable, both
 against the real `krishna-mis-dev` project, with the real development identities.
 
-**Phase 4 — Revenue Engine: IMPLEMENTATION UNDER WAY. Slices 1–3 of 14 complete.**
+**Phase 4 — Revenue Engine: IMPLEMENTATION UNDER WAY. Slices 1–4 of 14 complete.**
 
 The last business blocker closed on 2026-09-01: the project lead confirmed **effective from
 2026-04-01** for all four verified treatments, and authorised implementation.
@@ -41,6 +41,45 @@ Restaurant and Nandbhog hold independent rows and do not reference each other (D
 Banquet has exactly one rule and **no dormant 5% row** (D-091). Room's conditional
 architecture is retained: 5% is today's baseline, not a universal rate compiled into
 anything (D-081).
+
+**Slice 4 — authoritative Postgres schema, RLS, RPC boundary and the verified baseline:
+complete.** Applied to `krishna-mis-dev` as seven migrations, all committed. Five tables,
+the `revenue_document` / `revenue_component_detail` projections, four reviewed RPCs, the
+server resolver with integer half-up arithmetic proven equal to Dart's, KI-REV numbering
+on its own FY-reset sequence, and the **verified FY 2026-27 baseline** — Restaurant 5%,
+Nandbhog 5% (independent), Room 5% generic with **no invented band**, Banquet `none` —
+resolved by canonical codes with no environment UUID and failing loudly on an ambiguous or
+misplaced master. **11 live revenue tests**, 756 host tests.
+
+**The concurrency work is the substance of this slice.** D-095 predicted that one
+exclusion constraint could not enforce the doctrine, and it was right: `=` treats two
+NULLs as non-conflicting, which is the opposite of what a wildcard means. The
+implementation is a collision function comparing **tariff ranges rather than band ids**, a
+validating trigger, and a transaction-level advisory lock keyed deterministically on
+`(org, category)` with `hashtextextended` — taken on the **trigger**, so no write path can
+skip it, proven by a direct table write being refused.
+
+The mandated **two-session test** runs two genuine concurrent PostgREST calls and asserts
+that exactly one wins and the database never holds two rules that could both match, over
+five rounds. Its **positive control** ran against transient scaffolding reproducing the
+same read-validate-write shape with and without the lock: **without it 2 rows were
+written, with it 1**. The scaffolding was dropped immediately — a permanently callable
+lock-bypassing function would be a backdoor, so the control now self-skips and says why.
+
+Three defects, all caught by assertions rather than by reading:
+
+* **D-100** — the Slice 3 band model let boundaries be edited in place, which would have
+  retroactively redefined what every effective-dated rule referencing that band applied
+  to, for dates already recorded. Corrected in Slice 3's schema **before** it was mirrored
+  to Postgres, exactly as the brief required. Bands are now write-once and superseded.
+* **D-101 §1** — four new `app` functions were left executable by client roles, because
+  Postgres grants EXECUTE to PUBLIC and the explicit revokes covered only the helpers that
+  were front of mind. The API-surface invariant refused the migration and named all four.
+  The same finding as D-044, one phase later.
+* **D-101 §2** — `revenue_document` was first written `security_invoker`, so it ran with
+  the caller's privileges against tables the caller deliberately cannot read: every
+  authorised read failed. The proven pattern — `security_barrier` with its own predicate —
+  was already in the repository.
 
 **Slice 3 — local Drift schema v11: complete.** `revenue_entries` and
 `revenue_components`, plus the three reference caches the conditional model needs —
@@ -160,7 +199,7 @@ domain work is the conditional resolver, and even that is an extension of `TaxRu
 | ~~1~~ | ~~Spec and governance~~ **done** | Spec §8 amended, v1.2, `CLAUDE.md` and five docs, D-092, D-093, this plan | docs consistency, secret scan |
 | 2 | Domain model and resolver | `RevenueEntry` / `RevenueComponent`; `entered_basis`; conditional `TaxRuleSet.resolve(facts)`; discriminator-aware `refusalFor` (D-093); reconciliation | unit tests incl. the five D-093 rows and the refusals |
 | ~~3~~ | ~~Local schema~~ **done** | Drift v11: `revenue_entries`, `revenue_components`, extended rule cache, subtype and premises-status caches | migration test v10→v11, `CacheClassification` completeness |
-| 4 | Server schema, RLS, RPC boundary | tables, the **replaced** exclusion constraint, `revenue_document` projection, `revenue_create/update/void/correct_business_date`, KI-REV sequence, audit, usage | migration audit, API-surface invariant, allow **and** deny tests |
+| ~~4~~ | ~~Server schema, RLS, RPC boundary~~ **done** | tables, the **replaced** exclusion constraint, `revenue_document` projection, `revenue_create/update/void/correct_business_date`, KI-REV sequence, audit, usage | migration audit, API-surface invariant, allow **and** deny tests |
 | 5 | Offline resolution and refusal | resolver over cached config; refuse-and-queue-nothing (D-086) | repository tests |
 | 6 | Sync, outbox, gateway | `RevenueGateway`, `RevenueMutationEndpoint`, `RevenuePull` | idempotency, response-loss, stale-version tests |
 | 7 | Create workflow | atomic local write + outbox in one transaction | rollback-at-each-boundary tests |
@@ -348,7 +387,7 @@ Blocked.**
 |---|---|---|
 | `dart format --set-exit-if-changed` | **Tested** | clean (145 files) |
 | `flutter analyze` | **Tested** | **No issues found** |
-| Host test suite | **Tested** | **751 tests, all passing** |
+| Host test suite | **Tested** | **756 tests, all passing** |
 | Secret scan — tree and git history | **Tested** | clean; the scan proves its own controls on every run (D-069) |
 | Secret scan — rebuilt clean binaries | **Tested** | tree, git history and built artefacts all clean, with the scanner's controls passing |
 | Migration audit (search_path, API surface, policy boundary) | **Tested** | 14 host tests |
@@ -398,7 +437,7 @@ Blocked.**
 
 | Suite | Count | Result |
 |---|---|---|
-| Host (`flutter test`) | 751 | all passing |
+| Host (`flutter test`) | 756 | all passing |
 | Live backend against `krishna-mis-dev` (opt-in) | 19 | all passing — re-run in full |
 | Live expense suite against `krishna-mis-dev` (opt-in) | 16 | all passing — re-run in full |
 | Android Phase 2 device acceptance (real APK) | 19 | all passing |
