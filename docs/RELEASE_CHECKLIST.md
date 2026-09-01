@@ -382,6 +382,9 @@ written afterwards to describe whatever was built.
 - [ ] `pre_tax`: the operator's figure is pre-tax; `gross = net + tax`
 - [ ] The input field's **label follows the configured rule** and is never universally
       "Gross"
+- [ ] The basis comes from the **configured rule**, never inferred from how a source
+      invoice presents tax (D-088) — Restaurant's POS bill adds CGST + SGST to a subtotal
+      and its management basis is nonetheless `inclusive_total`
 - [ ] `entered_amount_minor` and `entered_basis` are stored beside the derived trio, so a
       historical figure can be explained without consulting the current rule table
 - [ ] Rounding is half-up, once, at the component; aggregates sum stored paise

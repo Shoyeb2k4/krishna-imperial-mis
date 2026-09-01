@@ -2505,3 +2505,58 @@ change this month?" an answerable question.
 
 **Phase 4 defines and populates this interface. Phase 4 does not build the P&L or the
 reporting engines** — that is Phase 5, with the parity suite D-020 requires.
+
+## D-088 — The entered-amount basis is independent of how the source invoice presents tax
+**Date:** 2026-09-01 · **Status:** **Accepted (project-lead correction to the D-080 plan).
+Phase 4 still NOT implemented.**
+
+**Context.** Real billing evidence arrived, and it immediately exposed an inference the
+architecture would have made and would have got wrong.
+
+The Crystal Canopy Rooftop restaurant bill dated 01/09/2026 presents tax the way almost
+every POS does:
+
+```
+        items / subtotal
+      + CGST 2.5%
+      + SGST 2.5%
+      ─────────────────
+      = grand total
+```
+
+Read naively, a bill that *adds* tax to a subtotal looks like an `exclusive` treatment
+whose input basis is `pre_tax`. That reading is wrong, and the project lead stated the
+management meaning explicitly: when Restaurant Sales is recorded as ₹1,00,000 in this MIS,
+**₹1,00,000 is the final amount including GST**. The system must derive the tax component
+and Net Sales *out of* that figure, and must never add tax on top of it.
+
+**Decision.** `entered_basis` describes **what the operator is typing into this
+application**. It is not derived from, inferred from, or constrained by how the underlying
+invoice or POS displays its arithmetic. The two are separate facts about separate things:
+
+| | What it describes |
+|---|---|
+| **Invoice presentation** | how the source document lays out subtotal, tax and total for the customer |
+| **`entered_basis`** | which of those numbers a manager types into the daily sales screen |
+
+For Restaurant management entry, `entered_basis = inclusive_total` **even though the POS
+invoice visibly computes subtotal + tax**. Both statements are true at once and there is no
+contradiction to resolve: the invoice adds tax to reach a grand total, and the manager
+records the grand total.
+
+**Why this needed recording rather than just implementing.** The inference is natural,
+would have been made silently, and would have been invisible in testing: entering
+₹1,00,000 under a wrongly-inferred `pre_tax` basis produces a grand total of ₹1,05,000 and
+a Net Sales of ₹1,00,000 — every figure internally consistent, every figure wrong, and
+Operating Profit overstated by the whole tax component of revenue. Nothing in the software
+would object, because nothing in the software would know.
+
+`entered_basis` therefore comes from the **configured rule** (D-080), which is configured
+from what the project lead states the management figure means — never from what a source
+document looks like, and never from a heuristic over it.
+
+**Consequence.** The input basis is a **management-accounting decision, per revenue
+category**, and must be confirmed for each category separately. Restaurant is confirmed
+(`inclusive_total`). Room, Banquet and Nandbhog are **not**, and are not to be assumed to
+match Restaurant merely because they are billed by the same business — which is the same
+discipline D-043 already applies to rates.

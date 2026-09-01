@@ -1067,6 +1067,28 @@ Both what was typed (`entered_amount_minor`, `entered_basis`) and what was deriv
 explained years later without consulting a rule table that may since have changed. Rounding
 is half-up, once, at the component; aggregates sum stored paise and never re-apply a rate.
 
+**The basis is not read off the invoice (D-088).** Real evidence made this concrete. The
+Crystal Canopy restaurant bill presents `subtotal + CGST 2.5% + SGST 2.5% = grand total`,
+which reads exactly like an exclusive treatment — and the management figure the project
+lead records is the **tax-inclusive grand total**. Both are true; they describe different
+things:
+
+```
+        invoice presentation   how the source document shows its arithmetic
+        entered_basis          which of those numbers a manager types in here
+```
+
+So `entered_basis` comes from the **configured rule**, which is configured from what the
+management figure is stated to mean — never inferred from a source document's layout and
+never from a heuristic over it. The failure mode this prevents is silent: entering
+₹1,00,000 under a wrongly-inferred `pre_tax` basis yields a grand total of ₹1,05,000 and a
+Net Sales of ₹1,00,000, every figure internally consistent, every figure wrong, and
+Operating Profit overstated by the entire tax component of revenue.
+
+It follows that the input basis is a **management-accounting decision per revenue
+category**, confirmed separately for each. Restaurant is confirmed `inclusive_total`; Room,
+Banquet and Nandbhog are not, and do not inherit it by proximity.
+
 ### 17.4 Room, Restaurant, Banquet, Nandbhog
 
 **Room (D-081)** — manual-first, one figure per tariff band that had business that day. No

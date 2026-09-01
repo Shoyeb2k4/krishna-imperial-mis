@@ -516,7 +516,12 @@ revenue_components (
   id uuid pk, org_id uuid not null,
   revenue_entry_id uuid not null references revenue_entries(id) on delete cascade,
 
-  -- what the operator actually typed, and as what (D-080)
+  -- What the operator actually typed, and as what (D-080).
+  --
+  -- `entered_basis` describes THIS application's input, not how the source invoice
+  -- presents tax (D-088). The restaurant POS bill adds CGST and SGST to a subtotal and
+  -- the management figure is nonetheless the tax-inclusive grand total. The basis comes
+  -- from the configured rule, never from the shape of a source document.
   entered_amount_minor bigint not null check (entered_amount_minor >= 0),
   entered_basis text not null
       check (entered_basis in ('inclusive_total','pre_tax','none')),

@@ -28,10 +28,29 @@ STARTED · BLOCKED ON VERIFIED REVENUE TAX/BILLING CONFIGURATION.**
 
 Not in progress. No Phase 4 code, migration, table, RPC, widget, provider, test or
 dependency exists. The approved architecture is recorded in `ARCHITECTURE.md` §17,
-`DATABASE_SCHEMA.md` §6.1 and decisions **D-078 … D-087**, so it survives the conversation
-that produced it. What blocks it is not engineering: it is the real tax and billing
-configuration for the four V1 revenue categories, listed under **Project lead actions
-required**.
+`DATABASE_SCHEMA.md` §6.1 and decisions **D-078 … D-088**, so it survives the conversation
+that produced it.
+
+Real billing evidence arrived on 2026-09-01 and **narrowed the blockers from four
+categories to four questions**. It is recorded in the *Revenue tax evidence register*
+below, as evidence — no rate, basis or date has been promoted to a rule.
+
+| Blocker | State |
+|---|---|
+| Room management amount basis | **Blocking** — inclusive of GST, or before it? |
+| Banquet accountant-approved tax condition | **Blocking** — a real invoice shows ₹0 tax; 5% applies "if someone wants GST" |
+| Nandbhog meaning, rate and input basis | **Blocking** — wholly unresolved |
+| Effective-from dates, all categories | **Blocking** — evidence shows what is true now, not since when |
+
+Restaurant is the one category whose rate (5%) and management input basis
+(`inclusive_total`) are both **verified**; only its effective-from date is outstanding.
+
+That evidence also forced one architecture correction, **D-088**: the entered-amount basis
+is independent of how the source invoice presents tax. The restaurant POS bill adds CGST
+and SGST to a subtotal, which reads like an exclusive treatment — and the management figure
+is nonetheless the tax-**inclusive** grand total. Inferring the basis from the invoice
+layout would have produced internally consistent, entirely wrong figures that nothing in
+the software could have objected to.
 
 ---
 
@@ -399,6 +418,73 @@ reported as failed rather than re-run until it is convenient.
 **FAILED** above and in D-077, and stays recorded: it is the finding that justifies the
 whole practice of keeping a manual gate for a boundary the harness cannot drive.
 
+## Revenue tax evidence register (Phase 4 — pending configuration)
+
+Real billing evidence supplied by the project lead on 2026-09-01, recorded **as evidence**.
+**Nothing here is a tax rule.** No rate, basis or effective date below has been written into
+a migration, a seed, a fixture or a line of code, and none will be until the pending column
+is empty and the project lead confirms (D-043, D-084).
+
+The distinction this table keeps is the one D-088 exists for: *what a source invoice shows*
+and *what the management figure means* are two different facts, and knowing the first does
+not establish the second.
+
+| Category | Rate evidence | Management input basis | Effective from | Status |
+|---|---|---|---|---|
+| **Restaurant** (Crystal Canopy Rooftop) | **Verified** — CGST 2.5% + SGST 2.5% = **5%** on the bill dated 01/09/2026 | **Verified** — `inclusive_total`; ₹1,00,000 entered means ₹1,00,000 **including** GST | **Pending** | Rate and basis verified; date outstanding |
+| **Room** (Hotel Krishna Imperial) | **Observed** — one invoice, stay from 31/08/2026: base ₹2,239.00, CGST 2.5% ₹55.98 + SGST 2.5% ₹55.98 = **5%**, ₹2,350.96 before rounding | **BLOCKING — unknown.** Does "Room Sales ₹1,00,000" mean the customer total including GST, or room revenue before GST? | **Pending** | Basis blocks entry |
+| **Banquet** (Hotel Krishna Imperial) | **Observed, unresolved** — final invoice 30/08/2026: Lunch Package ₹37,500 + Packaged Drinking Water ₹900 + Crystal Canopy Order ₹1,943 = ₹40,343, **Taxes ₹0**, Net Payable ₹40,343. Project lead adds: *"if someone wants the Banquet with GST, GST is 5%"* | **Unknown** | **Pending** | Tax condition blocks entry — see below |
+| **Nandbhog** (Crystal Canopy Rooftop) | **Unknown** | **Unknown** | **Pending** | Wholly unresolved |
+
+### What each of these is not
+
+**Restaurant is two-thirds verified, not configured.** The rate and the basis are
+established; the effective-from date is not. Evidence dated 01/09/2026 shows what is true
+*now* and says nothing about when it started. Defaulting it to 01/04/2026 because that is
+the start of the financial year would be inventing a business fact, and it would silently
+determine how every prior month is restated if history is ever imported.
+
+**One room invoice is one room invoice.** It demonstrates that a 5% treatment is in current
+use at a ₹2,239 tariff. It does not establish that every room transaction uses the same
+rule at every tariff, and the conditional architecture (D-079, D-081) is retained precisely
+so that a second band can be configured without a redesign if one turns out to exist. Nor
+does it say anything about the management input basis, which is a separate question and is
+the one actually blocking.
+
+**Banquet is the one to be careful with.** Two facts are recorded and neither is a rule:
+
+* a real final invoice shows **₹0 tax** on ₹40,343;
+* the project lead states that GST, where applied to a banquet, is **5%**.
+
+*"Customer asks for GST → taxable; customer does not ask → ₹0"* is **not** being encoded,
+and would not be encodable as written even if it were approved: it is not one of the five
+bounded rule dimensions (D-079). It is neither a value band, nor a supply subtype, nor a
+premises status. If it becomes the confirmed treatment, it needs either a new dimension —
+a migration and a decision, deliberately — or modelling as a supply subtype chosen at
+entry. **Which of those is correct depends on what the accounting treatment actually is,
+and that is a question for the accountant, not an inference from two invoices.** Until it
+is answered, Banquet revenue entry refuses (D-084), which is the correct behaviour rather
+than a defect.
+
+**Nandbhog inherits nothing.** It is a Crystal Canopy Rooftop revenue category (D-024) and
+that is all that is established. It does **not** acquire Restaurant's 5% or Restaurant's
+inclusive basis by proximity; D-043 has forbidden exactly that inheritance since Phase 2.
+
+### Still required, and phrased as paperwork rather than law
+
+1. **Room** — does a management figure of "Room Sales ₹1,00,000" mean the customer total
+   **including** GST, or room revenue **before** GST? *(blocking)*
+2. **Banquet** — what does your accountant say the treatment is? Specifically: is the ₹0-tax
+   invoice the normal case, and what distinguishes a banquet that carries 5% from one that
+   does not — the kind of supply, the customer, or something else? *(blocking)*
+3. **Nandbhog** — what does it represent on a bill; is it billed on the restaurant bill or
+   separately; what GST appears on it; and is the management figure tax-inclusive or
+   pre-tax? *(blocking)*
+4. **Effective-from dates** — for each category, from what date does the treatment apply?
+   *"It has been this way since the start of FY 2026–27"* is a perfectly good answer; what
+   cannot happen is the software choosing one. *(blocking)*
+
+
 ## Known issues
 
 1. **`flutter_secure_storage` pinned to 9.2.4.** 11.x requires `compileSdk 37`; this
@@ -472,57 +558,33 @@ decision for him, not one to be taken by starting.
 **None for Phase 3.** All were answered and implemented: revoked-scope financial retention
 (D-070), the expense edit surface (D-072a), and attachment upload (D-073a).
 
-**One for Phase 4**, and it is a genuine business fact rather than a design choice: the
-real tax and billing configuration for Restaurant, Nandbhog, Room and Banquet. The eleven
-questions are in *Project lead actions required* below, phrased in terms of what current
-invoices show. **Phase 4 implementation is blocked on it**, and no rate, band, subtype or
-premises status will be invented in the meantime (D-043, D-084).
+**Four for Phase 4**, all genuine business facts rather than design choices: the Room
+management input basis, the Banquet tax condition, Nandbhog's meaning and treatment, and
+the effective-from dates. Real billing evidence on 2026-09-01 answered the rest — see the
+*Revenue tax evidence register*. **Phase 4 implementation stays blocked on these four**,
+and no rate, basis, band, subtype, premises status or date will be invented in the meantime
+(D-043, D-084).
 
 ## Project lead actions required
 
 1. ~~Two manual picker smoke tests.~~ **Done, 2026-08-31 — both PASS.**
-2. **The revenue tax and billing configuration — this is what blocks Phase 4.**
+2. **Four remaining answers, and Phase 4 can start.** The 2026-09-01 evidence closed most
+   of this: Restaurant's rate and input basis are verified. What is left is in the
+   *Revenue tax evidence register* below, and each item is a question about your paperwork
+   or your accountant's treatment — none asks you to interpret tax law.
 
-   These are questions about **what your current paperwork says**, not about tax law. Your
-   accountant is the authority; nothing here asks you to interpret legislation, and no rate
-   will be assumed or seeded from any answer that is not given (D-043, D-084). Scans or
-   typed-out lines from **one invoice per category** answer most of it at once.
+   1. **Room** — when you record "Room Sales ₹1,00,000", is that the customer total
+      **including** GST, or the room revenue **before** GST?
+   2. **Banquet** — the 30/08/2026 invoice shows ₹0 tax on ₹40,343, and you have said GST
+      is 5% "if someone wants it". What does your accountant say the treatment is, and what
+      distinguishes a banquet that carries 5% from one that does not?
+   3. **Nandbhog** — what does it represent on a bill; same bill as the restaurant or its
+      own; what GST appears; and is the management figure tax-inclusive or pre-tax?
+   4. **Effective-from dates** — for each category, from when does the treatment apply?
+      *"Since the start of FY 2026–27"* is a fine answer; the software choosing one is not.
 
-   *Restaurant (Crystal Canopy Rooftop)*
-   1. On a recent restaurant bill, what GST percentage is printed?
-   2. Is the menu price the final amount the guest pays, or is GST added at the bottom?
-   3. Has your accountant ever said the restaurant rate depends on anything other than what
-      was sold — anything reviewed or chosen at the start of a financial year?
-
-   *Room (Hotel Krishna Imperial)*
-   4. Do any room invoices show a **different** GST percentage from others? If so, which
-      percentages appear?
-   5. If they differ, what decides it — and what per-room-per-night value does your
-      accountant use as the boundary?
-   6. Is the room rate on the invoice what the guest pays including GST, or before GST?
-
-   *Banquet (Hotel Krishna Imperial)*
-   7. On a recent banquet invoice, is it **one line**, or split — hall/rental separately
-      from food/catering, or billed as a package?
-   8. What GST percentage appears against each line?
-
-   *Nandbhog (Crystal Canopy Rooftop)*
-   9. What does Nandbhog represent on an invoice — is it billed on the same restaurant
-      bill, or does it have its own? What GST appears on it?
-
-   *All four*
-   10. From what date should each treatment apply? (If it has been unchanged for a long
-       time, the start of the current financial year is a fine answer.)
-   11. In your existing monthly management report, are the sales figures you record the
-       **customer total including GST**, or the pre-tax figure?
-
-   **One consequence to agree before it reaches a manager:** if room tax genuinely varies
-   by tariff, the Daily Room Revenue entry becomes two figures instead of one on days when
-   both bands apply (D-081). Small, but a real change to a daily routine.
-
-   Nothing in this list is turned into a decision until you supply it. Unanswered means the
-   category stays *"No rule configured"* and revenue entry for it refuses — which is the
-   approved behaviour, not a defect.
+   Until each is answered that category shows *"No rule configured"* and refuses revenue
+   entry, which is the approved behaviour and not a defect (D-084).
 
 3. **Optional decision:** whether archiving should also offer a *confirmed* cascade for a
    whole subtree (D-039).
