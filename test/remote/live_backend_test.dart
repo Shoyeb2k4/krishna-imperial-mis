@@ -116,23 +116,41 @@ void main() {
       expect(snapshot.resolvedAt.isUtc, isTrue);
     });
 
-    test(
-      'the pull returns Crystal Canopy alone, because RLS decided so',
-      () async {
-        await signInAs('ccr.manager@example.com');
-        final pull = await masters.pullAll();
+    test('the pull returns Crystal Canopy alone, because RLS decided so', () async {
+      await signInAs('ccr.manager@example.com');
+      final pull = await masters.pullAll();
 
-        expect(pull.isOk, isTrue);
-        final snapshot = pull.valueOrNull!;
-        expect(snapshot.unitIds, {ccr});
-        expect(snapshot.departments, hasLength(4));
-        expect(
-          snapshot.taxRules,
-          isEmpty,
-          reason: 'no tax rule is configured, and none is invented (D-043)',
-        );
-      },
-    );
+      expect(pull.isOk, isTrue);
+      final snapshot = pull.valueOrNull!;
+      expect(snapshot.unitIds, {ccr});
+      expect(snapshot.departments, hasLength(4));
+      // Was `isEmpty` under D-043, and correct while nothing was configured. Phase 4
+      // Slice 4 installed the four verified rules (D-096), so "empty" stopped being the
+      // truth — and this suite was carried forward rather than re-run, which is how a
+      // stale assertion survived a checkpoint. Restated as the stronger claim it should
+      // always have been: the manager receives their own property's rules and no other
+      // property's, decided by RLS rather than by the client asking narrowly.
+      final categories = {
+        for (final r in snapshot.taxRules)
+          if (r['archived_at'] == null) r['revenue_category_id'] as String,
+      };
+      expect(
+        categories,
+        isNotEmpty,
+        reason: 'the verified baseline is configured (D-096)',
+      );
+      final crystalCanopyCategories = {
+        for (final c in snapshot.revenueCategories)
+          if (c['business_unit_id'] == ccr) c['id'] as String,
+      };
+      expect(
+        categories.difference(crystalCanopyCategories),
+        isEmpty,
+        reason:
+            'a Crystal Canopy manager must not receive Hotel Krishna tax rules — a rate '
+            'is configuration about a property they cannot see',
+      );
+    });
 
     test('synchronising writes it into the local read model', () async {
       await signInAs('ccr.manager@example.com');

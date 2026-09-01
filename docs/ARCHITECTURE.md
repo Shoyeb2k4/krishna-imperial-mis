@@ -8,7 +8,7 @@ the application role named **Owner** is a separate concept — D-057)
 Status: **Sections 1–12 proposed (Phase 0, revised); sections 13–16 describe what is built
 and verified; section 17 is the approved Phase 4 plan and is NOT built.** Sections 6, 5.3 and 8 carry the project lead's mandated corrections.
 Implementation status is tracked in `PROJECT_STATUS.md`.
-Last updated: 2026-08-31
+Last updated: 2026-09-01
 
 ---
 
@@ -1176,3 +1176,131 @@ authoritative; stale write → `Conflict`; closed period → rejected with its o
 `base_row_version`. Attachments optional, reusing the D-073a pipeline with no second upload
 architecture. Server-issued numbering over client UUID v7 identity, on its own sequence
 (D-085). Other Income is out of V1. Integer paise everywhere.
+
+---
+
+## 18. Revenue tax resolution offline, and where the numbers are proven (2026-09-01)
+
+§17 recorded the approved plan. Slices 2 to 5 built the resolution half of it: the domain
+resolver, the local schema, the authoritative server schema, and the adapter that lets a
+device resolve with no network. Entry, sync and the UI are Slices 6 onward and are not
+built.
+
+### 18.1 The adapter is an adapter
+
+`RevenueTaxRepository` reads the Drift cache, reconstructs `TaxRule` objects, and hands the
+decision to `RevenueTaxRuleSet.resolve` — the same pure code the domain suite proves and
+the same code a future parity suite will run against server fixtures. **No tax semantics
+are expressed in SQL**, and nothing is defaulted on the way through.
+
+The one place that discipline is load-bearing is `input_basis`. A cached rule without one
+becomes a rule with a null basis, which the resolver classifies as `incompleteRule`. It is
+never promoted to `inclusive_total` because all four verified categories happen to use
+that: the server refuses to create such a rule now (A1), but a cache can still hold one
+from before, and the honest answer is to say so rather than to decide silently whether a
+recorded figure includes tax.
+
+It also loads **every** candidate rule for the category rather than filtering to one in
+SQL. A query returning the first match by ordering would reintroduce the ranking D-094
+forbids, and would hide a stale or corrupted cache holding two matching rules — which is
+exactly when a local check earns its keep.
+
+### 18.2 Two empty results that mean different things
+
+```
+        cache query returns nothing
+              │
+    ┌─────────┴──────────┐
+    │                    │
+ snapshot marker      no marker
+ present              present
+    │                    │
+ noApplicableRule    configurationUnavailable
+ "the Owner has      "this device has not
+  not configured      received the
+  a rule"             configuration"
+```
+
+Both stop a revenue entry. Only one of them is a statement about the organisation's tax
+configuration, and making it on the strength of a network condition is how a manager gets
+told something false about their own company.
+
+The marker is an `app_meta` key written when reference configuration is pulled — **not** a
+row count, because a confirmed revocation legitimately empties the rule cache (D-070) and
+"no rows" must never be promoted to "no rules exist". The decision happens *before* the
+cache is queried, so emptiness is never the evidence.
+
+`configurationUnavailable` carries why: `neverSynchronised` or `revoked`. A confirmed
+revocation therefore stops new offline revenue outright rather than letting stale
+configuration pick a rate.
+
+**An already-recorded component is untouched by any of this.** It carries its own rate,
+treatment, basis and rule id as a snapshot, consults no cache, and stays fully explainable
+with no rule rows on the device at all — asserted by deleting every rule and reading the
+component back. That is the same property §15 relies on for retained expenses: the thing
+that must survive a revocation does not live in a row a revocation may delete.
+
+### 18.3 The cache is read-only, and it is checked by counting
+
+A client that "repaired" or backfilled cached configuration would be inventing a tax fact.
+The suite takes a row census of all eight relevant tables, performs every read the adapter
+offers, and requires the census to be identical afterwards. Asserting on the code's shape
+would have been an argument; asserting on the rows is a test.
+
+### 18.4 Where the arithmetic is proven
+
+Three implementations of one specification now exist: `TaxRule.compute` in Dart, the
+adapter that feeds it, and `app.revenue_compute` in Postgres. D-020 requires their
+agreement to be proven rather than assumed.
+
+The vectors live **once**, in `20260901144002_revenue_arithmetic_parity.sql`:
+
+```
+        migration `do` block            test/support/revenue_parity_vectors.dart
+        asserts app.revenue_compute  ◄──── parses the SAME values table ────►  Dart
+        FAILS THE DEPLOY on mismatch                                    TaxRule.compute
+```
+
+This is deliberately the pattern §14.2 already uses for the business-date rule, and for the
+same reason: two implementations of one rule is the situation that drifts, and "both were
+written from the same prose" is not evidence.
+
+The alternative — a Dart fixture list plus a public RPC wrapper so a live test could call
+`app.revenue_compute` — was rejected. It would expand the reviewed API surface (D-044) for
+no product reason, and a test-only endpoint in a financial system is a thing that
+eventually gets called.
+
+Thirteen vectors, chosen where rounding decides something rather than where it is
+comfortable: one paisa, seven paise, thirty-three paise (the smallest amount at which
+half-up matters), an amount past 32-bit, a configured 0% beside a treatment of `none`, and
+both exclusive cases. Exact integer equality, no tolerance, plus a **separate**
+reconciliation assertion — a pair of wrong figures can still add up. The Dart parser
+refuses to run on fewer than ten vectors, because a parity suite that silently checks
+nothing reports success.
+
+### 18.5 The conversion nothing exercised
+
+`EnteredBasis` was written and read through Dart's `.name`, which is `inclusiveTotal`.
+Both schemas store `inclusive_total`. Every rule carrying a basis would have thrown on
+read.
+
+It survived three slices because **nothing crossed the boundary**: the domain tests built
+`TaxRule` objects directly and were checking Dart against itself, and the live tests read
+`input_basis` as raw JSON without ever parsing it. Two correct halves and no test between
+them.
+
+The stored form is now stated explicitly on the enum and pinned on both sides — a host test
+on the exact strings, and a live test that reads the real column and requires the client to
+parse it. Neither can be edited into agreement with the other, which is the property that
+matters; an unrecognised value throws rather than defaulting, because there is no safe
+default for *which amount this is*.
+
+### 18.6 What archived configuration means for assertions
+
+No client role holds DELETE on financial configuration (D-006), so a live test that creates
+a rule can only **archive** it afterwards. That is the correct trade rather than a gap to
+close by granting a delete — with the consequence that archived scaffolding accumulates in
+the development project across runs.
+
+Therefore: **no assertion may read `revenue_tax_rates` without filtering `archived_at`.**
+One did, and failed for that reason rather than for a defect (D-107).

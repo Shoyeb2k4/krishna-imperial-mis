@@ -5,7 +5,7 @@ Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
-Last updated: **2026-08-31** — **PHASE 3 COMPLETE**
+Last updated: **2026-09-01** — Phase 4 Slice 5 (Phase 3 remains complete)
 
 > A new session should be able to read this file and know exactly where work stopped.
 > This file — not chat history — is the checkpoint.
@@ -23,7 +23,7 @@ Every gate passed, including the ones that can only be passed by running the rea
 application: the Android package on a device, and the compiled Windows executable, both
 against the real `krishna-mis-dev` project, with the real development identities.
 
-**Phase 4 — Revenue Engine: IMPLEMENTATION UNDER WAY. Slices 1–4 of 14 complete.**
+**Phase 4 — Revenue Engine: IMPLEMENTATION UNDER WAY. Slices 1–5 of 14 complete**, together with four corrective audit points closed against Slice 4 (A0 … A3).
 
 The last business blocker closed on 2026-09-01: the project lead confirmed **effective from
 2026-04-01** for all four verified treatments, and authorised implementation.
@@ -42,6 +42,66 @@ Banquet has exactly one rule and **no dormant 5% row** (D-091). Room's condition
 architecture is retained: 5% is today's baseline, not a universal rate compiled into
 anything (D-081).
 
+**Slice 5 — offline revenue tax resolution from cached configuration: complete.**
+`RevenueTaxRepository` is an adapter, not a second engine: it reads the Drift cache,
+reconstructs the domain model and hands the decision to the resolver Slice 2 already
+proved. No tax semantics are expressed in SQL and nothing is defaulted on the way through.
+**33 new host tests**, and the cache is asserted read-only by counting rows either side of
+every resolution rather than by reading the code.
+
+**The distinction the slice exists for.** An empty rule query means two different things —
+the configuration is synchronised and has no rule for these facts, or this device has never
+received one — and collapsing them is how an empty cache starts telling a manager that
+their company's tax is not configured. `configurationUnavailable` is now a first-class
+outcome decided **before** the cache is queried, evidenced by a synchronisation marker
+rather than a row count, and carrying whether the gap is `neverSynchronised` or `revoked`
+(D-106). A confirmed revocation therefore stops new offline revenue outright; an
+already-recorded component is untouched, because it carries its own snapshot and consults
+no cache — proven by deleting every rule and reading the component back.
+
+**A real production defect, found by writing the suite (D-104).** `EnteredBasis` was
+persisted and parsed through Dart's `.name` (`inclusiveTotal`) while both schemas store
+`inclusive_total`, verified against the four live rules. Every rule carrying a basis would
+have thrown on read — which, since A1 made the column NOT NULL, is every rule that exists.
+It survived Slices 2 to 4 because nothing had yet read a rule out of a database into the
+domain model: the Slice 2 tests built `TaxRule` objects directly and were checking Dart
+against itself. The stored form is now stated explicitly and pinned in two places that
+cannot be edited to agree with each other — a host test on the exact strings, and a live
+test that reads the real column.
+
+**Three engines, thirteen vectors, exact paise (D-105).** The vectors live once, in
+`20260901144002_revenue_arithmetic_parity.sql`, which asserts them against
+`app.revenue_compute` and **fails the deploy** rather than warning — the pattern migration
+0033 established for the business-date rule. The Dart suite parses that same table, so
+neither side can be edited alone, and refuses to run on fewer than ten vectors because a
+parity suite that silently checks nothing reports success. They are chosen where rounding
+decides something: one paisa, seven paise, thirty-three paise, an amount past 32-bit, a
+configured 0% beside a treatment of `none`, and both exclusive cases. **13 of 13 agree
+exactly and all 13 reconcile.** Positive control: the same assertion with one figure moved
+by a single paisa raises.
+
+**Slice 4 audit corrections (A0 … A3), all four closed.**
+
+* **A0 — migration ledger parity.** The Slice 4 report claimed "seven migrations, all
+  committed" while the repository held two files for seven ledger versions. Split into
+  seven files with `supabase/migrations/LEDGER.md` accounting for all 49 applied versions —
+  and then made **mechanical**, because a hand-maintained table drifts exactly as the API
+  surface list did (D-102). It immediately caught two things: the A1 and A2 migrations had
+  been applied and never committed, and the parity file was named for the version I
+  intended rather than the one Supabase assigned.
+* **A1 — legacy write paths could create an unusable rule.** Proven by probe: a successor
+  inserted without `input_basis` was accepted, after which the resolver refused every entry
+  against it. No legacy rows existed (4 live, 0 null), so the honest expression is NOT NULL
+  with no exception to explain; the two Phase 2 creators now refuse with KM029 naming their
+  replacement.
+* **A2 — premises status was not deterministic.** Proven by probe: two open-ended rows
+  starting on different dates were **both** applicable on 2026-08-01. Resolving that by
+  "latest start wins" would be the ranking D-094 forbids. Fixed with `effective_to` and an
+  `EXCLUDE USING gist` constraint — which fully models it here, unlike the tax rules,
+  because a status has no wildcard discriminators.
+* **A3 — local/server band lifecycle parity.** `superseded_by_band_id` was already local;
+  the status table gained `effective_to` and `archived_at` to match the server.
+
 **Slice 4 — authoritative Postgres schema, RLS, RPC boundary and the verified baseline:
 complete.** Applied to `krishna-mis-dev` as seven migrations, all committed. Five tables,
 the `revenue_document` / `revenue_component_detail` projections, four reviewed RPCs, the
@@ -49,7 +109,8 @@ server resolver with integer half-up arithmetic proven equal to Dart's, KI-REV n
 on its own FY-reset sequence, and the **verified FY 2026-27 baseline** — Restaurant 5%,
 Nandbhog 5% (independent), Room 5% generic with **no invented band**, Banquet `none` —
 resolved by canonical codes with no environment UUID and failing loudly on an ambiguous or
-misplaced master. **11 live revenue tests**, 756 host tests.
+misplaced master. **13 live revenue tests** (11 at the Slice 4 checkpoint, plus the two
+parity tests D-104 and D-105 added), 789 host tests.
 
 **The concurrency work is the substance of this slice.** D-095 predicted that one
 exclusion constraint could not enforce the doctrine, and it was right: `=` treats two
@@ -385,15 +446,18 @@ Blocked.**
 
 | Item | Status | Evidence |
 |---|---|---|
-| `dart format --set-exit-if-changed` | **Tested** | clean (145 files) |
+| `dart format --set-exit-if-changed` | **Tested** | clean (153 files) |
 | `flutter analyze` | **Tested** | **No issues found** |
-| Host test suite | **Tested** | **756 tests, all passing** |
+| Host test suite | **Tested** | **789 tests, all passing** |
 | Secret scan — tree and git history | **Tested** | clean; the scan proves its own controls on every run (D-069) |
 | Secret scan — rebuilt clean binaries | **Tested** | tree, git history and built artefacts all clean, with the scanner's controls passing |
 | Migration audit (search_path, API surface, policy boundary) | **Tested** | 14 host tests |
 | Backend schema parity (migrations vs the claims made about them) | **Tested** | 18 host tests |
-| Live backend suite against `krishna-mis-dev` | **Tested** | **19 tests** across 7 phases |
-| Live expense suite against `krishna-mis-dev` | **Tested** | **16 tests**: reconciliation, scoped raw-cache security, period locks, the 7-day boundary, usage semantics |
+| Live backend suite against `krishna-mis-dev` | **Tested** | **19 tests** across 7 phases — **re-run in the documented sequence at this checkpoint**, with the grant fixture restored to baseline afterwards (D-107) |
+| Live expense suite against `krishna-mis-dev` | **Tested** | **16 tests, re-run at this checkpoint**: reconciliation, scoped raw-cache security, period locks, the 7-day boundary, usage semantics |
+| Live revenue suite against `krishna-mis-dev` | **Tested** | **13 tests**, 1 deliberately skipped: the D-095 write-skew positive control, whose lock-bypassing scaffolding was dropped rather than left permanently callable |
+| Revenue arithmetic parity — Dart, Drift and Postgres | **Tested** | 13 vectors, exact paise, asserted in migration `20260901144002` and read back by the Dart suite (D-105) |
+| Offline revenue tax resolution from the cache | **Tested** | 33 host tests, incl. the `configurationUnavailable` distinction and a read-only census (D-106) |
 | Repository ↔ server migration integrity (D-056) | **Tested** | live `drift` phase |
 | Android device acceptance, real APK, real backend | **Tested** | **19 tests** across 10 phases |
 | Windows acceptance, real `krishna_mis.exe`, real backend | **Tested** | **18 tests** across 11 phases |
@@ -437,9 +501,9 @@ Blocked.**
 
 | Suite | Count | Result |
 |---|---|---|
-| Host (`flutter test`) | 756 | all passing |
+| Host (`flutter test`) | **789** | all passing |
 | Live backend against `krishna-mis-dev` (opt-in) | 19 | all passing — re-run in full |
-| Live expense suite against `krishna-mis-dev` (opt-in) | 16 | all passing — re-run in full |
+| Live expense suite against `krishna-mis-dev` (opt-in) | 16 | all passing — **re-run at this checkpoint** |
 | Android Phase 2 device acceptance (real APK) | 19 | all passing |
 | Windows Phase 2 acceptance (real executable) | 18 | all passing |
 | Windows shell (real executable) | 15 | all passing |
@@ -833,7 +897,9 @@ it — the same asymmetry that hid D-074. A v9→v10 test now pins it.
 The local database sets `PRAGMA secure_delete = ON`, so a purge does not leave the revoked
 property's figures legible in freed pages, and `PRAGMA foreign_keys = ON`.
 
-**Postgres: 35 migrations, all applied to `krishna-mis-dev` and all committed.** 0033
+**Postgres: 49 applied ledger versions, every one accounted for by a committed file.**
+`supabase/migrations/LEDGER.md` maps them, and a host test enforces the mapping rather than
+describing it (D-102) — which is how the two uncommitted audit migrations were found. 0033
 measures the edit window under the property's business date (D-067). 0034 adds
 `attachment_register` — the only writer of `expense_attachments`, verifying the size and
 SHA-256 against the stored object. 0035 restates the reviewed API surface to include it,
@@ -843,6 +909,28 @@ already hidden from it, so it could neither permit nor refuse anything. The live
 asserts the repository and the server agree (D-056).
 
 ## Last important decision
+
+**D-104 — the stored form of a tax basis was never actually read, and was wrong.**
+`EnteredBasis` was persisted and parsed through Dart's `.name`, which is `inclusiveTotal`.
+Both databases store `inclusive_total`. Every rule carrying a basis would have thrown on
+read — and since A1 made that column NOT NULL, that is every rule that exists.
+
+It passed three slices of review, a clean analyze and a green suite, because **nothing had
+yet read a rule out of a database into the domain model**. The Slice 2 tests constructed
+`TaxRule` objects directly, so they were checking Dart against itself; the Slice 4 live
+tests read the column as raw JSON and never parsed it. Two correct halves, and no test
+crossing the boundary between them.
+
+The same shape of gap as D-059's actor filter and D-068's classification guard, arriving in
+a new place: not a rule nothing evaluated, but a **conversion nothing exercised**. The fix
+states the wire form explicitly and pins it on both sides — a host test on the exact
+strings, and a live test that reads the real column and requires the client to parse it —
+so neither can be edited into agreement with the other.
+
+Recorded beside it, because it is the same lesson about evidence: **the live backend suite
+had been failing since Slice 4 and was carried forward rather than run** (D-107). Its
+`phase-a` still asserted that no tax rule is configured, which the verified baseline made
+false. Carried-forward is not re-verified, and this is what that distinction is for.
 
 **D-074 — a retained document belongs to whoever queued it.** D-070 established that a
 confirmed revocation takes the revoked property's synced figures out of the browsable

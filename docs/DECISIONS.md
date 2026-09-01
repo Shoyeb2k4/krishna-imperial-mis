@@ -3207,3 +3207,174 @@ because in both cases the code says what its author meant — it is the *environ
 defaults* (PUBLIC EXECUTE, and what `security_invoker` implies about privileges) that
 differ from the intent. That is the argument for keeping invariants that fail the deploy
 rather than tests that describe the deploy.
+
+---
+
+# Phase 4 Slice 4 audit corrections and Slice 5 — offline resolution (2026-09-01)
+
+## D-102 — A0 made mechanical: provenance is checked, not asserted
+**Date:** 2026-09-01 · **Status:** Accepted — **completes A0**
+
+**Context.** The Slice 4 report claimed "seven migrations, all committed" while the
+repository held **two** files for **seven** ledger versions. The SQL was equivalent. The
+provenance was not, and equivalence is not what an audit trail is for (D-056).
+
+The first correction split the files and wrote `supabase/migrations/LEDGER.md`. That was
+still a hand-maintained table, which is the same shape of thing as the reviewed API
+surface — and the API surface list only stayed honest because a migration asserts it.
+
+**Decision.** A host test reads the ledger and requires every applied version to be
+accounted for by one of the two routes the ledger itself declares: a committed file whose
+name ends `_<ledger name>.sql`, or an explicit row in the grouped Phase 2/3 table. Neither
+route is "the SQL is equivalent". Every filename the ledger names must exist.
+
+**Two things it caught immediately.**
+
+1. **The A1 and A2 migrations had been applied and never committed** — the exact omission
+   A0 exists to catch, caught by A0's own check one slice later. Both were recovered
+   verbatim from the server's migration record, following D-056 rather than retyping them
+   from memory, because a file that merely resembles what ran is not provenance.
+2. **The parity migration's file was named for the version I intended, not the version
+   Supabase assigned.** Renamed to match the ledger.
+
+**Positive control:** removing the A1 file and its ledger row fails the test naming
+`20260901142248 revenue_rule_completeness`, and only that.
+
+## D-103 — A guard keyed on a naming convention stops working when the convention moves
+**Date:** 2026-09-01 · **Status:** Accepted
+
+**Context.** `migration_audit_test.dart` located the authoritative API-surface list by
+filename — the latest migration ending `_api_surface_invariant.sql`. A0's new
+one-file-per-version convention produced `..._api_surface_invariant_revenue.sql`, which
+does not match that suffix, so the test silently read a **superseded** list and reported
+four legitimately reviewed revenue RPCs as unnamed.
+
+The failure was loud, which is the only reason this is a paragraph rather than an
+incident. Had the naming drifted the other way — a new invariant file the test *did* match
+but which no longer restated the full surface — it would have gone quiet.
+
+**Decision.** The invariant file is identified by **what it does**: the migration
+containing the `v_api text[] := array[...]` declaration, taking the last one. The test also
+fails if no migration declares it at all, because "found nothing to check" must never read
+as "nothing was wrong".
+
+**The pattern, again.** D-059, D-068 and D-071 each record a rule that nothing evaluated.
+This is the adjacent failure: a rule that evaluates *the wrong thing* because it keys on
+an incidental property rather than a substantive one.
+
+## D-104 — The stored form of a tax basis is pinned, not coincidental
+**Date:** 2026-09-01 · **Status:** Accepted — **a production defect found by Slice 5**
+
+**Context.** `EnteredBasis` was persisted and parsed through Dart's `.name`, which is
+`inclusiveTotal`. Both schemas store `inclusive_total`, verified against the four live
+rules in `krishna-mis-dev`. So `EnteredBasis.fromName` would have thrown on **every rule
+carrying a basis** — which, since A1 made the column NOT NULL, is every rule that exists.
+
+It survived Slices 2 to 4 because nothing had yet read a rule out of a database into the
+domain model. The Slice 2 domain tests constructed `TaxRule` objects directly and were
+checking Dart against itself.
+
+**Decision.** `EnteredBasis.wireName` states the stored form explicitly, and `fromName`
+parses that and nothing else — an unrecognised value throws rather than defaulting,
+because there is no safe default for *"which amount is this"*. Choosing wrongly decides
+whether a recorded figure includes tax.
+
+Pinned in two places that cannot both be edited to agree with each other: a host test on
+the exact strings, and a **live** test that reads `input_basis` out of the real column and
+requires the client to parse it.
+
+## D-105 — Revenue arithmetic parity: the vectors live in the migration
+**Date:** 2026-09-01 · **Status:** Accepted
+
+**Context.** D-020 requires one calculation specification with parity proven by tests. For
+revenue there are now three executions of it: `TaxRule.compute` in Dart, the Drift-backed
+repository that feeds it, and `app.revenue_compute` in Postgres.
+
+The obvious shape — a Dart fixture list and a live test that calls the server — needed a
+public RPC wrapper around `app.revenue_compute` purely so a test could reach it. That
+expands the reviewed API surface (D-044) for no product reason, and a test-only endpoint
+in a financial system is a thing that eventually gets called.
+
+**Decision.** The vectors live **once**, in
+`20260901144002_revenue_arithmetic_parity.sql`, which asserts them against
+`app.revenue_compute` in a `do` block and **fails the deploy** rather than warning. That is
+the pattern migration 0033 already established for the business-date rule (D-067, §14.2),
+and `business_date_server_parity_test.dart` already established for reading it back.
+
+`test/support/revenue_parity_vectors.dart` parses that same table, so:
+
+* add a vector to the migration, and Dart is checked against it automatically;
+* change an expected figure, and Dart must change to match;
+* change either implementation, and the other side's assertion catches it.
+
+Thirteen vectors, chosen for where rounding actually decides something: one paisa, seven
+paise, thirty-three paise (the smallest amount where half-up matters), an amount past
+32-bit, a configured 0% beside a treatment of `none`, and both exclusive cases. **Exact
+integer equality, no tolerance**, plus a separate reconciliation assertion — because a pair
+of wrong figures can still add up.
+
+The parser refuses to run on fewer than ten vectors. A parity suite that silently checks
+nothing reports success, which is worse than having none.
+
+**Positive control:** the same assertion with one expected figure moved by a single paisa
+raises, verified against the live database.
+
+**Result:** 13 of 13 agree exactly across all three engines, and all 13 reconcile.
+
+## D-106 — `configurationUnavailable` is not `noApplicableRule`
+**Date:** 2026-09-01 · **Status:** Accepted (project-lead requirement, Slice 5)
+
+**Context.** An empty local rule query returns the same thing in two entirely different
+situations: the configuration is synchronised and genuinely has no rule for these facts, or
+this device has never received an authoritative snapshot. Both stop a revenue entry.
+
+Collapsing them is how a device with an empty cache starts telling a manager that their
+company's tax is not configured — a statement about the organisation, made on the strength
+of a network condition.
+
+**Decision.** `RevenueConfigurationUnavailable` is a first-class resolution outcome,
+decided **before** the cache is queried rather than inferred from its emptiness. Its
+evidence is an `app_meta` key written when reference configuration is pulled, not a row
+count: a confirmed revocation legitimately empties the rule cache (D-070), and "no rows"
+must never be promoted to "no rules exist".
+
+It carries *why*: `neverSynchronised` or `revoked`. The first is a message about this
+device; the second is a message about this user's access. Neither is a message about the
+tax configuration, and the wording says so.
+
+**Consequence.** A confirmed revocation therefore stops new offline revenue outright,
+rather than letting stale configuration decide a rate. An already-recorded component is
+unaffected: it carries its own rate, treatment and basis snapshot, consults no cache, and
+stays explainable with no rule rows on the device at all — proven by deleting every rule
+and reading the component back.
+
+## D-107 — The live backend suite had been failing since Slice 4, and was carried forward
+**Date:** 2026-09-01 · **Status:** Recorded
+
+Three things must be reported plainly.
+
+**1 · A stale assertion survived a checkpoint because the suite was not re-run.**
+`phase-a` asserted `snapshot.taxRules, isEmpty` with the reason *"no tax rule is
+configured, and none is invented (D-043)"*. That was true and correct through Phase 3.
+Slice 4 installed the four verified rules (D-096), so it stopped being the truth — and the
+suite was listed as *carried forward* rather than executed, which is exactly what the
+project lead had instructed must not happen. It has been restated as the stronger claim it
+should always have been: a Crystal Canopy manager receives their own property's rules and
+none of Hotel Krishna's, decided by RLS.
+
+**2 · The Slice 4 write-skew tests left 48 rows of scaffolding in the development
+project.** Their teardown *archives* what they create, which is the strongest reversal the
+real API offers — no client role holds DELETE on financial configuration (D-006), and that
+is the correct trade rather than a gap to close by granting one. The consequence is that
+archived rules accumulate across runs, so **no assertion may read `revenue_tax_rates`
+without filtering `archived_at`**. One did, and failed for that reason rather than for a
+defect. The accumulation was cleared administratively; nothing referenced it, no revenue
+exists in the project, and the append-only audit rows recording its creation remain
+(D-066).
+
+**3 · Four phases of that suite are a sequenced protocol, not self-contained tests.**
+`phase-a` to `phase-b` to `phase-c` to `multi-scope-a` to `multi-scope-b` share one
+persistent local database and require an administrative grant change between each. Run out
+of order or individually they fail by construction, which is not the same as failing. All
+seven phases were run in the documented sequence, and the grant fixture was restored to
+baseline afterwards.

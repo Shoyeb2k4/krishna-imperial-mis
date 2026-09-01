@@ -69,8 +69,22 @@ enum EnteredBasis {
   // invite recording Banquet as "none" — which D-091 argued against, because
   // `inclusiveTotal` states what the number *is* and stays true if tax is ever introduced.
 
+  /// How this value is written to both databases.
+  ///
+  /// Stated explicitly rather than taken from [name]. The two schemas store
+  /// `inclusive_total`, and a Dart enum name is `inclusiveTotal` — relying on the
+  /// coincidence of the two agreeing is how a rule becomes unreadable the moment somebody
+  /// renames a constant. Writing a revenue figure under the wrong basis decides whether a
+  /// recorded amount includes tax, so this mapping is pinned by a test.
+  String get wireName => switch (this) {
+    EnteredBasis.inclusiveTotal => 'inclusive_total',
+    EnteredBasis.preTax => 'pre_tax',
+  };
+
+  /// Parses the stored form. Accepts nothing else — an unknown basis throws rather than
+  /// defaulting, because there is no safe default for "which amount is this".
   static EnteredBasis fromName(String value) => EnteredBasis.values.firstWhere(
-    (b) => b.name == value,
+    (b) => b.wireName == value,
     orElse: () => throw ArgumentError.value(value, 'value', 'unknown basis'),
   );
 

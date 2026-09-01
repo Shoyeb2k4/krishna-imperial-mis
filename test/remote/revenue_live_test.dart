@@ -18,6 +18,10 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
+import 'package:krishna_mis/domain/tax/tax_rule.dart';
+import 'package:krishna_mis/domain/value_objects/money.dart';
+
+import '../support/revenue_parity_vectors.dart';
 
 const _identitiesVar = 'KRISHNA_DEV_IDENTITIES';
 
@@ -307,6 +311,91 @@ void main() {
     });
   });
 
+  group('three engines, one specification, exact paise (B9, B10)', () {
+    setUp(() => signInAs('giridhar@hki.com'));
+
+    test('the verified rules are stored in the form the client parses', () async {
+      // The defect this pins, found by writing the Slice 5 suite: the adapter parsed
+      // `EnteredBasis.name` (`inclusiveTotal`) while both schemas store `inclusive_total`,
+      // so every rule carrying a basis would have thrown on read. A round trip through the
+      // real column is the only thing that proves the two forms agree — a Dart-only test
+      // would have been checking Dart against itself.
+      final rules = await client
+          .from('revenue_tax_rates')
+          .select('input_basis, treatment')
+          .isFilter('archived_at', null);
+
+      expect(rules, hasLength(4));
+
+      for (final rule in rules) {
+        final basis = rule['input_basis'] as String?;
+        expect(
+          basis,
+          isNotNull,
+          reason:
+              'A1: a rule with no basis is unusable and can no longer be created',
+        );
+        expect(
+          () => EnteredBasis.fromName(basis!),
+          returnsNormally,
+          reason: 'the client must read what the server stores; got "$basis"',
+        );
+        expect(
+          () => TaxTreatment.fromName(rule['treatment'] as String),
+          returnsNormally,
+        );
+      }
+    });
+
+    test('Dart reproduces the server figures for every verified rule', () async {
+      // The server side of parity is asserted inside
+      // `20260901144002_revenue_arithmetic_parity.sql`, which fails the deploy rather than
+      // warning — the D-067 pattern. This is the other half: the same vectors, through the
+      // Dart engine, against rules read from the real database rather than from a fixture.
+      expect(File(revenueParityMigration).existsSync(), isTrue);
+
+      final rules = await client
+          .from('revenue_tax_rates')
+          .select('rate_bp, treatment, input_basis')
+          .isFilter('archived_at', null);
+
+      final vectors = readArithmeticVectors();
+      var checked = 0;
+
+      for (final rule in rules) {
+        final rateBp = rule['rate_bp'] as int;
+        final treatment = TaxTreatment.fromName(rule['treatment'] as String);
+        final basis = EnteredBasis.fromName(rule['input_basis'] as String);
+
+        for (final v in vectors.where(
+          (v) => v.rateBp == rateBp && v.treatment == treatment,
+        )) {
+          final dart = TaxRule(
+            id: 'parity',
+            revenueCategoryId: 'parity',
+            rateBasisPoints: rateBp,
+            treatment: treatment,
+            effectiveFrom: vDate('2026-04-01'),
+            inputBasis: basis,
+          ).compute(Money.fromPaise(v.entered));
+
+          expect(dart.gross.paise, v.gross, reason: '$v');
+          expect(dart.tax.paise, v.tax, reason: '$v');
+          expect(dart.net.paise, v.net, reason: '$v');
+          checked++;
+        }
+      }
+
+      expect(
+        checked,
+        greaterThan(0),
+        reason:
+            'no vector matched any live rule — the parity table and the configured rules '
+            'have drifted apart, and a suite that silently checks nothing reports success',
+      );
+    });
+  });
+
   group('two sessions cannot jointly create an ambiguous rule set (D-095)', () {
     // The test the brief calls mandatory. Each RPC call below is a separate PostgREST
     // request and therefore a separate backend transaction: genuine concurrency, not a
@@ -346,6 +435,14 @@ void main() {
     tearDown(() async {
       // Put the baseline back exactly as the migration installed it: archive anything
       // this test created, then restore the open-ended effective_to.
+      //
+      // Archive rather than delete, and not for tidiness: no client role holds DELETE on
+      // financial configuration (D-006), so this is the strongest reversal the real API
+      // offers — which is the correct trade. The consequence is that archived scaffolding
+      // accumulates in the development project across runs, so **no assertion anywhere may
+      // read `revenue_tax_rates` without filtering `archived_at`**. One did (the live
+      // backend suite's phase-a), and it failed for that reason rather than for a defect.
+      // Clearing the accumulation is an administrative action, not a client grant.
       final strays = await sessionA
           .from('revenue_tax_rates')
           .select('id')

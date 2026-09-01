@@ -168,6 +168,42 @@ final class RevenueTaxIncompleteRule extends RevenueTaxResolution {
       'It must be corrected before revenue can be recorded against it.';
 }
 
+/// Why the device cannot resolve at all — a statement about this device, not about the
+/// organisation's configuration.
+enum RevenueConfigurationGap {
+  /// No authoritative reference snapshot has ever been received here.
+  neverSynchronised,
+
+  /// The snapshot was purged by a confirmed scope revocation (D-070). Stale configuration
+  /// must not be used to create new revenue.
+  revoked,
+}
+
+/// The device has no authoritative configuration to resolve against.
+///
+/// **Deliberately not [RevenueTaxNoApplicableRule].** An empty cache and a genuinely
+/// empty configuration produce the same query result and mean entirely different things:
+/// one is a message for the Owner, the other is a message about this device. Collapsing
+/// them is how a device that has never synchronised starts telling a manager that their
+/// tax is not configured.
+///
+/// Both stop a revenue entry. They stop it for different reasons and say so.
+final class RevenueConfigurationUnavailable extends RevenueTaxResolution {
+  const RevenueConfigurationUnavailable(this.gap);
+
+  final RevenueConfigurationGap gap;
+
+  @override
+  String get message => switch (gap) {
+    RevenueConfigurationGap.neverSynchronised =>
+      'This device has not yet received the tax configuration. Connect to the internet '
+          'and try again.',
+    RevenueConfigurationGap.revoked =>
+      'Your access to this property changed. Reconnect so the current tax configuration '
+          'can be loaded before recording revenue.',
+  };
+}
+
 /// Why two rules cannot both be active.
 enum RevenueRuleConflict {
   /// Their dates overlap and no discriminator separates them — including the case where
