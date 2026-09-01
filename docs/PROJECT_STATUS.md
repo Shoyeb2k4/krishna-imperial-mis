@@ -28,29 +28,33 @@ STARTED · BLOCKED ON VERIFIED REVENUE TAX/BILLING CONFIGURATION.**
 
 Not in progress. No Phase 4 code, migration, table, RPC, widget, provider, test or
 dependency exists. The approved architecture is recorded in `ARCHITECTURE.md` §17,
-`DATABASE_SCHEMA.md` §6.1 and decisions **D-078 … D-090**, so it survives the conversation
+`DATABASE_SCHEMA.md` §6.1 and decisions **D-078 … D-091**, so it survives the conversation
 that produced it.
 
-Business evidence and project-lead confirmations through 2026-09-01 have **narrowed the
-blockers to two**. They are recorded in the *Revenue tax evidence register* below, as
-evidence — no rate, basis or date has been promoted to a rule.
+Business evidence and project-lead confirmations through 2026-09-01 have reduced the
+blockers to **one**. The verified configuration is recorded in the *Revenue tax
+configuration baseline* below — as facts, not yet as rules: nothing has been written into a
+migration, a seed or a line of code.
 
-| Blocker | State |
-|---|---|
-| **Banquet authoritative tax condition** | **Blocking** — a real invoice shows ₹0 tax; 5% applies where a banquet is billed with it. What decides between them is unstated |
-| **Effective-from dates**, all categories | **Blocking** — the evidence shows what is true now, not since when |
+| Category | Treatment | Input basis | Effective from |
+|---|---|---|---|
+| Restaurant | 5% | `inclusive_total` | **pending** |
+| Nandbhog | 5% | `inclusive_total` | **pending** |
+| Room | 5% (observed) | `inclusive_total` | **pending** |
+| Banquet | **`none`** — no GST | `inclusive_total` | **pending** |
 
-Resolved since the plan was recorded: Restaurant 5% inclusive · **Nandbhog confirmed as
-restaurant revenue at 5% inclusive, still its own category** (D-089) · Room's management
-input basis · and the input basis for all four categories, `inclusive_total` (D-090).
+**The only remaining blocker is the set of effective-from dates.** Confirming today's
+treatments does not establish when they started, and the software will not choose a date:
+that choice silently determines how any imported history is restated.
 
-Two corrections came out of that evidence and are worth carrying forward. **D-088**: the
+Three corrections came out of this evidence and are worth carrying forward. **D-088**: the
 entered-amount basis is independent of how the source invoice presents tax — the restaurant
 POS bill adds CGST and SGST to a subtotal and the management figure is nonetheless the
 tax-inclusive grand total, so inferring the basis from an invoice layout would have produced
 internally consistent, entirely wrong figures. **D-089**: Restaurant and Nandbhog share a
-treatment but not a rule — two independent rows, no inheritance, so a future change to one
-cannot silently move the other's Net Sales.
+treatment but not a rule — two independent rows, no inheritance. **D-091**: Banquet has
+exactly one rule, treatment `none`; the earlier "5% if the customer wants it" observation is
+closed as an observation and is not a dormant second rule.
 
 ---
 
@@ -418,69 +422,62 @@ reported as failed rather than re-run until it is convenient.
 **FAILED** above and in D-077, and stays recorded: it is the finding that justifies the
 whole practice of keeping a manual gate for a boundary the harness cannot drive.
 
-## Revenue tax evidence register (Phase 4 — pending configuration)
+## Revenue tax configuration baseline (Phase 4 — one item pending)
 
-Business evidence and confirmations supplied by the project lead, recorded **as evidence**.
-**Nothing here is a tax rule.** No rate, basis or date below has been written into a
-migration, a seed, a fixture or a line of code, and none will be until the pending column
-is empty and the project lead confirms (D-043, D-084).
+Business evidence and project-lead confirmations, recorded **as verified configuration
+facts**. **Nothing here is yet a tax rule in the system.** No rate, basis or date below has
+been written into a migration, a seed, a fixture or a line of code, and none will be until
+the effective-from dates are confirmed (D-043, D-084).
 
 The distinction this table keeps is the one D-088 exists for: *what a source invoice shows*
 and *what the management figure means* are two different facts, and knowing the first does
 not establish the second.
 
-| Category | Rate | Management input basis | Effective from | Status |
+| Category | Rate / treatment | Management input basis | Effective from | Status |
 |---|---|---|---|---|
-| **Restaurant** (Crystal Canopy Rooftop) | **Verified 5%** — CGST 2.5% + SGST 2.5% on the bill dated 01/09/2026 | **Verified** `inclusive_total` | **Pending** | Only the date outstanding |
-| **Nandbhog** (Crystal Canopy Rooftop) | **Verified 5%** — confirmed by the project lead, 2026-09-01: Nandbhog is restaurant revenue | **Verified** `inclusive_total` | **Pending** | Only the date outstanding |
-| **Room** (Hotel Krishna Imperial) | **Observed 5%** — one invoice, stay from 31/08/2026: base ₹2,239.00, CGST ₹55.98 + SGST ₹55.98, ₹2,350.96 before rounding | **Verified** `inclusive_total` | **Pending** | Only the date outstanding |
-| **Banquet** (Hotel Krishna Imperial) | **UNRESOLVED** — final invoice 30/08/2026 shows ₹40,343 with **Taxes ₹0**; the project lead confirms GST is **5%** where a banquet is billed with it | **Verified** `inclusive_total` | **Pending** | **Tax condition blocks entry** |
+| **Restaurant** (Crystal Canopy Rooftop) | **Verified 5%** — CGST 2.5% + SGST 2.5%, bill of 01/09/2026 | **Verified** `inclusive_total` | **Pending** | Date only |
+| **Nandbhog** (Crystal Canopy Rooftop) | **Verified 5%** — confirmed 2026-09-01; Nandbhog is restaurant revenue (D-089) | **Verified** `inclusive_total` | **Pending** | Date only |
+| **Room** (Hotel Krishna Imperial) | **Observed 5%** — invoice for the stay from 31/08/2026: base ₹2,239.00, CGST ₹55.98 + SGST ₹55.98, ₹2,350.96 before rounding | **Verified** `inclusive_total` | **Pending** | Date only |
+| **Banquet** (Hotel Krishna Imperial) | **Verified `none`** — no GST; confirmed 2026-09-01, matching the invoice of 30/08/2026 (₹40,343, taxes ₹0) (D-091) | **Verified** `inclusive_total` | **Pending** | Date only |
 
-**Management input basis, all four categories: `inclusive_total`** (D-090). The figure a
-manager records is the final customer-billed amount including GST where GST applies. This
-is a statement about what the operator means, not about how any invoice presents its tax.
+**Management input basis, all four: `inclusive_total`** (D-090). The figure a manager
+records is the final customer-billed amount including GST where GST applies. This states
+what the operator means, not how any invoice presents its tax.
 
 ### What each of these is, and is not
 
-**Restaurant and Nandbhog share a treatment; they do not share a rule.** Both are 5%
-inclusive today. They remain two independent categories with two independent rule rows, no
-inheritance and no shared row (D-089). A future change to one must not move the other's Net
-Sales, and separate reportability is the reason Nandbhog is a category at all (spec §4).
+**Restaurant and Nandbhog share a treatment; they do not share a rule.** Both 5% inclusive,
+and still two independent rule rows with no inheritance and no shared row (D-089). A future
+change to one must not move the other's Net Sales, and separate reportability is why
+Nandbhog is a category at all (spec §4).
+
+**Banquet has exactly one rule, and its treatment is `none`** (D-091). The earlier
+observation that 5% is sometimes applied is closed **as an observation**: *"customer asks
+for GST → 5%"* is not encoded, is not a rule dimension, and is not a dormant second row. A
+GST-bearing banquet supply, if it is ever needed, arrives as a separately approved rule or
+supply subtype after its accounting treatment is verified — an explicit decision, not
+something found already switched on. Two active Banquet rules would make resolution
+ambiguous, which D-084 refuses, and the refusal would present as a mysterious blocked save
+rather than as the configuration question it is.
 
 **One room invoice is one room invoice.** It shows a 5% treatment in current use at a
 ₹2,239 tariff. It does not establish that every room transaction uses the same rule at
 every tariff, and the conditional architecture (D-079, D-081) is retained precisely so a
-second band can be configured later without a redesign. Room's *input basis* is now
-confirmed and no longer blocking; its *rate* remains observed rather than stated.
+second band can be configured later without a redesign.
 
-**Banquet is the one genuinely unresolved treatment.** Two facts are recorded and neither
-is a rule:
-
-* a real final invoice shows **₹0 tax** on ₹40,343;
-* the project lead confirms that GST, where a banquet is billed with it, is **5%**.
-
-What is missing is the **authoritative condition** that decides between them.
-*"Customer asks for GST → 5%; otherwise ₹0"* is **not** being encoded, and would not be
-encodable as written even if approved: it is not one of the five bounded rule dimensions
-(D-079) — not a value band, not a supply subtype, not a premises status. If it becomes the
-confirmed treatment it needs either a new dimension, which is a migration and a decision
-taken deliberately, or modelling as a supply subtype chosen at entry. **Which of those is
-right depends on what the accounting treatment actually is**, and no rule dimension will be
-invented before that is stated. Until then Banquet revenue entry refuses (D-084), which is
-the approved behaviour and not a defect.
-
-**Confirming a rate does not confirm a date.** Evidence dated 01/09/2026 shows what is true
-now and says nothing about when it started. Defaulting to 01/04/2026 because it is the
-start of the financial year would be inventing a business fact, and it would silently
+**Confirming a rate does not confirm a date.** Evidence dated 30/08–01/09/2026 shows what
+is true now and says nothing about when it started. Defaulting to 01/04/2026 because it is
+the start of the financial year would be inventing a business fact, and it would silently
 determine how every prior month is restated if history is ever imported.
 
-### Still required — two items
+### Still required — one item
 
-1. **Banquet's authoritative tax condition.** What does the accountant say determines
-   whether a banquet transaction carries 5% GST or none? *(blocking)*
-2. **Effective-from dates**, for Restaurant, Nandbhog, Room, and Banquet once its condition
-   is known. *"These have applied since the start of FY 2026–27"* is a perfectly good
-   answer; what cannot happen is the software choosing one. *(blocking)*
+**Effective-from dates**, for all four verified treatments: Restaurant 5%, Nandbhog 5%,
+Room 5%, Banquet `none`.
+
+*"These have applied since the start of FY 2026–27"* is a perfectly good answer, and so is
+a different date per category. What cannot happen is the software choosing one. Once these
+are supplied, Phase 4 has no remaining business blocker.
 
 ## Known issues
 
@@ -555,33 +552,29 @@ decision for him, not one to be taken by starting.
 **None for Phase 3.** All were answered and implemented: revoked-scope financial retention
 (D-070), the expense edit surface (D-072a), and attachment upload (D-073a).
 
-**Two for Phase 4**, both genuine business facts rather than design choices: the
-**Banquet tax condition** and the **effective-from dates**. Confirmations through
-2026-09-01 answered the rest — see the *Revenue tax evidence register*. **Phase 4
-implementation stays blocked on these two**, and no rate, basis, band, subtype, premises
-status, rule dimension or date will be invented in the meantime (D-043, D-084).
+**One for Phase 4**, and it is a business fact rather than a design choice: the
+**effective-from dates** for the four verified treatments. Confirmations through
+2026-09-01 answered everything else — see the *Revenue tax configuration baseline*.
+**Phase 4 implementation stays blocked on it**, and no date will be inferred from an
+invoice date or defaulted to the start of the financial year (D-043, D-084).
 
 ## Project lead actions required
 
 1. ~~Two manual picker smoke tests.~~ **Done, 2026-08-31 — both PASS.**
-2. **Two remaining answers, and Phase 4 can start.** Your confirmations through
-   2026-09-01 closed the rest: Restaurant and Nandbhog are both 5% inclusive, Room's input
-   basis is settled, and all four categories record the tax-inclusive customer total. What
-   is left is in the *Revenue tax evidence register* below.
+2. **One remaining answer, and Phase 4 can start: the effective-from dates.**
 
-   1. **Banquet's tax condition.** The 30/08/2026 invoice shows ₹0 tax on ₹40,343, and you
-      have confirmed GST is 5% where a banquet is billed with it. **What does your
-      accountant say decides which applies?** Is the ₹0 invoice the normal case, and does
-      the difference turn on the kind of supply, the customer, or something else? This is
-      the one question I cannot answer from evidence, because two invoices showing two
-      outcomes do not reveal the rule that produced them.
-   2. **Effective-from dates.** For Restaurant, Nandbhog, Room, and Banquet once its
-      condition is known. *"These have applied since the start of FY 2026–27"* is a fine
-      answer; the software choosing one is not, because that choice silently determines how
-      any imported history is restated.
+   Your confirmations through 2026-09-01 settled everything else — Restaurant 5%,
+   Nandbhog 5%, Room 5%, Banquet no GST, and all four recording the tax-inclusive customer
+   total. What is left is *from when* each treatment applies.
 
-   Until each is answered that category shows *"No rule configured"* and refuses revenue
-   entry, which is the approved behaviour and not a defect (D-084).
+   *"All four have applied since the start of FY 2026–27"* is a perfectly good answer, and
+   so is a different date per category if that is the truth. What cannot happen is the
+   software choosing one: an effective-from date silently determines how every prior month
+   is restated if history is ever imported, so it is a business fact rather than a default.
+
+   Until the dates are supplied, the rules cannot be configured, the categories show
+   *"No rule configured"*, and revenue entry refuses (D-084) — the approved behaviour, not
+   a defect.
 
 3. **Optional decision:** whether archiving should also offer a *confirmed* cascade for a
    whole subtree (D-039).

@@ -2638,3 +2638,63 @@ customer total. Its **tax condition is not**: a real invoice shows ₹0 tax, and
 applied in some circumstances. What determines which is the remaining business blocker, and
 until it is answered Banquet revenue entry refuses (D-084). A confirmed basis is not a
 confirmed rule.
+
+## D-091 — Banquet carries no GST, and the earlier 5% observation is not a rule
+**Date:** 2026-09-01 · **Status:** **Verified business configuration (project-lead
+confirmation). Phase 4 still NOT implemented; no rule row is written.**
+
+**Confirmed by the project lead.** The normal and current Banquet revenue treatment is
+**without GST**.
+
+| | |
+|---|---|
+| Revenue category | Banquet (Hotel Krishna Imperial) |
+| Management input basis | `inclusive_total` |
+| Tax treatment | `none` |
+| Tax amount | ₹0 |
+| Net revenue | equal to the entered amount |
+
+```
+        Banquet Sales   ₹40,343
+          gross         ₹40,343
+          GST                ₹0
+          net           ₹40,343
+```
+
+which matches the supplied invoice of 30/08/2026 exactly: subtotal ₹40,343, taxes ₹0, net
+payable ₹40,343.
+
+**The earlier 5% observation is closed, and closed as an observation.** It was recorded
+that GST of 5% is applied to a banquet in some circumstances. That is **not** encoded, and
+specifically *"customer asks for GST → 5%"* is not becoming a rule, a dimension, or a
+hidden second rule row. **Banquet has exactly one active rule in V1, and its treatment is
+`none`.**
+
+If a distinct GST-bearing banquet supply is required later it arrives as a **separately
+approved** rule, profile or supply subtype, after its accounting treatment has been
+verified — an explicit decision with its own entry in this log, not a dormant row somebody
+finds already switched on. A second Banquet rule left active "just in case" would be worse
+than absent: it would make resolution ambiguous, which D-084 refuses outright, and the
+refusal would surface as a mysterious blocked save rather than as the configuration
+question it really is.
+
+**Why `inclusive_total` and not the `none` input basis.** With `tax_treatment = none` all
+three input bases produce identical arithmetic — tax is zero, so gross, net and the entered
+figure coincide, and the basis is arithmetically inert. Recording `inclusive_total` is
+nonetheless the better statement of fact, for two reasons:
+
+* it says what the number *is* — the final customer-billed amount — which stays true and
+  stays informative whether or not tax applies to it;
+* if a taxed banquet supply is ever introduced, the basis does not have to change. Only the
+  treatment and rate do. A basis recorded as `none` would have to be revisited, and
+  revisiting a snapshotted field is how historical figures get restated by accident.
+
+This does leave `none` as an input-basis value with no current user, which is a small
+redundancy in the domain rather than a defect: `entered_basis` answers *which number was
+typed* and `tax_treatment` answers *what tax applies to it*, and they are genuinely
+different questions even when one of them makes the other moot. Removing the value would be
+its own decision, and there is no reason to take it now.
+
+**Consequence.** The Banquet blocker is closed. All four V1 categories now have a verified
+rate and a verified input basis, and the **only** remaining Phase 4 business blocker is the
+set of **effective-from dates**.

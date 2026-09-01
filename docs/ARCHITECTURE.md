@@ -1115,9 +1115,18 @@ that status is a date-effective configured master, entered by the Owner from wha
 accountant states. The application never infers it. A rule requiring one, with none
 configured, refuses the save.
 
-**Banquet (D-083)** — `revenue_supply_subtypes` exists and **ships empty**. No subtypes
-configured means no subtype field and ordinary behaviour; subtypes configured means a
-selector and per-subtype rules. The hinge exists; no speculative subtype is invented.
+**Banquet (D-083, D-091)** — the confirmed treatment is **`none`**: no GST, tax ₹0, net
+equal to the entered customer total. **Exactly one active Banquet rule.** The earlier
+observation that 5% is sometimes applied is closed as an observation and is not encoded —
+a GST-bearing banquet supply, if ever required, arrives as a separately approved rule or
+subtype after its accounting treatment is verified. A second active rule would make
+resolution ambiguous, which D-084 refuses, and the user would meet a blocked save rather
+than the configuration question behind it.
+
+`revenue_supply_subtypes` still exists and still **ships empty**. No subtypes configured
+means no subtype field and ordinary behaviour; subtypes configured means a selector and
+per-subtype rules. The hinge exists — and is where a taxed banquet supply would most
+naturally live — but no speculative subtype is invented.
 
 **Nandbhog (D-024)** — a revenue category under Crystal Canopy Rooftop, not a business unit,
 with **no assumed tax treatment**.

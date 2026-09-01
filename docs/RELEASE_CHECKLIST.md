@@ -404,6 +404,8 @@ written afterwards to describe whatever was built.
 - [ ] Room with two bands renders two, labelled with the **configured** boundary — no
       threshold constant appears in application code
 - [ ] Banquet with no configured subtypes behaves as an ordinary category
+- [ ] Banquet resolves to **exactly one** rule whose treatment is `none`: tax ₹0, net equal
+      to the entered amount, and **no second 5% rule is active** (D-091)
 - [ ] Nandbhog is a Crystal Canopy revenue category, not a business unit, and reports
       separately from Restaurant even while both carry the same treatment
 
