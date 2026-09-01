@@ -553,7 +553,9 @@ or be duplicated.
 
 **Conditional tax rules (D-079).** `revenue_tax_rates` is extended — or replaced by
 `revenue_tax_rules` — with nullable discriminators. A null means the rule does not depend
-on that dimension; resolution is most-specific-match, deterministic, and **refuses
+on that dimension — which means it matches every value of it, so a wildcard and a
+specific rule over the same dates are a **conflict**. Resolution is
+**zero-or-exactly-one**, deterministic, and **refuses
 ambiguity rather than tiebreaking it**:
 
 ```sql

@@ -1039,7 +1039,7 @@ Five dimensions, and only five. A rule declares conditions; an entry supplies fa
 ```
 
 **Null means the rule does not depend on that dimension.** Resolution is
-most-specific-match, and three properties are load-bearing:
+**zero-or-exactly-one**, and three properties are load-bearing:
 
 * **bounded, not an expression language** — a general rules engine in the path that computes
   profit would be unauditable and is the speculative module the directive forbids. A sixth

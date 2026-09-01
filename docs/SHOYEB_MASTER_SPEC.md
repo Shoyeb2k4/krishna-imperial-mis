@@ -303,21 +303,30 @@ Dart or in a Flutter widget.** Tax is resolved from configured, date-effective d
 |---|---|
 | **revenue category** | the entry — Restaurant, Nandbhog, Room and Banquet never share a rule |
 | **effective date** | the entry's business date; historical records keep the rate correct then |
-| **value band** | the component's own amount, where accommodation value affects treatment |
+| **value band** | the configured band the operator **selects** for that component — never derived from its amount |
 | **supply subtype** | chosen on the component, where a category invoices more than one kind of supply |
 | **premises tax status** | configured per business unit, date-effective, never inferred |
 
 A null discriminator means the rule does not depend on that dimension. Resolution is
-**most-specific-match and deterministic**: the same facts on the same date give the same
+**zero-or-exactly-one, and deterministic**: the same facts on the same date give the same
 answer, on the client and on the server, permanently.
 
 This is **not a general expression language**. Adding a sixth dimension is a migration and
 a recorded decision, taken deliberately.
 
-**Ambiguity is refused, never tiebroken.** Two rules that could both match the same facts
-on the same date are rejected by a database constraint at configuration time, and an
-ambiguous resolution at entry refuses the save. Silently choosing a winner would apply a
-rate nobody approved.
+**Ambiguity is refused, never tiebroken.** For any fact set at a business date, **zero or
+exactly one** rule may match: zero refuses the entry, one resolves, and more than one is a
+configuration defect that is refused. There is no runtime specificity ranking.
+
+A `null` discriminator means *"this rule does not depend on that dimension"*, which means
+it matches **every** value of it. A wildcard rule and a specific rule over the same dates
+therefore **collide** — both match the same entry — and cannot coexist. Configuration must
+be partitioned so one fact set cannot match two rules. This is enforced at configuration
+time, in the database, and again at entry.
+
+**A value band is a configured identity the operator selects, never a figure derived from
+the amount entered.** A day's aggregate room revenue attributable to a band is not a
+per-room-per-night tariff, and the two are never compared.
 
 **Categories that share a treatment do not share a rule.** Each category holds its own
 row. There is no inheritance and no shared row, so a change to one category can never move
@@ -378,6 +387,13 @@ means one amount field, and entry is as fast as any other category; two bands me
 fields, labelled with the configured boundary. **No tariff threshold is a constant in
 application code** — the boundary is a property of the rule, so a change in treatment is a
 configuration change rather than a release.
+
+**The band is selected, not calculated.** The operator states which configured band an
+amount is attributable to; the band's own configuration carries the tariff boundary. The
+aggregate figure entered for a band is **never** compared against that boundary — a day's
+room revenue of ₹42,000 attributable to the lower band says nothing about the
+per-room-per-night tariff, and treating it as if it did would be arithmetic nonsense that
+happens to compile.
 
 ### 8.4 Revenue numbering (v1.2)
 
@@ -810,7 +826,7 @@ single day's revenue in a single category can require more than one tax rule —
 varying by accommodation value, and categories that may invoice more than one kind of
 supply. Tax resolution becomes **conditional over five bounded dimensions** — category,
 effective date, value band, supply subtype, premises tax status — deterministic,
-most-specific-match, and **refusing ambiguity rather than tiebreaking it** (§8.1). The
+zero-or-exactly-one, and **refusing ambiguity rather than tiebreaking it** (§8.1). The
 **entered basis** (`inclusive_total` · `pre_tax` · `none`) is separated from the tax
 treatment and is explicitly not inferred from how a source invoice presents tax. Room
 revenue is entered manually by value band, with the boundary coming from configuration and

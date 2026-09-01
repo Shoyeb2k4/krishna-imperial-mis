@@ -23,8 +23,7 @@ Every gate passed, including the ones that can only be passed by running the rea
 application: the Android package on a device, and the compiled Windows executable, both
 against the real `krishna-mis-dev` project, with the real development identities.
 
-**Phase 4 — Revenue Engine: IMPLEMENTATION AUTHORISED AND UNDER WAY. Slice 1 of 14
-complete.**
+**Phase 4 — Revenue Engine: IMPLEMENTATION UNDER WAY. Slices 1–2 of 14 complete.**
 
 The last business blocker closed on 2026-09-01: the project lead confirmed **effective from
 2026-04-01** for all four verified treatments, and authorised implementation.
@@ -42,6 +41,34 @@ Restaurant and Nandbhog hold independent rows and do not reference each other (D
 Banquet has exactly one rule and **no dormant 5% row** (D-091). Room's conditional
 architecture is retained: 5% is today's baseline, not a universal rate compiled into
 anything (D-081).
+
+**Slice 2 — revenue domain model and conditional tax resolver: complete.** Pure domain,
+no Drift, no Supabase, no schema change. `RevenueEntry` / `RevenueComponent` and their
+drafts; `EnteredBasis` beside `TaxTreatment`; and `RevenueTaxRuleSet.resolve` returning a
+sealed result — resolved · noApplicableRule · ambiguous · missingFact · incompleteRule — so
+the financially different failures stay different. The arithmetic is the **existing**
+`TaxRule.compute`; no second tax calculation was written. **710 host tests** (674 + 36).
+
+Two project-lead corrections landed before the code was written, and one of them would
+have produced wrong money:
+
+* **No most-specific-match, anywhere** (D-094). Zero or exactly one rule may match; more
+  than one is refused. A `null` discriminator matches *every* value, so a wildcard rule
+  **collides** with a specific one rather than losing to it. All five documents now carry
+  one doctrine instead of two phrasings of nearly the same idea.
+* **A value band is selected, not calculated** (D-094). The earlier design compared a
+  component's amount against a rule's band bounds. A day's aggregate room revenue is not a
+  per-room-per-night tariff — forty ₹1,800 rooms and five ₹8,400 rooms can report the same
+  daily total — so that comparison would have chosen a rate by arithmetic that means
+  nothing. **`RevenueTaxFacts` now carries no monetary field at all**, which makes the
+  mistake unavailable rather than merely discouraged.
+
+And two design records for Slice 4: **D-095**, that one PostgreSQL exclusion constraint
+cannot enforce the doctrine — `=` treats two NULLs as non-conflicting, which is the
+opposite of what is required — so Slice 4 combines a validating trigger with a
+`(org, category)` advisory lock against the concurrent write-skew a trigger cannot see; and
+**D-096**, the project lead's decision that the initial verified configuration ships as a
+committed migration.
 
 **Slice 1 — spec and governance: complete.** The binding specification is amended to
 **v1.2**, confined to the revenue model (D-092): §8.0 documents-with-components, §8.1
@@ -85,7 +112,7 @@ domain work is the conditional resolver, and even that is an extension of `TaxRu
 
 | # | Slice | Substance | Gate |
 |---|---|---|---|
-| **1** | **Spec and governance** | Spec §8 amended, v1.2, `CLAUDE.md` and five docs, D-092, D-093, this plan | docs consistency, secret scan |
+| ~~1~~ | ~~Spec and governance~~ **done** | Spec §8 amended, v1.2, `CLAUDE.md` and five docs, D-092, D-093, this plan | docs consistency, secret scan |
 | 2 | Domain model and resolver | `RevenueEntry` / `RevenueComponent`; `entered_basis`; conditional `TaxRuleSet.resolve(facts)`; discriminator-aware `refusalFor` (D-093); reconciliation | unit tests incl. the five D-093 rows and the refusals |
 | 3 | Local schema | Drift v11: `revenue_entries`, `revenue_components`, extended rule cache, subtype and premises-status caches | migration test v10→v11, `CacheClassification` completeness |
 | 4 | Server schema, RLS, RPC boundary | tables, the **replaced** exclusion constraint, `revenue_document` projection, `revenue_create/update/void/correct_business_date`, KI-REV sequence, audit, usage | migration audit, API-surface invariant, allow **and** deny tests |
@@ -276,7 +303,7 @@ Blocked.**
 |---|---|---|
 | `dart format --set-exit-if-changed` | **Tested** | clean (145 files) |
 | `flutter analyze` | **Tested** | **No issues found** |
-| Host test suite | **Tested** | **674 tests, all passing** |
+| Host test suite | **Tested** | **710 tests, all passing** |
 | Secret scan — tree and git history | **Tested** | clean; the scan proves its own controls on every run (D-069) |
 | Secret scan — rebuilt clean binaries | **Tested** | tree, git history and built artefacts all clean, with the scanner's controls passing |
 | Migration audit (search_path, API surface, policy boundary) | **Tested** | 14 host tests |
@@ -326,7 +353,7 @@ Blocked.**
 
 | Suite | Count | Result |
 |---|---|---|
-| Host (`flutter test`) | 674 | all passing |
+| Host (`flutter test`) | 710 | all passing |
 | Live backend against `krishna-mis-dev` (opt-in) | 19 | all passing — re-run in full |
 | Live expense suite against `krishna-mis-dev` (opt-in) | 16 | all passing — re-run in full |
 | Android Phase 2 device acceptance (real APK) | 19 | all passing |

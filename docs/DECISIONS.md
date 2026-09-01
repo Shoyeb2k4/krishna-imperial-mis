@@ -2322,7 +2322,13 @@ status, and banquet may depend on which kind of supply was invoiced.
 | premises tax status | configured per business unit, date-effective |
 
 `revenue_tax_rules` gains nullable discriminator columns. **A null means the rule does not
-depend on that dimension**, and resolution is most-specific-match.
+depend on that dimension**, which means it matches **every** value of it.
+
+**Resolution is zero-or-exactly-one, with no specificity ranking** (amended 2026-09-01,
+D-094). For any fact set at a business date: zero rules match and entry is refused;
+exactly one matches and resolves; more than one is a configuration defect and is refused.
+A wildcard does not lose to a specific rule — it **collides** with it, because both match
+the same facts. Configuration must be partitioned so one fact set cannot match two rules.
 
 **Three properties are load-bearing, and each is a deliberate refusal of a more flexible
 design.**
@@ -2735,7 +2741,7 @@ revenue model:
 * **§8.0 (new)** — a revenue entry is a document with one or more components; header totals
   reconcile exactly to component totals, enforced in the database;
 * **§8.1 (extended)** — conditional resolution over five bounded dimensions, deterministic,
-  most-specific-match, refusing ambiguity; categories that share a treatment do not share a
+  zero-or-exactly-one, refusing ambiguity; categories that share a treatment do not share a
   rule; the entered basis is separated from the treatment and is explicitly not inferred
   from how a source invoice presents tax; a missing rule is never a zero rate;
 * **§8.3 (new)** — room revenue entered manually by value band, with the boundary coming
@@ -2794,8 +2800,8 @@ overlap **and** their discriminators are not provably disjoint:
 The last row is the subtle one and is the reason this is a decision rather than a schema
 tweak. A null discriminator means *"does not depend on this dimension"*, which means it
 matches **every** value of it. A null-band rule and a `[750000, ∞)` rule therefore both
-match a ₹8,000 tariff, and most-specific-match would have to break the tie — which D-079
-forbids. So a null and a specific rule on the same dimension and dates is a **conflict**,
+match a component carrying that band, and something would have to break the tie — which
+the doctrine forbids. So a null and a specific rule on the same dimension and dates is a **conflict**,
 refused at configuration time, and the administrator must state both bands explicitly.
 
 **Consequence for the verified baseline.** All four categories are configured today with
@@ -2810,3 +2816,174 @@ the correct behaviour and is what keeps historical figures stable (§8.1).
 (domain). Both must land with tests that assert the five rows of the table above — including
 the two that must still be **refused**, because a constraint that has quietly stopped
 refusing is indistinguishable from one that works (D-069, D-077).
+
+## D-094 — Zero-or-exactly-one resolution, and a value band is selected rather than calculated
+**Date:** 2026-09-01 · **Status:** Accepted (project-lead corrections) — **implemented in
+Slice 2**, amends the wording of D-079 and D-093
+
+Two corrections from the project lead, both taken before the resolver was written. The
+second is the one that would have produced wrong money.
+
+### 1 · There is no most-specific-match, anywhere
+
+Earlier wording in D-079, D-093, `ARCHITECTURE.md`, `DATABASE_SCHEMA.md` and spec §8.1 said
+resolution was *"most-specific-match"*. That phrasing implies a runtime ranking that can
+resolve two otherwise-applicable rules, and **no such ranking exists or may exist**. The
+canonical invariant is:
+
+> For any revenue fact set at a business date, **zero or exactly one** rule may match.
+
+* zero → no-rule refusal;
+* exactly one → resolve it;
+* more than one → ambiguous configuration → **refuse**.
+
+Because `null` on a discriminator means *"does not care"*, a wildcard rule matches **every**
+value of that dimension. A wildcard rule and a specific rule over overlapping dates
+therefore both match the same entry: they represent **overlapping applicability** and must
+be rejected. A wildcard does not lose to a specific — it collides with it. Configuration
+must be partitioned so one fact set cannot match two rules.
+
+All five documents now say the same thing, and the repository has one doctrine rather than
+two phrasings of nearly the same idea.
+
+### 2 · A value band is a configured identity, not a function of the amount
+
+**This is the correction that mattered.** The earlier design compared a component's
+`entered_amount` against a rule's `value_band_min/max`. That is wrong, and wrong in a way
+that would have produced plausible-looking figures:
+
+```
+        Room Revenue · lower tariff band     ₹42,000
+```
+
+₹42,000 is the **day's aggregate revenue attributable to that band**. It is *not* the
+per-room-per-night tariff that decides the treatment. Comparing an aggregate against a
+tariff boundary is a category error — a hotel with forty ₹1,800 rooms and one with five
+₹8,400 rooms can report the same daily total — and it would have silently selected a rate
+by arithmetic that means nothing.
+
+**Decision.** The operator states which configured band an amount is attributable to. The
+band's own configuration carries the tariff boundary. The component snapshots the band
+identity, its label and its bounds so the choice is explainable, and **the bounds are never
+compared against a revenue figure**.
+
+The guarantee is structural rather than documentary: **`RevenueTaxFacts` carries no
+monetary field at all.** The resolver cannot see an amount, so no code path — present or
+future — can resolve a band from one. A test asserts the fact set exposes nothing
+money-shaped, because a comment saying "do not compare these" is the kind of rule that
+D-068 and D-077 both showed nobody evaluates.
+
+Room-by-room or PMS data remains out of V1 (spec §29). This design needs neither.
+
+### Implemented in Slice 2
+
+`lib/domain/revenue/revenue_tax_resolution.dart` — `RevenueTaxFacts` (no money),
+`RevenueTaxRuleSet.resolve` returning a sealed result, and `conflictFor` implementing
+collision detection where a wildcard collides rather than yields. 36 pure-domain tests,
+including two positive controls: inverting the doctrine to most-specific-wins fails three
+of them.
+
+**A note on how those controls were arrived at, because it is the third time.** The first
+control I wrote was a no-op — a rewrite of the predicate that was logically identical to
+the original, which passed and proved nothing. It was caught by expecting the suite to go
+red and finding it green. The same failure shape as D-074's first control and D-071's
+cleanup phase: *a check is not a check until it has been seen to fail.*
+
+## D-095 — One exclusion constraint cannot enforce the doctrine; Slice 4 needs more than that
+**Date:** 2026-09-01 · **Status:** Accepted — **design recorded now, implemented in Slice 4.
+The existing Phase 2 constraint is deliberately left in place until then.**
+
+**Context.** D-093 said the Phase 2 exclusion constraint would be "replaced by a
+discriminator-aware one". Writing the Dart resolver in Slice 2 made it clear that sentence
+was optimistic, and the project lead flagged the same thing: **do not claim one PostgreSQL
+exclusion constraint can enforce this unless it is proven.**
+
+The rule Slice 4 must enforce is:
+
+> Two active rules for one category conflict when their date ranges overlap **and**, on
+> every discriminator, either is null or they are equal.
+
+An `EXCLUDE USING gist` constraint compares operator-per-column. `daterange && daterange`
+works. But the discriminator predicate is *"NULL matches anything, otherwise equal"*, which
+is **not** `=` and is not `<>`: SQL equality on NULL yields NULL, not true, so a naive
+`value_band_id WITH =` would treat two NULL-band rules as **non-conflicting** — the exact
+opposite of what the doctrine requires, and it would let the ambiguous pair through
+silently.
+
+`IS NOT DISTINCT FROM` has the right semantics for *equality including nulls*, but that is
+still not the predicate: it makes `null` equal only to `null`, whereas here `null` must
+collide with **every** value. There is no built-in operator for "wildcard-aware overlap",
+and inventing one via a custom operator class is a large, subtle piece of database
+engineering to sit under company revenue.
+
+**Decision — Slice 4 combines mechanisms, and proves each one:**
+
+1. **Coerce where it is safe.** Map a null discriminator to a sentinel and use a range or
+   enumerated domain, so the wildcard becomes a value that genuinely overlaps every other
+   — *if* a representation can be found that gist can index without lying about the
+   semantics. To be attempted and **proven with tests before being relied on**, not
+   assumed.
+2. **A validating trigger** implementing the predicate directly, in SQL, mirroring the Dart
+   `conflictFor`. Straightforward and exact.
+3. **Serialisation against the race the trigger cannot see.** A trigger validates against
+   rows *visible to its transaction*. Two concurrent inserts, each individually valid, can
+   commit an ambiguous pair — the classic write-skew that read-validate-write invites.
+   Slice 4 therefore takes a **transaction-level advisory lock keyed on
+   `(org_id, revenue_category_id)`** before validating, so rule changes for one category
+   serialise. Rule configuration is a rare administrative act; serialising it costs
+   nothing and removes the whole class.
+
+**What must be true when Slice 4 is done, and asserted rather than argued:**
+
+* the five conflict cases from D-093's table, tested against the real database, including
+  the two that must still be **refused**;
+* a concurrency test that attempts the ambiguous pair from two sessions and shows the
+  second refused — because a constraint that only works single-threaded is a constraint
+  that works until the day it matters;
+* client-side `conflictFor` is **UX and offline resolution**, never the guarantee. The
+  server's answer is final (D-037).
+
+**Why the old constraint stays until then.** `revenue_tax_rates_no_overlap` is currently
+the thing preventing ambiguous configuration. Removing it in Slice 2 — before its
+replacement exists and is proven — would leave a window in which the database permits
+exactly what the doctrine forbids. Slice 2 changes no schema at all.
+
+## D-096 — The initial verified configuration ships as a committed migration
+**Date:** 2026-09-01 · **Status:** **Accepted (project-lead decision). Implemented in
+Slice 4, not Slice 2.**
+
+**Decision.** The initial verified FY 2026–27 revenue tax configuration — the four rules,
+effective 2026-04-01 — is created by a **committed migration**, so development, staging and
+production start from the same reviewed baseline.
+
+**Scope, deliberately narrow.** This covers the *initial verified baseline only*. Later
+operational changes to tax rules continue to go through the audited authoritative RPC path
+(`tax_rule_create` and its successors), unless a future governance decision says otherwise.
+The migration is a starting point, not a new configuration channel.
+
+**Why.** Three environments configured by hand diverge, and the divergence is invisible
+until a figure differs between them. A committed migration makes the baseline a reviewed
+diff with an author and a date, identical everywhere. A GST rate is not a secret, so §24
+and §32 are not engaged: this is master configuration, not financial history and not a
+credential.
+
+**The four rules, and nothing else:**
+
+| Category | Treatment | Rate | Basis | Effective from |
+|---|---|---|---|---|
+| Restaurant | `inclusive` | 5% | `inclusive_total` | 2026-04-01 |
+| Nandbhog | `inclusive` | 5% | `inclusive_total` | 2026-04-01 |
+| Room | `inclusive` | 5% | `inclusive_total` | 2026-04-01 |
+| Banquet | `none` | — | `inclusive_total` | 2026-04-01 |
+
+Four independent rows. **No value bands, no supply subtypes and no premises status values
+are created**, because none has been verified: Room's single rule carries a null band, which
+under D-094 is the correct representation of "the treatment does not depend on a band
+today". Nandbhog's row is independent and references nothing of Restaurant's (D-089).
+Banquet has exactly one row and no dormant 5% alternative (D-091).
+
+**The stop condition, stated in advance.** If the Slice 4 schema turns out to require a
+band identity, a subtype or a premises status that we do not have verified data for, the
+work **stops and the contradiction is surfaced** rather than resolved by inventing a value.
+On the current design it should not: every discriminator is nullable precisely so that a
+category whose treatment does not depend on a dimension says so by leaving it null.

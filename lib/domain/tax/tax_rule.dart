@@ -44,6 +44,54 @@ enum TaxTreatment {
   };
 }
 
+/// Which number the management operator types, for a rule that governs it.
+///
+/// **Related to [TaxTreatment] and not the same thing** (D-080, D-088). The treatment says
+/// what tax applies; the basis says which figure the operator was asked for. A
+/// point-of-sale bill may print `subtotal + tax = total` while the management figure
+/// recorded here is the tax-inclusive total, so the basis is never inferred from how a
+/// source document presents its arithmetic — it comes from the configured rule.
+///
+/// All four V1 categories happen to use [inclusiveTotal] today. The enum is not collapsed
+/// to match, because the rules are date-effective and a convention can change from a date
+/// (D-090).
+enum EnteredBasis {
+  /// The final customer-billed total, tax included.
+  inclusiveTotal,
+
+  /// The amount before tax.
+  preTax,
+
+  /// The amount, where no tax applies to it.
+  none;
+
+  static EnteredBasis fromName(String value) => EnteredBasis.values.firstWhere(
+    (b) => b.name == value,
+    orElse: () => throw ArgumentError.value(value, 'value', 'unknown basis'),
+  );
+
+  /// What to put above the amount field. Never universally "Gross" (D-080).
+  String get fieldLabel => switch (this) {
+    EnteredBasis.inclusiveTotal => 'Customer total (incl. GST)',
+    EnteredBasis.preTax => 'Amount before tax',
+    EnteredBasis.none => 'Amount',
+  };
+
+  /// The treatment this basis is coherent with.
+  ///
+  /// `inclusive` tax must be extracted from a total the operator typed; `exclusive` tax
+  /// must be added to a pre-tax figure they typed. The other pairings are contradictory —
+  /// "type the pre-tax amount, and the tax is already inside it" is not a thing — and are
+  /// refused as incoherent configuration rather than silently computed.
+  bool coherentWith(TaxTreatment treatment) => switch (treatment) {
+    // Arithmetically inert: tax is zero, so every basis gives the same answer. The basis
+    // still records which number was typed, which stays informative (D-091).
+    TaxTreatment.none => true,
+    TaxTreatment.inclusive => this == EnteredBasis.inclusiveTotal,
+    TaxTreatment.exclusive => this == EnteredBasis.preTax,
+  };
+}
+
 /// The result of applying a rule. Every component is stored on the revenue record, so a
 /// later rate change cannot alter it.
 @immutable
@@ -95,10 +143,54 @@ final class TaxRule {
     this.effectiveTo,
     this.archivedAt,
     this.note,
+    this.inputBasis,
+    this.valueBandId,
+    this.valueBandLabel,
+    this.valueBandFloor,
+    this.valueBandCeiling,
+    this.supplySubtypeId,
+    this.premisesStatusCode,
   });
 
   final String id;
   final String revenueCategoryId;
+
+  /// Which figure the operator types under this rule (D-080).
+  ///
+  /// Nullable because rules configured before the concept existed do not carry one. A rule
+  /// with no basis is **incomplete configuration**, and the revenue resolver refuses it
+  /// rather than assuming `inclusiveTotal` — a default here is exactly the wrong-but-
+  /// harmless-looking kind that D-090 rejects.
+  final EnteredBasis? inputBasis;
+
+  /// The configured value band this rule governs, or null for "does not depend on a band".
+  ///
+  /// **An identity, never a computation.** The band a room figure belongs to is *chosen*
+  /// from configuration, not derived from the amount: a day's aggregate room revenue of
+  /// ₹42,000 says nothing about the per-room-per-night tariff that decides the treatment
+  /// (D-094). [valueBandFloor] and [valueBandCeiling] are carried for **display and
+  /// snapshot explanation only** and are never compared against a revenue amount.
+  final String? valueBandId;
+  final String? valueBandLabel;
+  final Money? valueBandFloor;
+  final Money? valueBandCeiling;
+
+  /// The supply subtype this rule governs, or null for "does not depend on one".
+  final String? supplySubtypeId;
+
+  /// The business-unit premises tax status this rule requires, or null.
+  final String? premisesStatusCode;
+
+  /// The discriminators, in a fixed order, for conflict detection and explanation.
+  ///
+  /// A list rather than ad-hoc field access so adding a dimension is one edit and cannot
+  /// be half-applied — D-079 bounds the set deliberately, and the bound is only real if
+  /// every consumer sees the same list.
+  List<Object?> get discriminators => [
+    valueBandId,
+    supplySubtypeId,
+    premisesStatusCode,
+  ];
 
   /// Basis points: 1% = 100. A 5% rate is 500. Integers throughout, so no rate ever
   /// arrives as a float.
