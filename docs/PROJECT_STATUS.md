@@ -23,7 +23,7 @@ Every gate passed, including the ones that can only be passed by running the rea
 application: the Android package on a device, and the compiled Windows executable, both
 against the real `krishna-mis-dev` project, with the real development identities.
 
-**Phase 4 — Revenue Engine: IMPLEMENTATION UNDER WAY. Slices 1–2 of 14 complete.**
+**Phase 4 — Revenue Engine: IMPLEMENTATION UNDER WAY. Slices 1–3 of 14 complete.**
 
 The last business blocker closed on 2026-09-01: the project lead confirmed **effective from
 2026-04-01** for all four verified treatments, and authorised implementation.
@@ -41,6 +41,38 @@ Restaurant and Nandbhog hold independent rows and do not reference each other (D
 Banquet has exactly one rule and **no dormant 5% row** (D-091). Room's conditional
 architecture is retained: 5% is today's baseline, not a universal rate compiled into
 anything (D-081).
+
+**Slice 3 — local Drift schema v11: complete.** `revenue_entries` and
+`revenue_components`, plus the three reference caches the conditional model needs —
+`revenue_value_bands`, `revenue_supply_subtypes`, `business_unit_tax_statuses` — **all
+shipping empty**. `revenue_tax_rates` gains `input_basis` and the three discriminators,
+**none backfilled**: a pre-v11 rule has no authoritative answer for them, and writing
+`inclusive_total` because every verified category happens to use it would be inventing a
+business fact. Revenue reuses D-070 and D-074 rather than getting a second lifecycle; the
+purge, the retention stamp, the ownership predicate and the fail-closed quarantine all
+extend to it. **751 host tests** (720 + 31).
+
+**Header totals are not stored.** `revenue_entry_totals` derives gross, tax and net from
+the components, so there is no second copy to drift — SQLite has no deferred constraint
+trigger, and a maintaining trigger would still leave a column a future writer could set
+wrongly. A test asserts the header amount columns do not exist.
+
+Two architecture contradictions surfaced, both asked for and both real:
+
+* **D-098** — a value band needs its own master. Rule identity cannot serve as band
+  identity, because rules are superseded by date and a band is not: the same band would
+  have different ids in different periods, fragmenting reporting at every rate change and
+  making the entry form's choices vanish when a rule is end-dated.
+* **D-099** — the **local** unique index `ux_tax_rates_live_period` is D-093 mirrored. Two
+  live rules for one category from one date is exactly what two value bands are, so the
+  index would have refused configuration the server had accepted — surfacing as a sync
+  failure rather than as anything a person could act on. v11 drops it, and does not
+  replace it with a wider unique index, because uniqueness cannot express the doctrine
+  either.
+
+One Phase 3 fixture was completed rather than worked around: the v9→v10 attachment
+migration test built a database containing only the attachments table, which no real v9
+device resembles. It now carries the rule cache too.
 
 **Slice 2 — revenue domain model and conditional tax resolver: complete.** Pure domain,
 no Drift, no Supabase, no schema change. `RevenueEntry` / `RevenueComponent` and their
@@ -127,7 +159,7 @@ domain work is the conditional resolver, and even that is an extension of `TaxRu
 |---|---|---|---|
 | ~~1~~ | ~~Spec and governance~~ **done** | Spec §8 amended, v1.2, `CLAUDE.md` and five docs, D-092, D-093, this plan | docs consistency, secret scan |
 | 2 | Domain model and resolver | `RevenueEntry` / `RevenueComponent`; `entered_basis`; conditional `TaxRuleSet.resolve(facts)`; discriminator-aware `refusalFor` (D-093); reconciliation | unit tests incl. the five D-093 rows and the refusals |
-| 3 | Local schema | Drift v11: `revenue_entries`, `revenue_components`, extended rule cache, subtype and premises-status caches | migration test v10→v11, `CacheClassification` completeness |
+| ~~3~~ | ~~Local schema~~ **done** | Drift v11: `revenue_entries`, `revenue_components`, extended rule cache, subtype and premises-status caches | migration test v10→v11, `CacheClassification` completeness |
 | 4 | Server schema, RLS, RPC boundary | tables, the **replaced** exclusion constraint, `revenue_document` projection, `revenue_create/update/void/correct_business_date`, KI-REV sequence, audit, usage | migration audit, API-surface invariant, allow **and** deny tests |
 | 5 | Offline resolution and refusal | resolver over cached config; refuse-and-queue-nothing (D-086) | repository tests |
 | 6 | Sync, outbox, gateway | `RevenueGateway`, `RevenueMutationEndpoint`, `RevenuePull` | idempotency, response-loss, stale-version tests |
@@ -316,7 +348,7 @@ Blocked.**
 |---|---|---|
 | `dart format --set-exit-if-changed` | **Tested** | clean (145 files) |
 | `flutter analyze` | **Tested** | **No issues found** |
-| Host test suite | **Tested** | **720 tests, all passing** |
+| Host test suite | **Tested** | **751 tests, all passing** |
 | Secret scan — tree and git history | **Tested** | clean; the scan proves its own controls on every run (D-069) |
 | Secret scan — rebuilt clean binaries | **Tested** | tree, git history and built artefacts all clean, with the scanner's controls passing |
 | Migration audit (search_path, API surface, policy boundary) | **Tested** | 14 host tests |
@@ -366,7 +398,7 @@ Blocked.**
 
 | Suite | Count | Result |
 |---|---|---|
-| Host (`flutter test`) | 720 | all passing |
+| Host (`flutter test`) | 751 | all passing |
 | Live backend against `krishna-mis-dev` (opt-in) | 19 | all passing — re-run in full |
 | Live expense suite against `krishna-mis-dev` (opt-in) | 16 | all passing — re-run in full |
 | Android Phase 2 device acceptance (real APK) | 19 | all passing |
@@ -730,6 +762,14 @@ is listed above as not done rather than quietly assumed: there is nothing to be 
 rebuilding and scanning artefacts that will be rebuilt again after the picker tests.
 
 ## Database migration status
+
+**Local Drift schema v11.** v11 adds the revenue read model — `revenue_entries`,
+`revenue_components` — and three reference caches that ship empty: `revenue_value_bands`
+(D-098), `revenue_supply_subtypes` (D-083) and `business_unit_tax_statuses` (D-082).
+`revenue_tax_rates` gains `input_basis`, `value_band_id`, `supply_subtype_id` and
+`premises_status_code`, **all nullable and none backfilled**. The unique index
+`ux_tax_rates_live_period` is **dropped** (D-099). Revenue header totals are derived by the
+`revenue_entry_totals` view, never stored.
 
 **Local Drift schema v10.** v1 `app_meta` and `sync_outbox`; v2 masters and period locks;
 v3–v4 the Phase 2 master refinements; v5 makes `vendors.default_business_unit_id` and

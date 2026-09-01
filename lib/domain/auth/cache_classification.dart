@@ -116,6 +116,25 @@ abstract final class CacheClassification {
   /// `revenue_categories` for the same reason.
   static const List<CachedTable> tables = [
     // ── Business-unit scoped: removed when that unit is revoked ──────────────
+    // Revenue reference configuration, reached through its revenue category exactly as
+    // `revenue_tax_rates` is. Purged with the unit, and the components that used them
+    // keep their own snapshots, so a retained entry stays explainable after the rule row
+    // it named is gone (D-070 §11).
+    CachedTable(
+      'revenue_value_bands',
+      CacheOwnership.businessUnitScoped,
+      unitColumn: null,
+    ),
+    CachedTable(
+      'revenue_supply_subtypes',
+      CacheOwnership.businessUnitScoped,
+      unitColumn: null,
+    ),
+    CachedTable(
+      'business_unit_tax_statuses',
+      CacheOwnership.businessUnitScoped,
+      unitColumn: 'business_unit_id',
+    ),
     CachedTable(
       'revenue_tax_rates',
       CacheOwnership.businessUnitScoped,
@@ -202,6 +221,16 @@ abstract final class CacheClassification {
       unitColumn: 'business_unit_id',
     ),
     CachedTable('expenses', CacheOwnership.scopedFinancialHistory),
+
+    // Revenue, on the same policy and for the same reasons (Phase 4 Slice 3). Components
+    // before entries, so no step leaves an orphan. A revenue entry belongs to exactly one
+    // business unit, so unlike an expense allocation the unit is named on the header.
+    CachedTable('revenue_components', CacheOwnership.scopedFinancialHistory),
+    CachedTable(
+      'revenue_entries',
+      CacheOwnership.scopedFinancialHistory,
+      unitColumn: 'business_unit_id',
+    ),
 
     // ── User-local: never purged for any authority reason ────────────────────
     CachedTable('sync_outbox', CacheOwnership.userLocal),

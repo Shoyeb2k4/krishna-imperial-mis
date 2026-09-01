@@ -262,6 +262,27 @@ class RevenueTaxRates extends Table {
   /// `YYYY-MM-DD`, **exclusive** upper bound. Null means still in force.
   TextColumn get effectiveTo => text().nullable()();
 
+  /// Which figure the operator types under this rule: `inclusive_total` | `pre_tax`
+  /// (D-080, D-097).
+  ///
+  /// **Nullable, and deliberately not backfilled.** Rules cached before v11 predate the
+  /// concept and carry no authoritative answer; giving them one would be inventing a
+  /// business fact about whether a recorded figure includes tax. A rule with no basis is
+  /// *visibly incomplete* and the resolver refuses it (`RevenueTaxIncompleteRule`), which
+  /// is the honest outcome.
+  TextColumn get inputBasis => text().nullable()();
+
+  // ── Bounded conditional discriminators (D-079) ───────────────────────────
+  // Null means "this rule does not depend on that dimension" — which means it matches
+  // every value of it, so a null and a specific rule over the same dates collide rather
+  // than the specific one winning (D-094). None is backfilled by the v11 migration.
+  //
+  // Soft pointers: the bands and subtypes they name are reference cache that a scope
+  // revocation may purge, and a rule row must not block that purge.
+  TextColumn get valueBandId => text().nullable()();
+  TextColumn get supplySubtypeId => text().nullable()();
+  TextColumn get premisesStatusCode => text().nullable()();
+
   TextColumn get note => text().nullable()();
   DateTimeColumn get archivedAt => dateTime().nullable()();
   TextColumn get createdBy => text()();
@@ -271,6 +292,11 @@ class RevenueTaxRates extends Table {
 
   @override
   Set<Column<Object>> get primaryKey => {id};
+
+  @override
+  List<String> get customConstraints => [
+    "CHECK (input_basis IS NULL OR input_basis IN ('inclusive_total','pre_tax'))",
+  ];
 
   // No plain uniqueKeys here. A unique index over (category, effective_from) would also
   // count archived rows, so archiving a rule would permanently block its period from

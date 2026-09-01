@@ -592,7 +592,9 @@ currently carry the same 5% inclusive treatment and still hold **two independent
 (D-089), so a later change to one cannot move the other's Net Sales. A "copy from"
 convenience in the Tax screen may create a second row; it must never create a reference.
 
-**Two supporting masters.**
+**Three supporting masters** — `revenue_value_bands` exists because rule identity cannot
+serve as band identity: rules are superseded by date and a band is not (D-098). All three
+ship empty.
 
 ```sql
 -- PLANNED, NOT BUILT. Ships EMPTY (D-083).

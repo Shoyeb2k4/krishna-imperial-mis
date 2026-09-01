@@ -296,6 +296,28 @@ void main() {
       final raw = sqlite3.open(file.path);
       raw
         ..execute('PRAGMA user_version = 9')
+        // Every real v9 database has these — they arrived in v2 and v3. The fixture
+        // carried only the attachments table, which was enough until v11 began adding
+        // columns to the rule cache; a partial fixture that omits what the migration
+        // touches tests the migration against a database nobody has.
+        ..execute('''
+          CREATE TABLE revenue_categories (
+            id TEXT NOT NULL PRIMARY KEY, org_id TEXT NOT NULL,
+            business_unit_id TEXT NOT NULL, code TEXT NOT NULL, name TEXT NOT NULL,
+            sort_order INTEGER NOT NULL DEFAULT 0, archived_at TEXT NULL,
+            row_version INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL
+          )
+        ''')
+        ..execute('''
+          CREATE TABLE revenue_tax_rates (
+            id TEXT NOT NULL PRIMARY KEY, org_id TEXT NOT NULL,
+            revenue_category_id TEXT NOT NULL, rate_basis_points INTEGER NOT NULL,
+            treatment TEXT NOT NULL, effective_from TEXT NOT NULL,
+            effective_to TEXT NULL, note TEXT NULL, archived_at TEXT NULL,
+            created_by TEXT NOT NULL, created_at TEXT NOT NULL,
+            row_version INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL
+          )
+        ''')
         ..execute("""
           CREATE TABLE expense_attachments (
             id TEXT NOT NULL PRIMARY KEY,

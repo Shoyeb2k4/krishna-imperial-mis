@@ -6,6 +6,7 @@ library;
 
 import 'package:drift/drift.dart';
 import 'package:krishna_mis/data/local/expense_tables.dart';
+import 'package:krishna_mis/data/local/revenue_tables.dart';
 import 'package:krishna_mis/data/local/master_tables.dart';
 import 'package:krishna_mis/data/local/seed/master_seed.dart';
 import 'package:krishna_mis/data/local/tables.dart';
@@ -30,6 +31,11 @@ part 'app_database.g.dart';
     ExpenseAllocations,
     ExpensePeriodAllocations,
     ExpenseAttachments,
+    RevenueEntries,
+    RevenueComponents,
+    RevenueValueBands,
+    RevenueSupplySubtypes,
+    BusinessUnitTaxStatuses,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -65,10 +71,21 @@ class AppDatabase extends _$AppDatabase {
   ///      conflicted intent — needs somewhere to say it is being kept for that reason and
   ///      is not browsable financial data (D-068).
   ///
+  /// v11 — the revenue read model (Phase 4 Slice 3): `revenue_entries`,
+  ///       `revenue_components`, and the three reference caches the bounded conditional
+  ///       tax model needs — `revenue_value_bands`, `revenue_supply_subtypes` and
+  ///       `business_unit_tax_statuses`, all of which ship empty. `revenue_tax_rates`
+  ///       gains `input_basis` and the three discriminators, **none of them backfilled**:
+  ///       a pre-v11 rule has no authoritative answer for them and is left visibly
+  ///       incomplete rather than given an invented one (D-079, D-096, D-097).
+  ///
+  ///       Revenue header totals are **not stored**. `revenue_entry_totals` derives them
+  ///       from the components, so there is no second copy to drift (D-078).
+  ///
   /// Financial tables raise this number as they land, each with a migration step and a
   /// migration test (docs/RELEASE_CHECKLIST.md §C).
   @override
-  int get schemaVersion => 10;
+  int get schemaVersion => 11;
 
   /// Timestamps are stored as ISO-8601 **UTC text**, not as unix seconds.
   ///
@@ -87,7 +104,13 @@ class AppDatabase extends _$AppDatabase {
     onCreate: (m) async {
       await m.createAll();
       await _createPeriodLockUniqueIndex();
-      await _createTaxRateUniqueIndex();
+      // Deliberately **not** `_createTaxRateUniqueIndex()`. From v11 the conditional
+      // model makes that index wrong — Room's two value bands are two live rules for one
+      // category from the same date — so a fresh database must not be born with it. The
+      // helper survives only for the historical upgrade paths below, which run against
+      // schemas that predate conditional rules and then drop it at v11.
+      await _createRevenueEntryTotalsView();
+      await _createRevenueIndexes();
     },
     onUpgrade: (m, from, to) async {
       if (from < 2) {
@@ -171,6 +194,29 @@ class AppDatabase extends _$AppDatabase {
           ),
         );
       }
+      if (from < 11) {
+        // Phase 4 Slice 3. New tables, and four nullable columns on the rule cache.
+        //
+        // Nothing is backfilled, and that is the whole of the migration's opinion: a rule
+        // cached before v11 predates the concepts of an input basis and of conditional
+        // discriminators, so it carries no authoritative answer for them. Writing
+        // `inclusive_total` — even though every verified V1 category happens to use it —
+        // would be inventing a business fact about whether a recorded figure includes
+        // tax, which is the D-043 line the whole tax model is built behind. A rule with
+        // no basis is visibly incomplete and the resolver refuses it, which is correct.
+        await m.createTable(revenueEntries);
+        await m.createTable(revenueComponents);
+        await m.createTable(revenueValueBands);
+        await m.createTable(revenueSupplySubtypes);
+        await m.createTable(businessUnitTaxStatuses);
+        await _createRevenueEntryTotalsView();
+        await _replaceTaxRateUniqueIndex();
+        await m.addColumn(revenueTaxRates, revenueTaxRates.inputBasis);
+        await m.addColumn(revenueTaxRates, revenueTaxRates.valueBandId);
+        await m.addColumn(revenueTaxRates, revenueTaxRates.supplySubtypeId);
+        await m.addColumn(revenueTaxRates, revenueTaxRates.premisesStatusCode);
+        await _createRevenueIndexes();
+      }
       if (from < 9) {
         // `expenses.scope_revoked_at` (D-068). Nothing is back-filled: every row that
         // exists at upgrade time is one this user could browse, and the column means
@@ -208,6 +254,88 @@ class AppDatabase extends _$AppDatabase {
   /// precisely so a mistaken rate can be replaced. Postgres will express the full rule as
   /// an exclusion constraint over a `daterange`; this is SQLite's nearest backstop, and
   /// the repository enforces the complete non-overlap rule inside a transaction.
+  /// Derived revenue totals. There are no header total columns to drift from these.
+  ///
+  /// Raw SQL rather than a Drift `View` class: the shape is a plain aggregate and keeping
+  /// it out of code generation keeps the migration legible.
+  Future<void> _createRevenueEntryTotalsView() => customStatement(
+    'CREATE VIEW IF NOT EXISTS revenue_entry_totals AS '
+    'SELECT e.id AS revenue_entry_id, '
+    '       COALESCE(SUM(c.gross_amount_minor), 0) AS gross_minor, '
+    '       COALESCE(SUM(c.tax_amount_minor), 0)   AS tax_minor, '
+    '       COALESCE(SUM(c.net_amount_minor), 0)   AS net_minor, '
+    '       COUNT(c.id) AS component_count '
+    '  FROM revenue_entries e '
+    '  LEFT JOIN revenue_components c ON c.revenue_entry_id = e.id '
+    ' GROUP BY e.id',
+  );
+
+  /// Indexes for the queries the revenue surfaces actually run.
+  Future<void> _createRevenueIndexes() async {
+    for (final statement in const [
+      // The ledger: a unit's entries for a date range, newest first.
+      'CREATE INDEX IF NOT EXISTS ix_revenue_entries_ledger '
+          'ON revenue_entries (org_id, business_unit_id, business_date)',
+      // Period reporting and the period-lock check.
+      'CREATE INDEX IF NOT EXISTS ix_revenue_entries_period '
+          'ON revenue_entries (org_id, pnl_period_key)',
+      // The duplicate-day prompt: is there already an active entry for this
+      // unit/category/date? Deliberately **not unique** (spec §8.2).
+      'CREATE INDEX IF NOT EXISTS ix_revenue_entries_day '
+          'ON revenue_entries (business_unit_id, revenue_category_id, '
+          'business_date) WHERE voided_at IS NULL',
+      // Sync: what is outstanding, and whose it is (D-050, D-074).
+      'CREATE INDEX IF NOT EXISTS ix_revenue_entries_pending '
+          'ON revenue_entries (pending_mutation_id) '
+          'WHERE pending_mutation_id IS NOT NULL',
+      'CREATE INDEX IF NOT EXISTS ix_revenue_entries_actor '
+          'ON revenue_entries (created_by)',
+      // Retained-after-revocation lookup (D-070).
+      'CREATE INDEX IF NOT EXISTS ix_revenue_entries_revoked '
+          'ON revenue_entries (scope_revoked_at) '
+          'WHERE scope_revoked_at IS NOT NULL',
+      'CREATE UNIQUE INDEX IF NOT EXISTS ux_revenue_entries_txn '
+          'ON revenue_entries (org_id, txn_number) WHERE txn_number IS NOT NULL',
+      // Components by parent — every read of an entry needs them.
+      'CREATE INDEX IF NOT EXISTS ix_revenue_components_entry '
+          'ON revenue_components (revenue_entry_id)',
+      // Rule resolution, over the bounded dimensions.
+      'CREATE INDEX IF NOT EXISTS ix_tax_rates_resolution '
+          'ON revenue_tax_rates (revenue_category_id, effective_from) '
+          'WHERE archived_at IS NULL',
+      'CREATE INDEX IF NOT EXISTS ix_value_bands_category '
+          'ON revenue_value_bands (revenue_category_id) '
+          'WHERE archived_at IS NULL',
+      'CREATE INDEX IF NOT EXISTS ix_supply_subtypes_category '
+          'ON revenue_supply_subtypes (revenue_category_id) '
+          'WHERE archived_at IS NULL',
+      'CREATE INDEX IF NOT EXISTS ix_unit_tax_status_timeline '
+          'ON business_unit_tax_statuses (business_unit_id, effective_from)',
+    ]) {
+      await customStatement(statement);
+    }
+  }
+
+  /// Drops the pre-v11 unique index that conditional rules make wrong.
+  ///
+  /// `ux_tax_rates_live_period` was unique over `(revenue_category_id, effective_from)`
+  /// among live rules. Under the conditional model that is **too strict**: Room's two
+  /// value bands are by construction two live rules for one category from the same date,
+  /// so the index would refuse configuration the server had legitimately accepted — and
+  /// it would surface as a sync failure rather than as anything a person could act on.
+  /// The same contradiction D-093 found in the Postgres exclusion constraint, mirrored
+  /// here.
+  ///
+  /// It is **not replaced by a wider unique index**, because uniqueness cannot express
+  /// the doctrine either: a null discriminator matches every value, so a wildcard rule and
+  /// a specific one are distinct rows and a unique index would happily hold both, while
+  /// the doctrine calls them a conflict (D-094). Ambiguity is decided where the facts are
+  /// — by the resolver at read time, and authoritatively by the server (D-095). This is a
+  /// cache; it stores what the server sent.
+  Future<void> _replaceTaxRateUniqueIndex() async {
+    await customStatement('DROP INDEX IF EXISTS ux_tax_rates_live_period');
+  }
+
   Future<void> _createTaxRateUniqueIndex() => customStatement(
     'CREATE UNIQUE INDEX IF NOT EXISTS ux_tax_rates_live_period '
     'ON revenue_tax_rates (revenue_category_id, effective_from) '

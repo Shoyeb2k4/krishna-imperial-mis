@@ -3050,3 +3050,73 @@ including one asserting that an untaxed label contains no mention of GST at all.
 **Consequence.** The verified baseline is unchanged and remains configurable exactly as
 approved. Spec §8.1, `ARCHITECTURE.md` §17.3 and `DATABASE_SCHEMA.md` §6.1 drop the third
 basis value from their tables and state the non-coupling explicitly.
+
+## D-098 — A value band needs its own master; rule identity cannot serve as band identity
+**Date:** 2026-09-01 · **Status:** Accepted — **an architecture contradiction surfaced in
+Slice 3**, as the project lead's §7 asked
+
+**The question.** Slice 3 was asked to add only the reference caches the approved model
+actually needs, and specifically: if the tax rule's own identity can serve as the stable
+band the operator selects, do **not** invent another master table; if it cannot, say so
+now rather than hiding the problem in persistence.
+
+**It cannot, and the reason is dates.**
+
+Rules are date-effective and superseded. When a rate changes on 1 April, the old rule is
+end-dated and a **new row with a new id** takes over. A band is the opposite kind of
+thing: *the lower tariff band* is one business concept that persists across every rate
+change. If band identity were rule identity:
+
+* the same band would have **different identities in different periods**, so
+  `revenue_period_contributions` grouped by band (D-087) would fragment at every rate
+  change — "why did lower-band room revenue drop to zero in April?" would have no answer
+  except "it did not, the id changed";
+* the entry form's band choices would be **rule rows**, so a band would disappear from the
+  picker the moment its rule was end-dated, and reappear under a new name;
+* a component's snapshotted band would point at a rule that may be archived, conflating
+  *which band this was* with *which rule applied*, which are exactly the two facts the
+  snapshot exists to keep apart.
+
+**Decision.** `revenue_value_bands` is a master in its own right — `(id, org_id,
+revenue_category_id, code, label, floor_minor, ceiling_minor, archived_at)` — with an
+immutable `code` like every other master (D-035). Rules reference it through the nullable
+`value_band_id` discriminator; components snapshot the identity, the label and the bounds.
+
+**It ships empty.** No band exists until a real tariff boundary is verified (D-096), and
+Room's single verified rule carries a **null** band, which under D-094 is the correct
+representation of "the treatment does not depend on a band today".
+
+**The bounds are carried and never compared.** `floor_minor` and `ceiling_minor` are for
+display and historical explanation only. Nothing in the schema, and nothing in the
+resolver, compares them against a revenue amount — a day's aggregate attributable to a band
+is not a per-room-per-night tariff (D-094), and `RevenueTaxFacts` carries no money at all
+so that the comparison is unavailable rather than merely discouraged.
+
+## D-099 — The local unique tax-rate index is the D-093 contradiction, mirrored
+**Date:** 2026-09-01 · **Status:** Accepted — found in Slice 3, fixed in the v11 migration
+
+D-093 found that the Postgres exclusion constraint forbids Room's value bands. Slice 3
+found **the same contradiction in the local schema**, shipped since v3:
+
+```sql
+CREATE UNIQUE INDEX ux_tax_rates_live_period
+  ON revenue_tax_rates (revenue_category_id, effective_from)
+  WHERE archived_at IS NULL
+```
+
+Two live rules for one category from the same date is precisely what two value bands are.
+The local index would have **refused configuration the server had legitimately accepted**,
+and it would have surfaced as a sync failure — a reference pull dying on a constraint —
+rather than as anything a person could read or act on. Worse than the Postgres version, in
+that respect: at least the server refuses at configuration time, in front of the
+administrator making the change.
+
+**Decision.** v11 drops it, and a fresh v11 database is never born with it. It is **not
+replaced by a wider unique index**, because uniqueness cannot express the doctrine either:
+a null discriminator matches every value, so a wildcard rule and a specific one are
+distinct rows that a unique index would happily hold while D-094 calls them a conflict.
+
+Ambiguity is decided where the facts are — by the resolver at read time, and
+authoritatively by the server (D-095). **This is a cache; it stores what the server sent.**
+A cache that second-guesses its source with a weaker rule than the source's own is a cache
+that eventually rejects the truth.

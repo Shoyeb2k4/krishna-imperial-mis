@@ -179,7 +179,9 @@ class ScopeCachePurge {
     // longer applies. A document kept only because it carried unsent work is invisible
     // to canonical browsing; if the unit it charges is back in scope, keeping it hidden
     // would be a second, silent revocation nobody decided (D-068).
-    final restored = await _restoreBrowsability(refresh.snapshot);
+    final restored =
+        await _restoreBrowsability(refresh.snapshot) +
+        await _restoreRevenueBrowsability(refresh.snapshot);
 
     final revoked = refresh.snapshot.unitsRevokedSince(previous);
     if (revoked.isEmpty) {
@@ -252,11 +254,114 @@ class ScopeCachePurge {
   /// figures still readable. This is the fallback: nothing is destroyed, and nothing is
   /// browsable, which is the safe half of both guarantees. A successful purge afterwards
   /// clears it in the ordinary way.
-  Future<int> quarantineAllDocuments() => db.customUpdate(
-    'UPDATE expenses SET scope_revoked_at = ? WHERE scope_revoked_at IS NULL',
-    variables: [Variable<DateTime>(DateTime.now().toUtc())],
-    updates: const {},
-  );
+  /// The revenue half of [_restoreBrowsability], on the identical rule.
+  ///
+  /// A revenue entry names exactly one business unit on its header, so "every line is in
+  /// scope again" is simply "this unit is in scope again" — but the **ownership**
+  /// predicate is the same one and is not optional: holding a property does not make
+  /// somebody the author of another person's queued intent (D-074).
+  Future<int> _restoreRevenueBrowsability(AuthoritySnapshot snapshot) async {
+    const ownedByThisActor =
+        'EXISTS (SELECT 1 FROM sync_outbox o '
+        "          WHERE o.entity_type = 'revenue_entry' "
+        '            AND o.entity_id = revenue_entries.id '
+        "            AND o.status <> 'done' AND o.actor_user_id = ?)";
+
+    if (snapshot.holdsOrgWideGrant) {
+      return db.customUpdate(
+        'UPDATE revenue_entries SET scope_revoked_at = NULL '
+        'WHERE scope_revoked_at IS NOT NULL AND $ownedByThisActor',
+        variables: [Variable<String>(snapshot.userId)],
+        updates: const {},
+      );
+    }
+
+    final units = snapshot.scopedUnits;
+    if (units.isEmpty) return 0;
+    return db.customUpdate(
+      'UPDATE revenue_entries SET scope_revoked_at = NULL '
+      'WHERE scope_revoked_at IS NOT NULL AND $ownedByThisActor '
+      '  AND business_unit_id IN ${_in(units)}',
+      variables: [
+        Variable<String>(snapshot.userId),
+        for (final unit in units) Variable<String>(unit),
+      ],
+      updates: const {},
+    );
+  }
+
+  /// Purges synced revenue for [units], sparing entries that still carry unsent work.
+  ///
+  /// Simpler than its expense counterpart in one respect and identical in every other: an
+  /// entry belongs to exactly one business unit (spec §8), so there is no partially
+  /// revoked document to downgrade — the arithmetic that makes a shared expense header
+  /// dangerous has no analogue here. An entry is either in a revoked unit or it is not.
+  Future<Set<String>> _purgeRevenue(
+    Set<String> units,
+    Map<String, int> removed,
+  ) async {
+    removed['revenue_components'] = 0;
+    removed['revenue_entries'] = 0;
+
+    final touched = await _ids(
+      'SELECT id FROM revenue_entries WHERE business_unit_id IN ${_in(units)}',
+      [for (final unit in units) Variable<String>(unit)],
+    );
+    if (touched.isEmpty) return const {};
+
+    // Work this device has not delivered. Kept, stamped, and excluded from every
+    // canonical read — it exists nowhere else (D-070).
+    final retained = await _ids(
+      'SELECT e.id AS id FROM revenue_entries e WHERE e.id IN ${_in(touched)} '
+      'AND (e.pending_mutation_id IS NOT NULL OR EXISTS ('
+      '  SELECT 1 FROM sync_outbox o WHERE o.entity_type = ? '
+      '  AND o.entity_id = e.id AND o.status <> ?))',
+      [
+        for (final id in touched) Variable<String>(id),
+        Variable<String>('revenue_entry'),
+        Variable<String>(OutboxStatus.done.name),
+      ],
+    );
+
+    if (retained.isNotEmpty) {
+      await db.customUpdate(
+        'UPDATE revenue_entries SET scope_revoked_at = ? '
+        'WHERE id IN ${_in(retained)} AND scope_revoked_at IS NULL',
+        variables: [
+          Variable<DateTime>(DateTime.now().toUtc()),
+          for (final id in retained) Variable<String>(id),
+        ],
+        updates: const {},
+      );
+    }
+
+    final purgeable = touched.difference(retained);
+    if (purgeable.isEmpty) return retained;
+
+    final vars = [for (final id in purgeable) Variable<String>(id)];
+    removed['revenue_components'] = await _delete2(
+      'DELETE FROM revenue_components WHERE revenue_entry_id IN ${_in(purgeable)}',
+      vars,
+    );
+    removed['revenue_entries'] = await _delete2(
+      'DELETE FROM revenue_entries WHERE id IN ${_in(purgeable)}',
+      [for (final id in purgeable) Variable<String>(id)],
+    );
+    return retained;
+  }
+
+  Future<int> quarantineAllDocuments() async {
+    final now = DateTime.now().toUtc();
+    var stamped = 0;
+    for (final table in const ['expenses', 'revenue_entries']) {
+      stamped += await db.customUpdate(
+        'UPDATE $table SET scope_revoked_at = ? WHERE scope_revoked_at IS NULL',
+        variables: [Variable<DateTime>(now)],
+        updates: const {},
+      );
+    }
+    return stamped;
+  }
 
   /// The deletion itself, for a set of units already established as revoked.
   ///
@@ -271,16 +376,39 @@ class ScopeCachePurge {
     final outboxBefore = await _outboxCount();
     final removed = <String, int>{};
     late _FinancialPurge financial;
+    // Revenue entries kept because they still carry their actor's unsent work. Counted
+    // separately from the expense figure so the result says how many of each survived
+    // rather than blurring two different documents into one number.
+    var retainedRevenue = <String>{};
 
     await db.transaction(() async {
       // Financial documents first. They depend on nothing below them, and doing them
       // inside the same transaction is what makes "the revoked unit's figures are gone"
       // a single fact rather than two that could half-happen (D-068).
       financial = await _purgeFinancialDocuments(units, removed);
+      retainedRevenue = await _purgeRevenue(units, removed);
 
       // Then reference data, bottom-up. Each step deletes only rows reachable from the
       // revoked units, and the order guarantees a parent is never removed before its
       // children.
+      // The revenue reference caches, on the same predicate as the rules they qualify.
+      // A component that used one keeps its own snapshot, so a retained entry stays
+      // explainable after these rows are gone (D-070 §11).
+      removed['revenue_value_bands'] = await _delete(
+        'DELETE FROM revenue_value_bands WHERE revenue_category_id IN '
+        '(SELECT id FROM revenue_categories WHERE business_unit_id IN ${_in(units)})',
+        units,
+      );
+      removed['revenue_supply_subtypes'] = await _delete(
+        'DELETE FROM revenue_supply_subtypes WHERE revenue_category_id IN '
+        '(SELECT id FROM revenue_categories WHERE business_unit_id IN ${_in(units)})',
+        units,
+      );
+      removed['business_unit_tax_statuses'] = await _delete(
+        'DELETE FROM business_unit_tax_statuses '
+        'WHERE business_unit_id IN ${_in(units)}',
+        units,
+      );
       removed['revenue_tax_rates'] = await _delete(
         'DELETE FROM revenue_tax_rates WHERE revenue_category_id IN '
         '(SELECT id FROM revenue_categories WHERE business_unit_id IN ${_in(units)})',
@@ -362,7 +490,10 @@ class ScopeCachePurge {
       skippedReason: null,
       documentsRemoved: financial.removed,
       documentsDowngraded: financial.downgraded,
-      documentsRetainedForUnsyncedWork: financial.retained,
+      documentsRetainedForUnsyncedWork: {
+        ...financial.retained,
+        ...retainedRevenue,
+      },
       stagingReclaimed: reclaimed,
       physicalReclaim: physicalReclaim,
     );
