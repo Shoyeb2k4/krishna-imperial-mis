@@ -374,6 +374,8 @@ written afterwards to describe whatever was built.
 - [ ] A rule requiring a premises status, with none configured, refuses
 - [ ] A component whose value band no rule covers refuses
 - [ ] The same facts resolve identically on the client and on the server
+- [ ] **Categories that share a treatment do not share a rule** (D-089): changing
+      Restaurant's rule leaves Nandbhog's figures untouched, and vice versa
 
 ### M.2 Amount basis and arithmetic
 
@@ -402,7 +404,8 @@ written afterwards to describe whatever was built.
 - [ ] Room with two bands renders two, labelled with the **configured** boundary — no
       threshold constant appears in application code
 - [ ] Banquet with no configured subtypes behaves as an ordinary category
-- [ ] Nandbhog is a Crystal Canopy revenue category, not a business unit
+- [ ] Nandbhog is a Crystal Canopy revenue category, not a business unit, and reports
+      separately from Restaurant even while both carry the same treatment
 
 ### M.5 Offline
 

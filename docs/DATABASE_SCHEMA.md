@@ -581,6 +581,12 @@ revenue_tax_rules (
 An exclusion constraint refuses two rules that could both match the same facts on the same
 date, so ambiguity is impossible to configure rather than merely unlikely to be hit.
 
+**One row per category, always.** Resolution is by `revenue_category_id`; there is no
+inheritance between categories and no row shared by two of them. Restaurant and Nandbhog
+currently carry the same 5% inclusive treatment and still hold **two independent rows**
+(D-089), so a later change to one cannot move the other's Net Sales. A "copy from"
+convenience in the Tax screen may create a second row; it must never create a reference.
+
 **Two supporting masters.**
 
 ```sql

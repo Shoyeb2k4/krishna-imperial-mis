@@ -1086,8 +1086,22 @@ Net Sales of ₹1,00,000, every figure internally consistent, every figure wrong
 Operating Profit overstated by the entire tax component of revenue.
 
 It follows that the input basis is a **management-accounting decision per revenue
-category**, confirmed separately for each. Restaurant is confirmed `inclusive_total`; Room,
-Banquet and Nandbhog are not, and do not inherit it by proximity.
+category**, confirmed separately for each. All four V1 categories are now confirmed
+`inclusive_total` (D-090) — the manager records the final customer-billed amount including
+GST where GST applies.
+
+**That they agree is not a reason to collapse the model.** `entered_basis` stays on each
+category's rule and is snapshotted onto each component; it is not an organisation-wide
+setting, not a default in Dart, and not a fallback when a rule is silent. A rule that does
+not state a basis is unresolvable and refuses (D-084). `pre_tax` and `none` stay in the
+domain: the rules are date-effective, a convention can change from a date, and a model that
+fits only today's cases is the one rewritten the first time a new case appears.
+
+**Categories that agree today still do not share a rule.** Restaurant and Nandbhog are both
+5% inclusive and remain two independent rule rows, resolved by `revenue_category_id`, with
+no inheritance and no shared row (D-089). Copying a rule from one category to another is a
+configuration *action* producing a second independent row — never a link, because a link is
+exactly what would let one category's change move another's Net Sales.
 
 ### 17.4 Room, Restaurant, Banquet, Nandbhog
 

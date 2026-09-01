@@ -2560,3 +2560,81 @@ category**, and must be confirmed for each category separately. Restaurant is co
 (`inclusive_total`). Room, Banquet and Nandbhog are **not**, and are not to be assumed to
 match Restaurant merely because they are billed by the same business — which is the same
 discipline D-043 already applies to rates.
+
+## D-089 — Nandbhog is restaurant revenue at 5%, and remains its own category
+**Date:** 2026-09-01 · **Status:** **Verified business configuration (project-lead
+confirmation). Phase 4 still NOT implemented; no rule row is written.**
+
+**Confirmed by the project lead.** Nandbhog **is restaurant revenue**. It carries a **5%
+total GST** treatment today, and its management sales figure is the **tax-inclusive**
+customer total (`entered_basis = inclusive_total`, per D-090). Entering ₹1,00,000 for
+Nandbhog means ₹1,00,000 *including* GST; the engine extracts the configured tax component
+and derives Net Revenue, and never adds 5% on top.
+
+**It remains a revenue category under Crystal Canopy Rooftop, not a business unit** —
+D-024 is unchanged and this confirmation does not disturb it.
+
+**The part that matters architecturally: "the same treatment" is not "the same rule."**
+Restaurant and Nandbhog currently share a rate, a treatment and an input basis. They stay
+**two independent categories with two independent rule rows**:
+
+* they remain separately reportable, which is the whole reason Nandbhog is a category
+  rather than a line inside Restaurant (spec §4);
+* a future change to one **must not** alter the other. There is no inheritance, no
+  fallback to a sibling category, and no shared rule row that two categories point at.
+  Resolution is by `revenue_category_id` and always has been (D-079);
+* a convenience that "copies Restaurant's rule to Nandbhog" is acceptable as a
+  configuration *action* that creates a second, independent row. It is not acceptable as a
+  *link* between them, because the link is exactly what would make one category's change
+  propagate silently into another's Net Sales.
+
+This is the same discipline D-043 has applied since Phase 2 — no category acquires a
+treatment by proximity — applied now in the direction that is easy to get wrong: two
+categories that agree today.
+
+**Still pending for Nandbhog:** its **effective-from date**, like every other category.
+Confirming today's rate does not establish when it started, and the software will not
+choose one.
+
+## D-090 — The management sales convention is tax-inclusive, and it is configuration rather than a constant
+**Date:** 2026-09-01 · **Status:** **Verified business convention (project-lead
+confirmation). Phase 4 still NOT implemented.**
+
+**Confirmed.** For every V1 revenue category, the figure a manager records is the **final
+customer-billed amount including GST, where GST applies**:
+
+| Category | `entered_basis` |
+|---|---|
+| Restaurant | `inclusive_total` |
+| Nandbhog | `inclusive_total` |
+| Room | `inclusive_total` |
+| Banquet | `inclusive_total` |
+
+This resolves the question that had been blocking Room. It is a statement about **what the
+management user means when they type a sales figure** — nothing more, and in particular it
+is *not* a statement about how any source invoice presents its tax (D-088). The Crystal
+Canopy POS bill still shows `subtotal + CGST + SGST = grand total`, and the management
+figure is still the grand total. Both remain true.
+
+**Three things this decision deliberately does not become.**
+
+1. **Not a constant.** `inclusive_total` is recorded on each category's configured rule and
+   snapshotted onto each component, exactly as the rate is (D-080). It is not a default in
+   Dart, not a fallback when a rule is silent, and not an assumption the resolver makes.
+   A category whose rule does not state a basis is unresolvable and refuses (D-084).
+2. **Not permanent.** The rules are date-effective. If a category's convention ever changes,
+   it changes from a date, and figures recorded before that date keep the basis they were
+   recorded under — which is the entire reason the basis is snapshotted rather than looked
+   up at read time.
+3. **Not a reason to simplify the model.** All four categories agreeing today does not
+   justify collapsing `entered_basis` to a single organisation-wide setting, nor removing
+   `pre_tax` and `none` from the domain. The conditional architecture (D-079) and the three
+   bases (D-080) stay as approved: Banquet's own treatment is still unresolved, and a model
+   that fits only the cases known today is the model that has to be rewritten the first
+   time a new one appears.
+
+**Consequence for Banquet.** Its *basis* is confirmed — a banquet sales figure is the
+customer total. Its **tax condition is not**: a real invoice shows ₹0 tax, and 5% is
+applied in some circumstances. What determines which is the remaining business blocker, and
+until it is answered Banquet revenue entry refuses (D-084). A confirmed basis is not a
+confirmed rule.
