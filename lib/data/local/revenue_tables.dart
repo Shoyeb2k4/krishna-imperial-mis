@@ -294,8 +294,20 @@ class BusinessUnitTaxStatuses extends Table {
   /// Soft pointer: this row outlives a purged unit exactly as expense history does.
   TextColumn get businessUnitId => text()();
 
-  /// `YYYY-MM-DD`, inclusive lower bound. Open-ended until superseded.
+  /// `YYYY-MM-DD`, inclusive lower bound.
   TextColumn get effectiveFrom => text()();
+
+  /// `YYYY-MM-DD`, **exclusive** upper bound. Null means still in force.
+  ///
+  /// Added by the A2 audit. Without it the cache could hold two open-ended statuses for
+  /// one unit and the offline resolver would have to pick "the latest start" — a ranking,
+  /// which is exactly what D-094 forbids for a tax fact. The server enforces
+  /// non-overlap with an exclusion constraint; this column is what lets the cache
+  /// represent that timeline faithfully rather than approximate it.
+  TextColumn get effectiveTo => text().nullable()();
+
+  DateTimeColumn get archivedAt => dateTime().nullable()();
+
   TextColumn get statusCode => text()();
   TextColumn get note => text().nullable()();
 
@@ -308,6 +320,7 @@ class BusinessUnitTaxStatuses extends Table {
   @override
   List<String> get customConstraints => [
     "CHECK (effective_from LIKE '____-__-__')",
+    "CHECK (effective_to IS NULL OR effective_to > effective_from)",
     'CHECK (length(trim(status_code)) > 0)',
   ];
 }

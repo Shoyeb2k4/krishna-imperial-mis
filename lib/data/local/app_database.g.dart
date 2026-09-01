@@ -15666,6 +15666,28 @@ class $BusinessUnitTaxStatusesTable extends BusinessUnitTaxStatuses
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _effectiveToMeta = const VerificationMeta(
+    'effectiveTo',
+  );
+  @override
+  late final GeneratedColumn<String> effectiveTo = GeneratedColumn<String>(
+    'effective_to',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _archivedAtMeta = const VerificationMeta(
+    'archivedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> archivedAt = GeneratedColumn<DateTime>(
+    'archived_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _statusCodeMeta = const VerificationMeta(
     'statusCode',
   );
@@ -15715,6 +15737,8 @@ class $BusinessUnitTaxStatusesTable extends BusinessUnitTaxStatuses
     orgId,
     businessUnitId,
     effectiveFrom,
+    effectiveTo,
+    archivedAt,
     statusCode,
     note,
     rowVersion,
@@ -15766,6 +15790,21 @@ class $BusinessUnitTaxStatusesTable extends BusinessUnitTaxStatuses
       );
     } else if (isInserting) {
       context.missing(_effectiveFromMeta);
+    }
+    if (data.containsKey('effective_to')) {
+      context.handle(
+        _effectiveToMeta,
+        effectiveTo.isAcceptableOrUnknown(
+          data['effective_to']!,
+          _effectiveToMeta,
+        ),
+      );
+    }
+    if (data.containsKey('archived_at')) {
+      context.handle(
+        _archivedAtMeta,
+        archivedAt.isAcceptableOrUnknown(data['archived_at']!, _archivedAtMeta),
+      );
     }
     if (data.containsKey('status_code')) {
       context.handle(
@@ -15823,6 +15862,14 @@ class $BusinessUnitTaxStatusesTable extends BusinessUnitTaxStatuses
         DriftSqlType.string,
         data['${effectivePrefix}effective_from'],
       )!,
+      effectiveTo: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}effective_to'],
+      ),
+      archivedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}archived_at'],
+      ),
       statusCode: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}status_code'],
@@ -15856,8 +15903,18 @@ class BusinessUnitTaxStatusRow extends DataClass
   /// Soft pointer: this row outlives a purged unit exactly as expense history does.
   final String businessUnitId;
 
-  /// `YYYY-MM-DD`, inclusive lower bound. Open-ended until superseded.
+  /// `YYYY-MM-DD`, inclusive lower bound.
   final String effectiveFrom;
+
+  /// `YYYY-MM-DD`, **exclusive** upper bound. Null means still in force.
+  ///
+  /// Added by the A2 audit. Without it the cache could hold two open-ended statuses for
+  /// one unit and the offline resolver would have to pick "the latest start" — a ranking,
+  /// which is exactly what D-094 forbids for a tax fact. The server enforces
+  /// non-overlap with an exclusion constraint; this column is what lets the cache
+  /// represent that timeline faithfully rather than approximate it.
+  final String? effectiveTo;
+  final DateTime? archivedAt;
   final String statusCode;
   final String? note;
   final int rowVersion;
@@ -15867,6 +15924,8 @@ class BusinessUnitTaxStatusRow extends DataClass
     required this.orgId,
     required this.businessUnitId,
     required this.effectiveFrom,
+    this.effectiveTo,
+    this.archivedAt,
     required this.statusCode,
     this.note,
     required this.rowVersion,
@@ -15879,6 +15938,12 @@ class BusinessUnitTaxStatusRow extends DataClass
     map['org_id'] = Variable<String>(orgId);
     map['business_unit_id'] = Variable<String>(businessUnitId);
     map['effective_from'] = Variable<String>(effectiveFrom);
+    if (!nullToAbsent || effectiveTo != null) {
+      map['effective_to'] = Variable<String>(effectiveTo);
+    }
+    if (!nullToAbsent || archivedAt != null) {
+      map['archived_at'] = Variable<DateTime>(archivedAt);
+    }
     map['status_code'] = Variable<String>(statusCode);
     if (!nullToAbsent || note != null) {
       map['note'] = Variable<String>(note);
@@ -15894,6 +15959,12 @@ class BusinessUnitTaxStatusRow extends DataClass
       orgId: Value(orgId),
       businessUnitId: Value(businessUnitId),
       effectiveFrom: Value(effectiveFrom),
+      effectiveTo: effectiveTo == null && nullToAbsent
+          ? const Value.absent()
+          : Value(effectiveTo),
+      archivedAt: archivedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(archivedAt),
       statusCode: Value(statusCode),
       note: note == null && nullToAbsent ? const Value.absent() : Value(note),
       rowVersion: Value(rowVersion),
@@ -15911,6 +15982,8 @@ class BusinessUnitTaxStatusRow extends DataClass
       orgId: serializer.fromJson<String>(json['orgId']),
       businessUnitId: serializer.fromJson<String>(json['businessUnitId']),
       effectiveFrom: serializer.fromJson<String>(json['effectiveFrom']),
+      effectiveTo: serializer.fromJson<String?>(json['effectiveTo']),
+      archivedAt: serializer.fromJson<DateTime?>(json['archivedAt']),
       statusCode: serializer.fromJson<String>(json['statusCode']),
       note: serializer.fromJson<String?>(json['note']),
       rowVersion: serializer.fromJson<int>(json['rowVersion']),
@@ -15925,6 +15998,8 @@ class BusinessUnitTaxStatusRow extends DataClass
       'orgId': serializer.toJson<String>(orgId),
       'businessUnitId': serializer.toJson<String>(businessUnitId),
       'effectiveFrom': serializer.toJson<String>(effectiveFrom),
+      'effectiveTo': serializer.toJson<String?>(effectiveTo),
+      'archivedAt': serializer.toJson<DateTime?>(archivedAt),
       'statusCode': serializer.toJson<String>(statusCode),
       'note': serializer.toJson<String?>(note),
       'rowVersion': serializer.toJson<int>(rowVersion),
@@ -15937,6 +16012,8 @@ class BusinessUnitTaxStatusRow extends DataClass
     String? orgId,
     String? businessUnitId,
     String? effectiveFrom,
+    Value<String?> effectiveTo = const Value.absent(),
+    Value<DateTime?> archivedAt = const Value.absent(),
     String? statusCode,
     Value<String?> note = const Value.absent(),
     int? rowVersion,
@@ -15946,6 +16023,8 @@ class BusinessUnitTaxStatusRow extends DataClass
     orgId: orgId ?? this.orgId,
     businessUnitId: businessUnitId ?? this.businessUnitId,
     effectiveFrom: effectiveFrom ?? this.effectiveFrom,
+    effectiveTo: effectiveTo.present ? effectiveTo.value : this.effectiveTo,
+    archivedAt: archivedAt.present ? archivedAt.value : this.archivedAt,
     statusCode: statusCode ?? this.statusCode,
     note: note.present ? note.value : this.note,
     rowVersion: rowVersion ?? this.rowVersion,
@@ -15963,6 +16042,12 @@ class BusinessUnitTaxStatusRow extends DataClass
       effectiveFrom: data.effectiveFrom.present
           ? data.effectiveFrom.value
           : this.effectiveFrom,
+      effectiveTo: data.effectiveTo.present
+          ? data.effectiveTo.value
+          : this.effectiveTo,
+      archivedAt: data.archivedAt.present
+          ? data.archivedAt.value
+          : this.archivedAt,
       statusCode: data.statusCode.present
           ? data.statusCode.value
           : this.statusCode,
@@ -15981,6 +16066,8 @@ class BusinessUnitTaxStatusRow extends DataClass
           ..write('orgId: $orgId, ')
           ..write('businessUnitId: $businessUnitId, ')
           ..write('effectiveFrom: $effectiveFrom, ')
+          ..write('effectiveTo: $effectiveTo, ')
+          ..write('archivedAt: $archivedAt, ')
           ..write('statusCode: $statusCode, ')
           ..write('note: $note, ')
           ..write('rowVersion: $rowVersion, ')
@@ -15995,6 +16082,8 @@ class BusinessUnitTaxStatusRow extends DataClass
     orgId,
     businessUnitId,
     effectiveFrom,
+    effectiveTo,
+    archivedAt,
     statusCode,
     note,
     rowVersion,
@@ -16008,6 +16097,8 @@ class BusinessUnitTaxStatusRow extends DataClass
           other.orgId == this.orgId &&
           other.businessUnitId == this.businessUnitId &&
           other.effectiveFrom == this.effectiveFrom &&
+          other.effectiveTo == this.effectiveTo &&
+          other.archivedAt == this.archivedAt &&
           other.statusCode == this.statusCode &&
           other.note == this.note &&
           other.rowVersion == this.rowVersion &&
@@ -16020,6 +16111,8 @@ class BusinessUnitTaxStatusesCompanion
   final Value<String> orgId;
   final Value<String> businessUnitId;
   final Value<String> effectiveFrom;
+  final Value<String?> effectiveTo;
+  final Value<DateTime?> archivedAt;
   final Value<String> statusCode;
   final Value<String?> note;
   final Value<int> rowVersion;
@@ -16030,6 +16123,8 @@ class BusinessUnitTaxStatusesCompanion
     this.orgId = const Value.absent(),
     this.businessUnitId = const Value.absent(),
     this.effectiveFrom = const Value.absent(),
+    this.effectiveTo = const Value.absent(),
+    this.archivedAt = const Value.absent(),
     this.statusCode = const Value.absent(),
     this.note = const Value.absent(),
     this.rowVersion = const Value.absent(),
@@ -16041,6 +16136,8 @@ class BusinessUnitTaxStatusesCompanion
     required String orgId,
     required String businessUnitId,
     required String effectiveFrom,
+    this.effectiveTo = const Value.absent(),
+    this.archivedAt = const Value.absent(),
     required String statusCode,
     this.note = const Value.absent(),
     this.rowVersion = const Value.absent(),
@@ -16057,6 +16154,8 @@ class BusinessUnitTaxStatusesCompanion
     Expression<String>? orgId,
     Expression<String>? businessUnitId,
     Expression<String>? effectiveFrom,
+    Expression<String>? effectiveTo,
+    Expression<DateTime>? archivedAt,
     Expression<String>? statusCode,
     Expression<String>? note,
     Expression<int>? rowVersion,
@@ -16068,6 +16167,8 @@ class BusinessUnitTaxStatusesCompanion
       if (orgId != null) 'org_id': orgId,
       if (businessUnitId != null) 'business_unit_id': businessUnitId,
       if (effectiveFrom != null) 'effective_from': effectiveFrom,
+      if (effectiveTo != null) 'effective_to': effectiveTo,
+      if (archivedAt != null) 'archived_at': archivedAt,
       if (statusCode != null) 'status_code': statusCode,
       if (note != null) 'note': note,
       if (rowVersion != null) 'row_version': rowVersion,
@@ -16081,6 +16182,8 @@ class BusinessUnitTaxStatusesCompanion
     Value<String>? orgId,
     Value<String>? businessUnitId,
     Value<String>? effectiveFrom,
+    Value<String?>? effectiveTo,
+    Value<DateTime?>? archivedAt,
     Value<String>? statusCode,
     Value<String?>? note,
     Value<int>? rowVersion,
@@ -16092,6 +16195,8 @@ class BusinessUnitTaxStatusesCompanion
       orgId: orgId ?? this.orgId,
       businessUnitId: businessUnitId ?? this.businessUnitId,
       effectiveFrom: effectiveFrom ?? this.effectiveFrom,
+      effectiveTo: effectiveTo ?? this.effectiveTo,
+      archivedAt: archivedAt ?? this.archivedAt,
       statusCode: statusCode ?? this.statusCode,
       note: note ?? this.note,
       rowVersion: rowVersion ?? this.rowVersion,
@@ -16114,6 +16219,12 @@ class BusinessUnitTaxStatusesCompanion
     }
     if (effectiveFrom.present) {
       map['effective_from'] = Variable<String>(effectiveFrom.value);
+    }
+    if (effectiveTo.present) {
+      map['effective_to'] = Variable<String>(effectiveTo.value);
+    }
+    if (archivedAt.present) {
+      map['archived_at'] = Variable<DateTime>(archivedAt.value);
     }
     if (statusCode.present) {
       map['status_code'] = Variable<String>(statusCode.value);
@@ -16140,6 +16251,8 @@ class BusinessUnitTaxStatusesCompanion
           ..write('orgId: $orgId, ')
           ..write('businessUnitId: $businessUnitId, ')
           ..write('effectiveFrom: $effectiveFrom, ')
+          ..write('effectiveTo: $effectiveTo, ')
+          ..write('archivedAt: $archivedAt, ')
           ..write('statusCode: $statusCode, ')
           ..write('note: $note, ')
           ..write('rowVersion: $rowVersion, ')
@@ -26654,6 +26767,8 @@ typedef $$BusinessUnitTaxStatusesTableCreateCompanionBuilder =
       required String orgId,
       required String businessUnitId,
       required String effectiveFrom,
+      Value<String?> effectiveTo,
+      Value<DateTime?> archivedAt,
       required String statusCode,
       Value<String?> note,
       Value<int> rowVersion,
@@ -26666,6 +26781,8 @@ typedef $$BusinessUnitTaxStatusesTableUpdateCompanionBuilder =
       Value<String> orgId,
       Value<String> businessUnitId,
       Value<String> effectiveFrom,
+      Value<String?> effectiveTo,
+      Value<DateTime?> archivedAt,
       Value<String> statusCode,
       Value<String?> note,
       Value<int> rowVersion,
@@ -26699,6 +26816,16 @@ class $$BusinessUnitTaxStatusesTableFilterComposer
 
   ColumnFilters<String> get effectiveFrom => $composableBuilder(
     column: $table.effectiveFrom,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get effectiveTo => $composableBuilder(
+    column: $table.effectiveTo,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get archivedAt => $composableBuilder(
+    column: $table.archivedAt,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -26752,6 +26879,16 @@ class $$BusinessUnitTaxStatusesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get effectiveTo => $composableBuilder(
+    column: $table.effectiveTo,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get archivedAt => $composableBuilder(
+    column: $table.archivedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get statusCode => $composableBuilder(
     column: $table.statusCode,
     builder: (column) => ColumnOrderings(column),
@@ -26795,6 +26932,16 @@ class $$BusinessUnitTaxStatusesTableAnnotationComposer
 
   GeneratedColumn<String> get effectiveFrom => $composableBuilder(
     column: $table.effectiveFrom,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get effectiveTo => $composableBuilder(
+    column: $table.effectiveTo,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get archivedAt => $composableBuilder(
+    column: $table.archivedAt,
     builder: (column) => column,
   );
 
@@ -26865,6 +27012,8 @@ class $$BusinessUnitTaxStatusesTableTableManager
                 Value<String> orgId = const Value.absent(),
                 Value<String> businessUnitId = const Value.absent(),
                 Value<String> effectiveFrom = const Value.absent(),
+                Value<String?> effectiveTo = const Value.absent(),
+                Value<DateTime?> archivedAt = const Value.absent(),
                 Value<String> statusCode = const Value.absent(),
                 Value<String?> note = const Value.absent(),
                 Value<int> rowVersion = const Value.absent(),
@@ -26875,6 +27024,8 @@ class $$BusinessUnitTaxStatusesTableTableManager
                 orgId: orgId,
                 businessUnitId: businessUnitId,
                 effectiveFrom: effectiveFrom,
+                effectiveTo: effectiveTo,
+                archivedAt: archivedAt,
                 statusCode: statusCode,
                 note: note,
                 rowVersion: rowVersion,
@@ -26887,6 +27038,8 @@ class $$BusinessUnitTaxStatusesTableTableManager
                 required String orgId,
                 required String businessUnitId,
                 required String effectiveFrom,
+                Value<String?> effectiveTo = const Value.absent(),
+                Value<DateTime?> archivedAt = const Value.absent(),
                 required String statusCode,
                 Value<String?> note = const Value.absent(),
                 Value<int> rowVersion = const Value.absent(),
@@ -26897,6 +27050,8 @@ class $$BusinessUnitTaxStatusesTableTableManager
                 orgId: orgId,
                 businessUnitId: businessUnitId,
                 effectiveFrom: effectiveFrom,
+                effectiveTo: effectiveTo,
+                archivedAt: archivedAt,
                 statusCode: statusCode,
                 note: note,
                 rowVersion: rowVersion,

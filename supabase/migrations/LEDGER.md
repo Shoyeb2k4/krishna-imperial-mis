@@ -1,0 +1,123 @@
+# Migration provenance ledger
+
+Every migration version `krishna-mis-dev` believes it has applied, and the committed file
+that accounts for it. Maintained deliberately, in the same spirit as the reviewed API
+surface (D-044): it is restated when it grows, and a test fails when it drifts.
+
+This exists because the Slice 4 report claimed "seven migrations, all committed" while the
+repository held **two** files for **seven** ledger versions. The SQL was equivalent;
+the provenance was not, and equivalence is not what an audit trail is for (A0).
+
+## The convention
+
+Supabase records its own application timestamp as the ledger `version`. Repository
+filenames carry an *authored* sequence number, so the two timestamps differ for the same
+migration — `conventions` is ledger `20260827130730` and file `20260827090000_conventions.sql`.
+**Matching is by name, not by version number.**
+
+From Phase 4 Slice 4 onward, each ledger version gets its own file, named
+`<ledger-version>_<ledger-name>.sql`.
+
+## Phase 2 and Phase 3 — grouped files, recorded rather than rewritten
+
+Twelve Phase 2/3 ledger entries were applied as separate steps and committed as grouped
+files. Their SQL is committed; only the one-file-per-version mapping is absent. They are
+**not** being renamed retroactively: they are settled, released history, and rewriting it
+to satisfy a convention introduced later would be a worse trade than recording the
+grouping. Each is accounted for here.
+
+| Ledger version | Ledger name | Accounted for by |
+|---|---|---|
+| 20260828165850 | `api_surface_invariant_v3` | `20260827092000_api_surface_invariant.sql` lineage — the surface is restated in full each time it grows; the newest restatement supersedes the earlier ones |
+| 20260828190824 | `api_surface_invariant_v4` | same lineage |
+| 20260829133240 | `api_surface_invariant_v5` | same lineage |
+| 20260828185444 | `expense_schema_tables` | `20260829090100_expense_schema.sql` |
+| 20260828185516 | `expense_schema_triggers` | `20260829090100_expense_schema.sql` |
+| 20260828185844 | `expense_rpc_helpers` | `20260829090400_expense_rpcs.sql` |
+| 20260828190253 | `expense_numbering_fix_ambiguity` | `20260829090200_expense_numbering.sql` |
+| 20260828190803 | `expense_trigger_function_grants` | `20260829090100_expense_schema.sql` |
+| 20260829132925 | `master_usage_historical_and_active` | `20260829100000_usage_and_attachment_storage.sql` |
+| 20260829133017 | `expense_attachment_storage` | `20260829100000_usage_and_attachment_storage.sql` |
+| 20260829133621 | `drop_superseded_record_master_usage` | `20260829100000_usage_and_attachment_storage.sql` |
+| 20260829142013 | `expense_update_accepts_either_edit_capability` | `20260829110000_edit_window_property_date.sql` |
+
+## Phase 4 Slice 4 — one file per version
+
+| Ledger version | Ledger name | Committed file |
+|---|---|---|
+| 20260901115849 | `revenue_tables` | `20260901115849_revenue_tables.sql` |
+| 20260901115939 | `revenue_tax_resolution` | `20260901115939_revenue_tax_resolution.sql` |
+| 20260901132003 | `revenue_resolver_numbering_projection` | `20260901132003_revenue_resolver_numbering_projection.sql` |
+| 20260901132148 | `revenue_rpcs` | `20260901132148_revenue_rpcs.sql` |
+| 20260901132225 | `revenue_verified_baseline_fy2627` | `20260901132225_revenue_verified_baseline_fy2627.sql` |
+| 20260901132659 | `revenue_projection_security_barrier` | `20260901132659_revenue_projection_security_barrier.sql` |
+| 20260901135812 | `api_surface_invariant_revenue` | `20260901135812_api_surface_invariant_revenue.sql` |
+
+## Phase 4 Slice 4 audit corrections (A1, A2) and Slice 5
+
+| Ledger version | Ledger name | Committed file |
+|---|---|---|
+| 20260901142347 | `premises_status_no_overlap` | `20260901142347_premises_status_no_overlap.sql` |
+| 20260901144002 | `revenue_arithmetic_parity` | `20260901144002_revenue_arithmetic_parity.sql` |
+
+The first two were applied during the audit and were **not committed at the time** — the
+same omission A0 exists to catch, caught by A0's own check one slice later. Both were
+recovered verbatim from the server's migration record (the D-056 procedure) rather than
+retyped from memory, because a file that merely resembles what ran is not provenance.
+
+## The full applied ledger, in order
+
+```
+20260827130730 conventions
+20260827130806 identity
+20260827130845 masters
+20260827130918 master_integrity
+20260827130945 user_roles
+20260827131010 period_control
+20260827131045 tax_rules
+20260827131121 audit_and_usage
+20260827131206 authorization
+20260827131256 rls
+20260827131424 master_rpcs
+20260827131555 vendor_tax_period_rpcs
+20260827131654 seed
+20260827131734 owner_bootstrap
+20260827131805 function_grants
+20260827132133 uniform_refusal_entity_type
+20260827132256 fix_restore_guard_branching
+20260827134503 user_provisioning
+20260827135003 policies_use_public_helper
+20260827135132 check_capability_before_existence
+20260827135634 api_surface_invariant
+20260828103538 my_authority
+20260828160905 user_reactivate
+20260828165850 api_surface_invariant_v3
+20260828184635 expense_capabilities
+20260828185444 expense_schema_tables
+20260828185516 expense_schema_triggers
+20260828185540 expense_numbering
+20260828185740 expense_rls
+20260828185844 expense_rpc_helpers
+20260828185938 expense_rpcs
+20260828190253 expense_numbering_fix_ambiguity
+20260828190803 expense_trigger_function_grants
+20260828190824 api_surface_invariant_v4
+20260829132925 master_usage_historical_and_active
+20260829133017 expense_attachment_storage
+20260829133240 api_surface_invariant_v5
+20260829133621 drop_superseded_record_master_usage
+20260829142013 expense_update_accepts_either_edit_capability
+20260829180301 edit_window_property_date
+20260830161150 attachment_register
+20260830164150 attachment_metadata_uses_definer_predicate
+20260901115849 revenue_tables
+20260901115939 revenue_tax_resolution
+20260901132003 revenue_resolver_numbering_projection
+20260901132148 revenue_rpcs
+20260901132225 revenue_verified_baseline_fy2627
+20260901132659 revenue_projection_security_barrier
+20260901135812 api_surface_invariant_revenue
+20260901142248 revenue_rule_completeness
+20260901142347 premises_status_no_overlap
+20260901144002 revenue_arithmetic_parity
+```

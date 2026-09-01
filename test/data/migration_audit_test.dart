@@ -40,6 +40,11 @@ Iterable<({String file, String name, String header})> _functions() sync* {
   }
 }
 
+/// The declaration of the reviewed API surface, wherever it currently lives.
+final _apiSurfaceArray = RegExp(
+  r'v_api\s+text\[\]\s*:=\s*array\[([\s\S]*?)\];',
+);
+
 void main() {
   group('privilege', () {
     test('every SECURITY DEFINER function fixes its search_path', () {
@@ -84,23 +89,105 @@ void main() {
       },
     );
 
+    test('every applied migration is accounted for by a committed file (A0)', () {
+      // A0's finding: the Slice 4 report claimed "seven migrations, all committed" while
+      // the repository held two files for seven ledger versions. The SQL was equivalent;
+      // the provenance was not, and equivalence is not what an audit trail is for.
+      //
+      // The ledger is the record. This makes it a checked one — a hand-maintained table
+      // drifts exactly like the API surface list did, and for the same reason.
+      final ledger = File('supabase/migrations/LEDGER.md').readAsStringSync();
+
+      final applied = RegExp(r'^(\d{14}) (\w+)$', multiLine: true)
+          .allMatches(
+            ledger.substring(ledger.indexOf('The full applied ledger')),
+          )
+          .map((m) => (version: m.group(1)!, name: m.group(2)!))
+          .toList();
+      expect(
+        applied.length,
+        greaterThan(40),
+        reason: 'the applied-ledger listing did not parse — the format moved',
+      );
+
+      // A version is accounted for by either route the ledger declares:
+      //
+      //   * a committed file whose name ends `_<ledger name>.sql` — the Phase 2 convention,
+      //     where the repository's authored sequence number differs from Supabase's applied
+      //     timestamp, so matching is by name; or
+      //   * an explicit row in the grouped table above, for the twelve Phase 2/3 steps that
+      //     were applied separately and committed together.
+      //
+      // Neither route is "the SQL is equivalent". Equivalence is not provenance.
+      final committed = Directory('supabase/migrations')
+          .listSync()
+          .whereType<File>()
+          .map((f) => f.uri.pathSegments.last)
+          .where((n) => n.endsWith('.sql'))
+          .toList();
+      final accounting = ledger.substring(
+        0,
+        ledger.indexOf('The full applied ledger'),
+      );
+
+      final unaccounted = [
+        for (final m in applied)
+          if (!committed.any((f) => f.endsWith('_${m.name}.sql')) &&
+              !accounting.contains(m.version))
+            '${m.version} ${m.name}',
+      ];
+      expect(
+        unaccounted,
+        isEmpty,
+        reason:
+            'an applied migration has neither a committed file bearing its name nor a row '
+            'explaining which file accounts for it. Add the file — or the row — rather '
+            'than letting the ledger describe a repository that no longer matches the '
+            'server (A0, and the D-056 rule it descends from)',
+      );
+
+      // And every file the ledger names by filename must actually exist.
+      final named = RegExp(
+        r'`(\d{14}_\w+\.sql)`',
+      ).allMatches(ledger).map((m) => m.group(1)!);
+      expect(named, isNotEmpty);
+      for (final file in named) {
+        expect(
+          File('supabase/migrations/$file').existsSync(),
+          isTrue,
+          reason: 'the ledger names $file, which is not committed',
+        );
+      }
+    });
+
     test('every function exposed in public is on the reviewed API surface', () {
       // The authoritative list lives in the *latest* migration that restates it.
       // 0015 asserted the surface when it was 19 functions long; three were added
       // afterwards, so 0021 restates it in full. Migrations are immutable history —
       // the earlier assertion was correct when it ran and is not rewritten — so this
       // test reads whichever migration currently owns the invariant.
-      final invariant = _migrations()
-          .lastWhere((m) => m.name.endsWith('_api_surface_invariant.sql'))
-          .sql;
+      //
+      // Identified by **what it does**, not by what it is called. This previously matched
+      // on the filename ending `_api_surface_invariant.sql`, so Phase 4's
+      // `..._api_surface_invariant_revenue.sql` did not match and the test silently read a
+      // superseded list — reporting four legitimately reviewed RPCs as unnamed. A guard
+      // keyed on a naming convention stops working the moment the convention moves.
+      final restatements = _migrations()
+          .where((m) => _apiSurfaceArray.hasMatch(m.sql))
+          .toList();
+      expect(
+        restatements,
+        isNotEmpty,
+        reason:
+            'no migration restates the API surface — the invariant has been lost',
+      );
+      final invariant = restatements.last.sql;
 
       final defined = <String>{
         for (final f in _functions())
           if (f.name.startsWith('public.')) f.name.substring('public.'.length),
       };
-      final declared = RegExp(
-        r'v_api\s+text\[\]\s*:=\s*array\[([\s\S]*?)\];',
-      ).firstMatch(invariant)!.group(1)!;
+      final declared = _apiSurfaceArray.firstMatch(invariant)!.group(1)!;
       final allowed = RegExp(
         r"'(\w+)'",
       ).allMatches(declared).map((m) => m.group(1)!).toSet();
