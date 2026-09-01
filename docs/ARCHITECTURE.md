@@ -1,6 +1,6 @@
 # Architecture
 
-Directive: SHOYEB-HOSPITALITY-MIS · Spec **v1.1**
+Directive: SHOYEB-HOSPITALITY-MIS · Spec **v1.2**
 Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;

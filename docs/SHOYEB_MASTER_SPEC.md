@@ -5,9 +5,9 @@ Business: Hotel Krishna Imperial
 Project: Krishna Imperial MIS
 Domain: hotelkrishnaimperial.in
 Directive ID: SHOYEB-HOSPITALITY-MIS
-Master Spec Version: **1.1**
+Master Spec Version: **1.2**
 Status: Active — binding
-Last updated: 2026-08-28
+Last updated: 2026-09-01
 
 The project lead directs this work and makes every product decision in it. He is not
 stated or implied to be the proprietor of Hotel Krishna Imperial. The application role
@@ -15,6 +15,11 @@ named **Owner** (§13.2) is a permission level in the software and is unchanged 
 
 This document is the detailed, binding product specification. `CLAUDE.md` imports it.
 Where this document and the code disagree, investigate; do not assume either is right.
+
+**Version 1.2** amends the revenue model only: a revenue entry becomes a document with one
+or more components, and tax resolution becomes conditional over five bounded dimensions,
+because the verified business treatment cannot be represented by one rate per entry (§8,
+D-078 … D-091). Nothing else in this specification changes.
 
 **Version 1.1** records the project lead's decisions on accounting basis, tax configuration,
 business-day cut-off, revenue granularity, permission scoping and period close, plus three
@@ -248,41 +253,101 @@ Business date 15 June 2026
   Hotel Krishna Imperial   Room        ₹52,000     Banquet   ₹28,500
 ```
 
-A revenue record carries: business date; business unit; revenue category; gross amount;
-tax amount; net amount; the tax rate and treatment actually applied; entry basis; notes;
-source / reference; entry kind; entered by; audit history.
+### 8.0 A revenue entry is a document with components (v1.2)
 
-`net = gross − tax` is enforced by a database check constraint.
+**Amended in v1.2.** Version 1.1 described a revenue *record* carrying one gross, one tax
+and one net amount. That shape cannot represent the verified business reality: **one day's
+revenue, in one category, can carry more than one tax treatment** — room tax may depend on
+accommodation value per room per day, and a category may invoice more than one kind of
+supply. A second rate cannot live on the header, for the same reason expense
+classification does not live on an expense header (§7).
 
-### 8.1 Tax configuration (project-lead decision)
-
-Sales figures are normally recorded **tax-inclusive** (the gross figure the guest paid).
-**No rate is hard-coded anywhere in the application.** Tax is resolved from configuration
-that varies by:
-
-- **revenue category** — Restaurant, Nandbhog, Room and Banquet are never assumed to share
-  a treatment;
-- **effective date** — rates change over time, and historical records keep the rate that
-  was correct then;
-- **treatment** — `inclusive`, `exclusive`, or `none`.
-
-The rate, treatment and configuration row actually used are **snapshotted onto the revenue
-record**, so a rate change next year can never retroactively alter last year's Net Sales.
-
-Inclusive extraction, in exact integer paise:
+A revenue entry is therefore a **document with one or more components**, mirroring the
+expense model:
 
 ```
-tax_minor = round_half_up( gross_minor × rate_bp ÷ (10000 + rate_bp) )
-net_minor = gross_minor − tax_minor
+Revenue Entry   business date · business unit · revenue category · entry kind ·
+                source reference · notes · entered by · audit history
+  └── Revenue Component  (1..n)
+        entered amount and its basis
+        → gross · tax · net
+        → the tax rule actually resolved, snapshotted
 ```
 
-Exclusive: `tax_minor = round_half_up(net_minor × rate_bp ÷ 10000)`, `gross = net + tax`.
-Rounding is half-up, applied once, at the record — never re-derived during aggregation.
-Aggregates sum stored paise; they never re-apply a rate to a total.
+A routine day is **one** component and is no slower to enter than before. A day that
+genuinely carries two treatments is two.
 
-A 5% inclusive example may be used in **sanitised test fixtures**, because the supplied
-June management report behaves that way arithmetically. That is a fixture value, never a
-default baked into code. Seeded configuration rows are editable master data.
+The **header totals reconcile exactly to the sum of its components** — gross to gross, tax
+to tax, net to net — enforced in the database, not merely validated in the UI. No paisa may
+disappear or be duplicated.
+
+Each component carries:
+
+| | |
+|---|---|
+| `entered_amount` + `entered_basis` | what the operator actually typed, and as what |
+| `gross`, `tax`, `net` | derived once, half-up, and stored |
+| tax rule id, rate, treatment | the configuration actually applied, snapshotted |
+| the facts that selected that rule | value band, supply subtype, premises status, where each applies |
+
+`net = gross − tax` is enforced by a database check constraint on every component.
+
+### 8.1 Tax configuration (project-lead decision, extended in v1.2)
+
+**No rate is hard-coded anywhere in the application, and no GST legislation is encoded in
+Dart or in a Flutter widget.** Tax is resolved from configured, date-effective data.
+
+**Resolution is conditional over exactly five bounded dimensions:**
+
+| Dimension | Where the fact comes from |
+|---|---|
+| **revenue category** | the entry — Restaurant, Nandbhog, Room and Banquet never share a rule |
+| **effective date** | the entry's business date; historical records keep the rate correct then |
+| **value band** | the component's own amount, where accommodation value affects treatment |
+| **supply subtype** | chosen on the component, where a category invoices more than one kind of supply |
+| **premises tax status** | configured per business unit, date-effective, never inferred |
+
+A null discriminator means the rule does not depend on that dimension. Resolution is
+**most-specific-match and deterministic**: the same facts on the same date give the same
+answer, on the client and on the server, permanently.
+
+This is **not a general expression language**. Adding a sixth dimension is a migration and
+a recorded decision, taken deliberately.
+
+**Ambiguity is refused, never tiebroken.** Two rules that could both match the same facts
+on the same date are rejected by a database constraint at configuration time, and an
+ambiguous resolution at entry refuses the save. Silently choosing a winner would apply a
+rate nobody approved.
+
+**Categories that share a treatment do not share a rule.** Each category holds its own
+row. There is no inheritance and no shared row, so a change to one category can never move
+another's Net Sales.
+
+**Treatment** is `inclusive`, `exclusive` or `none`. **The entered basis is a separate
+fact** and is not inferred from how a source invoice presents its tax: a point-of-sale bill
+may show `subtotal + tax = total` while the management figure recorded here is the
+tax-inclusive total. The basis says which number the operator typed.
+
+| Entered basis | The operator types | Derivation |
+|---|---|---|
+| `inclusive_total` | the final customer-billed total, tax included | `tax = round_half_up(entered × rate_bp ÷ (10000 + rate_bp))`; `net = entered − tax`; `gross = entered` |
+| `pre_tax` | the amount before tax | `tax = round_half_up(entered × rate_bp ÷ 10000)`; `gross = entered + tax`; `net = entered` |
+| `none` | the amount, where no tax applies | `tax = 0`; `gross = net = entered` |
+
+Rounding is half-up, applied **once, at the component**, and stored. Aggregates sum stored
+paise; they never re-apply a rate to a total.
+
+The rate, treatment, basis, rule id and the conditional facts that selected it are all
+**snapshotted onto the component**, so a configuration change can never retroactively alter
+a figure already recorded.
+
+**A missing rule is never a zero rate.** Where no single applicable rule can be resolved —
+none configured, an uncovered value band, a required subtype not chosen, a required
+premises status absent, or two rules both matching — **revenue entry is refused**, and the
+user is told which condition could not be satisfied. *"No rule configured"* stays
+permanently distinct from a configured `0%` and from a configured `none`: the first is a
+gap, the others are decisions somebody made. Treating absence as zero silently overstates
+Net Sales, which feeds Operating Profit.
 
 V1 builds **no statutory GST filing engine**.
 
@@ -291,16 +356,35 @@ V1 builds **no statutory GST filing engine**.
 The routine V1 workflow is a simple **Daily Sales Summary**: one figure per revenue
 category per business date. The UI does not force shift-level entry.
 
-The **schema deliberately permits multiple revenue records** for the same business unit,
+The **schema deliberately permits multiple revenue entries** for the same business unit,
 category and business date, to support shift summaries, POS imports, corrections and
 distinct source references later. There is therefore **no uniqueness constraint** on
-`(business_unit, revenue_category, business_date)`. Each record carries an `entry_kind`
+`(business_unit, revenue_category, business_date)`. Each entry carries an `entry_kind`
 (`daily_summary` · `shift` · `import` · `correction`) and an optional source reference.
 
-Reporting aggregates all active records for the period deterministically. Because the
-normal workflow expects one summary per day, the entry screen detects an existing record
+Reporting aggregates all active entries for the period deterministically. Because the
+normal workflow expects one summary per day, the entry screen detects an existing entry
 for that unit/category/date and asks the user explicitly whether to **edit the existing
 entry** or **add another entry** — it never silently creates a duplicate.
+
+### 8.3 Room revenue is entered manually, by value band (v1.2)
+
+Where accommodation value affects treatment, the daily room figure is entered **one amount
+per configured value band that had business that day**, and the day's room revenue is their
+sum. Room-by-room data and a property management system are **not** required (§29).
+
+**The entry form derives its own fields from the configured rules**: one applicable rule
+means one amount field, and entry is as fast as any other category; two bands mean two
+fields, labelled with the configured boundary. **No tariff threshold is a constant in
+application code** — the boundary is a property of the rule, so a change in treatment is a
+configuration change rather than a release.
+
+### 8.4 Revenue numbering (v1.2)
+
+Revenue entries carry their own organisation-wide, financial-year-scoped sequence —
+`KI-REV-26-27-000001` — issued by the server on canonical acceptance and **not shared with
+the expense sequence**. Offline entries are identified by their client-generated UUID until
+the server accepts them.
 
 ## 9. Business date and the business-day cut-off (project-lead decision)
 
@@ -719,6 +803,21 @@ transaction path (§32).
 Clean extension points are welcome. Speculative modules are not.
 
 ## 30. Change log
+
+**v1.2 — 2026-09-01.** The revenue model, and only the revenue model. A revenue entry is
+now a **document with one or more components** (§8.0), because the verified treatment of a
+single day's revenue in a single category can require more than one tax rule — room tax
+varying by accommodation value, and categories that may invoice more than one kind of
+supply. Tax resolution becomes **conditional over five bounded dimensions** — category,
+effective date, value band, supply subtype, premises tax status — deterministic,
+most-specific-match, and **refusing ambiguity rather than tiebreaking it** (§8.1). The
+**entered basis** (`inclusive_total` · `pre_tax` · `none`) is separated from the tax
+treatment and is explicitly not inferred from how a source invoice presents tax. Room
+revenue is entered manually by value band, with the boundary coming from configuration and
+never from a constant in code (§8.3). Revenue gains its own financial-year-scoped number
+sequence (§8.4). Decisions D-078 … D-091. **No other section is amended**: the accounting
+basis, business-date semantics, expense model, permission model and period control are
+unchanged.
 
 **v1.1 — 2026-08-26.** Owner decisions recorded: management accrual basis with separated
 business / accounting / payment dates (§5); expense GST treated as gross cost, no ITC

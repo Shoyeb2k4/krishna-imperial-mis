@@ -1,6 +1,6 @@
 # Decision Log
 
-Directive: SHOYEB-HOSPITALITY-MIS · Spec **v1.1**
+Directive: SHOYEB-HOSPITALITY-MIS · Spec **v1.2**
 Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
@@ -2698,3 +2698,115 @@ its own decision, and there is no reason to take it now.
 **Consequence.** The Banquet blocker is closed. All four V1 categories now have a verified
 rate and a verified input basis, and the **only** remaining Phase 4 business blocker is the
 set of **effective-from dates**.
+
+---
+
+# Phase 4 — Revenue Engine: implementation authorised (2026-09-01)
+
+The project lead confirmed the last outstanding business fact — **effective from
+2026-04-01 for all four verified treatments** — and authorised implementation.
+
+**The verified configuration baseline, in full:**
+
+| Business unit | Category | Treatment | Rate | Entered basis | Effective from |
+|---|---|---|---|---|---|
+| Crystal Canopy Rooftop | Restaurant | `inclusive` | 5% (CGST 2.5 + SGST 2.5) | `inclusive_total` | 2026-04-01 |
+| Crystal Canopy Rooftop | Nandbhog | `inclusive` | 5% | `inclusive_total` | 2026-04-01 |
+| Hotel Krishna Imperial | Room | `inclusive` | 5% | `inclusive_total` | 2026-04-01 |
+| Hotel Krishna Imperial | Banquet | **`none`** | — (₹0) | `inclusive_total` | 2026-04-01 |
+
+Four independent rule rows. No inheritance between Restaurant and Nandbhog (D-089); no
+dormant 5% Banquet rule (D-091); Room's conditional architecture retained so a second value
+band needs configuration rather than a redesign (D-081).
+
+## D-092 — Master spec amended to v1.2 for the revenue model
+**Date:** 2026-09-01 · **Status:** Accepted
+
+**Context.** Governance requires that the binding specification move with the semantics,
+and that the version, `CLAUDE.md` and this log change together (`CLAUDE.md`, D-028). Spec
+§8 described a revenue *record* carrying one gross, one tax and one net. The approved and
+now-authorised model is a document with components and conditional tax resolution
+(D-078 … D-091). Leaving the binding document describing the old shape while building the
+new one is exactly the code/documentation disagreement governance rule 3 exists to prevent.
+
+**Decision.** The master spec is amended to **v1.2**, and the amendment is confined to the
+revenue model:
+
+* **§8.0 (new)** — a revenue entry is a document with one or more components; header totals
+  reconcile exactly to component totals, enforced in the database;
+* **§8.1 (extended)** — conditional resolution over five bounded dimensions, deterministic,
+  most-specific-match, refusing ambiguity; categories that share a treatment do not share a
+  rule; the entered basis is separated from the treatment and is explicitly not inferred
+  from how a source invoice presents tax; a missing rule is never a zero rate;
+* **§8.3 (new)** — room revenue entered manually by value band, with the boundary coming
+  from configuration and never from a constant in code;
+* **§8.4 (new)** — revenue's own financial-year-scoped number sequence.
+
+**Nothing else is amended.** The accounting basis (§5), expense model (§6, §7),
+business-date semantics (§9), permission model (§13), calculation architecture (§21),
+offline model (§22) and V1 scope (§28, §29) are untouched. The change log entry in §30 says
+so explicitly, because "amended the spec" is otherwise an unbounded claim.
+
+**Consequence.** `CLAUDE.md`, all five canonical documents and the response footer now read
+**v1.2**. The version bump is not cosmetic: it marks the point after which a reader must
+not assume a revenue record carries a single rate.
+
+## D-093 — The exclusion constraint that guarantees determinism today would forbid Room's value bands
+**Date:** 2026-09-01 · **Status:** Accepted — **an architecture contradiction found in the
+real code during the Phase 4 audit, before any Phase 4 code was written.**
+
+**Context.** The Phase 4 audit read what actually exists rather than what was remembered.
+`revenue_tax_rates` was shipped in Phase 2 and carries:
+
+```sql
+constraint revenue_tax_rates_no_overlap
+  exclude using gist (
+    revenue_category_id with =,
+    daterange(effective_from, effective_to, '[)') with &&
+  ) where (archived_at is null)
+```
+
+and the Dart mirror refuses a candidate with `TaxRuleRefusal.overlapsExistingPeriod`
+whenever an active rule for the same category covers an overlapping date range.
+
+**That constraint is correct for the model it was written for, and it makes D-081
+impossible.** Room's two value bands are, by construction, two rules for the *same category*
+over the *same dates*. The existing constraint would refuse the second one. The feature the
+project lead approved cannot be configured against the schema as it stands.
+
+This is worth stating plainly because the constraint is not a mistake to be deleted: it is
+the thing that currently *guarantees* deterministic resolution, and D-079 requires that
+guarantee. Removing it to make room for bands would trade a real protection for a feature
+and leave ambiguity configurable — precisely what D-084 refuses.
+
+**Decision.** The constraint is **replaced, not removed**, by one that is
+discriminator-aware. Two active rules for one category conflict when their date ranges
+overlap **and** their discriminators are not provably disjoint:
+
+| Two rules, same category, overlapping dates | Outcome |
+|---|---|
+| disjoint value bands (`[0, 750000)` and `[750000, ∞)`) | **allowed** — this is Room |
+| overlapping or equal value bands | **refused** |
+| different supply subtypes | **allowed** |
+| both with a null discriminator on every dimension | **refused** — the current behaviour, preserved |
+| one null (matches anything) against one specific | **refused** — the null rule already covers the specific one's facts, so both would match |
+
+The last row is the subtle one and is the reason this is a decision rather than a schema
+tweak. A null discriminator means *"does not depend on this dimension"*, which means it
+matches **every** value of it. A null-band rule and a `[750000, ∞)` rule therefore both
+match a ₹8,000 tariff, and most-specific-match would have to break the tie — which D-079
+forbids. So a null and a specific rule on the same dimension and dates is a **conflict**,
+refused at configuration time, and the administrator must state both bands explicitly.
+
+**Consequence for the verified baseline.** All four categories are configured today with
+**null discriminators** and one rule each, which is unambiguous and legal under both the
+old constraint and the new one. Room's second band, if it ever exists, requires the
+existing null-band Room rule to be **end-dated and replaced by two explicit banded rules**
+from the same date — an auditable configuration change, not an in-place mutation. That is
+the correct behaviour and is what keeps historical figures stable (§8.1).
+
+**Where this lands in the plan.** The constraint replacement is part of **Slice 4**
+(server schema), and the Dart `TaxRuleSet.refusalFor` change is part of **Slice 2**
+(domain). Both must land with tests that assert the five rows of the table above — including
+the two that must still be **refused**, because a constraint that has quietly stopped
+refusing is indistinguishable from one that works (D-069, D-077).

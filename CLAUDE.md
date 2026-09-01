@@ -5,7 +5,7 @@ Business: Hotel Krishna Imperial
 Project: Krishna Imperial MIS
 Domain: hotelkrishnaimperial.in
 Directive ID: SHOYEB-HOSPITALITY-MIS
-Master Spec Version: 1.1
+Master Spec Version: 1.2
 
 These values are governance metadata. Do not silently change them. If the Master Spec
 version changes, update it here and in `docs/SHOYEB_MASTER_SPEC.md` in the same change,
@@ -136,7 +136,7 @@ password into chat.
 
 End every substantive response in this repository with:
 
-`Directive: SHOYEB-HOSPITALITY-MIS • SPEC v1.1 • Phase: <current phase>`
+`Directive: SHOYEB-HOSPITALITY-MIS • SPEC v1.2 • Phase: <current phase>`
 
 If these governance files cannot actually be read in the current environment, say
 `PROJECT DIRECTIVE NOT VERIFIED` instead of guessing. Never claim to have read a file

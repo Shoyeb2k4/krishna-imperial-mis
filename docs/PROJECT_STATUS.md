@@ -1,6 +1,6 @@
 # Project Status
 
-Directive: SHOYEB-HOSPITALITY-MIS · **Master Spec v1.1**
+Directive: SHOYEB-HOSPITALITY-MIS · **Master Spec v1.2**
 Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
@@ -23,38 +23,108 @@ Every gate passed, including the ones that can only be passed by running the rea
 application: the Android package on a device, and the compiled Windows executable, both
 against the real `krishna-mis-dev` project, with the real development identities.
 
-**Phase 4 — Revenue Engine: PLANNED · ARCHITECTURE APPROVED · IMPLEMENTATION NOT
-STARTED · BLOCKED ON VERIFIED REVENUE TAX/BILLING CONFIGURATION.**
+**Phase 4 — Revenue Engine: IMPLEMENTATION AUTHORISED AND UNDER WAY. Slice 1 of 14
+complete.**
 
-Not in progress. No Phase 4 code, migration, table, RPC, widget, provider, test or
-dependency exists. The approved architecture is recorded in `ARCHITECTURE.md` §17,
-`DATABASE_SCHEMA.md` §6.1 and decisions **D-078 … D-091**, so it survives the conversation
-that produced it.
+The last business blocker closed on 2026-09-01: the project lead confirmed **effective from
+2026-04-01** for all four verified treatments, and authorised implementation.
 
-Business evidence and project-lead confirmations through 2026-09-01 have reduced the
-blockers to **one**. The verified configuration is recorded in the *Revenue tax
-configuration baseline* below — as facts, not yet as rules: nothing has been written into a
-migration, a seed or a line of code.
+**The verified configuration baseline** — four independent rules, none seeded yet:
 
-| Category | Treatment | Input basis | Effective from |
+| Business unit | Category | Treatment | Rate | Entered basis | Effective from |
+|---|---|---|---|---|---|
+| Crystal Canopy Rooftop | Restaurant | `inclusive` | 5% (CGST 2.5 + SGST 2.5) | `inclusive_total` | 2026-04-01 |
+| Crystal Canopy Rooftop | Nandbhog | `inclusive` | 5% | `inclusive_total` | 2026-04-01 |
+| Hotel Krishna Imperial | Room | `inclusive` | 5% | `inclusive_total` | 2026-04-01 |
+| Hotel Krishna Imperial | Banquet | **`none`** | — (₹0) | `inclusive_total` | 2026-04-01 |
+
+Restaurant and Nandbhog hold independent rows and do not reference each other (D-089).
+Banquet has exactly one rule and **no dormant 5% row** (D-091). Room's conditional
+architecture is retained: 5% is today's baseline, not a universal rate compiled into
+anything (D-081).
+
+**Slice 1 — spec and governance: complete.** The binding specification is amended to
+**v1.2**, confined to the revenue model (D-092): §8.0 documents-with-components, §8.1
+conditional resolution over five bounded dimensions with ambiguity refused, §8.3 manual
+room entry by value band, §8.4 revenue numbering. No other section is touched, and §30 says
+so explicitly.
+
+**The audit found one genuine architecture contradiction in shipped code (D-093).**
+`revenue_tax_rates_no_overlap` — the Phase 2 exclusion constraint that currently
+*guarantees* deterministic resolution — refuses two active rules for one category over
+overlapping dates. Room's two value bands are by construction exactly that, so **the
+approved feature cannot be configured against the schema as it stands.** The constraint is
+being replaced rather than removed, by a discriminator-aware one in which disjoint bands are
+legal and a null discriminator against a specific one is still a conflict; the reasoning and
+its five-case table are in D-093. Found before any Phase 4 code was written, which is the
+point of auditing the tree rather than trusting the plan.
+
+## Phase 4 implementation slice plan (against the real repository)
+
+Authorised 2026-09-01. Each slice ends with `dart format`, `flutter analyze`, its tests,
+a commit and a reported hash. **No slice moves past a failed security or correctness gate.**
+
+### What already exists and is being reused, not rebuilt
+
+Audited against the tree rather than recalled:
+
+| Primitive | Where | State |
+|---|---|---|
+| `TaxTreatment`, `TaxComputation`, `TaxRule`, `TaxRuleSet` | `lib/domain/tax/tax_rule.dart` (307 lines) | **Inclusive / exclusive / none arithmetic already exists**, in integer paise, half-up, with `ruleFor(date)` returning null rather than defaulting to zero |
+| `Money` | `lib/domain/value_objects/money.dart` (260) | integer paise, Indian grouping |
+| `BusinessDate` | `lib/domain/value_objects/business_date.dart` (193) | D-067 cut-off semantics, client half |
+| `app.business_date_at` | migration 0033 | D-067 server half, instant-parameterised |
+| `revenue_tax_rates` + `tax_rule_create` / `_archive` | Phase 2 migrations | **already shipped and RLS-protected** |
+| Tax configuration UI | `features/masters` | already shows "No rule configured" |
+| `ExpenseRepository` (902 lines), gateways, outbox, `ExpensePull`, attachment pipeline | Phase 3 | the template Revenue follows |
+
+**Phase 4 extends this; it does not start from nothing.** The single largest piece of new
+domain work is the conditional resolver, and even that is an extension of `TaxRuleSet`.
+
+### The slices
+
+| # | Slice | Substance | Gate |
 |---|---|---|---|
-| Restaurant | 5% | `inclusive_total` | **pending** |
-| Nandbhog | 5% | `inclusive_total` | **pending** |
-| Room | 5% (observed) | `inclusive_total` | **pending** |
-| Banquet | **`none`** — no GST | `inclusive_total` | **pending** |
+| **1** | **Spec and governance** | Spec §8 amended, v1.2, `CLAUDE.md` and five docs, D-092, D-093, this plan | docs consistency, secret scan |
+| 2 | Domain model and resolver | `RevenueEntry` / `RevenueComponent`; `entered_basis`; conditional `TaxRuleSet.resolve(facts)`; discriminator-aware `refusalFor` (D-093); reconciliation | unit tests incl. the five D-093 rows and the refusals |
+| 3 | Local schema | Drift v11: `revenue_entries`, `revenue_components`, extended rule cache, subtype and premises-status caches | migration test v10→v11, `CacheClassification` completeness |
+| 4 | Server schema, RLS, RPC boundary | tables, the **replaced** exclusion constraint, `revenue_document` projection, `revenue_create/update/void/correct_business_date`, KI-REV sequence, audit, usage | migration audit, API-surface invariant, allow **and** deny tests |
+| 5 | Offline resolution and refusal | resolver over cached config; refuse-and-queue-nothing (D-086) | repository tests |
+| 6 | Sync, outbox, gateway | `RevenueGateway`, `RevenueMutationEndpoint`, `RevenuePull` | idempotency, response-loss, stale-version tests |
+| 7 | Create workflow | atomic local write + outbox in one transaction | rollback-at-each-boundary tests |
+| 8 | Android entry surface | unit → category → band field(s) → live gross/GST/net → save | widget + draft-model tests |
+| 9 | Windows ledger and detail | dense ledger, filters, component breakdown, rule snapshot | widget tests |
+| 10 | Correction and void | edit window, capabilities, conflict presentation | domain + widget tests |
+| 11 | Attachments | reuse D-073a unchanged | wiring test in the D-077 shape |
+| 12 | Reporting contributions | `revenue_period_contributions` populated | reconciliation tests |
+| 13 | Live and device acceptance | both platforms, real backend, two-device | the §23 acceptance list |
+| 14 | Closure | docs, totals, clean artefacts | full gate |
 
-**The only remaining blocker is the set of effective-from dates.** Confirming today's
-treatments does not establish when they started, and the software will not choose a date:
-that choice silently determines how any imported history is restated.
+### Two things carried forward from Phase 3's failures
 
-Three corrections came out of this evidence and are worth carrying forward. **D-088**: the
-entered-amount basis is independent of how the source invoice presents tax — the restaurant
-POS bill adds CGST and SGST to a subtotal and the management figure is nonetheless the
-tax-inclusive grand total, so inferring the basis from an invoice layout would have produced
-internally consistent, entirely wrong figures. **D-089**: Restaurant and Nandbhog share a
-treatment but not a rule — two independent rows, no inheritance. **D-091**: Banquet has
-exactly one rule, treatment `none`; the earlier "5% if the customer wants it" observation is
-closed as an observation and is not a dormant second rule.
+**Production wiring is asserted, not assumed.** D-077 shipped a feature that did not exist
+because every test overrode the provider and none read what production resolves. Slice 11
+carries an explicit wiring test in that shape, and Slice 8's tax resolution is asserted
+through the real provider chain, not only through an injected resolver.
+
+**A rule that nothing evaluates is a comment.** D-093's replaced constraint gets tests for
+the cases that must still be **refused**, not only the ones that must now be allowed —
+D-069, D-071 and D-077 were all checks that had silently stopped checking.
+
+### One decision deferred to Slice 4, flagged now rather than taken quietly
+
+**Where the verified configuration lives.** The four rules are real business configuration,
+not financial history, so §32 does not forbid committing them. Two options:
+
+* **a committed migration** — all three environments get identical, reviewed configuration;
+  a rate change is a reviewed diff with an author and a date; and dev/staging/prod cannot
+  drift. A GST rate is not a secret.
+* **configured per environment through `tax_rule_create`** — matches D-043's original
+  wording, and keeps configuration out of source control entirely.
+
+**Recommendation: the committed migration**, for the audit trail and because three
+environments configured by hand will diverge. Raised at Slice 4 rather than decided here.
+
 
 ---
 
@@ -683,4 +753,4 @@ failed. The persistent installation was the honest one.
 
 ## Master Spec version
 
-**1.1**
+**1.2** — bumped 2026-09-01 for the revenue model amendment only (spec §8, D-092).
