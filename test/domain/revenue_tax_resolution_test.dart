@@ -463,10 +463,16 @@ void main() {
       );
     });
 
-    test('treatment none is coherent with any basis', () {
-      // Arithmetically inert, and inclusive_total is still the better record (D-091).
+    test('treatment none is coherent with either basis', () {
+      // Not coupled one-to-one (D-097). With tax at zero the customer total and the
+      // pre-tax amount are the same number, so either basis is a truthful description of
+      // the source figure.
       for (final basis in EnteredBasis.values) {
-        expect(basis.coherentWith(TaxTreatment.none), isTrue);
+        expect(
+          basis.coherentWith(TaxTreatment.none),
+          isTrue,
+          reason: '${basis.name} must be able to accompany an untaxed rule',
+        );
       }
     });
 
@@ -557,6 +563,186 @@ void main() {
           isTrue,
           reason: '$paise paise must reconcile to the paisa',
         );
+      }
+    });
+  });
+
+  group('the four verified V1 configurations resolve and compute correctly', () {
+    // The real, project-lead-confirmed configuration, effective 2026-04-01 (D-089 … D-091,
+    // D-096). These are the combinations the product must support; anything that refuses
+    // one of them is a defect regardless of how principled it looks.
+
+    void verifiedCategory({
+      required String name,
+      required String category,
+      required TaxTreatment treatment,
+      required int rateBp,
+      required Money entered,
+      required Money expectedTax,
+      required Money expectedNet,
+    }) {
+      test(
+        '$name: inclusive_total + ${treatment.name} resolves and computes',
+        () {
+          final set = RevenueTaxRuleSet([
+            rule(
+              id: '$category-rule',
+              category: category,
+              rateBp: rateBp,
+              treatment: treatment,
+              basis: EnteredBasis.inclusiveTotal,
+              from: '2026-04-01',
+            ),
+          ]);
+
+          final outcome = set.resolve(
+            facts(category: category, date: '2026-06-15'),
+          );
+
+          expect(
+            outcome,
+            isA<RevenueTaxResolved>(),
+            reason: 'the verified $name configuration must be resolvable',
+          );
+          final resolved = outcome as RevenueTaxResolved;
+          expect(resolved.rule.inputBasis, EnteredBasis.inclusiveTotal);
+          expect(resolved.rule.treatment, treatment);
+
+          final computed = resolved.rule.compute(entered);
+          expect(
+            computed.gross,
+            entered,
+            reason: 'the entered figure is the gross',
+          );
+          expect(computed.tax, expectedTax);
+          expect(computed.net, expectedNet);
+          expect(computed.reconciles, isTrue);
+        },
+      );
+    }
+
+    verifiedCategory(
+      name: 'Restaurant',
+      category: _restaurant,
+      treatment: TaxTreatment.inclusive,
+      rateBp: 500,
+      entered: Money.fromRupees(100000),
+      expectedTax: Money.fromPaise(476190),
+      expectedNet: Money.fromPaise(9523810),
+    );
+
+    verifiedCategory(
+      name: 'Nandbhog',
+      category: _nandbhog,
+      treatment: TaxTreatment.inclusive,
+      rateBp: 500,
+      entered: Money.fromRupees(12500),
+      expectedTax: Money.fromPaise(59524),
+      expectedNet: Money.fromPaise(1190476),
+    );
+
+    verifiedCategory(
+      name: 'Room',
+      category: _room,
+      treatment: TaxTreatment.inclusive,
+      rateBp: 500,
+      entered: Money.fromRupees(65000),
+      expectedTax: Money.fromPaise(309524),
+      expectedNet: Money.fromPaise(6190476),
+    );
+
+    verifiedCategory(
+      name: 'Banquet',
+      category: _banquet,
+      treatment: TaxTreatment.none,
+      rateBp: 0,
+      entered: Money.fromPaise(4034300),
+      expectedTax: Money.zero,
+      expectedNet: Money.fromPaise(4034300),
+    );
+
+    test('Banquet keeps inclusive_total, and gross equals net equals entered', () {
+      // The combination this whole check exists for. `entered_basis` says what the number
+      // represents; `tax_treatment` says how tax applies. They are distinct, and coupling
+      // them would force Banquet to misdescribe its own figure (D-097).
+      final banquet = rule(
+        id: 'banquet',
+        category: _banquet,
+        treatment: TaxTreatment.none,
+        basis: EnteredBasis.inclusiveTotal,
+      );
+
+      expect(
+        EnteredBasis.inclusiveTotal.coherentWith(TaxTreatment.none),
+        isTrue,
+        reason: 'the approved Banquet configuration must be valid',
+      );
+      expect(
+        RevenueTaxRuleSet([banquet]).conflictFor(banquet),
+        isNull,
+        reason: 'and must be configurable',
+      );
+
+      final computed = banquet.compute(Money.fromPaise(4034300));
+      expect(computed.tax, Money.zero);
+      expect(computed.gross, Money.fromPaise(4034300));
+      expect(computed.net, computed.gross);
+    });
+
+    test('pre_tax also accompanies an untaxed rule, and is preserved as typed', () {
+      // Deliberately allowed (D-097): where a source figure genuinely is a net amount, the
+      // basis says so truthfully. The arithmetic is identical; the metadata is not.
+      final untaxedNet = rule(
+        id: 'untaxed-net',
+        category: _banquet,
+        treatment: TaxTreatment.none,
+        basis: EnteredBasis.preTax,
+      );
+
+      expect(
+        RevenueTaxRuleSet([untaxedNet]).resolve(facts(category: _banquet)),
+        isA<RevenueTaxResolved>(),
+      );
+      final computed = untaxedNet.compute(Money.fromRupees(1000));
+      expect(computed.tax, Money.zero);
+      expect(computed.gross, computed.net);
+    });
+  });
+
+  group('the amount field label tells the truth about tax', () {
+    test('an untaxed rule never claims GST is inside the figure', () {
+      // Banquet is inclusive_total with treatment none. Labelling its field
+      // "Customer total (incl. GST)" would state that GST is inside a figure carrying
+      // none — which is why the label takes the treatment, not just the basis (D-097).
+      expect(
+        EnteredBasis.inclusiveTotal.fieldLabelFor(TaxTreatment.none),
+        isNot(contains('GST')),
+      );
+      expect(
+        EnteredBasis.inclusiveTotal.fieldLabelFor(TaxTreatment.none),
+        'Amount billed to the customer',
+      );
+    });
+
+    test('a taxed inclusive rule says the total includes GST', () {
+      expect(
+        EnteredBasis.inclusiveTotal.fieldLabelFor(TaxTreatment.inclusive),
+        'Customer total (incl. GST)',
+      );
+    });
+
+    test('an exclusive rule asks for the figure before GST', () {
+      expect(
+        EnteredBasis.preTax.fieldLabelFor(TaxTreatment.exclusive),
+        'Amount before GST',
+      );
+    });
+
+    test('the label is never universally "Gross"', () {
+      for (final basis in EnteredBasis.values) {
+        for (final treatment in TaxTreatment.values) {
+          expect(basis.fieldLabelFor(treatment), isNot(equals('Gross')));
+        }
       }
     });
   });

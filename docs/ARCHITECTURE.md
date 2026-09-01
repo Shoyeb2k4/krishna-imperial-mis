@@ -1058,9 +1058,13 @@ the rule** rather than always reading "Gross":
 
 | Basis | Operator types | Derived, in exact integer paise |
 |---|---|---|
-| `inclusive_total` | customer total, tax included | `tax = round_half_up(entered × rate_bp ÷ (10000 + rate_bp))`; `net = entered − tax`; `gross = entered` |
+| `inclusive_total` | the final customer-billed total | `tax = round_half_up(entered × rate_bp ÷ (10000 + rate_bp))`; `net = entered − tax`; `gross = entered` |
 | `pre_tax` | the amount before tax | `tax = round_half_up(entered × rate_bp ÷ 10000)`; `gross = entered + tax`; `net = entered` |
-| `none` | the amount | `tax = 0`; `gross = net = entered` |
+
+A treatment of `none` gives `tax = 0` and `gross = net = entered` under either basis. The
+two are **not coupled** (D-097): `inclusive` needs the total, `exclusive` needs the net
+figure, and `none` accepts either because with no tax they are the same number. There is
+no third `none` basis — it would describe nothing the other two do not.
 
 Both what was typed (`entered_amount_minor`, `entered_basis`) and what was derived
 (`gross`, `tax`, `net`) are stored, beside the rule snapshot. That is what lets a figure be

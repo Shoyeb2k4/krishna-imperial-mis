@@ -47,7 +47,20 @@ no Drift, no Supabase, no schema change. `RevenueEntry` / `RevenueComponent` and
 drafts; `EnteredBasis` beside `TaxTreatment`; and `RevenueTaxRuleSet.resolve` returning a
 sealed result — resolved · noApplicableRule · ambiguous · missingFact · incompleteRule — so
 the financially different failures stay different. The arithmetic is the **existing**
-`TaxRule.compute`; no second tax calculation was written. **710 host tests** (674 + 36).
+`TaxRule.compute`; no second tax calculation was written. **720 host tests** (674 + 46).
+
+**Slice 2 corrective (D-097).** The project lead asked for the Banquet combination —
+`inclusive_total` + treatment `none` — to be verified before Slice 3. **It already
+worked**, and is now proven by four verified-configuration tests plus a positive control
+that couples basis to treatment and fails five of them. Basis and treatment answer
+different questions and are deliberately not coupled: `none` accepts either basis, because
+with no tax the customer total and the pre-tax amount are the same number.
+
+Two things came out of that review. `EnteredBasis.none` is **removed** — it described
+nothing the other two values do not, and existed only because `TaxTreatment` has a value of
+the same name. And the amount field's label now takes the **treatment** as well as the
+basis, which fixed a real defect: Banquet would have been labelled *"Customer total (incl.
+GST)"* on a figure carrying no GST, and nothing in the domain would have objected.
 
 Two project-lead corrections landed before the code was written, and one of them would
 have produced wrong money:
@@ -303,7 +316,7 @@ Blocked.**
 |---|---|---|
 | `dart format --set-exit-if-changed` | **Tested** | clean (145 files) |
 | `flutter analyze` | **Tested** | **No issues found** |
-| Host test suite | **Tested** | **710 tests, all passing** |
+| Host test suite | **Tested** | **720 tests, all passing** |
 | Secret scan — tree and git history | **Tested** | clean; the scan proves its own controls on every run (D-069) |
 | Secret scan — rebuilt clean binaries | **Tested** | tree, git history and built artefacts all clean, with the scanner's controls passing |
 | Migration audit (search_path, API surface, policy boundary) | **Tested** | 14 host tests |
@@ -353,7 +366,7 @@ Blocked.**
 
 | Suite | Count | Result |
 |---|---|---|
-| Host (`flutter test`) | 710 | all passing |
+| Host (`flutter test`) | 720 | all passing |
 | Live backend against `krishna-mis-dev` (opt-in) | 19 | all passing — re-run in full |
 | Live expense suite against `krishna-mis-dev` (opt-in) | 16 | all passing — re-run in full |
 | Android Phase 2 device acceptance (real APK) | 19 | all passing |

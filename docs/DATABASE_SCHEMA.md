@@ -524,7 +524,7 @@ revenue_components (
   -- from the configured rule, never from the shape of a source document.
   entered_amount_minor bigint not null check (entered_amount_minor >= 0),
   entered_basis text not null
-      check (entered_basis in ('inclusive_total','pre_tax','none')),
+      check (entered_basis in ('inclusive_total','pre_tax')),
 
   -- what was derived from it, once, half-up, and stored
   gross_amount_minor bigint not null check (gross_amount_minor >= 0),
@@ -567,8 +567,11 @@ revenue_tax_rules (
 
   rate_bp int not null,
   treatment text not null check (treatment in ('inclusive','exclusive','none')),
+  -- Not coupled to `treatment` (D-097): inclusive needs the customer total, exclusive
+  -- needs the pre-tax figure, and `none` accepts either, because with no tax they are the
+  -- same number. There is no third `none` basis.
   input_basis text not null
-      check (input_basis in ('inclusive_total','pre_tax','none')),
+      check (input_basis in ('inclusive_total','pre_tax')),
 
   -- nullable discriminators: null = this rule does not depend on that dimension
   value_band_min_minor bigint, value_band_max_minor bigint,

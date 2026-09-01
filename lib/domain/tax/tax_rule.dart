@@ -56,36 +56,59 @@ enum TaxTreatment {
 /// to match, because the rules are date-effective and a convention can change from a date
 /// (D-090).
 enum EnteredBasis {
-  /// The final customer-billed total, tax included.
+  /// The final customer-billed total. Tax, where any applies, is inside this figure.
   inclusiveTotal,
 
   /// The amount before tax.
-  preTax,
+  preTax;
 
-  /// The amount, where no tax applies to it.
-  none;
+  // There is deliberately no third `none` value (D-097). Every revenue figure a manager
+  // records is money billed to a customer; where no tax applies, that figure is
+  // simultaneously the customer total and the pre-tax amount, so it is already fully
+  // described by one of the two above. A third label would add no information and would
+  // invite recording Banquet as "none" — which D-091 argued against, because
+  // `inclusiveTotal` states what the number *is* and stays true if tax is ever introduced.
 
   static EnteredBasis fromName(String value) => EnteredBasis.values.firstWhere(
     (b) => b.name == value,
     orElse: () => throw ArgumentError.value(value, 'value', 'unknown basis'),
   );
 
-  /// What to put above the amount field. Never universally "Gross" (D-080).
-  String get fieldLabel => switch (this) {
-    EnteredBasis.inclusiveTotal => 'Customer total (incl. GST)',
-    EnteredBasis.preTax => 'Amount before tax',
-    EnteredBasis.none => 'Amount',
-  };
-
-  /// The treatment this basis is coherent with.
+  /// What to put above the amount field, for a rule with this basis and [treatment].
   ///
-  /// `inclusive` tax must be extracted from a total the operator typed; `exclusive` tax
-  /// must be added to a pre-tax figure they typed. The other pairings are contradictory —
-  /// "type the pre-tax amount, and the tax is already inside it" is not a thing — and are
-  /// refused as incoherent configuration rather than silently computed.
+  /// **Takes the treatment**, because the basis alone cannot produce an honest label
+  /// (D-097). Banquet is `inclusiveTotal` with treatment `none`: labelling its field
+  /// "Customer total (incl. GST)" would tell an operator that GST is inside a figure that
+  /// carries none. Never universally "Gross" either (D-080).
+  String fieldLabelFor(TaxTreatment treatment) {
+    if (treatment == TaxTreatment.none) {
+      return switch (this) {
+        EnteredBasis.inclusiveTotal => 'Amount billed to the customer',
+        EnteredBasis.preTax => 'Amount',
+      };
+    }
+    return switch (this) {
+      EnteredBasis.inclusiveTotal => 'Customer total (incl. GST)',
+      EnteredBasis.preTax => 'Amount before GST',
+    };
+  }
+
+  /// Whether this basis can truthfully accompany [treatment].
+  ///
+  /// The two answer different questions — *which number did the operator type* and *how is
+  /// tax treated* — so they are **not** coupled one-to-one (D-097):
+  ///
+  /// * `inclusive` extracts tax from a total, so the operator must have typed the total;
+  /// * `exclusive` adds tax to a net figure, so they must have typed the net figure;
+  /// * `none` applies no tax, and **either basis is truthful**. With tax at zero the
+  ///   customer total and the pre-tax amount are the same number, so the basis records
+  ///   which one the source figure *is* rather than changing what is computed. Forcing it
+  ///   to some third value would discard that truth to satisfy a symmetry that does not
+  ///   exist.
+  ///
+  /// The refused pairings are the contradictory ones: "type the pre-tax amount, and the
+  /// tax is already inside it" is not a thing, and neither is its mirror.
   bool coherentWith(TaxTreatment treatment) => switch (treatment) {
-    // Arithmetically inert: tax is zero, so every basis gives the same answer. The basis
-    // still records which number was typed, which stays informative (D-091).
     TaxTreatment.none => true,
     TaxTreatment.inclusive => this == EnteredBasis.inclusiveTotal,
     TaxTreatment.exclusive => this == EnteredBasis.preTax,

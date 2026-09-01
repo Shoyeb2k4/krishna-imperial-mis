@@ -339,9 +339,22 @@ tax-inclusive total. The basis says which number the operator typed.
 
 | Entered basis | The operator types | Derivation |
 |---|---|---|
-| `inclusive_total` | the final customer-billed total, tax included | `tax = round_half_up(entered × rate_bp ÷ (10000 + rate_bp))`; `net = entered − tax`; `gross = entered` |
+| `inclusive_total` | the final customer-billed total | `tax = round_half_up(entered × rate_bp ÷ (10000 + rate_bp))`; `net = entered − tax`; `gross = entered` |
 | `pre_tax` | the amount before tax | `tax = round_half_up(entered × rate_bp ÷ 10000)`; `gross = entered + tax`; `net = entered` |
-| `none` | the amount, where no tax applies | `tax = 0`; `gross = net = entered` |
+
+Under a treatment of `none`: `tax = 0` and `gross = net = entered`, whichever basis the
+rule carries.
+
+**The basis and the treatment are related and not coupled** (D-097). They answer different
+questions — *what does the entered number represent* and *how is tax treated*. An
+`inclusive` treatment requires the operator to have typed the total, and an `exclusive`
+treatment the pre-tax figure; **a treatment of `none` accepts either**, because with no tax
+the customer total and the pre-tax amount are the same number, and the basis records which
+one the source figure is. Only the contradictory pairings are refused. There is no third
+`none` basis: it would describe nothing the other two do not.
+
+The amount field's label follows **both** the basis and the treatment, so an untaxed
+category is never labelled as though tax were inside its figure.
 
 Rounding is half-up, applied **once, at the component**, and stored. Aggregates sum stored
 paise; they never re-apply a rate to a total.
@@ -827,7 +840,7 @@ varying by accommodation value, and categories that may invoice more than one ki
 supply. Tax resolution becomes **conditional over five bounded dimensions** — category,
 effective date, value band, supply subtype, premises tax status — deterministic,
 zero-or-exactly-one, and **refusing ambiguity rather than tiebreaking it** (§8.1). The
-**entered basis** (`inclusive_total` · `pre_tax` · `none`) is separated from the tax
+**entered basis** (`inclusive_total` · `pre_tax`) is separated from the tax
 treatment and is explicitly not inferred from how a source invoice presents tax. Room
 revenue is entered manually by value band, with the boundary coming from configuration and
 never from a constant in code (§8.3). Revenue gains its own financial-year-scoped number

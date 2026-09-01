@@ -2987,3 +2987,66 @@ band identity, a subtype or a premises status that we do not have verified data 
 work **stops and the contradiction is surfaced** rather than resolved by inventing a value.
 On the current design it should not: every discriminator is nullable precisely so that a
 category whose treatment does not depend on a dimension says so by leaving it null.
+
+## D-097 — Entered basis and tax treatment are not coupled, and `EnteredBasis.none` is removed
+**Date:** 2026-09-01 · **Status:** Accepted (project-lead verification of Slice 2) —
+implemented as a Slice 2 corrective
+
+**Context.** The project lead asked for the Banquet combination to be verified before
+Slice 3, because it is the one the approved configuration depends on:
+
+```
+        Banquet     entered_basis = inclusive_total
+                    tax_treatment = none
+                    tax = 0, gross = net = entered
+```
+
+**It already worked.** `coherentWith` was written as `TaxTreatment.none => true`, so any
+basis accompanies an untaxed rule and no one-to-one mapping was ever enforced. The check
+found no defect in the semantics and it is proven rather than asserted: four
+verified-configuration tests, one per category, resolve and compute; a positive control
+that couples basis to treatment fails five of them.
+
+**The doctrine, stated once.** The two answer different questions:
+
+| | Answers |
+|---|---|
+| `entered_basis` | *what does the number the operator typed represent?* |
+| `tax_treatment` | *how is tax treated?* |
+
+so they are related and not coupled. `inclusive` extracts tax from a total, so the operator
+must have typed the total; `exclusive` adds tax to a net figure, so they must have typed
+the net figure; **`none` applies no tax and either basis is truthful**, because with tax at
+zero the customer total and the pre-tax amount are the same number. `pre_tax` with an
+untaxed rule is therefore **valid and deliberately allowed**: where a source figure
+genuinely is a net amount, the basis says so, and discarding that truth to satisfy a
+symmetry that does not exist would be the wrong trade.
+
+The refused pairings are only the contradictory ones — `inclusive` with `pre_tax`, and
+`exclusive` with `inclusive_total`.
+
+**Two changes came out of the review.**
+
+**1 · `EnteredBasis.none` is removed.** It had no distinct product meaning. Every revenue
+figure a manager records is money billed to a customer; where no tax applies, that figure
+is *simultaneously* the customer total and the pre-tax amount, so it is already fully
+described by one of the other two values. A third label added no information, and its
+presence invited recording Banquet as `none` — which D-091 had already argued against,
+because `inclusive_total` states what the number *is* and stays true if tax is ever
+introduced. It existed only because `TaxTreatment` has a value of the same name, which is
+not a reason. Adding it back is one line plus a migration if a real meaning ever emerges.
+
+**2 · The field label now takes the treatment, and this was a real defect.** `fieldLabel`
+was a property of the basis alone, so Banquet — `inclusive_total`, treatment `none` —
+would have been labelled **"Customer total (incl. GST)"**: a form telling an operator that
+GST is inside a figure that carries none. Nothing in the domain would have objected, and it
+would have reached Slice 8's entry screen looking correct.
+
+`fieldLabelFor(treatment)` replaces it: an untaxed rule reads *"Amount billed to the
+customer"*, a taxed inclusive rule *"Customer total (incl. GST)"*, an exclusive rule
+*"Amount before GST"*, and none of them is ever "Gross" (D-080). Four tests pin it,
+including one asserting that an untaxed label contains no mention of GST at all.
+
+**Consequence.** The verified baseline is unchanged and remains configurable exactly as
+approved. Spec §8.1, `ARCHITECTURE.md` §17.3 and `DATABASE_SCHEMA.md` §6.1 drop the third
+basis value from their tables and state the non-coupling explicitly.
