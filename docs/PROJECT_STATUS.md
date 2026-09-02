@@ -5,7 +5,7 @@ Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
-Last updated: **2026-09-01** — Phase 4 Slice 5 (Phase 3 remains complete)
+Last updated: **2026-09-02** — Phase 4 Slice 6 (Phase 3 remains complete)
 
 > A new session should be able to read this file and know exactly where work stopped.
 > This file — not chat history — is the checkpoint.
@@ -23,7 +23,7 @@ Every gate passed, including the ones that can only be passed by running the rea
 application: the Android package on a device, and the compiled Windows executable, both
 against the real `krishna-mis-dev` project, with the real development identities.
 
-**Phase 4 — Revenue Engine: IMPLEMENTATION UNDER WAY. Slices 1–5 of 14 complete**, together with four corrective audit points closed against Slice 4 (A0 … A3).
+**Phase 4 — Revenue Engine: IMPLEMENTATION UNDER WAY. Slices 1–6 of 14 complete**, together with four corrective audit points closed against Slice 4 (A0 … A3).
 
 The last business blocker closed on 2026-09-01: the project lead confirmed **effective from
 2026-04-01** for all four verified treatments, and authorised implementation.
@@ -41,6 +41,64 @@ Restaurant and Nandbhog hold independent rows and do not reference each other (D
 Banquet has exactly one rule and **no dormant 5% row** (D-091). Room's conditional
 architecture is retained: 5% is today's baseline, not a universal rate compiled into
 anything (D-081).
+
+**Slice 6 — revenue ReferenceSync: complete.** The proven Phase 2 sync is extended, not
+duplicated: the same authority-first ordering, the same purge, the same one-transaction
+write, the same freshness vocabulary. It gains three datasets — value bands, supply
+subtypes, premises tax statuses — and **the four v1.2 rule columns it had never carried**,
+which was a defect rather than an omission: `input_basis` is NOT NULL on the server since
+A1, so a sync that dropped it produced a rule the resolver classifies as `incompleteRule`
+and refused every revenue entry, on a device whose configuration had in fact arrived
+intact. No sync error, no failed request. **27 new host tests**, 823 in total.
+
+**The completeness marker was rebuilt before any transport was written (D-108).** Slice 5's
+single global `app_meta` key claimed the whole organisation's configuration was
+authoritative. Local schema **v12** replaces it with `revenue_config_snapshots`, keyed
+`(user, business unit)` and naming the datasets proven present, the server generation and
+the server-confirmed time. Synchronising Crystal Canopy no longer vouches for Hotel
+Krishna; one person's sync no longer vouches for the next person on a shared workstation;
+and tax rules arriving no longer vouches for bands, subtypes and statuses. A revocation
+**downgrades** the record rather than deleting it, which is what makes D-106's `revoked`
+gap reachable at all — in Slice 5 both call sites hard-coded `neverSynchronised`, so that
+distinction lived in the type and never in the behaviour.
+
+**A complete snapshot is defined**, and the marker is written **last, inside the same
+transaction** as the writes: a run that fails anywhere rolls back the claim with the data.
+Zero bands, zero subtypes and zero statuses is a legitimate synchronised answer — the
+verified baseline has exactly that — and stays distinguishable from never having asked,
+which is why the record stores a dataset list rather than counting rows.
+
+**Three latent defects in Slice 4's read boundary (D-110), found by auditing it before
+synchronising through it.** `business_unit_tax_statuses_read` required `revenue.view.all`,
+a capability **no role holds**, so it could never be satisfied by anybody — the moment a
+premises status were configured it would be unreachable by every client. The band and
+subtype policies were organisation-wide, so a Crystal Canopy manager could read Hotel
+Krishna's configuration. All three now say what the tax-rule policy says, and the migration
+asserts the capability they name is actually held by somebody.
+
+**And one defect this slice introduced and caught (D-109).** The first fix pointed those
+policies at a helper in `app`, which `authenticated` cannot execute — a policy runs with
+the caller's privileges — so every band and subtype read failed and took the whole pull
+down with it. **This is D-045 exactly**, and the invariant added at the time did not catch
+it because it matched the schema name in a policy expression rather than asking whether a
+policy could actually be evaluated. Found by the live sync writing an empty database, not
+by review. The helper is published, the API surface is restated, and the assertion is now
+the general one.
+
+**A stale claim is withdrawn on every confirmed pull (D-111).** The purge diffs against the
+previously stored authority, which is correctly per user — so on a shared installation
+`A syncs, B syncs, A syncs narrower` produced no diff and left A claiming a property A no
+longer held. A confirmed pull needs no diff: `pullAll` asks for everything and RLS decides,
+so the units it returns *are* the current scope. A **failed** pull still withdraws nothing.
+
+**Open for the project lead: how old may revenue tax configuration be? (D-112)** The
+project has no TTL anywhere, and none was invented. Slice 6 permits offline resolution for
+as long as a complete snapshot stands, which is the existing authority policy applied
+unchanged. It is flagged because permissions and rates go stale differently: a stale
+permission is caught server-side on delivery, and a stale *rate* is not — a device holding
+an open-ended rule keeps applying it to business dates after a change it never received,
+and the server would accept the result. Concerns **new creation only**; recorded revenue
+carries its own snapshot and is never re-rated.
 
 **Slice 5 — offline revenue tax resolution from cached configuration: complete.**
 `RevenueTaxRepository` is an adapter, not a second engine: it reads the Drift cache,
@@ -446,9 +504,9 @@ Blocked.**
 
 | Item | Status | Evidence |
 |---|---|---|
-| `dart format --set-exit-if-changed` | **Tested** | clean (153 files) |
+| `dart format --set-exit-if-changed` | **Tested** | clean (154 files) |
 | `flutter analyze` | **Tested** | **No issues found** |
-| Host test suite | **Tested** | **789 tests, all passing** |
+| Host test suite | **Tested** | **823 tests, all passing** |
 | Secret scan — tree and git history | **Tested** | clean; the scan proves its own controls on every run (D-069) |
 | Secret scan — rebuilt clean binaries | **Tested** | tree, git history and built artefacts all clean, with the scanner's controls passing |
 | Migration audit (search_path, API surface, policy boundary) | **Tested** | 14 host tests |
@@ -458,6 +516,9 @@ Blocked.**
 | Live revenue suite against `krishna-mis-dev` | **Tested** | **13 tests**, 1 deliberately skipped: the D-095 write-skew positive control, whose lock-bypassing scaffolding was dropped rather than left permanently callable |
 | Revenue arithmetic parity — Dart, Drift and Postgres | **Tested** | 13 vectors, exact paise, asserted in migration `20260901144002` and read back by the Dart suite (D-105) |
 | Offline revenue tax resolution from the cache | **Tested** | 33 host tests, incl. the `configurationUnavailable` distinction and a read-only census (D-106) |
+| Revenue ReferenceSync — datasets, atomicity, per-scope completeness | **Tested** | 27 host tests, incl. malformed-payload rejection and the retained known-good snapshot |
+| Real revenue configuration sync against `krishna-mis-dev` | **Tested** | the four verified rules with `input_basis`, 0 bands / 0 subtypes / 0 statuses, both units marked complete |
+| Offline resolution after a real sync, in a fresh process | **Tested** | Restaurant, Nandbhog, Room and Banquet resolved to exact paise with no network call made |
 | Repository ↔ server migration integrity (D-056) | **Tested** | live `drift` phase |
 | Android device acceptance, real APK, real backend | **Tested** | **19 tests** across 10 phases |
 | Windows acceptance, real `krishna_mis.exe`, real backend | **Tested** | **18 tests** across 11 phases |
@@ -501,7 +562,7 @@ Blocked.**
 
 | Suite | Count | Result |
 |---|---|---|
-| Host (`flutter test`) | **789** | all passing |
+| Host (`flutter test`) | **823** | all passing |
 | Live backend against `krishna-mis-dev` (opt-in) | 19 | all passing — re-run in full |
 | Live expense suite against `krishna-mis-dev` (opt-in) | 16 | all passing — **re-run at this checkpoint** |
 | Android Phase 2 device acceptance (real APK) | 19 | all passing |
@@ -797,31 +858,39 @@ decision for him, not one to be taken by starting.
 **None for Phase 3.** All were answered and implemented: revoked-scope financial retention
 (D-070), the expense edit surface (D-072a), and attachment upload (D-073a).
 
-**One for Phase 4**, and it is a business fact rather than a design choice: the
-**effective-from dates** for the four verified treatments. Confirmations through
-2026-09-01 answered everything else — see the *Revenue tax configuration baseline*.
-**Phase 4 implementation stays blocked on it**, and no date will be inferred from an
-invoice date or defaulted to the start of the financial year (D-043, D-084).
+~~**One for Phase 4** … the effective-from dates.~~ **Answered 2026-09-01: 2026-04-01 for
+all four treatments.** Configured as a committed migration (D-096) and now synchronising
+to devices (Slice 6).
+
+**One open, raised by Slice 6 and deliberately not defaulted (D-112): how old may revenue
+tax configuration be while a device still creates NEW revenue offline?**
+
+The project has no TTL anywhere — the authority model is `confirmed` / `stale` / `unknown`
+and says nothing about age — so none was invented. Today a complete snapshot permits
+offline resolution for as long as it stands, which is the existing policy applied
+unchanged rather than a new decision.
+
+It is raised because permissions and rates go stale differently. A stale permission is
+caught server-side the moment a queued mutation is delivered; a stale **rate** is not. The
+rules are date-effective, so a device holding an open-ended rule keeps applying it to
+business dates after a change it never received, and the figure it records is internally
+consistent, wrong, and accepted by the server — because on that device's evidence it is
+correct.
+
+*"No limit; the risk is acceptable at this scale"* is a perfectly good answer and is what
+the software does today. **This concerns new creation only** — revenue already recorded
+carries its own rate, treatment and basis snapshot, consults no cache, and is never
+re-rated.
 
 ## Project lead actions required
 
 1. ~~Two manual picker smoke tests.~~ **Done, 2026-08-31 — both PASS.**
-2. **One remaining answer, and Phase 4 can start: the effective-from dates.**
-
-   Your confirmations through 2026-09-01 settled everything else — Restaurant 5%,
-   Nandbhog 5%, Room 5%, Banquet no GST, and all four recording the tax-inclusive customer
-   total. What is left is *from when* each treatment applies.
-
-   *"All four have applied since the start of FY 2026–27"* is a perfectly good answer, and
-   so is a different date per category if that is the truth. What cannot happen is the
-   software choosing one: an effective-from date silently determines how every prior month
-   is restated if history is ever imported, so it is a business fact rather than a default.
-
-   Until the dates are supplied, the rules cannot be configured, the categories show
-   *"No rule configured"*, and revenue entry refuses (D-084) — the approved behaviour, not
-   a defect.
-
-3. **Optional decision:** whether archiving should also offer a *confirmed* cascade for a
+2. ~~The effective-from dates.~~ **Done, 2026-09-01 — 2026-04-01 for all four.**
+3. **One decision, raised by Slice 6 and not defaulted: a maximum age for cached revenue
+   tax configuration before a device refuses to create NEW revenue offline (D-112).**
+   "No limit" is a valid answer and is the current behaviour. See *Open questions* above
+   for why rates go stale differently from permissions.
+4. **Optional decision:** whether archiving should also offer a *confirmed* cascade for a
    whole subtree (D-039).
 
 No production credentials are ever requested. **You will never be asked to paste a
@@ -865,6 +934,12 @@ is listed above as not done rather than quietly assumed: there is nothing to be 
 rebuilding and scanning artefacts that will be rebuilt again after the picker tests.
 
 ## Database migration status
+
+**Local Drift schema v12.** v12 adds `revenue_config_snapshots` — per user, per business
+unit, naming the datasets proven present, the server generation and the server-confirmed
+time (D-108) — and **deletes** the superseded global `revenue.configuration.synced_at`
+key rather than translating it, because there is no honest way to decide retroactively
+which user held which scope when it was written.
 
 **Local Drift schema v11.** v11 adds the revenue read model — `revenue_entries`,
 `revenue_components` — and three reference caches that ship empty: `revenue_value_bands`

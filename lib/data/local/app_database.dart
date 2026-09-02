@@ -36,6 +36,7 @@ part 'app_database.g.dart';
     RevenueValueBands,
     RevenueSupplySubtypes,
     BusinessUnitTaxStatuses,
+    RevenueConfigSnapshots,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -85,7 +86,7 @@ class AppDatabase extends _$AppDatabase {
   /// Financial tables raise this number as they land, each with a migration step and a
   /// migration test (docs/RELEASE_CHECKLIST.md §C).
   @override
-  int get schemaVersion => 11;
+  int get schemaVersion => 12;
 
   /// Timestamps are stored as ISO-8601 **UTC text**, not as unix seconds.
   ///
@@ -218,6 +219,20 @@ class AppDatabase extends _$AppDatabase {
         await m.addColumn(revenueTaxRates, revenueTaxRates.supplySubtypeId);
         await m.addColumn(revenueTaxRates, revenueTaxRates.premisesStatusCode);
         await _createRevenueIndexes();
+      }
+      if (from < 12) {
+        // Per-scope revenue configuration completeness (D-108).
+        //
+        // Replaces the single global `app_meta` key Slice 5 shipped. Nothing is
+        // backfilled and the old key is removed rather than translated: it claimed
+        // completeness for the whole organisation, and there is no honest way to decide
+        // which user held which scope when it was written. A device that upgrades simply
+        // has no proven snapshot and re-synchronises, which is the correct fail-closed
+        // answer and costs one pull.
+        await m.createTable(revenueConfigSnapshots);
+        await customStatement(
+          "DELETE FROM app_meta WHERE key = 'revenue.configuration.synced_at'",
+        );
       }
       if (from < 9) {
         // `expenses.scope_revoked_at` (D-068). Nothing is back-filled: every row that

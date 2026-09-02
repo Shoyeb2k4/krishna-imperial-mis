@@ -17,6 +17,17 @@ import 'package:krishna_mis/domain/value_objects/money.dart';
 
 import '../support/revenue_parity_vectors.dart';
 
+const testUser = 'user-1';
+
+/// The property a test category belongs to. Passed to the resolver rather than looked up,
+/// because a revocation legitimately removes the category row it would be looked up from.
+String unitOf(String category) => switch (category) {
+  vCategoryRoom || vCategoryBanquet => 'unit-hki',
+  _ => 'unit-ccr',
+};
+
+const otherUser = 'user-2';
+
 void main() {
   setUpAll(() => driftRuntimeOptions.dontWarnAboutMultipleDatabases = true);
   tearDownAll(() => driftRuntimeOptions.dontWarnAboutMultipleDatabases = false);
@@ -55,15 +66,25 @@ void main() {
 
   tearDown(() => db.close());
 
-  /// Marks the device as having received an authoritative snapshot.
-  ///
-  /// Slice 6's ReferenceSync will write this key; Slice 5 sets it directly, which is what
-  /// makes the *absence* case testable at all.
-  Future<void> markSynchronised() => db.customStatement(
-    'INSERT OR REPLACE INTO app_meta (key, value, updated_at) '
-    "VALUES (?, '2026-06-15T09:00:00.000Z', '2026-06-15T09:00:00.000Z')",
-    [revenueConfigurationSyncedKey],
+  /// Marks one business unit's configuration as authoritatively synchronised, for one
+  /// user — which is the granularity at which the claim can actually be true (D-108).
+  Future<void> markSynchronised({
+    String user = testUser,
+    String unit = 'unit-ccr',
+    String datasets = 'bands,rules,statuses,subtypes',
+  }) => db.customStatement(
+    'INSERT OR REPLACE INTO revenue_config_snapshots (user_id, org_id, '
+    'business_unit_id, status, datasets, generation, confirmed_at, updated_at) '
+    "VALUES (?, 'org-1', ?, 'complete', ?, '4200', "
+    "'2026-06-15T09:00:00.000Z', '2026-06-15T09:00:00.000Z')",
+    [user, unit, datasets],
   );
+
+  /// Both properties, for the ordinary case where scope is not what a test is about.
+  Future<void> markAllSynchronised({String user = testUser}) async {
+    await markSynchronised(user: user, unit: 'unit-ccr');
+    await markSynchronised(user: user, unit: 'unit-hki');
+  }
 
   Future<void> cacheBand(
     String id, {
@@ -117,7 +138,7 @@ void main() {
     for (final v in verifiedBaseline) {
       await cacheRule(v);
     }
-    await markSynchronised();
+    await markAllSynchronised();
   }
 
   group(
@@ -128,7 +149,11 @@ void main() {
         () async {
           // The distinction the whole slice exists for (B1). Both stop a revenue entry; only
           // one of them is a statement about the organisation's tax configuration.
-          final outcome = await repository.resolve(facts());
+          final outcome = await repository.resolve(
+            facts(),
+            userId: testUser,
+            businessUnitId: unitOf(vCategoryRestaurant),
+          );
 
           expect(outcome, isA<RevenueConfigurationUnavailable>());
           expect(
@@ -144,9 +169,13 @@ void main() {
         'an empty cache WITH a snapshot is genuinely noApplicableRule',
         () async {
           // Same query result, opposite meaning.
-          await markSynchronised();
+          await markAllSynchronised();
 
-          final outcome = await repository.resolve(facts());
+          final outcome = await repository.resolve(
+            facts(),
+            userId: testUser,
+            businessUnitId: unitOf(vCategoryRestaurant),
+          );
 
           expect(outcome, isA<RevenueTaxNoApplicableRule>());
           expect(outcome.message, contains('No tax rule configured'));
@@ -159,7 +188,11 @@ void main() {
         await cacheRule(verifiedBaseline.first);
 
         expect(
-          await repository.resolve(facts()),
+          await repository.resolve(
+            facts(),
+            userId: testUser,
+            businessUnitId: unitOf(vCategoryRestaurant),
+          ),
           isA<RevenueConfigurationUnavailable>(),
         );
       });
@@ -192,12 +225,201 @@ void main() {
     });
   });
 
+  group('completeness is scoped, not global (D-108)', () {
+    setUp(() async {
+      for (final v in verifiedBaseline) {
+        await cacheRule(v);
+      }
+    });
+
+    test('syncing Crystal Canopy does not vouch for Hotel Krishna', () async {
+      // The defect this group exists for. Slice 5's marker was one global key, so a
+      // device that had synchronised only Crystal Canopy would have answered a Room
+      // question with `noApplicableRule` — "the Owner has not configured a rule" — about
+      // a property it had never been told anything about.
+      await markSynchronised(unit: 'unit-ccr');
+
+      expect(
+        await repository.resolve(
+          facts(),
+          userId: testUser,
+          businessUnitId: unitOf(vCategoryRestaurant),
+        ),
+        isA<RevenueTaxResolved>(),
+      );
+
+      final room = await repository.resolve(
+        facts(category: vCategoryRoom),
+        userId: testUser,
+        businessUnitId: unitOf(vCategoryRoom),
+      );
+      expect(room, isA<RevenueConfigurationUnavailable>());
+      expect(
+        (room as RevenueConfigurationUnavailable).gap,
+        RevenueConfigurationGap.neverSynchronised,
+      );
+      expect(room, isNot(isA<RevenueTaxNoApplicableRule>()));
+    });
+
+    test(
+      'and the converse: Hotel Krishna does not vouch for Crystal Canopy',
+      () async {
+        await markSynchronised(unit: 'unit-hki');
+
+        expect(
+          await repository.resolve(
+            facts(category: vCategoryRoom),
+            userId: testUser,
+            businessUnitId: unitOf(vCategoryRoom),
+          ),
+          isA<RevenueTaxResolved>(),
+        );
+        expect(
+          await repository.resolve(
+            facts(),
+            userId: testUser,
+            businessUnitId: unitOf(vCategoryRestaurant),
+          ),
+          isA<RevenueConfigurationUnavailable>(),
+        );
+      },
+    );
+
+    test('a multi-scope user may hold both', () async {
+      await markAllSynchronised();
+
+      for (final category in const [
+        vCategoryRestaurant,
+        vCategoryNandbhog,
+        vCategoryRoom,
+        vCategoryBanquet,
+      ]) {
+        expect(
+          await repository.resolve(
+            facts(category: category),
+            userId: testUser,
+            businessUnitId: unitOf(category),
+          ),
+          isA<RevenueTaxResolved>(),
+          reason: category,
+        );
+      }
+    });
+
+    test("one user's sync does not vouch for another user", () async {
+      // A shared back-office workstation sees several people sign in and out of one
+      // installation (D-051, D-054). Authority is per person, and so is any claim made
+      // on the strength of it.
+      await markAllSynchronised(user: testUser);
+
+      expect(
+        await repository.resolve(
+          facts(),
+          userId: testUser,
+          businessUnitId: unitOf(vCategoryRestaurant),
+        ),
+        isA<RevenueTaxResolved>(),
+      );
+      expect(
+        await repository.resolve(
+          facts(),
+          userId: otherUser,
+          businessUnitId: 'unit-ccr',
+        ),
+        isA<RevenueConfigurationUnavailable>(),
+        reason:
+            'the rules are cached, and nobody has vouched for them for this user',
+      );
+    });
+
+    test('tax rules alone are not a complete snapshot', () async {
+      // Received rules say nothing about bands, subtypes or statuses, and the same
+      // resolution consults all four. A marker that could be advanced after the first
+      // request is the "collection of lucky requests" the slice brief forbids.
+      await markSynchronised(unit: 'unit-ccr', datasets: 'rules');
+
+      final state = await repository.completenessFor(
+        userId: testUser,
+        businessUnitId: 'unit-ccr',
+      );
+      expect(state, isA<RevenueConfigIncomplete>());
+      expect((state as RevenueConfigIncomplete).missing, {
+        RevenueConfigDataset.valueBands,
+        RevenueConfigDataset.supplySubtypes,
+        RevenueConfigDataset.premisesStatuses,
+      });
+
+      expect(
+        await repository.resolve(
+          facts(),
+          userId: testUser,
+          businessUnitId: unitOf(vCategoryRestaurant),
+        ),
+        isA<RevenueConfigurationUnavailable>(),
+      );
+    });
+
+    test(
+      'a revocation is distinguishable from never having synchronised',
+      () async {
+        await markAllSynchronised();
+        await db.customStatement(
+          "UPDATE revenue_config_snapshots SET status = 'revoked', datasets = '' "
+          "WHERE business_unit_id = 'unit-ccr' AND user_id = ?",
+          [testUser],
+        );
+
+        final revoked = await repository.resolve(
+          facts(),
+          userId: testUser,
+          businessUnitId: unitOf(vCategoryRestaurant),
+        );
+        expect(
+          (revoked as RevenueConfigurationUnavailable).gap,
+          RevenueConfigurationGap.revoked,
+        );
+        expect(revoked.message, contains('access to this property changed'));
+
+        // The other property is untouched: losing one scope is not losing them all.
+        expect(
+          await repository.resolve(
+            facts(category: vCategoryRoom),
+            userId: testUser,
+            businessUnitId: unitOf(vCategoryRoom),
+          ),
+          isA<RevenueTaxResolved>(),
+        );
+      },
+    );
+
+    test('an uncached category cannot be answered for at all', () async {
+      await markAllSynchronised();
+
+      // A category this device does not hold. Nothing about its scope has been
+      // established here, so there is nothing to answer for it with.
+      expect(
+        await repository.resolve(
+          facts(category: 'cat-never-seen'),
+          userId: testUser,
+          businessUnitId: 'unit-never-synced',
+        ),
+        isA<RevenueConfigurationUnavailable>(),
+        reason:
+            'answering noApplicableRule would speak for a scope never established',
+      );
+    });
+  });
+
   group('the verified baseline, held locally', () {
     setUp(cacheBaseline);
 
     test('all four categories resolve exactly as configured', () async {
       for (final v in verifiedBaseline) {
-        final outcome = await repository.resolve(facts(category: v.category));
+        final outcome = await repository.resolve(
+          facts(category: v.category),
+          userId: testUser,
+          businessUnitId: unitOf(v.category),
+        );
         expect(outcome, isA<RevenueTaxResolved>(), reason: v.category);
 
         final rule = (outcome as RevenueTaxResolved).rule;
@@ -212,9 +434,15 @@ void main() {
     });
 
     test('Restaurant and Nandbhog resolve to different rules', () async {
-      final restaurant = await repository.resolve(facts());
+      final restaurant = await repository.resolve(
+        facts(),
+        userId: testUser,
+        businessUnitId: unitOf(vCategoryRestaurant),
+      );
       final nandbhog = await repository.resolve(
         facts(category: vCategoryNandbhog),
+        userId: testUser,
+        businessUnitId: unitOf(vCategoryNandbhog),
       );
 
       expect(restaurant.ruleOrNull!.id, 'rule-restaurant');
@@ -223,7 +451,11 @@ void main() {
 
     test('Room resolves generically, needing no band', () async {
       // The current baseline has no band, so no band fact is required (B4).
-      final outcome = await repository.resolve(facts(category: vCategoryRoom));
+      final outcome = await repository.resolve(
+        facts(category: vCategoryRoom),
+        userId: testUser,
+        businessUnitId: unitOf(vCategoryRoom),
+      );
       expect(outcome, isA<RevenueTaxResolved>());
       expect(outcome.ruleOrNull!.valueBandId, isNull);
     });
@@ -231,17 +463,27 @@ void main() {
     test('Banquet resolves untaxed, needing no subtype', () async {
       final outcome = await repository.resolve(
         facts(category: vCategoryBanquet),
+        userId: testUser,
+        businessUnitId: unitOf(vCategoryBanquet),
       );
       expect(outcome.ruleOrNull!.treatment, TaxTreatment.none);
     });
 
     test('the day before the baseline has no applicable rule', () async {
       expect(
-        await repository.resolve(facts(date: '2026-03-31')),
+        await repository.resolve(
+          facts(date: '2026-03-31'),
+          userId: testUser,
+          businessUnitId: unitOf(vCategoryRestaurant),
+        ),
         isA<RevenueTaxNoApplicableRule>(),
       );
       expect(
-        await repository.resolve(facts(date: '2026-04-01')),
+        await repository.resolve(
+          facts(date: '2026-04-01'),
+          userId: testUser,
+          businessUnitId: unitOf(vCategoryRestaurant),
+        ),
         isA<RevenueTaxResolved>(),
       );
     });
@@ -255,9 +497,13 @@ void main() {
         // promoting it because every verified category happens to use inclusive_total
         // would decide — silently — whether a recorded figure includes tax.
         await cacheRule(incompleteVector);
-        await markSynchronised();
+        await markAllSynchronised();
 
-        final outcome = await repository.resolve(facts());
+        final outcome = await repository.resolve(
+          facts(),
+          userId: testUser,
+          businessUnitId: unitOf(vCategoryRestaurant),
+        );
 
         expect(outcome, isA<RevenueTaxIncompleteRule>());
         expect(outcome.message, contains('which amount is entered'));
@@ -266,9 +512,13 @@ void main() {
 
     test('a configured 0% resolves as a real rule', () async {
       await cacheRule(zeroRateVector);
-      await markSynchronised();
+      await markAllSynchronised();
 
-      final outcome = await repository.resolve(facts());
+      final outcome = await repository.resolve(
+        facts(),
+        userId: testUser,
+        businessUnitId: unitOf(vCategoryRestaurant),
+      );
 
       expect(outcome, isA<RevenueTaxResolved>());
       expect(outcome.ruleOrNull!.rateBasisPoints, 0);
@@ -290,9 +540,13 @@ void main() {
           basis: EnteredBasis.inclusiveTotal,
         ),
       );
-      await markSynchronised();
+      await markAllSynchronised();
 
-      final outcome = await repository.resolve(facts());
+      final outcome = await repository.resolve(
+        facts(),
+        userId: testUser,
+        businessUnitId: unitOf(vCategoryRestaurant),
+      );
 
       expect(outcome, isA<RevenueTaxAmbiguous>());
       expect((outcome as RevenueTaxAmbiguous).candidates, hasLength(2));
@@ -304,11 +558,13 @@ void main() {
         await cacheBand(vBandLower, floor: 0, ceiling: 750000);
         await cacheRule(verifiedBaseline[2]); // generic Room
         await cacheRule(roomBandVectors.first); // banded Room
-        await markSynchronised();
+        await markAllSynchronised();
 
         expect(
           await repository.resolve(
             facts(category: vCategoryRoom, band: vBandLower),
+            userId: testUser,
+            businessUnitId: unitOf(vCategoryRoom),
           ),
           isA<RevenueTaxAmbiguous>(),
         );
@@ -323,19 +579,23 @@ void main() {
       for (final v in roomBandVectors) {
         await cacheRule(v);
       }
-      await markSynchronised();
+      await markAllSynchronised();
     });
 
     test('each band resolves to its own rule', () async {
       expect(
         (await repository.resolve(
           facts(category: vCategoryRoom, band: vBandLower),
+          userId: testUser,
+          businessUnitId: unitOf(vCategoryRoom),
         )).ruleOrNull!.rateBasisPoints,
         500,
       );
       expect(
         (await repository.resolve(
           facts(category: vCategoryRoom, band: vBandUpper),
+          userId: testUser,
+          businessUnitId: unitOf(vCategoryRoom),
         )).ruleOrNull!.rateBasisPoints,
         1200,
       );
@@ -346,6 +606,8 @@ void main() {
       () async {
         final outcome = await repository.resolve(
           facts(category: vCategoryRoom),
+          userId: testUser,
+          businessUnitId: unitOf(vCategoryRoom),
         );
 
         expect(outcome, isA<RevenueTaxMissingFact>());
@@ -364,8 +626,16 @@ void main() {
       final huge = facts(category: vCategoryRoom, band: vBandUpper);
 
       expect(
-        (await repository.resolve(tiny)).ruleOrNull!.id,
-        (await repository.resolve(huge)).ruleOrNull!.id,
+        (await repository.resolve(
+          tiny,
+          userId: testUser,
+          businessUnitId: 'unit-hki',
+        )).ruleOrNull!.id,
+        (await repository.resolve(
+          huge,
+          userId: testUser,
+          businessUnitId: 'unit-hki',
+        )).ruleOrNull!.id,
       );
       expect(tiny.discriminators.whereType<Money>(), isEmpty);
     });
@@ -373,6 +643,8 @@ void main() {
     test('the resolved rule carries the band bounds for explanation', () async {
       final rule = (await repository.resolve(
         facts(category: vCategoryRoom, band: vBandLower),
+        userId: testUser,
+        businessUnitId: unitOf(vCategoryRoom),
       )).ruleOrNull!;
 
       expect(rule.valueBandFloor, Money.fromPaise(0));
@@ -392,7 +664,7 @@ void main() {
           ceiling: 750000,
           supersededBy: vBandUpper,
         );
-        await markSynchronised();
+        await markAllSynchronised();
       });
 
       test('a superseded band is excluded from new-entry selection', () async {
@@ -426,10 +698,12 @@ void main() {
       'a rule requiring a subtype, with none chosen, is a missing fact',
       () async {
         await cacheRule(subtypeVector);
-        await markSynchronised();
+        await markAllSynchronised();
 
         final outcome = await repository.resolve(
           facts(category: vCategoryBanquet),
+          userId: testUser,
+          businessUnitId: unitOf(vCategoryBanquet),
         );
 
         expect(
@@ -443,9 +717,13 @@ void main() {
       'a rule requiring a premises status, with none configured, is a missing fact',
       () async {
         await cacheRule(premisesVector);
-        await markSynchronised();
+        await markAllSynchronised();
 
-        final outcome = await repository.resolve(facts());
+        final outcome = await repository.resolve(
+          facts(),
+          userId: testUser,
+          businessUnitId: unitOf(vCategoryRestaurant),
+        );
 
         expect(
           (outcome as RevenueTaxMissingFact).dimension,
@@ -505,6 +783,7 @@ void main() {
         await cacheBaseline();
 
         final eligibility = await repository.eligibilityFor(
+          userId: testUser,
           businessUnitId: 'unit-ccr',
           revenueCategoryId: vCategoryRestaurant,
           businessDate: vDate('2026-06-15'),
@@ -521,6 +800,7 @@ void main() {
       'an unsynchronised device refuses, and says which kind of refusal',
       () async {
         final eligibility = await repository.eligibilityFor(
+          userId: testUser,
           businessUnitId: 'unit-ccr',
           revenueCategoryId: vCategoryRestaurant,
           businessDate: vDate('2026-06-15'),
@@ -536,6 +816,7 @@ void main() {
       await cacheBaseline();
 
       final eligibility = await repository.eligibilityFor(
+        userId: testUser,
         businessUnitId: 'unit-ccr',
         revenueCategoryId: vCategoryRestaurant,
         businessDate: vDate('2026-03-31'),
@@ -572,14 +853,23 @@ void main() {
       };
 
       final before = await census();
-      await repository.resolve(facts());
-      await repository.resolve(facts(category: vCategoryRoom));
+      await repository.resolve(
+        facts(),
+        userId: testUser,
+        businessUnitId: unitOf(vCategoryRestaurant),
+      );
+      await repository.resolve(
+        facts(category: vCategoryRoom),
+        userId: testUser,
+        businessUnitId: unitOf(vCategoryRoom),
+      );
       await repository.selectableBands(vCategoryRoom);
       await repository.premisesStatusFor(
         businessUnitId: 'unit-ccr',
         on: vDate('2026-06-15'),
       );
       await repository.eligibilityFor(
+        userId: testUser,
         businessUnitId: 'unit-ccr',
         revenueCategoryId: vCategoryRestaurant,
         businessDate: vDate('2026-06-15'),
@@ -592,6 +882,7 @@ void main() {
     test('Slice 5 creates no outbox mutation', () async {
       await cacheBaseline();
       await repository.eligibilityFor(
+        userId: testUser,
         businessUnitId: 'unit-ccr',
         revenueCategoryId: vCategoryRestaurant,
         businessDate: vDate('2026-06-15'),
@@ -614,6 +905,7 @@ void main() {
       await cacheBaseline();
       expect(
         (await repository.eligibilityFor(
+          userId: testUser,
           businessUnitId: 'unit-ccr',
           revenueCategoryId: vCategoryRestaurant,
           businessDate: vDate('2026-06-15'),
@@ -622,14 +914,17 @@ void main() {
         isTrue,
       );
 
-      // What a confirmed revocation does: the reference cache goes, and the snapshot
-      // marker with it. Stale configuration must not be used to create new revenue.
+      // What a confirmed revocation does: the reference cache goes, and the completeness
+      // record is downgraded rather than deleted, so the device can still say which
+      // silence this is. Stale configuration must not be used to create new revenue.
       await db.customStatement('DELETE FROM revenue_tax_rates');
-      await db.customStatement('DELETE FROM app_meta WHERE key = ?', [
-        revenueConfigurationSyncedKey,
-      ]);
+      await db.customStatement(
+        "UPDATE revenue_config_snapshots SET status = 'revoked', datasets = '', "
+        "generation = NULL WHERE business_unit_id = 'unit-ccr'",
+      );
 
       final after = await repository.eligibilityFor(
+        userId: testUser,
         businessUnitId: 'unit-ccr',
         revenueCategoryId: vCategoryRestaurant,
         businessDate: vDate('2026-06-15'),
@@ -709,7 +1004,11 @@ void main() {
       () async {
         await cacheBaseline();
 
-        final rule = (await repository.resolve(facts())).ruleOrNull!;
+        final rule = (await repository.resolve(
+          facts(),
+          userId: testUser,
+          businessUnitId: unitOf(vCategoryRestaurant),
+        )).ruleOrNull!;
         final computed = rule.compute(Money.fromRupees(100000));
 
         expect(computed.gross, Money.fromPaise(10000000));

@@ -135,6 +135,14 @@ abstract final class CacheClassification {
       CacheOwnership.businessUnitScoped,
       unitColumn: 'business_unit_id',
     ),
+    // The completeness record itself is scoped, and the purge **downgrades** it rather
+    // than deleting it: a device that has lost a property must stop claiming its
+    // configuration is authoritative, and must still be able to say why (D-106, D-108).
+    CachedTable(
+      'revenue_config_snapshots',
+      CacheOwnership.businessUnitScoped,
+      unitColumn: 'business_unit_id',
+    ),
     CachedTable(
       'revenue_tax_rates',
       CacheOwnership.businessUnitScoped,

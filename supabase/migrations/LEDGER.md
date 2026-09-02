@@ -60,6 +60,14 @@ grouping. Each is accounted for here.
 | 20260901142347 | `premises_status_no_overlap` | `20260901142347_premises_status_no_overlap.sql` |
 | 20260901144002 | `revenue_arithmetic_parity` | `20260901144002_revenue_arithmetic_parity.sql` |
 
+## Phase 4 Slice 6
+
+| Ledger version | Ledger name | Committed file |
+|---|---|---|
+| 20260901181358 | `revenue_config_read_boundary` | `20260901181358_revenue_config_read_boundary.sql` |
+| 20260902104120 | `revenue_config_policy_uses_public_helper` | `20260902104120_revenue_config_policy_uses_public_helper.sql` |
+| 20260902104238 | `api_surface_invariant_revenue_config` | `20260902104238_api_surface_invariant_revenue_config.sql` |
+
 The first two were applied during the audit and were **not committed at the time** — the
 same omission A0 exists to catch, caught by A0's own check one slice later. Both were
 recovered verbatim from the server's migration record (the D-056 procedure) rather than
@@ -120,4 +128,7 @@ retyped from memory, because a file that merely resembles what ran is not proven
 20260901142248 revenue_rule_completeness
 20260901142347 premises_status_no_overlap
 20260901144002 revenue_arithmetic_parity
+20260901181358 revenue_config_read_boundary
+20260902104120 revenue_config_policy_uses_public_helper
+20260902104238 api_surface_invariant_revenue_config
 ```

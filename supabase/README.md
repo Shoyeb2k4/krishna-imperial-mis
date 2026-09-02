@@ -1,6 +1,6 @@
 # Backend — development
 
-Directive: SHOYEB-HOSPITALITY-MIS · Spec v1.1 · Phase 2
+Directive: SHOYEB-HOSPITALITY-MIS · Spec v1.2 · Phase 4
 
 Postgres is the system of record. The local encrypted SQLite database is a cache, a write
 buffer and the default reporting engine — never the authority (`docs/ARCHITECTURE.md` §1).

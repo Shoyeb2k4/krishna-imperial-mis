@@ -158,33 +158,38 @@ void main() {
     setUp(() => db = AppDatabase(NativeDatabase.memory()));
     tearDown(() => db.close());
 
-    test('opens at schema version 11 with every revenue table present', () async {
-      await db.customSelect('SELECT 1').get();
+    test(
+      'opens at the current schema version with every revenue table present',
+      () async {
+        await db.customSelect('SELECT 1').get();
 
-      final version = await db.customSelect('PRAGMA user_version').getSingle();
-      expect(version.data.values.first, 11);
+        final version = await db
+            .customSelect('PRAGMA user_version')
+            .getSingle();
+        expect(version.data.values.first, 12);
 
-      final names = {
-        for (final r
-            in await db
-                .customSelect(
-                  "SELECT name FROM sqlite_master WHERE type IN ('table','view')",
-                )
-                .get())
-          r.data['name'] as String,
-      };
-      expect(
-        names,
-        containsAll([
-          'revenue_entries',
-          'revenue_components',
-          'revenue_value_bands',
-          'revenue_supply_subtypes',
-          'business_unit_tax_statuses',
-          'revenue_entry_totals',
-        ]),
-      );
-    });
+        final names = {
+          for (final r
+              in await db
+                  .customSelect(
+                    "SELECT name FROM sqlite_master WHERE type IN ('table','view')",
+                  )
+                  .get())
+            r.data['name'] as String,
+        };
+        expect(
+          names,
+          containsAll([
+            'revenue_entries',
+            'revenue_components',
+            'revenue_value_bands',
+            'revenue_supply_subtypes',
+            'business_unit_tax_statuses',
+            'revenue_entry_totals',
+          ]),
+        );
+      },
+    );
 
     test(
       'the reference masters ship empty — no invented configuration',
@@ -735,12 +740,14 @@ void main() {
       );
       await v10.close();
 
-      // Opening at v11 runs the migration.
+      // Opening a v10 database runs every migration between it and the current version,
+      // so this exercises the v11 step in the sequence a real device experiences rather
+      // than in isolation.
       final db = AppDatabase(NativeDatabase(file));
       addTearDown(db.close);
 
       final version = await db.customSelect('PRAGMA user_version').getSingle();
-      expect(version.data.values.first, 11);
+      expect(version.data.values.first, 12);
 
       // 1 · Phase 3 data is untouched.
       final unit = await db

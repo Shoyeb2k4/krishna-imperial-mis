@@ -324,3 +324,71 @@ class BusinessUnitTaxStatuses extends Table {
     'CHECK (length(trim(status_code)) > 0)',
   ];
 }
+
+/// What this device has authoritatively received, per user and per business unit.
+///
+/// **The reason this is a table and not a flag.** Slice 5 shipped a single global
+/// `app_meta` key — `revenue.configuration.synced_at` — whose presence claimed the whole
+/// organisation's revenue configuration was authoritative. That is too coarse in three
+/// separate ways, and each of them is a way to tell a manager something false:
+///
+///  * **Scope.** Synchronising Crystal Canopy would have made Hotel Krishna's
+///    configuration look authoritative, so a Room entry would resolve
+///    `noApplicableRule` — *"the Owner has not configured a rule"* — on a device that had
+///    simply never been told about Hotel Krishna.
+///  * **User.** One person's successful sync would have vouched for a scope the next
+///    person on a shared workstation does not hold (D-051, D-074).
+///  * **Dataset.** Tax rules arriving proves nothing about bands, subtypes or premises
+///    statuses, which the same resolution depends on. "Some of it arrived" is not a
+///    synchronised configuration.
+///
+/// So completeness is recorded where it is actually true: for one user, for one business
+/// unit, naming the datasets proven present and the server generation they came from.
+class RevenueConfigSnapshots extends Table {
+  @override
+  String get tableName => 'revenue_config_snapshots';
+
+  /// Whose sync this was. A snapshot vouches for nobody else (D-051 §9).
+  TextColumn get userId => text()();
+
+  TextColumn get orgId => text()();
+
+  /// Soft pointer, like every other scoped cache row: the unit may be purged from
+  /// underneath it, and this row is precisely what has to survive that to say so.
+  TextColumn get businessUnitId => text()();
+
+  /// `complete` or `revoked`.
+  ///
+  /// A revocation **downgrades** rather than deletes, so the device can still tell the
+  /// two silences apart: no row at all means this scope was never synchronised here,
+  /// while `revoked` means it was and the authority was withdrawn. Both refuse new
+  /// offline revenue; only one of them is a statement about this user's access (D-106).
+  TextColumn get status => text()();
+
+  /// The dataset codes proven present, comma-separated and sorted.
+  ///
+  /// Stored as data rather than implied by row counts, because zero subtypes is a
+  /// legitimate synchronised answer and is not the same fact as never having asked.
+  TextColumn get datasets => text().withDefault(const Constant(''))();
+
+  /// The server generation this snapshot came from — the greatest `change_seq` observed
+  /// across the datasets, so two runs cannot be silently interleaved into one claim.
+  TextColumn get generation => text().nullable()();
+
+  /// **Server** time, taken from the confirmed authority. Never the device clock, which
+  /// is forensic metadata only (spec §9).
+  DateTimeColumn get confirmedAt => dateTime().nullable()();
+
+  /// Device clock, kept for diagnostics and never used to decide anything.
+  DateTimeColumn get updatedAt => dateTime()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {userId, businessUnitId};
+
+  @override
+  List<String> get customConstraints => [
+    "CHECK (status IN ('complete', 'revoked'))",
+    // A complete snapshot that names no datasets is a claim with no evidence behind it.
+    "CHECK (status <> 'complete' OR length(datasets) > 0)",
+  ];
+}

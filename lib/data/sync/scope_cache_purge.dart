@@ -193,7 +193,7 @@ class ScopeCachePurge {
       );
     }
 
-    return purgeUnits(revoked);
+    return purgeUnits(revoked, actorUserId: refresh.snapshot.userId);
   }
 
   /// Clears `scope_revoked_at` on retained documents that belong to **this** actor and
@@ -368,7 +368,15 @@ class ScopeCachePurge {
   /// Separate from [applyTo] so it can be exercised directly, but deliberately not the
   /// documented entry point: everything in production reaches it through the confirmed
   /// authority above.
-  Future<ScopePurgeResult> purgeUnits(Set<String> units) async {
+  /// [actorUserId] names whose completeness claim is being withdrawn.
+  ///
+  /// Supplied when the purge follows a confirmed authority answer, because that answer is
+  /// about one person. Omitted on the unconditional local paths — sign-out and a user
+  /// switch — where no user may keep claiming these units, and every claim goes (D-074).
+  Future<ScopePurgeResult> purgeUnits(
+    Set<String> units, {
+    String? actorUserId,
+  }) async {
     if (units.isEmpty) {
       return const ScopePurgeResult.skipped('no business unit was revoked');
     }
@@ -452,6 +460,31 @@ class ScopeCachePurge {
       removed['business_units'] = await _delete(
         'DELETE FROM business_units WHERE id IN ${_in(units)}',
         units,
+      );
+
+      // The revenue configuration completeness record is **downgraded, not deleted**.
+      //
+      // Deleting it would stop the device claiming authority, which is the security-
+      // critical half and is not enough. A device with no row cannot tell a user who has
+      // lost a property from one who never had it, and those are different sentences:
+      // one is about their access, the other about this installation. Keeping the row at
+      // `revoked` — with the datasets and generation cleared, so nothing can read it as
+      // still-usable evidence — is what makes `configurationUnavailable` able to say
+      // which (D-106, D-108).
+      //
+      // It is scoped to this actor. Another user's record on a shared workstation is
+      // their own and says nothing about this authority answer (D-074).
+      await db.customUpdate(
+        "UPDATE revenue_config_snapshots SET status = 'revoked', datasets = '', "
+        'generation = NULL, updated_at = ? '
+        'WHERE business_unit_id IN ${_in(units)}'
+        '${actorUserId == null ? '' : ' AND user_id = ?'}',
+        variables: [
+          Variable<String>(DateTime.now().toUtc().toIso8601String()),
+          for (final unit in units) Variable<String>(unit),
+          if (actorUserId != null) Variable<String>(actorUserId),
+        ],
+        updates: const {},
       );
     });
 

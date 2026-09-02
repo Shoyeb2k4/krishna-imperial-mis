@@ -8,7 +8,7 @@ the application role named **Owner** is a separate concept — D-057)
 Status: **Sections 1–12 proposed (Phase 0, revised); sections 13–16 describe what is built
 and verified; section 17 is the approved Phase 4 plan and is NOT built.** Sections 6, 5.3 and 8 carry the project lead's mandated corrections.
 Implementation status is tracked in `PROJECT_STATUS.md`.
-Last updated: 2026-09-01
+Last updated: 2026-09-02
 
 ---
 
@@ -1253,7 +1253,17 @@ Three implementations of one specification now exist: `TaxRule.compute` in Dart,
 adapter that feeds it, and `app.revenue_compute` in Postgres. D-020 requires their
 agreement to be proven rather than assumed.
 
-The vectors live **once**, in `20260901144002_revenue_arithmetic_parity.sql`:
+The vectors live **once**, in `20260901144002_revenue_arithmetic_parity.sql`.
+
+**They are not a database object.** That migration contains no DDL at all — two anonymous
+`do $$ … $$` blocks and nothing else — so the vectors are a SQL `values (…)` literal
+evaluated during deployment and discarded when the block ends. There is no table, no view,
+no function and no type to grant, expose through PostgREST, or mutate; `app.revenue_compute`
+itself is executable by neither `anon`, `authenticated` nor `PUBLIC`. The Dart half parses
+the **repository file**, in `test/`, which no code under `lib/` references. So the
+application's runtime depends on none of it: a device could not reach the fixture if it
+tried, and a deploy that skipped the assertion would still leave a working application —
+it would simply have stopped proving the two engines agree.
 
 ```
         migration `do` block            test/support/revenue_parity_vectors.dart
@@ -1304,3 +1314,136 @@ the development project across runs.
 
 Therefore: **no assertion may read `revenue_tax_rates` without filtering `archived_at`.**
 One did, and failed for that reason rather than for a defect (D-107).
+
+---
+
+## 19. Revenue configuration synchronisation (2026-09-02)
+
+§18 described a device resolving tax from a cache. This is what fills it. **Slice 6 is
+configuration only:** no revenue create transport, no outbox intent, no UI.
+
+### 19.1 The proven sync is extended, not duplicated
+
+`ReferenceSync` already had every hard part: authority first and nothing before it, purge
+only on a confirmed answer, pull what RLS returns, one local transaction, remember the
+confirmed scope. A second engine for revenue would have had to re-derive all of that and
+would have drifted from it. So revenue is three more datasets and one more thing written
+at the end of the same transaction.
+
+The three datasets are **not optional extras**. The resolver consults all of them: a rule
+may name a value band, a supply subtype and a premises status, and a rule naming one the
+device never received resolves to `missingFact` — which an operator reads as *"choose a
+band"* when there is no band to choose. Received together or not at all.
+
+### 19.2 What a complete snapshot is
+
+For one user and one business unit:
+
+```
+        revenue categories of the unit
+        tax rules for those categories      — ALL effective dates, incl. end-dated
+        value bands for those categories    — incl. superseded (D-100)
+        supply subtypes for those categories
+        premises tax statuses for the unit  — incl. end-dated (A2)
+```
+
+Recorded in `revenue_config_snapshots`, keyed `(user_id, business_unit_id)`, carrying the
+dataset codes proven present, the greatest `change_seq` observed as the snapshot's
+generation, and the **server's** confirmed time. The device clock sits beside it and
+decides nothing.
+
+**Zero rows is a synchronised answer.** The verified baseline has no bands, no subtypes and
+no statuses; that is configuration, not absence of it. Storing a dataset list rather than
+counting rows is what keeps *"the Owner configured none"* distinct from *"this device never
+asked"* — the same distinction §18.2 draws for rules, extended to the datasets that were
+not there to draw it for.
+
+### 19.3 Atomic, and the marker is the last thing written
+
+```
+        confirmed authority
+          → purge revoked scopes            (D-048: only on a confirmed answer)
+          → pull the whole snapshot
+          → VALIDATE it                      (§19.5)
+          → one transaction:
+                upsert every dataset
+                remove rows the snapshot no longer contains
+                withdraw claims for units the snapshot does not cover
+                write the completeness marker   ← LAST
+          → commit
+```
+
+The forbidden sequence is *rules succeed → mark synchronised → bands fail → device claims
+complete configuration*. It cannot happen here because the marker is inside the same
+transaction and is the final statement in it: a failure anywhere rolls back the claim
+together with the data.
+
+### 19.4 What a failure leaves behind
+
+A pull that does not arrive changes nothing: the previously committed snapshot stands, the
+marker is untouched, and it is reported as stale rather than wrong. This is the
+`unknown ≠ revoked` rule (D-048 §1) applied to configuration, and both halves are tested —
+a confirmed pull that omits a unit **does** withdraw that unit's claim, and a failed pull
+withdraws nothing at all.
+
+### 19.5 Fail closed on a payload, never repair it
+
+The server prevents ambiguous and incomplete configuration; the client checks anyway,
+because replacing working configuration with unusable configuration is strictly worse than
+keeping yesterday's — the device would then refuse every revenue entry *while claiming to
+be synchronised*.
+
+Refused: a rule with no input basis, an unrecognised basis or treatment, a rule naming a
+band or subtype the snapshot does not contain, a band describing no range. On refusal the
+prior snapshot is retained whole, the marker does not move, and the reason is reported
+separately from a transport failure — they are different facts and a diagnostics screen
+must not conflate them.
+
+**Nothing is repaired on device.** Filling in a missing basis or inventing a range would be
+deciding a tax fact on the server's behalf (D-043).
+
+### 19.6 The read boundary, narrowed rather than widened
+
+Reference configuration is read the way Phase 2 already reads masters: RLS-protected
+`select`, no new snapshot RPC, the server deciding what the scope means. Auditing it before
+synchronising through it found three policies that had never been exercised (D-110) —
+including one requiring a capability **no role holds**, which no client could ever have
+satisfied. All three now match the tax-rule policy: this organisation, and a unit the
+caller may view.
+
+The first attempt at that fix broke every band and subtype read by calling a helper in
+`app`, which `authenticated` cannot execute (D-109). That is D-045 in a new place, and the
+lesson is recorded a second time because the first recording did not generalise into a
+check that would have caught it.
+
+### 19.7 Bands, and why sync must not tidy them
+
+A band's bounds are write-once (D-100). Sync upserts by the band's own id, so supersession
+arrives as a **second band plus a pointer** and never as an edit to the first one's bounds.
+Updating band A's ceiling to band B's would retroactively redefine what every rule
+referencing A applied to, for dates already recorded — which is the harm the whole
+date-effective model exists to prevent.
+
+Only live bands are offered for a new entry; superseded ones stay resolvable so history
+remains explainable.
+
+### 19.8 Nothing here owns financial explainability
+
+Reference rows are a cache and are removed when the authoritative dataset no longer
+contains them. A recorded component is unaffected by any of it: it carries its own rate,
+treatment, basis and band snapshot and consults no reference row, so a band deleted by a
+sync still explains the entries that named it (D-070 §11). Retained unsynced work is
+likewise the actor's and is not made browsable by configuration arriving — reference data
+conveys no financial-document ownership (D-074).
+
+### 19.9 Freshness, and the question that is not answered here
+
+The project has no TTL anywhere. `confirmed` / `stale` / `unknown` describes whether the
+device could ask, not how old the answer is, and cached authority already works offline
+indefinitely on that basis.
+
+Slice 6 applies that policy unchanged: a complete snapshot permits offline resolution for
+as long as it stands. **That is the existing rule, not a new decision**, and the question of
+whether revenue tax configuration should have a maximum age before a device refuses to
+create *new* revenue is recorded as D-112 and left to the project lead. It matters because
+a stale permission is caught server-side on delivery and a stale rate is not.

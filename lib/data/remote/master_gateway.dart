@@ -14,6 +14,16 @@ library;
 import 'package:krishna_mis/data/remote/remote_outcome.dart';
 import 'package:krishna_mis/data/remote/supabase_gateway.dart';
 
+/// The one thing `ReferenceSync` needs from the server.
+///
+/// A seam rather than a layer: the sync's job is deciding *what to do with* an
+/// authoritative snapshot — validate it, write it atomically, mark it complete — and that
+/// logic deserves to be testable without a Supabase client. `MasterGateway` is the only
+/// production implementation, and the live suite still exercises it end to end.
+abstract interface class ReferencePuller {
+  Future<RemoteOutcome<ReferenceSnapshot>> pullAll();
+}
+
 /// Server-owned reference data as one consistent read.
 final class ReferenceSnapshot {
   const ReferenceSnapshot({
@@ -25,6 +35,9 @@ final class ReferenceSnapshot {
     required this.paymentMethods,
     required this.vendors,
     required this.taxRules,
+    required this.valueBands,
+    required this.supplySubtypes,
+    required this.premisesStatuses,
     required this.fetchedAt,
   });
 
@@ -36,6 +49,17 @@ final class ReferenceSnapshot {
   final List<Map<String, dynamic>> paymentMethods;
   final List<Map<String, dynamic>> vendors;
   final List<Map<String, dynamic>> taxRules;
+
+  // ── The revenue configuration datasets (Slice 6) ─────────────────────────
+  //
+  // All three are part of the same required snapshot as `taxRules`, not optional extras.
+  // A rule may name a band, a subtype or a premises status, and a rule naming one the
+  // device never received resolves to `missingFact` — which an operator reads as "choose
+  // a band" when there is no band to choose. Received together or not at all.
+  final List<Map<String, dynamic>> valueBands;
+  final List<Map<String, dynamic>> supplySubtypes;
+  final List<Map<String, dynamic>> premisesStatuses;
+
   final DateTime fetchedAt;
 
   /// The units this snapshot actually contains — which is to say, the units the server
@@ -53,10 +77,57 @@ final class ReferenceSnapshot {
       revenueCategories.length +
       paymentMethods.length +
       vendors.length +
-      taxRules.length;
+      taxRules.length +
+      valueBands.length +
+      supplySubtypes.length +
+      premisesStatuses.length;
+
+  /// The rows this snapshot holds for one local table name.
+  ///
+  /// Used by the sync's pruning step, so the mapping from table to dataset lives here
+  /// beside the snapshot rather than being restated where it is consumed.
+  List<Map<String, dynamic>> rowsFor(String table) => switch (table) {
+    'revenue_tax_rates' => taxRules,
+    'revenue_value_bands' => valueBands,
+    'revenue_supply_subtypes' => supplySubtypes,
+    'business_unit_tax_statuses' => premisesStatuses,
+    _ => throw ArgumentError.value(
+      table,
+      'table',
+      'not a revenue configuration dataset',
+    ),
+  };
+
+  /// The greatest `change_seq` anywhere in this snapshot, as the snapshot's generation.
+  ///
+  /// Recorded so two runs cannot be silently mistaken for one: if a later sync writes a
+  /// lower generation, the datasets were assembled from different logical states of the
+  /// server and the claim of completeness would be about a snapshot that never existed.
+  String? get generation {
+    var greatest = -1;
+    for (final rows in [
+      businessUnits,
+      departments,
+      sections,
+      expenseCategories,
+      revenueCategories,
+      paymentMethods,
+      vendors,
+      taxRules,
+      valueBands,
+      supplySubtypes,
+      premisesStatuses,
+    ]) {
+      for (final row in rows) {
+        final seq = row['change_seq'];
+        if (seq is int && seq > greatest) greatest = seq;
+      }
+    }
+    return greatest < 0 ? null : greatest.toString();
+  }
 }
 
-class MasterGateway extends SupabaseGateway {
+class MasterGateway extends SupabaseGateway implements ReferencePuller {
   const MasterGateway(super.client);
 
   /// Everything this user may see, in one pass.
@@ -66,6 +137,7 @@ class MasterGateway extends SupabaseGateway {
   /// and it cannot drift out of step the way a watermark can. `change_seq` is already on
   /// every row for when volume justifies incremental sync; building that machinery now,
   /// before there is any evidence it is needed, would be the wrong trade.
+  @override
   Future<RemoteOutcome<ReferenceSnapshot>> pullAll() => guard(() async {
     Future<List<Map<String, dynamic>>> rows(String table) async =>
         (await client.from(table).select()).cast<Map<String, dynamic>>();
@@ -81,6 +153,15 @@ class MasterGateway extends SupabaseGateway {
     final vendors = await rows('vendors');
     final taxRules = await rows('revenue_tax_rates');
 
+    // The revenue configuration. Sequential like the rest, and — critically — the caller
+    // treats a failure in any one of them as a failure of the whole snapshot: `guard`
+    // turns a throw into a `RemoteFailure`, so there is no path on which some of these
+    // lists arrive and the others are quietly empty. An empty list here means the server
+    // returned no rows, which is a different fact from not having asked.
+    final valueBands = await rows('revenue_value_bands');
+    final supplySubtypes = await rows('revenue_supply_subtypes');
+    final premisesStatuses = await rows('business_unit_tax_statuses');
+
     return ReferenceSnapshot(
       businessUnits: businessUnits,
       departments: departments,
@@ -90,6 +171,9 @@ class MasterGateway extends SupabaseGateway {
       paymentMethods: paymentMethods,
       vendors: vendors,
       taxRules: taxRules,
+      valueBands: valueBands,
+      supplySubtypes: supplySubtypes,
+      premisesStatuses: premisesStatuses,
       fetchedAt: DateTime.now().toUtc(),
     );
   });

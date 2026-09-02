@@ -27,11 +27,15 @@ import 'package:krishna_mis/data/remote/authority_gateway.dart';
 import 'package:krishna_mis/data/remote/master_gateway.dart';
 import 'package:krishna_mis/data/remote/vendor_tax_period_gateways.dart';
 import 'package:krishna_mis/data/sync/outbox_repository.dart';
+import 'package:krishna_mis/data/repositories/revenue_tax_repository.dart';
 import 'package:krishna_mis/data/sync/reference_sync.dart';
 import 'package:krishna_mis/domain/auth/authority.dart';
 import 'package:krishna_mis/domain/sync/pending_mutation.dart';
 import 'package:krishna_mis/domain/sync/server_refusal.dart';
+import 'package:krishna_mis/domain/revenue/revenue_tax_resolution.dart';
 import 'package:krishna_mis/domain/sync/sync_state.dart';
+import 'package:krishna_mis/domain/value_objects/business_date.dart';
+import 'package:krishna_mis/domain/value_objects/money.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
@@ -455,6 +459,152 @@ void main() {
   // repository could not have produced a working staging or production environment. The
   // repository is the source of project state (CLAUDE.md §1), and "the server has
   // something we do not" is exactly the kind of drift that is invisible until a deploy.
+  // ── Revenue configuration synchronisation, against the real project (Slice 6) ──
+  //
+  // Three phases on one persistent database, because the interesting claim is not that a
+  // request succeeded — it is that the device is still correct after the network goes
+  // away and the process restarts.
+  group(
+    'revenue-sync · the verified baseline reaches this device',
+    skip: phase != 'revenue-sync',
+    () {
+      test('the four verified rules arrive, complete and parseable', () async {
+        await signInAs('giridhar@hki.com');
+        final report = await sync.synchronise();
+
+        expect(report.authorityConfirmed, isTrue);
+        expect(
+          report.rejectedSnapshotReason,
+          isNull,
+          reason:
+              'the real server configuration must satisfy the domain invariants',
+        );
+
+        final rules = await db.select(db.revenueTaxRates).get();
+        final live = rules.where((r) => r.archivedAt == null).toList();
+
+        // Filtered on `archived_at`, deliberately: live tests archive what they create
+        // and no client holds DELETE on financial configuration, so the development
+        // project legitimately accumulates archived rows (D-107).
+        expect(live, hasLength(4));
+
+        final categories = {
+          for (final c in await db.select(db.revenueCategories).get())
+            c.id: c.code,
+        };
+        final byCategory = {
+          for (final r in live) categories[r.revenueCategoryId]: r,
+        };
+
+        for (final expected in const [
+          ('RESTAURANT', 500, 'inclusive'),
+          ('NANDBHOG', 500, 'inclusive'),
+          ('ROOM', 500, 'inclusive'),
+          ('BANQUET', 0, 'none'),
+        ]) {
+          final rule = byCategory[expected.$1];
+          expect(rule, isNotNull, reason: expected.$1);
+          expect(rule!.rateBasisPoints, expected.$2, reason: expected.$1);
+          expect(rule.treatment, expected.$3, reason: expected.$1);
+          expect(rule.effectiveFrom, '2026-04-01', reason: expected.$1);
+          expect(
+            rule.inputBasis,
+            'inclusive_total',
+            reason: '${expected.$1} — the column that never used to be synced',
+          );
+          expect(rule.valueBandId, isNull, reason: 'no band is configured yet');
+          expect(rule.supplySubtypeId, isNull);
+          expect(rule.premisesStatusCode, isNull);
+        }
+      });
+
+      test(
+        'the optional datasets arrive empty, and that is a synchronised answer',
+        () async {
+          // Acceptance facts for the current baseline, not runtime assumptions: the code
+          // must treat any count as valid, and it is this table's job to say what the
+          // count happens to be today.
+          expect(await db.select(db.revenueValueBands).get(), isEmpty);
+          expect(await db.select(db.revenueSupplySubtypes).get(), isEmpty);
+          expect(await db.select(db.businessUnitTaxStatuses).get(), isEmpty);
+
+          final snapshots = await db.select(db.revenueConfigSnapshots).get();
+          expect(snapshots, isNotEmpty);
+          for (final snapshot in snapshots) {
+            expect(snapshot.status, 'complete');
+            expect(
+              RevenueConfigDataset.decode(snapshot.datasets),
+              RevenueConfigDataset.all,
+              reason: 'all four datasets, or the claim is not completeness',
+            );
+          }
+        },
+      );
+    },
+  );
+
+  group(
+    'revenue-sync-offline · resolution with the transport gone',
+    skip: phase != 'revenue-sync-offline',
+    () {
+      test(
+        'all four categories resolve from the cache, exactly in paise',
+        () async {
+          // No sign-in and no sync: this phase reads what the previous one left on disk,
+          // which is the whole point. If the cached configuration did not survive, nothing
+          // below can pass.
+          final repository = RevenueTaxRepository(db);
+          final categories = {
+            for (final c in await db.select(db.revenueCategories).get())
+              c.code: (id: c.id, unit: c.businessUnitId),
+          };
+          expect(
+            categories.keys,
+            containsAll(['RESTAURANT', 'ROOM', 'BANQUET']),
+          );
+
+          final owner = await db
+              .select(db.revenueConfigSnapshots)
+              .get()
+              .then((rows) => rows.first.userId);
+
+          for (final expected in const [
+            ('RESTAURANT', 10000000, 476190, 9523810),
+            ('NANDBHOG', 10000000, 476190, 9523810),
+            ('ROOM', 6500000, 309524, 6190476),
+            ('BANQUET', 4034300, 0, 4034300),
+          ]) {
+            final category = categories[expected.$1]!;
+            final outcome = await repository.resolve(
+              RevenueTaxFacts(
+                revenueCategoryId: category.id,
+                businessDate: BusinessDate.of(2026, 6, 15),
+              ),
+              userId: owner,
+              businessUnitId: category.unit,
+            );
+
+            expect(outcome, isA<RevenueTaxResolved>(), reason: expected.$1);
+            final computed = (outcome as RevenueTaxResolved).rule.compute(
+              Money.fromPaise(expected.$2),
+            );
+            expect(computed.gross.paise, expected.$2, reason: expected.$1);
+            expect(computed.tax.paise, expected.$3, reason: expected.$1);
+            expect(computed.net.paise, expected.$4, reason: expected.$1);
+            expect(computed.reconciles, isTrue, reason: expected.$1);
+          }
+        },
+      );
+
+      test('and no revenue was created doing it', () async {
+        // Slice 6 synchronises configuration. It does not record revenue, and asserting
+        // that is cheaper than discovering later that something did.
+        expect(await db.select(db.revenueEntries).get(), isEmpty);
+        expect(await db.select(db.revenueComponents).get(), isEmpty);
+      });
+    },
+  );
+
   group('the repository and the server agree', skip: phase != 'drift', () {
     test('every applied migration has a file in supabase/migrations', () async {
       await signInAs('giridhar@hki.com');

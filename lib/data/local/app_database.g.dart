@@ -16263,6 +16263,557 @@ class BusinessUnitTaxStatusesCompanion
   }
 }
 
+class $RevenueConfigSnapshotsTable extends RevenueConfigSnapshots
+    with TableInfo<$RevenueConfigSnapshotsTable, RevenueConfigSnapshot> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $RevenueConfigSnapshotsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _userIdMeta = const VerificationMeta('userId');
+  @override
+  late final GeneratedColumn<String> userId = GeneratedColumn<String>(
+    'user_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _orgIdMeta = const VerificationMeta('orgId');
+  @override
+  late final GeneratedColumn<String> orgId = GeneratedColumn<String>(
+    'org_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _businessUnitIdMeta = const VerificationMeta(
+    'businessUnitId',
+  );
+  @override
+  late final GeneratedColumn<String> businessUnitId = GeneratedColumn<String>(
+    'business_unit_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _statusMeta = const VerificationMeta('status');
+  @override
+  late final GeneratedColumn<String> status = GeneratedColumn<String>(
+    'status',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _datasetsMeta = const VerificationMeta(
+    'datasets',
+  );
+  @override
+  late final GeneratedColumn<String> datasets = GeneratedColumn<String>(
+    'datasets',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _generationMeta = const VerificationMeta(
+    'generation',
+  );
+  @override
+  late final GeneratedColumn<String> generation = GeneratedColumn<String>(
+    'generation',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _confirmedAtMeta = const VerificationMeta(
+    'confirmedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> confirmedAt = GeneratedColumn<DateTime>(
+    'confirmed_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    userId,
+    orgId,
+    businessUnitId,
+    status,
+    datasets,
+    generation,
+    confirmedAt,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'revenue_config_snapshots';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<RevenueConfigSnapshot> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('user_id')) {
+      context.handle(
+        _userIdMeta,
+        userId.isAcceptableOrUnknown(data['user_id']!, _userIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_userIdMeta);
+    }
+    if (data.containsKey('org_id')) {
+      context.handle(
+        _orgIdMeta,
+        orgId.isAcceptableOrUnknown(data['org_id']!, _orgIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_orgIdMeta);
+    }
+    if (data.containsKey('business_unit_id')) {
+      context.handle(
+        _businessUnitIdMeta,
+        businessUnitId.isAcceptableOrUnknown(
+          data['business_unit_id']!,
+          _businessUnitIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_businessUnitIdMeta);
+    }
+    if (data.containsKey('status')) {
+      context.handle(
+        _statusMeta,
+        status.isAcceptableOrUnknown(data['status']!, _statusMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_statusMeta);
+    }
+    if (data.containsKey('datasets')) {
+      context.handle(
+        _datasetsMeta,
+        datasets.isAcceptableOrUnknown(data['datasets']!, _datasetsMeta),
+      );
+    }
+    if (data.containsKey('generation')) {
+      context.handle(
+        _generationMeta,
+        generation.isAcceptableOrUnknown(data['generation']!, _generationMeta),
+      );
+    }
+    if (data.containsKey('confirmed_at')) {
+      context.handle(
+        _confirmedAtMeta,
+        confirmedAt.isAcceptableOrUnknown(
+          data['confirmed_at']!,
+          _confirmedAtMeta,
+        ),
+      );
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {userId, businessUnitId};
+  @override
+  RevenueConfigSnapshot map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return RevenueConfigSnapshot(
+      userId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}user_id'],
+      )!,
+      orgId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}org_id'],
+      )!,
+      businessUnitId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}business_unit_id'],
+      )!,
+      status: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}status'],
+      )!,
+      datasets: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}datasets'],
+      )!,
+      generation: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}generation'],
+      ),
+      confirmedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}confirmed_at'],
+      ),
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $RevenueConfigSnapshotsTable createAlias(String alias) {
+    return $RevenueConfigSnapshotsTable(attachedDatabase, alias);
+  }
+}
+
+class RevenueConfigSnapshot extends DataClass
+    implements Insertable<RevenueConfigSnapshot> {
+  /// Whose sync this was. A snapshot vouches for nobody else (D-051 §9).
+  final String userId;
+  final String orgId;
+
+  /// Soft pointer, like every other scoped cache row: the unit may be purged from
+  /// underneath it, and this row is precisely what has to survive that to say so.
+  final String businessUnitId;
+
+  /// `complete` or `revoked`.
+  ///
+  /// A revocation **downgrades** rather than deletes, so the device can still tell the
+  /// two silences apart: no row at all means this scope was never synchronised here,
+  /// while `revoked` means it was and the authority was withdrawn. Both refuse new
+  /// offline revenue; only one of them is a statement about this user's access (D-106).
+  final String status;
+
+  /// The dataset codes proven present, comma-separated and sorted.
+  ///
+  /// Stored as data rather than implied by row counts, because zero subtypes is a
+  /// legitimate synchronised answer and is not the same fact as never having asked.
+  final String datasets;
+
+  /// The server generation this snapshot came from — the greatest `change_seq` observed
+  /// across the datasets, so two runs cannot be silently interleaved into one claim.
+  final String? generation;
+
+  /// **Server** time, taken from the confirmed authority. Never the device clock, which
+  /// is forensic metadata only (spec §9).
+  final DateTime? confirmedAt;
+
+  /// Device clock, kept for diagnostics and never used to decide anything.
+  final DateTime updatedAt;
+  const RevenueConfigSnapshot({
+    required this.userId,
+    required this.orgId,
+    required this.businessUnitId,
+    required this.status,
+    required this.datasets,
+    this.generation,
+    this.confirmedAt,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['user_id'] = Variable<String>(userId);
+    map['org_id'] = Variable<String>(orgId);
+    map['business_unit_id'] = Variable<String>(businessUnitId);
+    map['status'] = Variable<String>(status);
+    map['datasets'] = Variable<String>(datasets);
+    if (!nullToAbsent || generation != null) {
+      map['generation'] = Variable<String>(generation);
+    }
+    if (!nullToAbsent || confirmedAt != null) {
+      map['confirmed_at'] = Variable<DateTime>(confirmedAt);
+    }
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  RevenueConfigSnapshotsCompanion toCompanion(bool nullToAbsent) {
+    return RevenueConfigSnapshotsCompanion(
+      userId: Value(userId),
+      orgId: Value(orgId),
+      businessUnitId: Value(businessUnitId),
+      status: Value(status),
+      datasets: Value(datasets),
+      generation: generation == null && nullToAbsent
+          ? const Value.absent()
+          : Value(generation),
+      confirmedAt: confirmedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(confirmedAt),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory RevenueConfigSnapshot.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return RevenueConfigSnapshot(
+      userId: serializer.fromJson<String>(json['userId']),
+      orgId: serializer.fromJson<String>(json['orgId']),
+      businessUnitId: serializer.fromJson<String>(json['businessUnitId']),
+      status: serializer.fromJson<String>(json['status']),
+      datasets: serializer.fromJson<String>(json['datasets']),
+      generation: serializer.fromJson<String?>(json['generation']),
+      confirmedAt: serializer.fromJson<DateTime?>(json['confirmedAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'userId': serializer.toJson<String>(userId),
+      'orgId': serializer.toJson<String>(orgId),
+      'businessUnitId': serializer.toJson<String>(businessUnitId),
+      'status': serializer.toJson<String>(status),
+      'datasets': serializer.toJson<String>(datasets),
+      'generation': serializer.toJson<String?>(generation),
+      'confirmedAt': serializer.toJson<DateTime?>(confirmedAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  RevenueConfigSnapshot copyWith({
+    String? userId,
+    String? orgId,
+    String? businessUnitId,
+    String? status,
+    String? datasets,
+    Value<String?> generation = const Value.absent(),
+    Value<DateTime?> confirmedAt = const Value.absent(),
+    DateTime? updatedAt,
+  }) => RevenueConfigSnapshot(
+    userId: userId ?? this.userId,
+    orgId: orgId ?? this.orgId,
+    businessUnitId: businessUnitId ?? this.businessUnitId,
+    status: status ?? this.status,
+    datasets: datasets ?? this.datasets,
+    generation: generation.present ? generation.value : this.generation,
+    confirmedAt: confirmedAt.present ? confirmedAt.value : this.confirmedAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  RevenueConfigSnapshot copyWithCompanion(
+    RevenueConfigSnapshotsCompanion data,
+  ) {
+    return RevenueConfigSnapshot(
+      userId: data.userId.present ? data.userId.value : this.userId,
+      orgId: data.orgId.present ? data.orgId.value : this.orgId,
+      businessUnitId: data.businessUnitId.present
+          ? data.businessUnitId.value
+          : this.businessUnitId,
+      status: data.status.present ? data.status.value : this.status,
+      datasets: data.datasets.present ? data.datasets.value : this.datasets,
+      generation: data.generation.present
+          ? data.generation.value
+          : this.generation,
+      confirmedAt: data.confirmedAt.present
+          ? data.confirmedAt.value
+          : this.confirmedAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('RevenueConfigSnapshot(')
+          ..write('userId: $userId, ')
+          ..write('orgId: $orgId, ')
+          ..write('businessUnitId: $businessUnitId, ')
+          ..write('status: $status, ')
+          ..write('datasets: $datasets, ')
+          ..write('generation: $generation, ')
+          ..write('confirmedAt: $confirmedAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    userId,
+    orgId,
+    businessUnitId,
+    status,
+    datasets,
+    generation,
+    confirmedAt,
+    updatedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is RevenueConfigSnapshot &&
+          other.userId == this.userId &&
+          other.orgId == this.orgId &&
+          other.businessUnitId == this.businessUnitId &&
+          other.status == this.status &&
+          other.datasets == this.datasets &&
+          other.generation == this.generation &&
+          other.confirmedAt == this.confirmedAt &&
+          other.updatedAt == this.updatedAt);
+}
+
+class RevenueConfigSnapshotsCompanion
+    extends UpdateCompanion<RevenueConfigSnapshot> {
+  final Value<String> userId;
+  final Value<String> orgId;
+  final Value<String> businessUnitId;
+  final Value<String> status;
+  final Value<String> datasets;
+  final Value<String?> generation;
+  final Value<DateTime?> confirmedAt;
+  final Value<DateTime> updatedAt;
+  final Value<int> rowid;
+  const RevenueConfigSnapshotsCompanion({
+    this.userId = const Value.absent(),
+    this.orgId = const Value.absent(),
+    this.businessUnitId = const Value.absent(),
+    this.status = const Value.absent(),
+    this.datasets = const Value.absent(),
+    this.generation = const Value.absent(),
+    this.confirmedAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  RevenueConfigSnapshotsCompanion.insert({
+    required String userId,
+    required String orgId,
+    required String businessUnitId,
+    required String status,
+    this.datasets = const Value.absent(),
+    this.generation = const Value.absent(),
+    this.confirmedAt = const Value.absent(),
+    required DateTime updatedAt,
+    this.rowid = const Value.absent(),
+  }) : userId = Value(userId),
+       orgId = Value(orgId),
+       businessUnitId = Value(businessUnitId),
+       status = Value(status),
+       updatedAt = Value(updatedAt);
+  static Insertable<RevenueConfigSnapshot> custom({
+    Expression<String>? userId,
+    Expression<String>? orgId,
+    Expression<String>? businessUnitId,
+    Expression<String>? status,
+    Expression<String>? datasets,
+    Expression<String>? generation,
+    Expression<DateTime>? confirmedAt,
+    Expression<DateTime>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (userId != null) 'user_id': userId,
+      if (orgId != null) 'org_id': orgId,
+      if (businessUnitId != null) 'business_unit_id': businessUnitId,
+      if (status != null) 'status': status,
+      if (datasets != null) 'datasets': datasets,
+      if (generation != null) 'generation': generation,
+      if (confirmedAt != null) 'confirmed_at': confirmedAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  RevenueConfigSnapshotsCompanion copyWith({
+    Value<String>? userId,
+    Value<String>? orgId,
+    Value<String>? businessUnitId,
+    Value<String>? status,
+    Value<String>? datasets,
+    Value<String?>? generation,
+    Value<DateTime?>? confirmedAt,
+    Value<DateTime>? updatedAt,
+    Value<int>? rowid,
+  }) {
+    return RevenueConfigSnapshotsCompanion(
+      userId: userId ?? this.userId,
+      orgId: orgId ?? this.orgId,
+      businessUnitId: businessUnitId ?? this.businessUnitId,
+      status: status ?? this.status,
+      datasets: datasets ?? this.datasets,
+      generation: generation ?? this.generation,
+      confirmedAt: confirmedAt ?? this.confirmedAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (userId.present) {
+      map['user_id'] = Variable<String>(userId.value);
+    }
+    if (orgId.present) {
+      map['org_id'] = Variable<String>(orgId.value);
+    }
+    if (businessUnitId.present) {
+      map['business_unit_id'] = Variable<String>(businessUnitId.value);
+    }
+    if (status.present) {
+      map['status'] = Variable<String>(status.value);
+    }
+    if (datasets.present) {
+      map['datasets'] = Variable<String>(datasets.value);
+    }
+    if (generation.present) {
+      map['generation'] = Variable<String>(generation.value);
+    }
+    if (confirmedAt.present) {
+      map['confirmed_at'] = Variable<DateTime>(confirmedAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('RevenueConfigSnapshotsCompanion(')
+          ..write('userId: $userId, ')
+          ..write('orgId: $orgId, ')
+          ..write('businessUnitId: $businessUnitId, ')
+          ..write('status: $status, ')
+          ..write('datasets: $datasets, ')
+          ..write('generation: $generation, ')
+          ..write('confirmedAt: $confirmedAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -16300,6 +16851,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
       $RevenueSupplySubtypesTable(this);
   late final $BusinessUnitTaxStatusesTable businessUnitTaxStatuses =
       $BusinessUnitTaxStatusesTable(this);
+  late final $RevenueConfigSnapshotsTable revenueConfigSnapshots =
+      $RevenueConfigSnapshotsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -16326,6 +16879,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     revenueValueBands,
     revenueSupplySubtypes,
     businessUnitTaxStatuses,
+    revenueConfigSnapshots,
   ];
   @override
   StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
@@ -27087,6 +27641,288 @@ typedef $$BusinessUnitTaxStatusesTableProcessedTableManager =
       BusinessUnitTaxStatusRow,
       PrefetchHooks Function()
     >;
+typedef $$RevenueConfigSnapshotsTableCreateCompanionBuilder =
+    RevenueConfigSnapshotsCompanion Function({
+      required String userId,
+      required String orgId,
+      required String businessUnitId,
+      required String status,
+      Value<String> datasets,
+      Value<String?> generation,
+      Value<DateTime?> confirmedAt,
+      required DateTime updatedAt,
+      Value<int> rowid,
+    });
+typedef $$RevenueConfigSnapshotsTableUpdateCompanionBuilder =
+    RevenueConfigSnapshotsCompanion Function({
+      Value<String> userId,
+      Value<String> orgId,
+      Value<String> businessUnitId,
+      Value<String> status,
+      Value<String> datasets,
+      Value<String?> generation,
+      Value<DateTime?> confirmedAt,
+      Value<DateTime> updatedAt,
+      Value<int> rowid,
+    });
+
+class $$RevenueConfigSnapshotsTableFilterComposer
+    extends Composer<_$AppDatabase, $RevenueConfigSnapshotsTable> {
+  $$RevenueConfigSnapshotsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get userId => $composableBuilder(
+    column: $table.userId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get orgId => $composableBuilder(
+    column: $table.orgId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get businessUnitId => $composableBuilder(
+    column: $table.businessUnitId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get datasets => $composableBuilder(
+    column: $table.datasets,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get generation => $composableBuilder(
+    column: $table.generation,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get confirmedAt => $composableBuilder(
+    column: $table.confirmedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$RevenueConfigSnapshotsTableOrderingComposer
+    extends Composer<_$AppDatabase, $RevenueConfigSnapshotsTable> {
+  $$RevenueConfigSnapshotsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get userId => $composableBuilder(
+    column: $table.userId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get orgId => $composableBuilder(
+    column: $table.orgId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get businessUnitId => $composableBuilder(
+    column: $table.businessUnitId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get datasets => $composableBuilder(
+    column: $table.datasets,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get generation => $composableBuilder(
+    column: $table.generation,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get confirmedAt => $composableBuilder(
+    column: $table.confirmedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$RevenueConfigSnapshotsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $RevenueConfigSnapshotsTable> {
+  $$RevenueConfigSnapshotsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get userId =>
+      $composableBuilder(column: $table.userId, builder: (column) => column);
+
+  GeneratedColumn<String> get orgId =>
+      $composableBuilder(column: $table.orgId, builder: (column) => column);
+
+  GeneratedColumn<String> get businessUnitId => $composableBuilder(
+    column: $table.businessUnitId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get status =>
+      $composableBuilder(column: $table.status, builder: (column) => column);
+
+  GeneratedColumn<String> get datasets =>
+      $composableBuilder(column: $table.datasets, builder: (column) => column);
+
+  GeneratedColumn<String> get generation => $composableBuilder(
+    column: $table.generation,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get confirmedAt => $composableBuilder(
+    column: $table.confirmedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+}
+
+class $$RevenueConfigSnapshotsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $RevenueConfigSnapshotsTable,
+          RevenueConfigSnapshot,
+          $$RevenueConfigSnapshotsTableFilterComposer,
+          $$RevenueConfigSnapshotsTableOrderingComposer,
+          $$RevenueConfigSnapshotsTableAnnotationComposer,
+          $$RevenueConfigSnapshotsTableCreateCompanionBuilder,
+          $$RevenueConfigSnapshotsTableUpdateCompanionBuilder,
+          (
+            RevenueConfigSnapshot,
+            BaseReferences<
+              _$AppDatabase,
+              $RevenueConfigSnapshotsTable,
+              RevenueConfigSnapshot
+            >,
+          ),
+          RevenueConfigSnapshot,
+          PrefetchHooks Function()
+        > {
+  $$RevenueConfigSnapshotsTableTableManager(
+    _$AppDatabase db,
+    $RevenueConfigSnapshotsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$RevenueConfigSnapshotsTableFilterComposer(
+                $db: db,
+                $table: table,
+              ),
+          createOrderingComposer: () =>
+              $$RevenueConfigSnapshotsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$RevenueConfigSnapshotsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> userId = const Value.absent(),
+                Value<String> orgId = const Value.absent(),
+                Value<String> businessUnitId = const Value.absent(),
+                Value<String> status = const Value.absent(),
+                Value<String> datasets = const Value.absent(),
+                Value<String?> generation = const Value.absent(),
+                Value<DateTime?> confirmedAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => RevenueConfigSnapshotsCompanion(
+                userId: userId,
+                orgId: orgId,
+                businessUnitId: businessUnitId,
+                status: status,
+                datasets: datasets,
+                generation: generation,
+                confirmedAt: confirmedAt,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String userId,
+                required String orgId,
+                required String businessUnitId,
+                required String status,
+                Value<String> datasets = const Value.absent(),
+                Value<String?> generation = const Value.absent(),
+                Value<DateTime?> confirmedAt = const Value.absent(),
+                required DateTime updatedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => RevenueConfigSnapshotsCompanion.insert(
+                userId: userId,
+                orgId: orgId,
+                businessUnitId: businessUnitId,
+                status: status,
+                datasets: datasets,
+                generation: generation,
+                confirmedAt: confirmedAt,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$RevenueConfigSnapshotsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $RevenueConfigSnapshotsTable,
+      RevenueConfigSnapshot,
+      $$RevenueConfigSnapshotsTableFilterComposer,
+      $$RevenueConfigSnapshotsTableOrderingComposer,
+      $$RevenueConfigSnapshotsTableAnnotationComposer,
+      $$RevenueConfigSnapshotsTableCreateCompanionBuilder,
+      $$RevenueConfigSnapshotsTableUpdateCompanionBuilder,
+      (
+        RevenueConfigSnapshot,
+        BaseReferences<
+          _$AppDatabase,
+          $RevenueConfigSnapshotsTable,
+          RevenueConfigSnapshot
+        >,
+      ),
+      RevenueConfigSnapshot,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -27138,5 +27974,10 @@ class $AppDatabaseManager {
       $$BusinessUnitTaxStatusesTableTableManager(
         _db,
         _db.businessUnitTaxStatuses,
+      );
+  $$RevenueConfigSnapshotsTableTableManager get revenueConfigSnapshots =>
+      $$RevenueConfigSnapshotsTableTableManager(
+        _db,
+        _db.revenueConfigSnapshots,
       );
 }

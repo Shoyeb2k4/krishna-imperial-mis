@@ -296,10 +296,16 @@ void main() {
       final raw = sqlite3.open(file.path);
       raw
         ..execute('PRAGMA user_version = 9')
-        // Every real v9 database has these — they arrived in v2 and v3. The fixture
+        // Every real v9 database has these — they arrived in v1, v2 and v3. The fixture
         // carried only the attachments table, which was enough until v11 began adding
-        // columns to the rule cache; a partial fixture that omits what the migration
-        // touches tests the migration against a database nobody has.
+        // columns to the rule cache and v12 began clearing a superseded `app_meta` key;
+        // a partial fixture that omits what the migration touches tests the migration
+        // against a database nobody has. Completed again rather than worked around.
+        ..execute('''
+          CREATE TABLE app_meta (
+            key TEXT NOT NULL PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL
+          )
+        ''')
         ..execute('''
           CREATE TABLE revenue_categories (
             id TEXT NOT NULL PRIMARY KEY, org_id TEXT NOT NULL,

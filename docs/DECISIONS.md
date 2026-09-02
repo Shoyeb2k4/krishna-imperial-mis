@@ -3301,7 +3301,14 @@ in a financial system is a thing that eventually gets called.
 the pattern migration 0033 already established for the business-date rule (D-067, §14.2),
 and `business_date_server_parity_test.dart` already established for reading it back.
 
-`test/support/revenue_parity_vectors.dart` parses that same table, so:
+**Nothing is created in the database.** The migration holds no DDL — two anonymous
+`do $$ … $$` blocks — so the vectors are a `values (…)` literal evaluated at deploy time
+and discarded. No table, view, function or type exists to grant, expose or mutate, and
+`app.revenue_compute` is executable by neither `anon`, `authenticated` nor `PUBLIC`. The
+Dart half parses the **repository file** under `test/`, which nothing in `lib/` references.
+Ordinary revenue creation therefore has no runtime dependency on any of this.
+
+`test/support/revenue_parity_vectors.dart` parses that same `values` list, so:
 
 * add a vector to the migration, and Dart is checked against it automatically;
 * change an expected figure, and Dart must change to match;
@@ -3378,3 +3385,193 @@ persistent local database and require an administrative grant change between eac
 of order or individually they fail by construction, which is not the same as failing. All
 seven phases were run in the documented sequence, and the grant fixture was restored to
 baseline afterwards.
+
+---
+
+# Phase 4 Slice 6 — Revenue ReferenceSync (2026-09-02)
+
+## D-108 — Configuration completeness is per user, per unit, per dataset
+**Date:** 2026-09-02 · **Status:** Accepted (project-lead requirement, pre-Slice-6 check A3)
+— **corrects the marker Slice 5 shipped**
+
+**Context.** Slice 5 recorded "this device has an authoritative snapshot" as a single
+`app_meta` key, `revenue.configuration.synced_at`. Its presence claimed the whole
+organisation's revenue configuration was authoritative. Put under audit before the
+transport was built, it was too coarse in three separate ways, and each one is a way to
+tell a manager something false about their own company:
+
+* **Scope.** Synchronising Crystal Canopy would have made Hotel Krishna's configuration
+  look authoritative. A Room entry would then resolve `noApplicableRule` — *"the Owner has
+  not configured a rule"* — on a device that had never been told anything about Hotel
+  Krishna. The statement is about the organisation; the evidence was about somewhere else.
+* **User.** On the shared back-office workstation D-054 added a sign-out control for, one
+  person's successful sync would have vouched for a scope the next person does not hold.
+  Authority is per person (D-051 §9); so is any claim made on the strength of it.
+* **Dataset.** Tax rules arriving proves nothing about value bands, supply subtypes or
+  premises statuses, and the *same resolution* consults all four. A rule naming a band the
+  device never received resolves to `missingFact`, which an operator reads as "choose a
+  band" when there is no band to choose.
+
+**Decision.** Completeness is recorded where it is actually true. Local schema **v12** adds
+`revenue_config_snapshots`, keyed `(user_id, business_unit_id)`, carrying:
+
+| | |
+|---|---|
+| `status` | `complete` or `revoked` |
+| `datasets` | the dataset codes proven present, sorted and comma-joined |
+| `generation` | the greatest `change_seq` in the snapshot, so two runs cannot be mistaken for one |
+| `confirmed_at` | **server** time, from the confirmed authority — never the device clock |
+| `updated_at` | device clock, diagnostics only, decides nothing |
+
+**A complete revenue configuration snapshot, defined.** For one user and one business unit:
+the revenue categories of that unit, every tax rule for those categories across *all*
+effective dates including end-dated and archived ones, every value band including
+superseded ones, every supply subtype, and every premises tax status for the unit. **All
+four datasets or none.** Zero rows in a dataset is a perfectly good synchronised answer —
+the verified baseline has no bands, no subtypes and no statuses — and *never having asked*
+is not the same fact. That is exactly why the record stores a dataset list rather than
+inferring completeness from row counts.
+
+**A revocation downgrades rather than deletes.** Deleting the row would stop the device
+claiming authority, which is the security-critical half and is not the whole of it: a
+device with no row cannot distinguish a user who has lost a property from one who never
+had it, and those are different sentences. `status = 'revoked'` with the datasets and
+generation cleared is what makes D-106's two gaps reachable — and one of them, `revoked`,
+was **unreachable in Slice 5**: both call sites hard-coded `neverSynchronised`, so the
+distinction D-106 records existed in the type and never in the behaviour. A rule nothing
+evaluates, in the shape of an enum arm nothing constructs.
+
+**The unit is passed, never derived.** `resolve` requires `businessUnitId` rather than
+looking it up from the category, because a confirmed revocation legitimately deletes the
+category row (D-070) — so deriving the scope from the cache would turn a revocation back
+into "never synchronised" and lose the distinction this path exists to preserve. Every
+caller picks a property before a category, so the fact is already in hand.
+
+**Consequences.** The old key is **removed** on upgrade rather than translated: it claimed
+completeness for an organisation, and there is no honest way to decide retroactively which
+user held which scope when it was written. A device that upgrades simply has no proven
+snapshot and re-synchronises, which is the correct fail-closed answer and costs one pull.
+
+## D-109 — A policy helper must be published, and this is the second time
+**Date:** 2026-09-02 · **Status:** Accepted — a defect this slice introduced and caught
+
+**Context.** Slice 6's read-boundary migration pointed the value-band and supply-subtype
+policies at `app.revenue_category_unit`, a `security definer` helper resolving a category's
+business unit. An RLS policy expression is evaluated with the **querying user's**
+privileges, and `authenticated` deliberately holds no EXECUTE anywhere in `app`. Every
+`select` against those two tables therefore failed with
+
+```
+permission denied for function revenue_category_unit
+```
+
+which took the entire reference pull down with it. No data was exposed; synchronisation
+was simply impossible. Found by the live sync returning an empty local database, not by
+reading the migration — the SQL says exactly what its author meant.
+
+**This is D-045 again**, where every table returned 403 because the policies called
+`app.current_org_id()`. The rule that came out of it then was recorded and did not
+generalise into a check: the invariant added at the time asserts that no policy references
+the `app` schema *by name*, and this migration passed it, because the reference was to a
+function in `app`, not to the schema in a qualified expression the pattern matched.
+
+**Decision.** The helper is published as `public.revenue_category_unit`, granted to
+`authenticated` and revoked from `public` and `anon`, exactly as `current_org_id` and
+`has_capability` already are. The `app` copy is dropped so there is one of it. The reviewed
+API surface is restated to name it (D-044), because a function callable by a client is on
+the surface whether or not anybody thinks of it as an API.
+
+The migration now asserts **no policy anywhere references the `app` schema**, in the
+general form rather than the one that happened to be checked before.
+
+**What it costs.** An authenticated caller can map a revenue category id to a business unit
+id, bypassing that table's RLS. Both are opaque UUIDs and neither is financial data; the
+caller is still checked against `has_capability` for the unit, which is the decision that
+matters. The same trade `has_capability` itself already makes.
+
+## D-110 — Slice 4's revenue configuration read policies did not work
+**Date:** 2026-09-02 · **Status:** Accepted — three defects found by auditing the boundary
+before building transport across it
+
+Auditing the read surface before synchronising through it found three policies that had
+never been exercised, because the datasets they guard are empty in the verified baseline.
+
+**1 · `business_unit_tax_statuses_read` could never be satisfied by anybody.** It required
+the capability `revenue.view.all`, which **no role holds** — not manager, not accountant,
+not data_entry, and not owner. The moment a premises status were configured it would be
+unreachable by every client, and a rule requiring one would refuse for ever with no way to
+fix it from the application. The same family as D-068, D-071 and D-073a — a rule nothing
+can evaluate to true — arriving as *unsatisfiable* rather than as vacuously permissive,
+which is the quieter half of the same failure.
+
+**2 and 3 · The band and subtype policies were organisation-wide.** A Crystal Canopy
+manager could read Hotel Krishna's band and subtype configuration. Not a financial amount,
+but configuration about a property they deliberately cannot see — which is precisely what
+`revenue_tax_rates_read` already refuses, and what D-107 restated the live `phase-a` to
+assert.
+
+**Decision.** All three now say what the tax-rule policy says: this organisation, and a
+unit the caller may view. The migration asserts that the capability the new policies name
+is actually held by somebody, so an unsatisfiable policy cannot be replaced by another one.
+
+**Why this is worth its own entry.** Nothing was broken *in the application*, because no
+band, subtype or premises status exists yet. The defects were latent, and would have
+surfaced as "the app refuses every room entry and nobody can see why" on the day a second
+tariff band was configured — a long way from the migration that caused it.
+
+## D-111 — A confirmed pull is the current scope, and stale claims are withdrawn on it
+**Date:** 2026-09-02 · **Status:** Accepted
+
+**Context.** `ScopeCachePurge` computes what was revoked by diffing the confirmed authority
+against the **previously stored** one. `AuthorityStore.loadFor` correctly returns nothing
+when the stored authority belongs to somebody else (D-051 §9), so on a shared installation
+the sequence *user A syncs, user B syncs, user A syncs with a narrower scope* produces no
+diff and no revoked set — while A's completeness record still claimed a property A no
+longer holds. A would have gone on resolving new revenue for it offline.
+
+**Decision.** `pullAll` asks for everything and RLS decides what that means, so the units
+in a **confirmed** snapshot *are* that user's current scope — including for an org-wide
+holder, whose `scopedUnits` is empty by construction (D-025). Every successful pull
+therefore withdraws this user's completeness claim for any unit the snapshot does not
+contain. It needs no diff and no previous state, which is why it catches what the purge
+cannot.
+
+The complement is unchanged and is the thing that must not bend: a **failed** pull
+withdraws nothing. An answer that did not arrive is not an answer that said no
+(D-048 §1), and both halves are tested.
+
+## D-112 — How old may revenue tax configuration be? — open question
+**Date:** 2026-09-02 · **Status:** **Open — for the project lead. Nothing has been decided
+or defaulted.**
+
+**Context.** Slice 6 caches revenue tax configuration and lets a device resolve against it
+with no network. The brief asked, correctly, whether there is a limit — and told me not to
+invent a TTL if the project has no such policy.
+
+**It has none.** There is no TTL, maximum age or expiry anywhere in the authority or
+reference architecture. The existing model is three-valued and says nothing about age:
+`confirmed` (asked just now), `stale` (asked before, cannot ask now), `unknown` (never
+asked). Cached *authority* already works offline indefinitely on that basis.
+
+**What Slice 6 does today**, stated plainly rather than defaulted: a complete snapshot
+permits offline revenue resolution for as long as it stands, with no expiry. That is the
+existing policy applied unchanged to a new dataset, not a new decision.
+
+**Why it is nonetheless worth the project lead's attention.** Permissions and tax rates
+fail differently when they go stale. A stale permission is caught by the server the moment
+a queued mutation is delivered — the client's opinion is never trusted (D-037). A stale
+*rate* is not: the rules are date-effective, so a device holding a rule effective
+2026-04-01 with no end date will keep applying 5% to business dates after a change it has
+never received, and the figure it records will be internally consistent and wrong. The
+server would accept it, because on that device's evidence it is correct.
+
+**The question:** should a device refuse to create *new* revenue when its configuration
+snapshot is older than some period, and if so what period?
+
+This concerns **new financial creation only**. Revenue already recorded carries its own
+rate, treatment, basis and rule snapshot, consults no cache, and is never re-rated — so
+retained and historical entries are unaffected by any answer.
+
+*"No limit; the risk is acceptable at this scale"* is a perfectly good answer and is what
+the software does today. What must not happen is the software choosing a number nobody
+approved, so no number has been chosen.
