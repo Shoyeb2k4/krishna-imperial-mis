@@ -27,7 +27,14 @@ import 'package:krishna_mis/data/remote/authority_gateway.dart';
 import 'package:krishna_mis/data/remote/master_gateway.dart';
 import 'package:krishna_mis/data/remote/vendor_tax_period_gateways.dart';
 import 'package:krishna_mis/data/sync/outbox_repository.dart';
+import 'package:krishna_mis/data/repositories/revenue_repository.dart';
 import 'package:krishna_mis/data/repositories/revenue_tax_repository.dart';
+import 'package:drift/drift.dart' hide isNull, isNotNull;
+import 'package:krishna_mis/data/remote/remote_outcome.dart';
+import 'package:krishna_mis/data/remote/revenue_gateway.dart';
+import 'package:krishna_mis/data/sync/revenue_mutation_endpoint.dart';
+import 'package:krishna_mis/data/sync/sync_engine.dart';
+import 'package:krishna_mis/domain/revenue/revenue_entry.dart';
 import 'package:krishna_mis/data/sync/reference_sync.dart';
 import 'package:krishna_mis/domain/auth/authority.dart';
 import 'package:krishna_mis/domain/sync/pending_mutation.dart';
@@ -601,6 +608,332 @@ void main() {
         // that is cheaper than discovering later that something did.
         expect(await db.select(db.revenueEntries).get(), isEmpty);
         expect(await db.select(db.revenueComponents).get(), isEmpty);
+      });
+    },
+  );
+
+  // ── Revenue create, through the real repository and worker (Slice 7) ──────────
+  //
+  // The same repository and the same outbox the future entry screen will call. Nothing
+  // here reaches into the RPC directly except where a test is specifically about the
+  // server's own answer: if this passes, the code path a person will use works, which is
+  // the assertion D-077 exists to insist on.
+  group(
+    'revenue-create · the four verified categories, end to end',
+    skip: phase != 'revenue-create',
+    () {
+      late RevenueRepository revenue;
+      late OutboxRepository outboxRepo;
+      late SyncEngine engine;
+      late String actorId;
+      late AuthoritySnapshot snapshot;
+
+      /// Every document this phase creates carries a marker, which is the one identifier
+      /// that survives a process boundary (D-071) and everything the test does to the
+      /// fixture (D-076).
+      const marker = 'SLICE7-ACCEPTANCE';
+
+      setUp(() async {
+        await signInAs('giridhar@hki.com');
+        revenue = RevenueRepository(db);
+        outboxRepo = OutboxRepository(db);
+
+        final refresh = await authority.refresh();
+        expect(refresh, isA<AuthorityConfirmed>());
+        snapshot = (refresh as AuthorityConfirmed).snapshot;
+        actorId = snapshot.userId;
+
+        // Real configuration, pulled by the real sync — not a fixture.
+        final report = await sync.synchronise();
+        expect(report.authorityConfirmed, isTrue);
+        expect(report.rejectedSnapshotReason, isNull);
+
+        engine = SyncEngine(
+          outbox: outboxRepo,
+          endpoint: RevenueMutationEndpoint(RevenueGateway(client)),
+          clock: DateTime.now,
+          actorUserId: actorId,
+          reconciler: RevenueReconciler(revenue, RevenueGateway(client)),
+        );
+      });
+
+      Future<String> createOne({
+        required String categoryCode,
+        required int amountMinor,
+      }) async {
+        final category = await (db.select(
+          db.revenueCategories,
+        )..where((c) => c.code.equals(categoryCode))).getSingle();
+
+        final draft = RevenueEntryDraft(
+          id: const Uuid().v4(),
+          businessUnitId: category.businessUnitId,
+          revenueCategoryId: category.id,
+          businessDate: BusinessDate.of(2026, 6, 15),
+          capturedAt: DateTime.now().toUtc(),
+          notes: '$marker $categoryCode',
+          components: [
+            RevenueComponentDraft(
+              id: const Uuid().v4(),
+              enteredAmount: Money.fromPaise(amountMinor),
+            ),
+          ],
+        );
+
+        final decision = await revenue.evaluate(draft, authority: snapshot);
+        expect(
+          decision,
+          isA<RevenueCreatePermitted>(),
+          reason: decision is RevenueCreateRefused
+              ? decision.refusal.toString()
+              : null,
+        );
+
+        await revenue.createLocally(
+          draft,
+          resolutions: (decision as RevenueCreatePermitted).resolutions,
+          actorUserId: actorId,
+          orgId: snapshot.orgId,
+          mutationId: const Uuid().v4(),
+          now: DateTime.now().toUtc(),
+        );
+        return draft.id;
+      }
+
+      test(
+        'each of the four records, syncs and receives a KI-REV number',
+        () async {
+          // The verified baseline, at the figures the parity vectors pin.
+          const expected = <String, (int, int, int)>{
+            'RESTAURANT': (10000000, 476190, 9523810),
+            'NANDBHOG': (1250000, 59524, 1190476),
+            'ROOM': (6500000, 309524, 6190476),
+            'BANQUET': (4034300, 0, 4034300),
+          };
+
+          final ids = <String, String>{};
+          for (final entry in expected.entries) {
+            ids[entry.key] = await createOne(
+              categoryCode: entry.key,
+              amountMinor: entry.value.$1,
+            );
+          }
+
+          final report = await engine.pushOnce();
+          expect(report.applied, 4, reason: 'four accepted, none refused');
+          expect(report.rejected, 0);
+          expect(report.conflicts, 0);
+
+          final numbers = <String>{};
+          for (final entry in expected.entries) {
+            final local = await revenue.load(ids[entry.key]!);
+            expect(local, isNotNull, reason: entry.key);
+            expect(
+              local!.txnNumber,
+              startsWith('KI-REV-'),
+              reason: '${entry.key} received a server-issued number',
+            );
+            numbers.add(local.txnNumber!);
+
+            final component = local.components.single;
+            expect(component.gross.paise, entry.value.$1, reason: entry.key);
+            expect(component.tax.paise, entry.value.$2, reason: entry.key);
+            expect(component.net.paise, entry.value.$3, reason: entry.key);
+          }
+
+          expect(
+            numbers,
+            hasLength(4),
+            reason:
+                'four documents, four distinct numbers from one FY sequence',
+          );
+
+          // The server agrees, read back through the authorised projection.
+          for (final id in ids.values) {
+            final rows = await client
+                .from('revenue_document')
+                .select('id, txn_number')
+                .eq('id', id);
+            expect(
+              rows,
+              hasLength(1),
+              reason: 'exactly one canonical document',
+            );
+          }
+        },
+      );
+
+      test('a redelivery of the same intent creates nothing new', () async {
+        final id = await createOne(
+          categoryCode: 'RESTAURANT',
+          amountMinor: 5000000,
+        );
+        final mutationId =
+            (await db
+                        .customSelect(
+                          'SELECT mutation_id FROM sync_outbox WHERE entity_id = ?',
+                          variables: [Variable<String>(id)],
+                        )
+                        .getSingle())
+                    .data['mutation_id']!
+                as String;
+
+        await engine.pushOnce();
+        final first = (await revenue.load(id))!.txnNumber;
+        expect(first, isNotNull);
+
+        // Deliver the identical intent again, exactly as a lost response would.
+        final replay = await RevenueGateway(client).create(
+          arguments: RevenueRepository.createPayload((await revenue.load(id))!),
+          mutationId: mutationId,
+        );
+        expect(replay, isA<RemoteOk<Map<String, dynamic>>>());
+        final payload = (replay as RemoteOk<Map<String, dynamic>>).value;
+        expect(
+          payload['status'],
+          'replayed',
+          reason: 'the stored result, replayed',
+        );
+        expect(
+          payload['txn_number'],
+          first,
+          reason: 'the same canonical number, not a second one',
+        );
+
+        final rows = await client
+            .from('revenue_document')
+            .select('id')
+            .eq('id', id);
+        expect(
+          rows,
+          hasLength(1),
+          reason: 'one mutation id, one financial record',
+        );
+      });
+
+      test(
+        'a declared figure the server disagrees with is refused (KM030)',
+        () async {
+          // The tax-mismatch contract, against the real server. The client sends what it
+          // showed the operator; the server computes its own and refuses rather than
+          // quietly recording different money under the same acceptance.
+          final category = await (db.select(
+            db.revenueCategories,
+          )..where((c) => c.code.equals('RESTAURANT'))).getSingle();
+
+          final outcome = await RevenueGateway(client).create(
+            arguments: {
+              'p_id': const Uuid().v4(),
+              'p_business_unit_id': category.businessUnitId,
+              'p_revenue_category_id': category.id,
+              'p_business_date': '2026-06-15',
+              'p_entry_kind': 'daily_summary',
+              'p_notes': '$marker MISMATCH',
+              'p_components': [
+                {
+                  'entered_amount_minor': 10000000,
+                  // One paisa away from the server's own figure.
+                  'declared_tax_minor': 476191,
+                },
+              ],
+            },
+            mutationId: const Uuid().v4(),
+          );
+
+          expect(outcome, isA<RemoteRefused<Map<String, dynamic>>>());
+          final refusal =
+              (outcome as RemoteRefused<Map<String, dynamic>>).refusal;
+          expect(refusal.kind, RefusalKind.taxConfigurationMismatch);
+          expect(
+            refusal.message,
+            contains('changed since it was prepared'),
+            reason: 'the sentence names what happened, so a person can decide',
+          );
+          for (final internal in const [
+            'KM030',
+            'SQLSTATE',
+            'revenue_tax_rates',
+            'plpgsql',
+          ]) {
+            expect(
+              refusal.message,
+              isNot(contains(internal)),
+              reason: 'no refusal may hand a user an implementation detail',
+            );
+          }
+        },
+      );
+
+      test('no revenue entry surface shipped in this slice', () {
+        // Slice 8 owns the Android entry screen and Slice 9 the Windows ledger. Asserted
+        // rather than assumed, because "we did not build it" is exactly the claim D-077
+        // showed can be false while everything looks green.
+        final revenueFeature = Directory('lib/features/revenue');
+        expect(
+          revenueFeature.existsSync() &&
+              revenueFeature.listSync().whereType<File>().isNotEmpty,
+          isFalse,
+          reason: 'no revenue feature surface belongs in Slice 7',
+        );
+      });
+    },
+  );
+
+  group(
+    'revenue-cleanup · the fixtures this phase created are reversed',
+    skip: phase != 'revenue-cleanup',
+    () {
+      test('every acceptance document is voided, and the baseline is intact', () async {
+        await signInAs('giridhar@hki.com');
+
+        // Found by the marker rather than by an id held in memory, because each phase is
+        // its own process — the mistake D-071 records. Voided rather than deleted:
+        // financial history is corrected by void plus audit, never by removing rows
+        // (D-006), and no client role holds DELETE on a financial table.
+        final open = await client
+            .from('revenue_document')
+            .select('id, row_version, notes')
+            .like('notes', '%SLICE7-ACCEPTANCE%')
+            .isFilter('voided_at', null);
+
+        var reversed = 0;
+        for (final row in open.cast<Map<String, dynamic>>()) {
+          final outcome = await RevenueGateway(client).voidEntry(
+            entryId: row['id'] as String,
+            baseRowVersion: row['row_version'] as int? ?? 1,
+            reason: 'Slice 7 acceptance fixture reversal',
+            mutationId: const Uuid().v4(),
+          );
+          expect(outcome, isA<RemoteOk<Map<String, dynamic>>>());
+          reversed++;
+        }
+
+        final remaining = await client
+            .from('revenue_document')
+            .select('id')
+            .like('notes', '%SLICE7-ACCEPTANCE%')
+            .isFilter('voided_at', null);
+        expect(
+          remaining,
+          isEmpty,
+          reason: 'reversed $reversed of ${open.length}; none may remain open',
+        );
+
+        // And the verified configuration is exactly as the migration installed it.
+        final rules = await client
+            .from('revenue_tax_rates')
+            .select('id')
+            .isFilter('archived_at', null);
+        expect(rules, hasLength(4));
+        expect(await client.from('revenue_value_bands').select('id'), isEmpty);
+        expect(
+          await client.from('revenue_supply_subtypes').select('id'),
+          isEmpty,
+        );
+        expect(
+          await client.from('business_unit_tax_statuses').select('id'),
+          isEmpty,
+        );
       });
     },
   );

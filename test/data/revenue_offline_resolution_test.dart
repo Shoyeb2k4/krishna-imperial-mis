@@ -68,22 +68,45 @@ void main() {
 
   /// Marks one business unit's configuration as authoritatively synchronised, for one
   /// user — which is the granularity at which the claim can actually be true (D-108).
+  ///
+  /// [confirmedAt] defaults to an hour ago rather than to a fixed instant, because D-112
+  /// measures the snapshot's age: a fixture pinned to a date in the past would expire the
+  /// moment the calendar moved past it, and every test would start failing for a reason
+  /// that has nothing to do with what it asserts.
   Future<void> markSynchronised({
     String user = testUser,
     String unit = 'unit-ccr',
     String datasets = 'bands,rules,statuses,subtypes',
+    DateTime? confirmedAt,
   }) => db.customStatement(
     'INSERT OR REPLACE INTO revenue_config_snapshots (user_id, org_id, '
     'business_unit_id, status, datasets, generation, confirmed_at, updated_at) '
-    "VALUES (?, 'org-1', ?, 'complete', ?, '4200', "
-    "'2026-06-15T09:00:00.000Z', '2026-06-15T09:00:00.000Z')",
-    [user, unit, datasets],
+    "VALUES (?, 'org-1', ?, 'complete', ?, '4200', ?, ?)",
+    [
+      user,
+      unit,
+      datasets,
+      (confirmedAt ?? DateTime.now().toUtc().subtract(const Duration(hours: 1)))
+          .toIso8601String(),
+      DateTime.now().toUtc().toIso8601String(),
+    ],
   );
 
   /// Both properties, for the ordinary case where scope is not what a test is about.
-  Future<void> markAllSynchronised({String user = testUser}) async {
-    await markSynchronised(user: user, unit: 'unit-ccr');
-    await markSynchronised(user: user, unit: 'unit-hki');
+  Future<void> markAllSynchronised({
+    String user = testUser,
+    DateTime? confirmedAt,
+  }) async {
+    await markSynchronised(
+      user: user,
+      unit: 'unit-ccr',
+      confirmedAt: confirmedAt,
+    );
+    await markSynchronised(
+      user: user,
+      unit: 'unit-hki',
+      confirmedAt: confirmedAt,
+    );
   }
 
   Future<void> cacheBand(

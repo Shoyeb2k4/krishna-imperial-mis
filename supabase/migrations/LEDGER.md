@@ -68,6 +68,14 @@ grouping. Each is accounted for here.
 | 20260902104120 | `revenue_config_policy_uses_public_helper` | `20260902104120_revenue_config_policy_uses_public_helper.sql` |
 | 20260902104238 | `api_surface_invariant_revenue_config` | `20260902104238_api_surface_invariant_revenue_config.sql` |
 
+## Phase 4 Slice 7
+
+| Ledger version | Ledger name | Committed file |
+|---|---|---|
+| 20260902111217 | `revenue_create_declared_totals` | `20260902111217_revenue_create_declared_totals.sql` |
+| 20260902115805 | `revenue_numbering_ambiguous_column` | `20260902115805_revenue_numbering_ambiguous_column.sql` |
+| 20260902120217 | `revenue_projections_use_a_real_capability` | `20260902120217_revenue_projections_use_a_real_capability.sql` |
+
 The first two were applied during the audit and were **not committed at the time** — the
 same omission A0 exists to catch, caught by A0's own check one slice later. Both were
 recovered verbatim from the server's migration record (the D-056 procedure) rather than
@@ -131,4 +139,7 @@ retyped from memory, because a file that merely resembles what ran is not proven
 20260901181358 revenue_config_read_boundary
 20260902104120 revenue_config_policy_uses_public_helper
 20260902104238 api_surface_invariant_revenue_config
+20260902111217 revenue_create_declared_totals
+20260902115805 revenue_numbering_ambiguous_column
+20260902120217 revenue_projections_use_a_real_capability
 ```

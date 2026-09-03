@@ -17,6 +17,7 @@ library;
 import 'package:krishna_mis/data/remote/expense_gateway.dart';
 import 'package:krishna_mis/data/remote/remote_outcome.dart';
 import 'package:krishna_mis/data/repositories/expense_repository.dart';
+import 'package:krishna_mis/data/sync/revenue_mutation_endpoint.dart';
 import 'package:krishna_mis/domain/sync/pending_mutation.dart';
 import 'package:krishna_mis/domain/sync/server_refusal.dart';
 
@@ -176,25 +177,60 @@ class RoutingMutationEndpoint implements RemoteMutationEndpoint {
   const RoutingMutationEndpoint({
     required this.masters,
     required this.expenses,
+    this.revenue,
   });
 
   final RemoteMutationEndpoint masters;
   final RemoteMutationEndpoint expenses;
 
+  /// Optional so a build without a revenue endpoint still routes everything else. A
+  /// revenue intent then falls to `masters`, which does not recognise it and returns the
+  /// terminal "this version cannot send it" result — kept, never silently dropped.
+  final RemoteMutationEndpoint? revenue;
+
   @override
   Future<List<MutationResult>> push(List<PendingMutation> mutations) async {
-    final expenseIntents = [
-      for (final m in mutations)
-        if (ExpenseMutationEndpoint.handles(m.entityType)) m,
-    ];
-    final masterIntents = [
-      for (final m in mutations)
-        if (!ExpenseMutationEndpoint.handles(m.entityType)) m,
-    ];
+    final expenseIntents = <PendingMutation>[];
+    final revenueIntents = <PendingMutation>[];
+    final masterIntents = <PendingMutation>[];
+
+    for (final m in mutations) {
+      if (ExpenseMutationEndpoint.handles(m.entityType)) {
+        expenseIntents.add(m);
+      } else if (revenue != null &&
+          RevenueMutationEndpoint.handles(m.entityType)) {
+        revenueIntents.add(m);
+      } else {
+        masterIntents.add(m);
+      }
+    }
 
     return [
       if (masterIntents.isNotEmpty) ...await masters.push(masterIntents),
       if (expenseIntents.isNotEmpty) ...await expenses.push(expenseIntents),
+      if (revenueIntents.isNotEmpty) ...await revenue!.push(revenueIntents),
     ];
+  }
+}
+
+/// Hands each answer to whichever reconciler owns that entity type.
+///
+/// One worker, one queue, so the fan-out lives here rather than in the engine — which
+/// should not know that expenses and revenue are different kinds of thing. Each
+/// reconciler already returns immediately for a type that is not its own, so this is
+/// composition rather than dispatch.
+class RoutingMutationReconciler implements MutationReconciler {
+  const RoutingMutationReconciler(this.reconcilers);
+
+  final List<MutationReconciler> reconcilers;
+
+  @override
+  Future<void> reconcile(
+    PendingMutation mutation,
+    MutationResult result,
+  ) async {
+    for (final reconciler in reconcilers) {
+      await reconciler.reconcile(mutation, result);
+    }
   }
 }

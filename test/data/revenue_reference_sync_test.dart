@@ -51,6 +51,14 @@ class _FakeAuthority implements AuthoritySource {
   String userId = _userA;
   AuthorityRefresh? forced;
 
+  /// The server time the authority answer carries.
+  ///
+  /// Defaults to now rather than to a fixed instant because D-112 measures a snapshot's
+  /// **age** from it: a fixture pinned to a past date would expire as soon as the calendar
+  /// moved past it, and every test here would fail for a reason unrelated to what it
+  /// asserts. Tests that care about age set it explicitly.
+  DateTime resolvedAt = DateTime.now().toUtc();
+
   @override
   Future<AuthorityRefresh> refresh() async =>
       forced ??
@@ -62,7 +70,7 @@ class _FakeAuthority implements AuthoritySource {
             for (final unit in units)
               CapabilityGrant(Capability.mastersView, businessUnitId: unit),
           ],
-          resolvedAt: DateTime.utc(2026, 6, 15, 9),
+          resolvedAt: resolvedAt,
         ),
       );
 }
@@ -259,7 +267,7 @@ void main() {
         expect(state, isA<RevenueConfigComplete>(), reason: unit);
         expect(
           (state as RevenueConfigComplete).confirmedAt,
-          DateTime.utc(2026, 6, 15, 9),
+          authority.resolvedAt,
           reason:
               'server time, taken from the authority answer, never the device clock',
         );

@@ -177,6 +177,20 @@ enum RevenueConfigurationGap {
   /// The snapshot was purged by a confirmed scope revocation (D-070). Stale configuration
   /// must not be used to create new revenue.
   revoked,
+
+  /// A complete snapshot was received here, and is older than the window D-112 allows for
+  /// creating **new** revenue offline. Nothing is wrong with it as an explanation of what
+  /// is already recorded; it is simply no longer evidence about today's rates.
+  expired,
+
+  /// The device clock cannot measure the snapshot's age — it reads earlier than the
+  /// server's own confirmation of it. Reported separately because "your clock is wrong" is
+  /// not "your configuration is old", and telling somebody the second when the first is
+  /// true sends them to fix the wrong thing.
+  clockUnreliable,
+
+  /// Some datasets arrived and others did not, so the snapshot is not one snapshot.
+  partial,
 }
 
 /// The device has no authoritative configuration to resolve against.
@@ -201,6 +215,16 @@ final class RevenueConfigurationUnavailable extends RevenueTaxResolution {
     RevenueConfigurationGap.revoked =>
       'Your access to this property changed. Reconnect so the current tax configuration '
           'can be loaded before recording revenue.',
+    RevenueConfigurationGap.expired =>
+      'The tax configuration on this device is more than 24 hours old. Connect to the '
+          'internet to refresh it before recording new revenue.',
+    RevenueConfigurationGap.clockUnreliable =>
+      "This device's date and time look incorrect, so the age of its tax configuration "
+          'cannot be checked. Correct the clock, or connect to the internet to refresh '
+          'the configuration.',
+    RevenueConfigurationGap.partial =>
+      'The tax configuration on this device is incomplete. Connect to the internet to '
+          'finish loading it before recording new revenue.',
   };
 }
 

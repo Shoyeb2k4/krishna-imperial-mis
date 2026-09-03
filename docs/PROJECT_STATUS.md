@@ -5,7 +5,7 @@ Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
-Last updated: **2026-09-02** — Phase 4 Slice 6 (Phase 3 remains complete)
+Last updated: **2026-09-02** — Phase 4 Slice 7 (Phase 3 remains complete)
 
 > A new session should be able to read this file and know exactly where work stopped.
 > This file — not chat history — is the checkpoint.
@@ -23,7 +23,7 @@ Every gate passed, including the ones that can only be passed by running the rea
 application: the Android package on a device, and the compiled Windows executable, both
 against the real `krishna-mis-dev` project, with the real development identities.
 
-**Phase 4 — Revenue Engine: IMPLEMENTATION UNDER WAY. Slices 1–6 of 14 complete**, together with four corrective audit points closed against Slice 4 (A0 … A3).
+**Phase 4 — Revenue Engine: IMPLEMENTATION UNDER WAY. Slices 1–7 of 14 complete**, together with four corrective audit points closed against Slice 4 (A0 … A3).
 
 The last business blocker closed on 2026-09-01: the project lead confirmed **effective from
 2026-04-01** for all four verified treatments, and authorised implementation.
@@ -41,6 +41,66 @@ Restaurant and Nandbhog hold independent rows and do not reference each other (D
 Banquet has exactly one rule and **no dormant 5% row** (D-091). Room's conditional
 architecture is retained: 5% is today's baseline, not a universal rate compiled into
 anything (D-081).
+
+**Slice 7 — revenue create workflow: complete.** Draft → eligibility → deterministic
+local resolution → one atomic write → outbox → `revenue_create` → reconciliation, working
+online, offline within the D-112 window, after restart, after response loss and under
+repeated retry. Revenue is a **registered mutation type in the existing transport** — one
+outbox, one worker, one backoff clock, one actor filter — not a second sync engine.
+**65 new host tests**, 888 in total.
+
+**D-112 is answered and implemented.** The project lead set the window at **24 hours from
+the server-confirmed timestamp**, inclusive at the boundary, per user and per business
+unit, with no Owner or Accountant override — it is a tax-correctness gate, not a privilege
+gate. A device clock reading materially *earlier* than the server's own confirmation fails
+closed with its own reason, because a backwards clock would otherwise make every snapshot
+look newly fresh. Expiry touches nothing that already exists: an attempt created at 10
+hours and still pending at 30 is submitted unchanged, carrying its own snapshot, and the
+server decides.
+
+**Revenue is checked before it is written (D-113).** Unlike an expense — whose correctness
+does not depend on configuration the device might lack — a revenue figure's does, so the
+whole contract is evaluated before anything is persisted: authority, unit, category under
+that unit, open period, complete and fresh configuration, exactly one resolvable rule per
+component, every required conditional fact. Seventeen structured refusal reasons, each
+naming a different thing to do about it, and a test asserting no refusal message contains
+an exception, a SQL state, a table name or a refusal code.
+
+**The client declares what it showed the operator; the server refuses if it disagrees
+(D-114).** `revenue_create` always computed its own figures and ignored the caller's — and
+returned nothing about the money, so a client could not learn that its own differed. An
+entry prepared under a rule that had since changed would have been accepted while the
+operator's approved figure quietly became something else. Optional `declared_*` values are
+now **compared, never used**, and a mismatch is `KM030` — surfaced as a **conflict** a
+person resolves, exactly as a stale row version is, because two defensible answers exist
+and neither may overwrite the other silently.
+
+**Two Slice 4 defects, both found the first time something exercised the path.**
+
+* **D-115 — `revenue_create` had never successfully created a revenue entry.**
+  `app.next_revenue_number` declared an OUT parameter named `financial_year`, which
+  collides with the column in its own `on conflict` target: *column reference
+  "financial_year" is ambiguous*. Every call failed after all validation and after the
+  inserts, at the point a number is issued; the transaction rolled back, so nothing was
+  corrupted and nothing worked. It survived Slice 4's thirteen live tests because those
+  proved the **boundary** and never called the function whose job is to record revenue.
+* **D-116 — the revenue projections named a capability no role holds.**
+  `revenue_document`, `revenue_component_detail` and the `revenue_entries` read policy all
+  required `revenue.view.all`, which does not exist; the catalogue holds `revenue.view`.
+  The only sanctioned way to read revenue returned nothing to anybody, including the Owner.
+  The same defect D-110 recorded for the premises-status policy, in three more places,
+  invisible because empty datasets make *"a scoped user sees less than the Owner"* pass
+  when both see zero. **The class is now closed by a general assertion** that every
+  capability named by a revenue policy or projection is actually granted to some role — and
+  it earned that on its first run, refusing the fix until the policy it had missed was
+  corrected too.
+
+**Live acceptance ran the real repository and worker**, not the RPC directly: all four
+verified categories recorded, synced, and received distinct `KI-REV-…` numbers at exactly
+the parity-vector paise; a redelivery of the same intent replayed to the same number with
+one canonical row; and the mismatch contract refused with a sentence carrying no
+implementation detail. Fixtures reversed by void, and the verified baseline verified
+pristine afterwards.
 
 **Slice 6 — revenue ReferenceSync: complete.** The proven Phase 2 sync is extended, not
 duplicated: the same authority-first ordering, the same purge, the same one-transaction
@@ -91,14 +151,7 @@ previously stored authority, which is correctly per user — so on a shared inst
 longer held. A confirmed pull needs no diff: `pullAll` asks for everything and RLS decides,
 so the units it returns *are* the current scope. A **failed** pull still withdraws nothing.
 
-**Open for the project lead: how old may revenue tax configuration be? (D-112)** The
-project has no TTL anywhere, and none was invented. Slice 6 permits offline resolution for
-as long as a complete snapshot stands, which is the existing authority policy applied
-unchanged. It is flagged because permissions and rates go stale differently: a stale
-permission is caught server-side on delivery, and a stale *rate* is not — a device holding
-an open-ended rule keeps applying it to business dates after a change it never received,
-and the server would accept the result. Concerns **new creation only**; recorded revenue
-carries its own snapshot and is never re-rated.
+**D-112 is answered.** Slice 6 raised the question and did not default it; the project lead set the window at **24 hours**, and Slice 7 implements it.
 
 **Slice 5 — offline revenue tax resolution from cached configuration: complete.**
 `RevenueTaxRepository` is an adapter, not a second engine: it reads the Drift cache,
@@ -504,9 +557,9 @@ Blocked.**
 
 | Item | Status | Evidence |
 |---|---|---|
-| `dart format --set-exit-if-changed` | **Tested** | clean (154 files) |
+| `dart format --set-exit-if-changed` | **Tested** | clean (159 files) |
 | `flutter analyze` | **Tested** | **No issues found** |
-| Host test suite | **Tested** | **823 tests, all passing** |
+| Host test suite | **Tested** | **888 tests, all passing** |
 | Secret scan — tree and git history | **Tested** | clean; the scan proves its own controls on every run (D-069) |
 | Secret scan — rebuilt clean binaries | **Tested** | tree, git history and built artefacts all clean, with the scanner's controls passing |
 | Migration audit (search_path, API surface, policy boundary) | **Tested** | 14 host tests |
@@ -519,6 +572,9 @@ Blocked.**
 | Revenue ReferenceSync — datasets, atomicity, per-scope completeness | **Tested** | 27 host tests, incl. malformed-payload rejection and the retained known-good snapshot |
 | Real revenue configuration sync against `krishna-mis-dev` | **Tested** | the four verified rules with `input_basis`, 0 bands / 0 subtypes / 0 statuses, both units marked complete |
 | Offline resolution after a real sync, in a fresh process | **Tested** | Restaurant, Nandbhog, Room and Banquet resolved to exact paise with no network call made |
+| Revenue create — eligibility, atomic write, refusals, D-112 | **Tested** | 47 host tests, incl. the 24-hour boundary, backwards-clock fail-closed and rollback |
+| Revenue transport — idempotency, response loss, restart, retry classification | **Tested** | 18 host tests against a fake server that loses a response after committing |
+| Live revenue create against `krishna-mis-dev` | **Tested** | 4 categories through the real repository and worker; replay returns the same KI-REV number; KM030 refused |
 | Repository ↔ server migration integrity (D-056) | **Tested** | live `drift` phase |
 | Android device acceptance, real APK, real backend | **Tested** | **19 tests** across 10 phases |
 | Windows acceptance, real `krishna_mis.exe`, real backend | **Tested** | **18 tests** across 11 phases |
@@ -562,7 +618,7 @@ Blocked.**
 
 | Suite | Count | Result |
 |---|---|---|
-| Host (`flutter test`) | **823** | all passing |
+| Host (`flutter test`) | **888** | all passing |
 | Live backend against `krishna-mis-dev` (opt-in) | 19 | all passing — re-run in full |
 | Live expense suite against `krishna-mis-dev` (opt-in) | 16 | all passing — **re-run at this checkpoint** |
 | Android Phase 2 device acceptance (real APK) | 19 | all passing |
@@ -862,34 +918,20 @@ decision for him, not one to be taken by starting.
 all four treatments.** Configured as a committed migration (D-096) and now synchronising
 to devices (Slice 6).
 
-**One open, raised by Slice 6 and deliberately not defaulted (D-112): how old may revenue
-tax configuration be while a device still creates NEW revenue offline?**
+~~**One open, raised by Slice 6 (D-112)**~~ **Answered 2026-09-02: 24 hours**, from the
+server-confirmed timestamp, per user and per business unit, inclusive at the boundary, with
+no Owner or Accountant override — a tax-correctness gate rather than a privilege one.
+Implemented in Slice 7 and tested at the boundary, one second past it, and against a
+backwards device clock.
 
-The project has no TTL anywhere — the authority model is `confirmed` / `stale` / `unknown`
-and says nothing about age — so none was invented. Today a complete snapshot permits
-offline resolution for as long as it stands, which is the existing policy applied
-unchanged rather than a new decision.
-
-It is raised because permissions and rates go stale differently. A stale permission is
-caught server-side the moment a queued mutation is delivered; a stale **rate** is not. The
-rules are date-effective, so a device holding an open-ended rule keeps applying it to
-business dates after a change it never received, and the figure it records is internally
-consistent, wrong, and accepted by the server — because on that device's evidence it is
-correct.
-
-*"No limit; the risk is acceptable at this scale"* is a perfectly good answer and is what
-the software does today. **This concerns new creation only** — revenue already recorded
-carries its own rate, treatment and basis snapshot, consults no cache, and is never
-re-rated.
+**None open.**
 
 ## Project lead actions required
 
 1. ~~Two manual picker smoke tests.~~ **Done, 2026-08-31 — both PASS.**
 2. ~~The effective-from dates.~~ **Done, 2026-09-01 — 2026-04-01 for all four.**
-3. **One decision, raised by Slice 6 and not defaulted: a maximum age for cached revenue
-   tax configuration before a device refuses to create NEW revenue offline (D-112).**
-   "No limit" is a valid answer and is the current behaviour. See *Open questions* above
-   for why rates go stale differently from permissions.
+3. ~~A maximum age for cached revenue tax configuration (D-112).~~ **Done, 2026-09-02 —
+   24 hours.**
 4. **Optional decision:** whether archiving should also offer a *confirmed* cascade for a
    whole subtree (D-039).
 

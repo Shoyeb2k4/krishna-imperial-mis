@@ -67,6 +67,21 @@ sealed class RevenueConfigCompleteness {
   const RevenueConfigCompleteness();
 }
 
+/// How long a complete snapshot may be used to create NEW revenue offline (D-112).
+///
+/// **A financial-safety rule, not a general TTL.** It governs one act — creating a new
+/// revenue transaction while the configuration cannot be refreshed — and nothing else. It
+/// is not a ReferenceSync TTL for other masters, not a visibility rule for existing
+/// revenue, not an authority TTL and not a period lock.
+///
+/// The reason it exists at all is that permissions and rates go stale differently. A stale
+/// permission is caught server-side the moment a queued mutation is delivered (D-037); a
+/// stale **rate** is not. Rules are date-effective, so a device holding an open-ended rule
+/// keeps applying it to business dates after a change it never received, and the figure it
+/// records is internally consistent, wrong, and accepted by the server — because on that
+/// device's evidence it is correct.
+const revenueConfigMaxAge = Duration(hours: 24);
+
 /// Every required dataset was received for this scope, in one logical snapshot.
 final class RevenueConfigComplete extends RevenueConfigCompleteness {
   const RevenueConfigComplete({
@@ -78,7 +93,55 @@ final class RevenueConfigComplete extends RevenueConfigCompleteness {
   final String? generation;
 
   /// Server time, from the confirmed authority — never the device clock.
+  ///
+  /// This is the trust anchor for [freshnessAt]. Deliberately not the moment a cache row
+  /// happened to be written: that is a device clock reading, and a device clock is
+  /// forensic metadata in this project (spec §9), not evidence about the server.
   final DateTime? confirmedAt;
+
+  /// Whether this snapshot may still be used to create NEW revenue offline (D-112).
+  ///
+  /// Three answers rather than two, because "the clock is wrong" is not "the snapshot is
+  /// old" and must not be reported as it.
+  RevenueConfigFreshness freshnessAt(DateTime deviceNow) {
+    final confirmed = confirmedAt;
+    if (confirmed == null) return RevenueConfigFreshness.expired;
+
+    final elapsed = deviceNow.toUtc().difference(confirmed.toUtc());
+
+    // The device clock reads materially *earlier* than the server's own confirmation of
+    // this snapshot, which cannot be true of a clock telling the truth. Something has
+    // moved the clock — deliberately or otherwise — and an age computed from it means
+    // nothing. Fail closed and require a refresh rather than treating a snapshot as newly
+    // fresh, which is exactly what a backwards clock would otherwise achieve.
+    //
+    // A small negative allowance absorbs ordinary skew between two machines; it is not an
+    // attestation system, and V1 deliberately does not build one.
+    if (elapsed < -_skewAllowance) {
+      return RevenueConfigFreshness.clockUnreliable;
+    }
+
+    // Inclusive at the boundary: at exactly 24 hours the snapshot is still usable. Stated
+    // rather than left to a comparison operator, because "24 hours" is ambiguous until
+    // somebody writes down which side the boundary falls on.
+    return elapsed <= revenueConfigMaxAge
+        ? RevenueConfigFreshness.fresh
+        : RevenueConfigFreshness.expired;
+  }
+
+  static const _skewAllowance = Duration(minutes: 5);
+}
+
+/// Whether a complete snapshot may still support a NEW offline revenue entry (D-112).
+enum RevenueConfigFreshness {
+  /// Within the window. Creation may proceed if everything else passes.
+  fresh,
+
+  /// Older than the window. Creation refuses until a successful authoritative sync.
+  expired,
+
+  /// The device clock cannot be trusted to measure the age at all.
+  clockUnreliable,
 }
 
 /// Nothing authoritative has ever been received here for this scope.
@@ -285,17 +348,30 @@ class RevenueTaxRepository {
   /// Every non-complete state stops the entry, and each says something different. Only
   /// `complete` means the silence that follows — no matching rule — is a statement about
   /// the organisation's configuration rather than about this device (D-106).
-  RevenueTaxResolution? _blockedBy(RevenueConfigCompleteness state) =>
-      switch (state) {
-        RevenueConfigComplete() => null,
-        RevenueConfigRevoked() => const RevenueConfigurationUnavailable(
-          RevenueConfigurationGap.revoked,
+  RevenueTaxResolution? _blockedBy(
+    RevenueConfigCompleteness state,
+    DateTime deviceNow,
+  ) => switch (state) {
+    RevenueConfigComplete() => switch (state.freshnessAt(deviceNow)) {
+      RevenueConfigFreshness.fresh => null,
+      RevenueConfigFreshness.expired => const RevenueConfigurationUnavailable(
+        RevenueConfigurationGap.expired,
+      ),
+      RevenueConfigFreshness.clockUnreliable =>
+        const RevenueConfigurationUnavailable(
+          RevenueConfigurationGap.clockUnreliable,
         ),
-        RevenueConfigNeverSynchronised() ||
-        RevenueConfigIncomplete() => const RevenueConfigurationUnavailable(
-          RevenueConfigurationGap.neverSynchronised,
-        ),
-      };
+    },
+    RevenueConfigRevoked() => const RevenueConfigurationUnavailable(
+      RevenueConfigurationGap.revoked,
+    ),
+    RevenueConfigIncomplete() => const RevenueConfigurationUnavailable(
+      RevenueConfigurationGap.partial,
+    ),
+    RevenueConfigNeverSynchronised() => const RevenueConfigurationUnavailable(
+      RevenueConfigurationGap.neverSynchronised,
+    ),
+  };
 
   /// Resolve one component's facts against the cached configuration.
   ///
@@ -312,9 +388,11 @@ class RevenueTaxRepository {
     RevenueTaxFacts facts, {
     required String userId,
     required String businessUnitId,
+    DateTime? now,
   }) async {
     final blocked = _blockedBy(
       await completenessFor(userId: userId, businessUnitId: businessUnitId),
+      now ?? DateTime.now().toUtc(),
     );
     if (blocked != null) return blocked;
 
@@ -332,6 +410,7 @@ class RevenueTaxRepository {
     required String revenueCategoryId,
     required BusinessDate businessDate,
     required List<RevenueTaxFacts> components,
+    DateTime? now,
   }) async {
     if (components.isEmpty) {
       return const RevenueCreateEligibility.refused(
@@ -341,6 +420,7 @@ class RevenueTaxRepository {
 
     final blocked = _blockedBy(
       await completenessFor(userId: userId, businessUnitId: businessUnitId),
+      now ?? DateTime.now().toUtc(),
     );
     if (blocked != null) return RevenueCreateEligibility.refused(blocked);
 

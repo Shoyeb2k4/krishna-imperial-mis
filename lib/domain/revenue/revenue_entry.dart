@@ -26,9 +26,24 @@ enum RevenueEntryKind {
   import,
   correction;
 
+  /// How this value is written to both databases.
+  ///
+  /// Stated explicitly rather than taken from [name], for the reason D-104 records: the
+  /// two schemas store `daily_summary` and a Dart enum name is `dailySummary`, and relying
+  /// on the coincidence of the two agreeing is how a value becomes unwritable the moment
+  /// somebody renames a constant. Here it is load-bearing twice over — a check constraint
+  /// refuses the wrong form, and `entry_kind` is what permanently distinguishes an
+  /// imported figure from one somebody typed (spec §32).
+  String get wireName => switch (this) {
+    RevenueEntryKind.dailySummary => 'daily_summary',
+    RevenueEntryKind.shift => 'shift',
+    RevenueEntryKind.import => 'import',
+    RevenueEntryKind.correction => 'correction',
+  };
+
   static RevenueEntryKind fromName(String value) =>
       RevenueEntryKind.values.firstWhere(
-        (k) => k.name == value,
+        (k) => k.wireName == value,
         orElse: () =>
             throw ArgumentError.value(value, 'value', 'unknown entry kind'),
       );

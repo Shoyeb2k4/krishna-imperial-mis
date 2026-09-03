@@ -25,7 +25,9 @@ import 'package:krishna_mis/data/remote/authority_gateway.dart';
 import 'package:krishna_mis/data/remote/master_gateway.dart';
 import 'package:krishna_mis/data/remote/vendor_tax_period_gateways.dart';
 import 'package:krishna_mis/data/remote/expense_gateway.dart';
+import 'package:krishna_mis/data/remote/revenue_gateway.dart';
 import 'package:krishna_mis/data/repositories/expense_repository.dart';
+import 'package:krishna_mis/data/repositories/revenue_repository.dart';
 import 'package:krishna_mis/data/sync/expense_mutation_endpoint.dart';
 import 'package:krishna_mis/data/sync/master_mutation_endpoint.dart';
 import 'package:krishna_mis/data/sync/outbox_repository.dart';
@@ -34,6 +36,7 @@ import 'package:krishna_mis/data/attachments/attachment_upload_worker.dart';
 import 'package:krishna_mis/data/remote/supabase_attachment_store.dart';
 import 'package:krishna_mis/data/sync/expense_pull.dart';
 import 'package:krishna_mis/data/sync/reference_sync.dart';
+import 'package:krishna_mis/data/sync/revenue_mutation_endpoint.dart';
 import 'package:krishna_mis/data/sync/scope_cache_purge.dart';
 import 'package:krishna_mis/app/session/session_controller.dart';
 import 'package:http/http.dart' as http;
@@ -176,17 +179,22 @@ Future<BootstrapResult> bootstrap({http.Client? transport}) async {
     final authorityGateway = AuthorityGateway(client);
     final masterGateway = MasterGateway(client);
     final expenseGateway = ExpenseGateway(client);
+    final revenueGateway = RevenueGateway(client);
     mutationEndpoint = RoutingMutationEndpoint(
       masters: MasterMutationEndpoint(
         masters: masterGateway,
         vendors: VendorGateway(client),
       ),
       expenses: ExpenseMutationEndpoint(expenseGateway),
+      revenue: RevenueMutationEndpoint(revenueGateway),
     );
-    mutationReconciler = ExpenseReconciler(
-      ExpenseRepository(database),
-      expenseGateway,
-    );
+    // One reconciler per entity type, composed rather than chosen. D-077 is the reason
+    // this is wired here in the same place as the endpoint and asserted by a test:
+    // a production path that "will be wired later" is a production path that is not.
+    mutationReconciler = RoutingMutationReconciler([
+      ExpenseReconciler(ExpenseRepository(database), expenseGateway),
+      RevenueReconciler(RevenueRepository(database), revenueGateway),
+    ]);
     expensePull = ExpensePull(db: database, gateway: expenseGateway);
     attachmentUploads = AttachmentUploadWorker(
       db: database,

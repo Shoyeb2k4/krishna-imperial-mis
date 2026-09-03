@@ -3541,8 +3541,10 @@ withdraws nothing. An answer that did not arrive is not an answer that said no
 (D-048 §1), and both halves are tested.
 
 ## D-112 — How old may revenue tax configuration be? — open question
-**Date:** 2026-09-02 · **Status:** **Open — for the project lead. Nothing has been decided
-or defaulted.**
+**Date:** 2026-09-02 · **Status:** **Answered 2026-09-02 by the project lead: 24 hours.
+See the second D-112 entry below for the decision and how it is implemented.** The text
+that follows is the question as it was put, and is left unedited because this log is
+append-only — the same treatment D-072 and D-073 received.
 
 **Context.** Slice 6 caches revenue tax configuration and lets a device resolve against it
 with no network. The brief asked, correctly, whether there is a limit — and told me not to
@@ -3575,3 +3577,185 @@ retained and historical entries are unaffected by any answer.
 *"No limit; the risk is acceptable at this scale"* is a perfectly good answer and is what
 the software does today. What must not happen is the software choosing a number nobody
 approved, so no number has been chosen.
+
+---
+
+# Phase 4 Slice 7 — Revenue create workflow (2026-09-02)
+
+## D-112 (answered) — Cached revenue tax configuration expires for NEW offline creation after 24 hours
+**Date:** 2026-09-02 · **Status:** **Accepted (project-lead decision)** — answers the
+question Slice 6 raised and deliberately did not default
+
+**Context.** Slice 6 recorded that the project has no TTL anywhere, that none had been
+invented, and why the question was worth asking: permissions and rates go stale
+differently. A stale permission is caught server-side the moment a queued mutation is
+delivered (D-037). A stale **rate** is not — rules are date-effective, so a device holding
+an open-ended rule keeps applying it to business dates after a change it never received,
+and the figure it records is internally consistent, wrong, and accepted by the server,
+because on that device's evidence it is correct.
+
+**Decision.** A complete, scope-specific revenue configuration snapshot may be used to
+create **new** offline revenue for **24 hours** from its server-confirmed timestamp.
+Beyond that, creation refuses until a successful authoritative synchronisation.
+
+**What it is not.** Not a general `ReferenceSync` TTL for other masters, not a visibility
+rule for existing revenue, not a period lock, and not an authority TTL. It governs one act.
+
+**No override.** Not for the Owner, not for an Accountant. This is a tax-correctness gate,
+not an RBAC privilege gate — there is no role whose permission makes a stale rate correct.
+
+**Implementation.**
+
+* The trust anchor is the **server-confirmed timestamp** persisted by Slice 6
+  (`revenue_config_snapshots.confirmed_at`), taken from the authority answer. Never the
+  moment a cache row happened to be written, which is a device-clock reading and forensic
+  metadata only (spec §9).
+* Scope is Slice 6's model unchanged: **per user, per business unit, all four datasets**.
+  A fresh Crystal Canopy snapshot does not make Hotel Krishna fresh, and one person's
+  freshness does not carry another's.
+* **The boundary is inclusive.** At exactly 24 hours the snapshot is still usable. Stated
+  because "24 hours" is ambiguous until somebody writes down which side the boundary falls
+  on, and a rule nobody has stated is one two readers implement differently.
+* **Clock skew fails closed.** If the device clock reads materially *earlier* than the
+  server's own confirmation of the snapshot, the age cannot be measured and creation
+  refuses with its own reason — because a backwards clock would otherwise make every
+  snapshot look newly fresh, which is the one direction the error must not go. A five
+  minute allowance absorbs ordinary disagreement between two machines. V1 builds no time
+  attestation, deliberately.
+* `clockUnreliable` is reported **separately** from `expired`, because *"your clock is
+  wrong"* sends somebody to fix a different thing from *"your configuration is old"*.
+* Where the network is available the caller may refresh before presenting the refusal;
+  `RevenueRefusal.refreshMayResolve` says which refusals that could change.
+
+**Expiry touches nothing that already exists.** It does not hide, delete, re-rate or
+invalidate recorded revenue, does not destroy retained attempts, and does not alter
+historical reporting. An attempt created at 10 hours' age and still pending at 30 hours is
+submitted unchanged: it carries its own component snapshot, and the server decides whether
+it remains acceptable. D-112 governs the *creation* of a new attempt and nothing else —
+tested explicitly, because the tempting reading is the destructive one.
+
+## D-113 — Revenue is checked before it is written, unlike an expense
+**Date:** 2026-09-02 · **Status:** Accepted
+
+**Context.** The expense engine always saves locally and lets the server refuse later. That
+is right for an expense: its correctness does not depend on configuration the device might
+lack, because an amount, a vendor and a category are facts the operator supplies.
+
+A revenue figure is different. Its tax comes from configured rules, so a device that cannot
+resolve them cannot produce a defensible number at all.
+
+**Decision.** `RevenueRepository.evaluate` runs the whole contract **before** anything is
+persisted — authenticated principal, unit authority, at least one component, a category
+that belongs to that unit, an open period, a complete and fresh configuration snapshot,
+exactly one resolvable rule per component, every required conditional fact, and exact
+arithmetic. Only then does `createLocally` write.
+
+Nothing half-created is left behind for somebody to deal with later, and the refusal is
+**structured**: seventeen reasons, each naming a different thing to do about it. "Cannot
+save" tells an operator nothing, and a raw exception tells them something they cannot act
+on and should not see. A test asserts that no refusal message contains an exception name, a
+SQL state, a table name or a refusal code.
+
+**The write is one Drift transaction** — entry, components with their snapshots, and the
+outbox intent — so there is no ordering in which a revenue document exists without the
+intent to send it, or an intent points at a document that was never written. Proven by
+forcing a mid-transaction failure and finding nothing at all.
+
+**A recorded attempt is never re-rated.** The payload is captured at save time and sent
+verbatim; a retry delivers the facts the operator approved, not a re-resolution against
+configuration that has since arrived.
+
+## D-114 — The client declares what it showed; the server refuses if it disagrees
+**Date:** 2026-09-02 · **Status:** Accepted
+
+**Context.** `revenue_create` resolves the rule and computes gross, tax and net itself and
+ignores anything the caller says about them. That is correct and stays correct. But its
+return payload carried the id, the number and the row version — and nothing about the
+money, so a client had **no way to learn** that its own figures differed.
+
+An entry prepared offline under a rule that had since changed would therefore be accepted,
+and the operator who approved one GST figure would end up with a document stating another,
+with nothing anywhere reporting that the two had ever disagreed. The financial values would
+have been silently replaced while the acceptance claimed the approved draft went through.
+
+**Decision.** A component may carry optional `declared_gross_minor`, `declared_tax_minor`
+and `declared_net_minor`. They are **compared, never used** — the canonical figures remain
+the server's. A mismatch is refused with its own code, `KM030`
+(`tax_configuration_mismatch`), carrying both sets of figures and the rule that produced
+the server's.
+
+**It becomes a conflict, not a rejection.** Two defensible answers exist and a person
+chooses between them — exactly the treatment a stale row version gets, and for the same
+reason: financial state is never resolved by silent last-writer-wins (spec §22.1). The
+local attempt keeps the figures the operator approved; nothing is repriced behind them.
+
+Omitting the declared values keeps the previous behaviour exactly, which is what makes this
+additive rather than a contract break. The canonical totals are also returned now, so a
+replay reconciles to the same money and not merely to the same identity.
+
+## D-115 — `revenue_create` had never successfully created a revenue entry
+**Date:** 2026-09-02 · **Status:** Accepted — a Slice 4 defect found the first time
+anything exercised the path
+
+**Symptom.** Every delivery came back:
+
+```
+column reference "financial_year" is ambiguous
+```
+
+**Cause.** `app.next_revenue_number` was declared
+`returns table(number text, financial_year text)`. Those are OUT parameters, and inside the
+body `on conflict (org_id, financial_year)` names the same identifier as the table column
+it targets. plpgsql substitutes the variable before the planner sees it, so the statement is
+refused outright.
+
+The failure happened *after* every validation passed and after the entry and its components
+were inserted, at the point a number is issued. The transaction rolled back, so nothing was
+written and nothing was corrupted. The RPC simply could not work.
+
+**Why it survived Slice 4.** That slice proved the **boundary** — RLS, grants, the
+projection, the reviewed API surface, the write-skew doctrine — and never created a revenue
+entry through it. Thirteen live tests, none of which called the function whose whole job is
+to record revenue. The same shape as D-104: two correct halves and no test crossing between
+them.
+
+**Fix.** A conflict target cannot be table-qualified, so the collision is removed by
+renaming the output columns to `issued_number` / `issued_financial_year`, with the caller
+updated in the same migration because those names are the contract between them. The
+migration asserts the helper produces a well-formed number, that the counter advances
+exactly once, and then **puts the sequence back** — an assertion must not consume a number
+a real entry would otherwise have carried.
+
+## D-116 — Three more rules naming a capability that no role holds
+**Date:** 2026-09-02 · **Status:** Accepted — the same defect as D-110, in three more places
+
+**Context.** With `revenue_create` finally working, the acceptance read the entries back
+through `revenue_document` and got nothing. Not a scoping subtlety: **the projection has
+never returned a row to anybody.**
+
+`revenue_document`, `revenue_component_detail` and the `revenue_entries` read policy all
+gate on `has_capability('revenue.view.all', …)`. No such capability exists. The catalogue
+holds `revenue.view`; `revenue.view.all` is a name that was never granted to any role, so
+the predicate is false for every caller including the Owner — and the only sanctioned way
+to read revenue returned nothing at all.
+
+D-110 recorded exactly this for `business_unit_tax_statuses_read`, which required the same
+non-existent capability. It was fixed there and the pattern was not looked for elsewhere.
+
+**Why it stayed invisible.** The datasets were empty until this slice, and *"the base
+tables are not the client API"* passes trivially against a view that returns nothing to
+anyone. A test asserting that a scoped user sees less than an Owner passes when both see
+zero.
+
+**Decision.** All three use `revenue.view`, which manager, accountant and owner hold.
+Access stays per business unit and the base tables stay ungranted: the projection remains
+the only way in.
+
+**And the class is closed.** The migration asserts, generally, that **every capability
+named by a revenue policy or projection is actually granted to some role**. It earned that
+on its first run: it refused the migration and named `revenue.view.all` still present in
+the `revenue_entries` policy, which the fix had missed.
+
+*A rule that nothing evaluates is a comment* (D-068, D-071, D-077). This is its quieter
+twin: **a rule that can never evaluate true refuses everything, silently, and looks like a
+security boundary working.**

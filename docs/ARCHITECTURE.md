@@ -1447,3 +1447,131 @@ as long as it stands. **That is the existing rule, not a new decision**, and the
 whether revenue tax configuration should have a maximum age before a device refuses to
 create *new* revenue is recorded as D-112 and left to the project lead. It matters because
 a stale permission is caught server-side on delivery and a stale rate is not.
+
+---
+
+## 20. The revenue create path (2026-09-02)
+
+§19 filled the configuration cache. This is the first complete revenue mutation: draft →
+eligibility → deterministic local resolution → one atomic write → outbox → `revenue_create`
+→ reconciliation. **Slice 7 builds no entry screen and no ledger surface** — Slices 8 and 9
+own those, and a test asserts neither exists.
+
+### 20.1 Checked before it is written, which expenses are not
+
+An expense always saves locally and lets the server refuse later. That is right for an
+expense: its correctness does not depend on configuration the device might lack, because an
+amount, a vendor and a category are facts the operator supplies.
+
+A revenue figure is different. Its tax comes from configured rules, so a device that cannot
+resolve them cannot produce a defensible number at all — and a rejected revenue entry
+sitting in somebody's outbox is worse than being told, at the time, that it cannot yet be
+recorded (D-086).
+
+So the whole contract is evaluated first:
+
+```
+        signed-in principal, confirmed
+        revenue.create for THIS business unit        (org-wide covers every unit)
+        at least one component
+        category exists here AND belongs to that unit
+        period open
+        configuration complete for (user, unit)      §19.2
+        configuration fresh                          D-112, 24 hours
+        exactly one rule resolves per component      D-094
+        every required conditional fact supplied
+```
+
+Only then does anything reach the database. Seventeen refusal reasons, each naming a
+different thing to do about it, because *"Cannot save"* tells an operator nothing and a raw
+exception tells them something they cannot act on and should not see. Asserted: no refusal
+message contains an exception name, a SQL state, a table name or a refusal code.
+
+### 20.2 One transaction, and the marker of a correct one
+
+Entry, components with their full financial snapshot, and the outbox intent all commit
+together. There is no ordering in which a revenue document exists without the intent to
+send it, or an intent points at a document that was never written. Proven by forcing a
+failure at the component write and finding nothing at all — no orphan header, no orphan
+intent.
+
+Every component stores what was typed and everything derived from it: entered amount and
+basis, gross, tax, net, the rule id, rate and treatment, and the band identity and bounds
+that selected it. **A recorded attempt is never re-rated**: the payload is captured at save
+time and delivered verbatim, so a retry sends the facts the operator approved rather than a
+re-resolution against configuration that has since arrived.
+
+No transaction number is invented locally. The server issues `KI-REV-…` on acceptance, and
+two offline devices inventing one would both claim the same permanent-looking reference
+(spec §8.4).
+
+### 20.3 The client declares; the server decides; neither overwrites the other
+
+`revenue_create` resolves the rule and computes gross, tax and net itself and ignores
+anything the caller says about them. What it did **not** do was give the client any way to
+learn that its own figures differed — so an entry prepared under a rule that had since
+changed would be accepted, and the operator who approved one GST figure would hold a
+document stating another, with nothing reporting the disagreement.
+
+```
+        client sends   entered amount + the facts + declared gross/tax/net
+        server does    resolve, compute, and COMPARE the declared values
+        on agreement   record the server's own figures
+        on difference  refuse KM030, carrying both sets and the rule
+```
+
+The declared values are **compared, never used**. A mismatch becomes a **conflict**, not a
+rejection: two defensible answers exist and a person chooses between them, exactly as a
+stale row version is handled and for the same reason — financial state is never resolved by
+silent last-writer-wins (§5.3). The local attempt keeps the figures the operator approved.
+
+### 20.4 One transport, one queue
+
+Revenue is a registered mutation type in the engine that already exists: the same outbox,
+worker, backoff clock and actor filter. `RoutingMutationEndpoint` gained a third arm and
+`RoutingMutationReconciler` composes the per-type reconcilers; a build with no revenue
+endpoint routes the intent to one that does not recognise it and answers terminally, so the
+entry is **kept for a person to see** rather than discarded.
+
+Recovery re-sends **the same intent**. A fresh mutation id would be a second financial
+record for one act, and no care afterwards could tell the two apart — least of all when
+both carry a real KI-REV number. Proven against a server that commits and then loses the
+answer: the client stays queued and invents nothing, the retry replays, and the entry
+reconciles to the number it never saw the first time.
+
+### 20.5 D-112, and the one distinction it turns on
+
+A complete snapshot supports **new** offline creation for 24 hours from its
+server-confirmed timestamp — inclusive at the boundary, per user and per business unit, no
+override. A device clock reading materially earlier than that timestamp fails closed with
+its own reason, because a backwards clock would otherwise make every snapshot look newly
+fresh, and *"your clock is wrong"* sends somebody to fix a different thing from *"your
+configuration is old"*.
+
+**Expiry governs creation and nothing else.** An attempt created at ten hours' age and
+still pending at thirty is submitted unchanged: it carries its own snapshot, and the server
+decides whether it remains acceptable. Deleting or re-rating it because a window closed
+would destroy work nobody asked to lose — and the tempting reading of the rule is exactly
+that one, which is why it is tested explicitly.
+
+### 20.6 What the acceptance found, and why it took this long
+
+Two Slice 4 defects surfaced the first time anything exercised the path rather than the
+boundary around it.
+
+`revenue_create` **had never successfully created an entry**: an OUT parameter named
+`financial_year` collided with the column in its own `on conflict` target, so every call
+failed after all validation and after the inserts (D-115). And all three revenue read
+rules required `revenue.view.all`, **a capability no role holds**, so the only sanctioned
+way to read revenue returned nothing to anybody including the Owner (D-116) — the same
+defect D-110 recorded for the premises-status policy, in three more places.
+
+Both were invisible to a suite that proves the boundary. A view that returns nothing to
+everyone satisfies *"a scoped user sees less than the Owner"*, and a create RPC nobody
+calls cannot fail. The general assertion added with the second fix — that every capability
+named by a revenue policy or projection is actually granted to some role — refused its own
+migration on the first run, naming a place the fix had missed.
+
+*A rule that nothing evaluates is a comment* (D-068, D-071, D-077). This is its quieter
+twin: **a rule that can never evaluate true refuses everything, silently, and looks like a
+security boundary working.**

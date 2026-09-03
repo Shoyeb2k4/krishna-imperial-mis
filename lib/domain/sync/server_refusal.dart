@@ -80,6 +80,18 @@ enum RefusalKind {
   /// More attachments, or more bytes, than an expense may carry — `KM022`.
   attachmentLimit,
 
+  /// A revenue tax rule is unusable or cannot be resolved for these facts — `KM025` …
+  /// `KM029`. The configuration is a gap or a defect, not a rate of zero (D-084).
+  revenueConfigurationProblem,
+
+  /// The tax the operator approved is not the tax the server computes, because the
+  /// configuration changed between preparing the entry and delivering it — `KM030`.
+  ///
+  /// Its own kind, and deliberately not folded into a generic refusal: two defensible
+  /// figures exist and a person has to choose between them. Silently taking either would
+  /// mean an accepted document holding money nobody approved.
+  taxConfigurationMismatch,
+
   /// The transport failed, or the server said something this version does not know.
   unrecognised;
 
@@ -191,6 +203,15 @@ final class ServerRefusal implements Exception {
     'record_voided': RefusalKind.recordVoided,
     'edit_window_expired': RefusalKind.editWindowExpired,
     'attachment_limit': RefusalKind.attachmentLimit,
+    // Phase 4 revenue. The configuration problems share a kind because they share a
+    // conversation — somebody must look at the tax configuration — while the mismatch is
+    // its own, because the thing to look at is two numbers rather than a rule.
+    'no_applicable_rule': RefusalKind.revenueConfigurationProblem,
+    'ambiguous_rule': RefusalKind.revenueConfigurationProblem,
+    'incomplete_rule': RefusalKind.revenueConfigurationProblem,
+    'revenue_without_components': RefusalKind.revenueConfigurationProblem,
+    'superseded_write_path': RefusalKind.revenueConfigurationProblem,
+    'tax_configuration_mismatch': RefusalKind.taxConfigurationMismatch,
   };
 
   static String _message(
@@ -237,6 +258,17 @@ final class ServerRefusal implements Exception {
     RefusalKind.unknownEntity => 'That record no longer exists.',
     RefusalKind.appendOnly => 'Audit history cannot be changed.',
     RefusalKind.acknowledgementRequired => _acknowledgementMessage(detail),
+    // The server's own sentence, because it names *which* condition could not be
+    // satisfied — no rule, an uncovered band, a subtype not chosen — and a generic
+    // replacement here would throw away the only part that tells anybody what to fix.
+    RefusalKind.revenueConfigurationProblem =>
+      serverMessage ??
+          'The tax configuration for this revenue entry is incomplete or ambiguous. '
+              'It cannot be recorded until that is corrected.',
+    RefusalKind.taxConfigurationMismatch =>
+      serverMessage ??
+          'The tax on this entry has changed since it was prepared. Review the current '
+              'figures and record it again.',
     RefusalKind.unrecognised =>
       serverMessage ??
           'The server refused this change for a reason this version of the app does '
