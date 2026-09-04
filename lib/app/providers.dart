@@ -14,6 +14,7 @@ import 'package:krishna_mis/data/attachments/attachment_source.dart';
 import 'package:krishna_mis/data/attachments/platform_attachment_source.dart';
 import 'package:krishna_mis/data/attachments/attachment_staging.dart';
 import 'package:krishna_mis/data/local/encrypted_database.dart';
+import 'package:krishna_mis/data/remote/revenue_gateway.dart';
 import 'package:krishna_mis/data/repositories/expense_repository.dart';
 import 'package:krishna_mis/data/repositories/master_repository.dart';
 import 'package:krishna_mis/data/repositories/tax_repository.dart';
@@ -57,6 +58,16 @@ final mutationReconcilerProvider = Provider<MutationReconciler?>((ref) => null);
 /// offline-only build has nothing to re-read from, and the screens that use this treat
 /// its absence as "cannot refresh right now" rather than as an error.
 final expensePullProvider = Provider<ExpensePull?>((ref) => null);
+
+/// Re-reading one sale from the server, through the authorised projection.
+///
+/// Null when no backend is configured. The conflict path treats its absence as "cannot
+/// check right now" and says so, rather than as an error or as permission to guess.
+///
+/// It is overridden in `main()` from the same gateway the sync worker uses, and a test
+/// asserts that — because D-077 is what happens when a null default is left standing and
+/// every test supplies its own replacement.
+final revenueGatewayProvider = Provider<RevenueGateway?>((ref) => null);
 
 /// Uploads attached bills, independently of the expenses they belong to (D-073).
 final attachmentUploadWorkerProvider = Provider<AttachmentUploadWorker?>(

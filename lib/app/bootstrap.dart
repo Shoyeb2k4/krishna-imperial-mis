@@ -69,6 +69,7 @@ class BootstrapResult {
     required this.mutationEndpoint,
     required this.mutationReconciler,
     required this.expensePull,
+    required this.revenueGateway,
     required this.attachmentUploads,
   });
 
@@ -97,6 +98,10 @@ class BootstrapResult {
   /// Re-reads one expense through the projection the server is willing to show. Used by
   /// the conflict flow, where the point is to see what the record says *now*.
   final ExpensePull? expensePull;
+
+  /// The revenue half of the remote boundary, shared by the sync worker and the
+  /// conflict path so both talk to one client rather than two.
+  final RevenueGateway? revenueGateway;
 
   /// Uploads bills, out of band from the financial records they belong to (D-073).
   ///
@@ -164,6 +169,7 @@ Future<BootstrapResult> bootstrap({http.Client? transport}) async {
   RemoteMutationEndpoint? mutationEndpoint;
   MutationReconciler? mutationReconciler;
   ExpensePull? expensePull;
+  RevenueGateway? gatewayForRevenue;
   AttachmentUploadWorker? attachmentUploads;
   if (config.hasBackend) {
     await Supabase.initialize(
@@ -180,6 +186,7 @@ Future<BootstrapResult> bootstrap({http.Client? transport}) async {
     final masterGateway = MasterGateway(client);
     final expenseGateway = ExpenseGateway(client);
     final revenueGateway = RevenueGateway(client);
+    gatewayForRevenue = revenueGateway;
     mutationEndpoint = RoutingMutationEndpoint(
       masters: MasterMutationEndpoint(
         masters: masterGateway,
@@ -238,6 +245,7 @@ Future<BootstrapResult> bootstrap({http.Client? transport}) async {
     mutationEndpoint: mutationEndpoint,
     mutationReconciler: mutationReconciler,
     expensePull: expensePull,
+    revenueGateway: gatewayForRevenue,
     attachmentUploads: attachmentUploads,
     recoveredInFlightEntries: recovered,
     session: session,

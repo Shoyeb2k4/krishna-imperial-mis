@@ -28,6 +28,21 @@ class RevenueGateway extends SupabaseGateway with RpcCalls {
     required String mutationId,
   }) => callRpc('revenue_create', {...arguments, 'p_mutation_id': mutationId});
 
+  /// Corrects a revenue entry.
+  ///
+  /// [baseRowVersion] is the version the operator was looking at when the form opened,
+  /// carried from there and never re-read here. A background pull that moved the row must
+  /// make this a conflict rather than silently retarget somebody's correction (D-021).
+  Future<RemoteOutcome<Map<String, dynamic>>> update({
+    required Map<String, Object?> arguments,
+    required int baseRowVersion,
+    required String mutationId,
+  }) => callRpc('revenue_update', {
+    ...arguments,
+    'p_base_row_version': baseRowVersion,
+    'p_mutation_id': mutationId,
+  });
+
   Future<RemoteOutcome<Map<String, dynamic>>> voidEntry({
     required String entryId,
     required int baseRowVersion,
@@ -38,6 +53,21 @@ class RevenueGateway extends SupabaseGateway with RpcCalls {
     'p_base_row_version': baseRowVersion,
     'p_reason': reason,
     'p_mutation_id': mutationId,
+  });
+
+  /// Reads one entry's components back through the authorised projection.
+  ///
+  /// Used by the conflict path, which has to show the operator what the record now says
+  /// beside what they submitted. A header alone cannot do that: the disagreement being
+  /// resolved is about component figures.
+  Future<RemoteOutcome<List<Map<String, dynamic>>>> fetchComponents(
+    String entryId,
+  ) => guard(() async {
+    final rows = await client
+        .from('revenue_component_detail')
+        .select()
+        .eq('revenue_entry_id', entryId);
+    return rows.cast<Map<String, dynamic>>();
   });
 
   /// Reads one entry back through the authorised projection.

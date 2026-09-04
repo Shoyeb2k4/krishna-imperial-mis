@@ -81,6 +81,13 @@ same omission A0 exists to catch, caught by A0's own check one slice later. Both
 recovered verbatim from the server's migration record (the D-056 procedure) rather than
 retyped from memory, because a file that merely resembles what ran is not provenance.
 
+## Phase 4 Slice 10
+
+| Ledger version | Ledger name | Committed file |
+|---|---|---|
+| 20260904144542 | `revenue_update_boundary` | `20260904144542_revenue_update_boundary.sql` |
+| 20260904150814 | `api_surface_invariant_revenue_update` | `20260904150814_api_surface_invariant_revenue_update.sql` |
+
 ## The full applied ledger, in order
 
 ```
@@ -142,4 +149,6 @@ retyped from memory, because a file that merely resembles what ran is not proven
 20260902111217 revenue_create_declared_totals
 20260902115805 revenue_numbering_ambiguous_column
 20260902120217 revenue_projections_use_a_real_capability
+20260904144542 revenue_update_boundary
+20260904150814 api_surface_invariant_revenue_update
 ```

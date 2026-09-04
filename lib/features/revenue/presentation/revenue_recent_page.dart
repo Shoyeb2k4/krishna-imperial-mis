@@ -25,6 +25,7 @@ import 'package:krishna_mis/core/formatting/money_formatter.dart';
 import 'package:krishna_mis/data/repositories/revenue_repository.dart';
 import 'package:krishna_mis/app/providers.dart';
 import 'package:krishna_mis/domain/sync/sync_state.dart';
+import 'package:krishna_mis/features/revenue/presentation/revenue_detail_page.dart';
 import 'package:krishna_mis/features/revenue/presentation/revenue_providers.dart';
 
 class RevenueRecentPage extends ConsumerWidget {
@@ -64,8 +65,15 @@ class RevenueRecentPage extends ConsumerWidget {
             itemCount: value.length,
             separatorBuilder: (_, _) =>
                 const Divider(height: 1, color: AppColors.hairline),
-            itemBuilder: (_, index) => _RevenueRow(
+            itemBuilder: (context, index) => _RevenueRow(
               row: value[index],
+              // Drill-down: a figure a manager cannot open is a figure they cannot
+              // question, and correcting one starts by looking at it (spec §11).
+              onOpen: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => RevenueDetailPage(entryId: value[index].id),
+                ),
+              ),
               categoryName: switch (graphAsync) {
                 AsyncData(value: final graph) =>
                   graph.revenueCategory(value[index].revenueCategoryId)?.name,
@@ -80,9 +88,10 @@ class RevenueRecentPage extends ConsumerWidget {
 }
 
 class _RevenueRow extends StatelessWidget {
-  const _RevenueRow({required this.row, this.categoryName});
+  const _RevenueRow({required this.row, this.onOpen, this.categoryName});
 
   final RevenueLedgerRow row;
+  final VoidCallback? onOpen;
   final String? categoryName;
 
   @override
@@ -97,117 +106,124 @@ class _RevenueRow extends StatelessWidget {
           'net ${MoneyFormatter.standard.format(row.net)}, '
           '${row.syncState.label}',
       child: ExcludeSemantics(
-        child: Container(
-          key: Key('revenue-row-${row.id}'),
+        child: Material(
           color: AppColors.surface,
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.lg,
-            vertical: AppSpacing.md,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+          child: InkWell(
+            onTap: onOpen,
+            child: Container(
+              key: Key('revenue-row-${row.id}'),
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.lg,
+                vertical: AppSpacing.md,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          categoryName ?? 'Sales',
-                          style: AppTypography.body.copyWith(
-                            decoration: voided
-                                ? TextDecoration.lineThrough
-                                : null,
-                            color: voided ? AppColors.inkFaint : AppColors.ink,
-                          ),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              categoryName ?? 'Sales',
+                              style: AppTypography.body.copyWith(
+                                decoration: voided
+                                    ? TextDecoration.lineThrough
+                                    : null,
+                                color: voided
+                                    ? AppColors.inkFaint
+                                    : AppColors.ink,
+                              ),
+                            ),
+                            const SizedBox(height: AppSpacing.xxs),
+                            Text(
+                              // The server-issued number, once there is one. Never before: a
+                              // reference that looks permanent and is not is worse than none
+                              // (spec §8.4). The UUID is not shown — it is an identity, not a
+                              // reference anybody can use.
+                              '${row.businessDate.iso}'
+                              '${row.txnNumber == null ? '' : ' · ${row.txnNumber}'}',
+                              style: AppTypography.caption.copyWith(
+                                color: AppColors.inkMuted,
+                              ),
+                            ),
+                            if (row.componentCount > 1) ...[
+                              const SizedBox(height: AppSpacing.xxs),
+                              Text(
+                                '${row.componentCount} amounts',
+                                style: AppTypography.caption.copyWith(
+                                  color: AppColors.inkFaint,
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
-                        const SizedBox(height: AppSpacing.xxs),
-                        Text(
-                          // The server-issued number, once there is one. Never before: a
-                          // reference that looks permanent and is not is worse than none
-                          // (spec §8.4). The UUID is not shown — it is an identity, not a
-                          // reference anybody can use.
-                          '${row.businessDate.iso}'
-                          '${row.txnNumber == null ? '' : ' · ${row.txnNumber}'}',
-                          style: AppTypography.caption.copyWith(
-                            color: AppColors.inkMuted,
+                      ),
+                      const SizedBox(width: AppSpacing.md),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          MoneyText(
+                            row.gross,
+                            formatter: MoneyFormatter.standard,
+                            style: AppTypography.body,
                           ),
-                        ),
-                        if (row.componentCount > 1) ...[
                           const SizedBox(height: AppSpacing.xxs),
                           Text(
-                            '${row.componentCount} amounts',
+                            'Net ${MoneyFormatter.standard.format(row.net)}',
                             style: AppTypography.caption.copyWith(
-                              color: AppColors.inkFaint,
+                              color: AppColors.inkMuted,
                             ),
                           ),
                         ],
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: AppSpacing.md),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      MoneyText(
-                        row.gross,
-                        formatter: MoneyFormatter.standard,
-                        style: AppTypography.body,
-                      ),
-                      const SizedBox(height: AppSpacing.xxs),
-                      Text(
-                        'Net ${MoneyFormatter.standard.format(row.net)}',
-                        style: AppTypography.caption.copyWith(
-                          color: AppColors.inkMuted,
-                        ),
                       ),
                     ],
                   ),
+
+                  // The status gets its own line, right-aligned under the figures.
+                  //
+                  // Not the compact chip: compact renders the icon alone, and "has this
+                  // reached the office?" is the question this list exists to answer — an
+                  // answer given only in colour and shape is one an operator has to learn
+                  // rather than read (spec §22). The full label is long enough that keeping
+                  // it beside the amounts overflowed a 430pt phone, which the widget suite
+                  // caught and a screenshot would not have: the money still fitted.
+                  const SizedBox(height: AppSpacing.sm),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: SyncStateChip(row.syncState),
+                  ),
+
+                  // The explanation runs the full width of the row rather than sitting in the
+                  // right-hand column. A fixed-width box there overflowed a 430pt phone by
+                  // five pixels, which the widget suite caught and a screenshot would not
+                  // have — the figures still fitted.
+                  if (row.syncState == SyncState.conflict) ...[
+                    const SizedBox(height: AppSpacing.sm),
+                    Container(
+                      padding: const EdgeInsets.all(AppSpacing.sm),
+                      decoration: BoxDecoration(
+                        color: AppColors.surfaceMuted,
+                        borderRadius: AppRadius.allSmall,
+                      ),
+                      // A tax mismatch is a financial disagreement, not a network problem,
+                      // and never a silent repricing (D-114). The review action is Slice 10;
+                      // what belongs here is the honest sentence.
+                      child: Text(
+                        'The tax configuration changed before this could sync. '
+                        'Review the latest figures before continuing.',
+                        key: Key('revenue-conflict-note-${row.id}'),
+                        style: AppTypography.caption.copyWith(
+                          color: AppColors.syncConflict,
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
-
-              // The status gets its own line, right-aligned under the figures.
-              //
-              // Not the compact chip: compact renders the icon alone, and "has this
-              // reached the office?" is the question this list exists to answer — an
-              // answer given only in colour and shape is one an operator has to learn
-              // rather than read (spec §22). The full label is long enough that keeping
-              // it beside the amounts overflowed a 430pt phone, which the widget suite
-              // caught and a screenshot would not have: the money still fitted.
-              const SizedBox(height: AppSpacing.sm),
-              Align(
-                alignment: Alignment.centerRight,
-                child: SyncStateChip(row.syncState),
-              ),
-
-              // The explanation runs the full width of the row rather than sitting in the
-              // right-hand column. A fixed-width box there overflowed a 430pt phone by
-              // five pixels, which the widget suite caught and a screenshot would not
-              // have — the figures still fitted.
-              if (row.syncState == SyncState.conflict) ...[
-                const SizedBox(height: AppSpacing.sm),
-                Container(
-                  padding: const EdgeInsets.all(AppSpacing.sm),
-                  decoration: BoxDecoration(
-                    color: AppColors.surfaceMuted,
-                    borderRadius: AppRadius.allSmall,
-                  ),
-                  // A tax mismatch is a financial disagreement, not a network problem,
-                  // and never a silent repricing (D-114). The review action is Slice 10;
-                  // what belongs here is the honest sentence.
-                  child: Text(
-                    'The tax configuration changed before this could sync. '
-                    'Review the latest figures before continuing.',
-                    key: Key('revenue-conflict-note-${row.id}'),
-                    style: AppTypography.caption.copyWith(
-                      color: AppColors.syncConflict,
-                    ),
-                  ),
-                ),
-              ],
-            ],
+            ),
           ),
         ),
       ),

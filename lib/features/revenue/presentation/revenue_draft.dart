@@ -183,6 +183,8 @@ final class RevenueDraft {
     this.entryKind = RevenueEntryKind.dailySummary,
     this.sourceReference,
     this.notes,
+    this.baseRowVersion,
+    this.txnNumber,
   });
 
   /// A blank sale, with the unit preselected when the user holds exactly one.
@@ -208,6 +210,52 @@ final class RevenueDraft {
   final RevenueEntryKind entryKind;
   final String? sourceReference;
   final String? notes;
+
+  /// The version this correction is based on, captured when the form opened.
+  ///
+  /// **Every mutator below carries it through unchanged, and none of them can set it.**
+  /// That is the point: the form rebuilds on every keystroke, so a `copyWith` that
+  /// accepted a new version would be precisely how a background pull silently re-bases
+  /// somebody's correction onto a row they never saw (D-072a, §4).
+  ///
+  /// Null for a new sale, which establishes a new identity and cannot conflict (D-021).
+  final int? baseRowVersion;
+
+  /// The server-issued number, carried so the edit screen can show which document is
+  /// being corrected. Never sent as an instruction: the number belongs to the document's
+  /// identity and no correction changes it.
+  final String? txnNumber;
+
+  bool get isEditing => baseRowVersion != null;
+
+  /// The same sale, loaded for correction.
+  ///
+  /// The business unit and the category come from the document and are not offered for
+  /// change: nothing in the binding specification authorises moving recorded revenue
+  /// between properties, and an edit that could would be a scope transfer wearing a
+  /// correction's clothes. Correcting those is void and re-enter (spec §14).
+  factory RevenueDraft.fromEntry(RevenueEntry entry) => RevenueDraft(
+    id: entry.id,
+    businessDate: entry.businessDate,
+    businessUnitId: entry.businessUnitId,
+    revenueCategoryId: entry.revenueCategoryId,
+    entryKind: entry.entryKind,
+    sourceReference: entry.sourceReference,
+    notes: entry.notes,
+    baseRowVersion: entry.rowVersion,
+    txnNumber: entry.txnNumber,
+    components: [
+      for (final component in entry.components)
+        RevenueComponentEntry(
+          id: component.id,
+          amount: component.enteredAmount,
+          valueBandId: component.valueBandId,
+          valueBandLabel: component.valueBandLabel,
+          supplySubtypeId: component.supplySubtypeId,
+          premisesStatusCode: component.premisesStatusCode,
+        ),
+    ],
+  );
 
   /// The business units this user may record revenue for.
   ///
@@ -254,6 +302,8 @@ final class RevenueDraft {
       entryKind: entryKind,
       sourceReference: sourceReference,
       notes: notes,
+      baseRowVersion: baseRowVersion,
+      txnNumber: txnNumber,
     );
   }
 
@@ -273,6 +323,8 @@ final class RevenueDraft {
       entryKind: entryKind,
       sourceReference: sourceReference,
       notes: notes,
+      baseRowVersion: baseRowVersion,
+      txnNumber: txnNumber,
     );
   }
 
@@ -291,6 +343,8 @@ final class RevenueDraft {
     entryKind: entryKind,
     sourceReference: sourceReference,
     notes: notes,
+    baseRowVersion: baseRowVersion,
+    txnNumber: txnNumber,
   );
 
   RevenueDraft withDetails({
@@ -306,6 +360,8 @@ final class RevenueDraft {
     entryKind: entryKind ?? this.entryKind,
     sourceReference: sourceReference ?? this.sourceReference,
     notes: notes ?? this.notes,
+    baseRowVersion: baseRowVersion,
+    txnNumber: txnNumber,
   );
 
   /// Rebuilds the components to match the configured rules for this category.
@@ -341,6 +397,8 @@ final class RevenueDraft {
         entryKind: entryKind,
         sourceReference: sourceReference,
         notes: notes,
+        baseRowVersion: baseRowVersion,
+        txnNumber: txnNumber,
       );
     }
 
@@ -384,6 +442,8 @@ final class RevenueDraft {
       entryKind: entryKind,
       sourceReference: sourceReference,
       notes: notes,
+      baseRowVersion: baseRowVersion,
+      txnNumber: txnNumber,
     );
   }
 

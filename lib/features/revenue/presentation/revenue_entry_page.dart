@@ -35,7 +35,24 @@ import 'package:krishna_mis/features/revenue/presentation/widgets/revenue_breakd
 import 'package:krishna_mis/features/revenue/presentation/widgets/revenue_optional_details.dart';
 
 class RevenueEntryPage extends ConsumerStatefulWidget {
-  const RevenueEntryPage({super.key});
+  const RevenueEntryPage({super.key}) : editingDraft = null;
+
+  /// The same form, opened on an existing sale.
+  ///
+  /// One form, two modes — deliberately, and for the reason D-072a gives for expenses: a
+  /// second screen would be a second implementation of the arithmetic behind company
+  /// revenue, and the two would agree until the day they did not. The tax preview, the
+  /// band fields, the reconciliation and the refusals are the ones that already decide
+  /// what a new sale may be.
+  ///
+  /// [draft] carries the row version it was opened on, and nothing in this screen can
+  /// move it (§4).
+  const RevenueEntryPage.editing(RevenueDraft draft, {super.key})
+    : editingDraft = draft;
+
+  final RevenueDraft? editingDraft;
+
+  bool get isEditing => editingDraft != null;
 
   @override
   ConsumerState<RevenueEntryPage> createState() => _RevenueEntryPageState();
@@ -61,6 +78,13 @@ class _RevenueEntryPageState extends ConsumerState<RevenueEntryPage> {
   RevenueDraft _ensureDraft(MasterGraph graph) {
     final existing = _draft;
     if (existing != null) return existing;
+
+    // Editing starts from the document as it was read, version and all.
+    final editing = widget.editingDraft;
+    if (editing != null) {
+      _draft = editing;
+      return editing;
+    }
 
     final authority = ref.read(revenueAuthorityProvider);
     final units = RevenueDraft.permittedUnits(graph, authority);
@@ -91,7 +115,7 @@ class _RevenueEntryPageState extends ConsumerState<RevenueEntryPage> {
     return Scaffold(
       backgroundColor: AppColors.paper,
       appBar: AppBar(
-        title: const Text('Record sales'),
+        title: Text(widget.isEditing ? 'Correct this sale' : 'Record sales'),
         backgroundColor: AppColors.surface,
         surfaceTintColor: Colors.transparent,
       ),
@@ -215,7 +239,7 @@ class _RevenueEntryPageState extends ConsumerState<RevenueEntryPage> {
                     color: AppColors.inkInverse,
                   ),
                 )
-              : const Text('Save sales'),
+              : Text(widget.isEditing ? 'Save changes' : 'Save sales'),
         ),
         const SizedBox(height: AppSpacing.xxl),
       ],
@@ -251,9 +275,10 @@ class _RevenueEntryPageState extends ConsumerState<RevenueEntryPage> {
       _refusalMessage = null;
     });
 
-    final (outcome, refusal) = await ref
-        .read(revenueEntryControllerProvider)
-        .save(draft);
+    final controller = ref.read(revenueEntryControllerProvider);
+    final (outcome, refusal) = widget.isEditing
+        ? await controller.applyEdit(draft)
+        : await controller.save(draft);
     if (!mounted) return;
 
     if (refusal != null) {
@@ -289,9 +314,13 @@ class _RevenueEntryPageState extends ConsumerState<RevenueEntryPage> {
     }
 
     messenger.showSnackBar(
-      const SnackBar(
-        key: Key('revenue-saved'),
-        content: Text('Sales recorded · Pending Sync'),
+      SnackBar(
+        key: const Key('revenue-saved'),
+        content: Text(
+          widget.isEditing
+              ? 'Correction recorded · Pending Sync'
+              : 'Sales recorded · Pending Sync',
+        ),
       ),
     );
   }

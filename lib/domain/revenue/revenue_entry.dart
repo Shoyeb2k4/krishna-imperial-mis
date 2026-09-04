@@ -140,6 +140,7 @@ final class RevenueEntry {
     this.createdBy,
     this.rowVersion = 1,
     this.voidedAt,
+    this.voidedBy,
     this.voidReason,
   }) : assert(
          components.length != 0,
@@ -168,6 +169,10 @@ final class RevenueEntry {
   final String? createdBy;
   final int rowVersion;
   final DateTime? voidedAt;
+
+  /// Who voided it. Server-owned and stored locally, because "who and when" is what an
+  /// audit question actually asks and a reason with no author answers half of it.
+  final String? voidedBy;
   final String? voidReason;
 
   /// The header figures, as exact integer sums of the components.

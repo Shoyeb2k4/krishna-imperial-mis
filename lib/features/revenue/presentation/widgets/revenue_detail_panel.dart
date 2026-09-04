@@ -23,20 +23,9 @@ import 'package:krishna_mis/domain/masters/master_graph.dart';
 import 'package:krishna_mis/domain/revenue/revenue_entry.dart';
 import 'package:krishna_mis/domain/sync/sync_state.dart';
 import 'package:krishna_mis/domain/tax/tax_rule.dart';
-import 'package:krishna_mis/features/revenue/presentation/revenue_filters.dart';
 import 'package:krishna_mis/features/revenue/presentation/revenue_providers.dart';
-
-/// One sale, loaded with its components.
-final revenueDetailProvider = FutureProvider.family<RevenueEntry?, String>((
-  ref,
-  id,
-) {
-  // Depending on the principal is what makes a user switch re-read rather than serve the
-  // previous person's cached projection — the defect D-072a found one layer above the
-  // expense read model, arriving here before it can happen again.
-  ref.watch(principalProvider);
-  return ref.watch(revenueRepositoryProvider).load(id);
-});
+import 'package:krishna_mis/features/revenue/presentation/widgets/revenue_actions.dart';
+import 'package:krishna_mis/features/revenue/presentation/widgets/revenue_conflict.dart';
 
 class RevenueDetailPanel extends ConsumerWidget {
   const RevenueDetailPanel({required this.entryId, super.key});
@@ -50,9 +39,10 @@ class RevenueDetailPanel extends ConsumerWidget {
       AsyncData(:final value) => value,
       _ => MasterGraph.empty(),
     };
-    final ledgerRow = switch (ref.watch(filteredRevenueProvider)) {
-      AsyncData(:final value) =>
-        value.where((r) => r.id == entryId).firstOrNull,
+    // From the outbox, not from whichever ledger query happened to have run: the phone
+    // reaches this surface with no ledger loaded at all.
+    final syncState = switch (ref.watch(revenueSyncStateProvider(entryId))) {
+      AsyncData(:final value) => value,
       _ => null,
     };
 
@@ -69,10 +59,83 @@ class RevenueDetailPanel extends ConsumerWidget {
       AsyncData(:final value) => _Detail(
         entry: value!,
         graph: graph,
-        syncState: ledgerRow?.syncState,
+        syncState: syncState,
       ),
     };
   }
+}
+
+class _ConflictBanner extends ConsumerWidget {
+  const _ConflictBanner({required this.entry});
+
+  final RevenueEntry entry;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) => Container(
+    key: const Key('revenue-conflict-banner'),
+    margin: const EdgeInsets.only(top: AppSpacing.sm),
+    padding: const EdgeInsets.all(AppSpacing.md),
+    decoration: BoxDecoration(
+      color: AppColors.surface,
+      border: Border.all(color: AppColors.syncConflict),
+      borderRadius: AppRadius.allSmall,
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Conflict · this sale changed',
+          style: AppTypography.body.copyWith(color: AppColors.syncConflict),
+        ),
+        const SizedBox(height: AppSpacing.xs),
+        Text(
+          'Your correction was based on an earlier version, or on tax '
+          'configuration that has since changed. Nothing has been overwritten. '
+          'Review what the sale says now and correct it again if it still '
+          'applies.',
+          style: AppTypography.caption.copyWith(color: AppColors.inkMuted),
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        OutlinedButton(
+          key: const Key('revenue-conflict-review-latest'),
+          onPressed: () => reviewLatestRevenue(context, ref, entry),
+          child: const Text('Review latest'),
+        ),
+      ],
+    ),
+  );
+}
+
+class _RejectedBanner extends StatelessWidget {
+  const _RejectedBanner();
+
+  @override
+  Widget build(BuildContext context) => Container(
+    key: const Key('revenue-rejected-banner'),
+    margin: const EdgeInsets.only(top: AppSpacing.sm),
+    padding: const EdgeInsets.all(AppSpacing.md),
+    decoration: BoxDecoration(
+      color: AppColors.surface,
+      border: Border.all(color: AppColors.negative),
+      borderRadius: AppRadius.allSmall,
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Rejected · needs attention',
+          style: AppTypography.body.copyWith(color: AppColors.negative),
+        ),
+        const SizedBox(height: AppSpacing.xs),
+        Text(
+          'The server declined this entry. It has been kept exactly as it was '
+          'entered so you can see what was attempted, and it will not be '
+          'retried on its own.',
+          style: AppTypography.caption.copyWith(color: AppColors.inkMuted),
+        ),
+      ],
+    ),
+  );
 }
 
 class _Detail extends StatelessWidget {
@@ -123,13 +186,49 @@ class _Detail extends StatelessWidget {
             ],
           ],
         ),
-        if (voided && entry.voidReason != null) ...[
+        if (voided) ...[
           const SizedBox(height: AppSpacing.xs),
-          Text(
-            entry.voidReason!,
-            style: AppTypography.caption.copyWith(color: AppColors.inkMuted),
+          Container(
+            key: const Key('revenue-void-detail'),
+            padding: const EdgeInsets.all(AppSpacing.sm),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceMuted,
+              borderRadius: AppRadius.allSmall,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (entry.voidReason != null)
+                  Text(entry.voidReason!, style: AppTypography.body),
+                const SizedBox(height: AppSpacing.xxs),
+                Text(
+                  // The server time, because "when" is half of what an audit question
+                  // asks. The actor is not shown: locally it is a raw user id, and a
+                  // UUID rendered at a manager is not an answer. The server's audit
+                  // holds the name.
+                  entry.voidedAt == null
+                      ? 'Voided'
+                      : 'Voided on ${entry.voidedAt!.toUtc().toIso8601String().substring(0, 16).replaceFirst('T', ' ')} UTC',
+                  key: const Key('revenue-void-when'),
+                  style: AppTypography.caption.copyWith(
+                    color: AppColors.inkMuted,
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
+
+        // Two defensible answers and nobody entitled to overwrite the other. Nothing is
+        // merged, and the only forward action re-reads the record first (§25, §26).
+        if (syncState == SyncState.conflict)
+          _ConflictBanner(entry: entry)
+        else if (syncState == SyncState.rejected)
+          const _RejectedBanner(),
+
+        // Correction and void, offered only where the capability and the document's own
+        // state permit. A voided sale offers neither and says so.
+        RevenueActions(entry: entry),
 
         const SizedBox(height: AppSpacing.lg),
         _Field(label: 'Business date', value: entry.businessDate.iso),

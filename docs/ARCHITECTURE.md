@@ -5,8 +5,8 @@ Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
-Status: **Sections 1–12 proposed (Phase 0, revised); sections 13–16 describe what is built
-and verified; section 17 is the approved Phase 4 plan and is NOT built.** Sections 6, 5.3 and 8 carry the project lead's mandated corrections.
+Status: **Sections 1–12 proposed (Phase 0, revised); sections 13–16 and 18–23 describe what is built
+and verified; section 17 is the approved Phase 4 plan.** Sections 6, 5.3 and 8 carry the project lead's mandated corrections.
 Implementation status is tracked in `PROJECT_STATUS.md`.
 Last updated: 2026-09-04
 
@@ -1691,3 +1691,111 @@ states differ in width and the dangerous one is the one an operator most needs t
 A hand-picked layout constant sitting beside the values it describes will drift from them,
 and the drift is invisible until something renders at the size where it matters.
 
+
+---
+
+## 23. Correcting and voiding a sale (2026-09-04)
+
+§20 built the create path and §21–§22 the two surfaces. This is how a recorded sale is
+changed afterwards, and the four things about it that are not presentation.
+
+### 23.1 The server re-rates every correction, and says so when it disagrees
+
+An expense correction restates figures the operator supplied. A revenue correction cannot:
+its tax comes from configured rules, so the server resolves again — against the entry's
+category and its **new** business date — and computes gross, tax and net itself.
+
+```
+        client sends   entered amount + the facts + declared gross/tax/net
+        server does    re-resolve, re-compute, and COMPARE the declared values
+        on agreement   record the server's own figures
+        on difference  refuse KM030, carrying both sets and the rule
+```
+
+The declared values are **compared, never used** (D-114). The failure this closes is silent:
+a correction prepared under a rule that changed between opening the form and pressing save
+would otherwise be accepted, and the operator who approved one GST figure would hold a
+document stating another.
+
+`revenue_update` also differs from `expense_update` in two further places, both deliberate
+and both recorded in D-124: it checks **the source period as well as the target**, because
+moving an entry out of a closed month affects that month's totals as surely as moving one
+in; and it takes **no business unit and no revenue category**, so a correction that moved
+revenue between properties is unavailable rather than guarded.
+
+The transaction number is never restated. It belongs to the document's identity and survives
+every correction — the defect D-072a records for expenses.
+
+### 23.2 One queued intent per document
+
+This is the substantive divergence from the expense engine, and it exists because the
+expense shape has two reachable failure modes:
+
+```
+        create queued, edit queued   ->  create fails transiently, update arrives first,
+                                         KM015, terminal - a legitimate correction
+                                         becomes a rejection
+        two edits before either syncs ->  both carry the same base version; the second
+                                         conflicts with a version nobody ever saw
+```
+
+So a revenue document has at most one queued intent, and a correction rewrites it in place —
+a create stays a create, an update stays an update on the version it was first based on, and
+a void replaces either. The entry keeps its own mutation id, actor and creation time, so
+idempotency, ownership and retention all still key on the same values; only the payload
+changes, and the payload is the operator's current intent.
+
+Voiding a sale whose create has not reached the server is refused. There is nothing to void,
+and cancelling the create instead is a different decision.
+
+### 23.3 A conflict is resolved by a person, in one direction only
+
+Two refusals mean *two defensible answers* — a stale row version (`KM003`) and a tax
+mismatch (`KM030`) — and both surface as `Conflict / Attention Required`. Everything else is
+terminal, and a closed period keeps its own truthful reason rather than being dressed up as
+a conflict.
+
+**Review latest** is the only forward action:
+
+```
+        capture the attempt (the local row still holds it)
+          -> re-read the document and its components from the server
+          -> replace the local copy
+          -> show both, side by side
+          -> reopen the form on the CURRENT record, if the operator still wants to
+```
+
+The replacement is refused while an intent may still be delivered, and permitted on a
+`conflict` or `rejected` one — where the attempt survives in that intent's own payload, so
+nothing is destroyed. The intent is never deleted (D-048 §2). There is no merge and no
+"overwrite anyway", and reapplying re-enters the correction against what the sale now says
+rather than re-sending an old draft with a refreshed version number.
+
+### 23.4 A void keeps everything except the figure's place in reporting
+
+`revenue_void` needs `revenue.void` for the property, an open period, a matching row version
+and a mandatory reason. The document, its number, its components and their snapshots all
+remain; the sale is excluded from ordinary reporting and stays fully inspectable
+(spec §14, D-006). A voided sale is immutable — a correction against it is refused `KM020`,
+and the interface offers neither Edit nor Void and says why rather than showing two dead
+buttons.
+
+A stale void is refused. Device A loads v3, device B corrects it to v4, device A voids "v3":
+voiding v4 on that intent would destroy a correction nobody reviewed (D-021). Proven against
+the real server.
+
+Locally the void is stamped as **the actor's intent**, exactly as an expense is: the local
+write succeeds, the server decides, and a refusal makes the intent terminal `Rejected` and
+keeps it for a person rather than quietly reversing it.
+
+### 23.5 What is offered is decided by capability, and by the document's own state
+
+`mayEditRevenue` and `mayVoidRevenue` read capabilities and never a role name — a widget
+that read `role == 'accountant'` would be a second authorisation model the server never
+consults, and the first thing to drift. The server refuses regardless (D-037); the client
+rule exists so the interface does not offer what would be refused.
+
+`revenue.edit.all` is new in this slice (D-128) and gives revenue the split expenses have
+had since D-072a: a Manager corrects what they recorded, an Accountant corrects anybody's.
+The client cannot know the edit window or the period lock without asking, so those are
+refused server-side and surfaced as sentences rather than predicted.

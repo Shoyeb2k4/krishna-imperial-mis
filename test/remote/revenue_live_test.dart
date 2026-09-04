@@ -674,4 +674,634 @@ void main() {
       );
     });
   });
+
+  // -- Slice 10: the correction boundary --------------------------------------
+  //
+  // Every rule here is the server's, and the server's answer is the one that counts
+  // (D-037). The client mirrors these decisions to shape its interface; nothing below
+  // asks the client anything.
+  //
+  // Fixtures are created through the real RPCs and **voided** afterwards, never deleted:
+  // no client role holds DELETE on a financial table and none is granted for cleanup
+  // (D-006, D-071). The audit rows recording that they existed remain, which is the
+  // asymmetry the append-only guard is for (D-066).
+  group('revenue_update and revenue_void, against the real boundary', () {
+    const marker = 'ACCEPTANCE slice10-correction';
+
+    late String ccrUnit;
+    late String restaurant;
+    final created = <String>[];
+
+    Future<String> unitId(String code) async {
+      final row = await client
+          .from('business_units')
+          .select('id')
+          .eq('code', code)
+          .single();
+      return row['id'] as String;
+    }
+
+    /// Records a sale through the shipped RPC and returns the server's answer.
+    Future<Map<String, dynamic>> record({
+      int paise = 10000000,
+      String date = '2026-06-15',
+    }) async {
+      final id = const Uuid().v7();
+      final answer =
+          await client.rpc<dynamic>(
+                'revenue_create',
+                params: {
+                  'p_id': id,
+                  'p_business_unit_id': ccrUnit,
+                  'p_revenue_category_id': restaurant,
+                  'p_business_date': date,
+                  'p_notes': marker,
+                  'p_components': [
+                    {'entered_amount_minor': paise},
+                  ],
+                  'p_mutation_id': const Uuid().v4(),
+                },
+              )
+              as Map<String, dynamic>;
+      created.add(id);
+      return answer;
+    }
+
+    Future<Map<String, dynamic>> document(String id) async =>
+        await client.from('revenue_document').select().eq('id', id).single();
+
+    setUpAll(() async {
+      await signInAs('giridhar@hki.com');
+      ccrUnit = await unitId('CCR');
+      restaurant = await categoryId('CCR', 'RESTAURANT');
+    });
+
+    setUp(() => signInAs('giridhar@hki.com'));
+
+    tearDownAll(() async {
+      // Void, never delete. A document a closed period refuses is reported rather than
+      // swallowed, so the next reader sees it rather than a silent leftover.
+      await signInAs('giridhar@hki.com');
+      for (final id in created) {
+        try {
+          final row = await client
+              .from('revenue_document')
+              .select('row_version, voided_at')
+              .eq('id', id)
+              .maybeSingle();
+          if (row == null || row['voided_at'] != null) continue;
+          await client.rpc<dynamic>(
+            'revenue_void',
+            params: {
+              'p_id': id,
+              'p_base_row_version': row['row_version'],
+              'p_reason': '$marker fixture reversal',
+              'p_mutation_id': const Uuid().v4(),
+            },
+          );
+        } on PostgrestException catch (error) {
+          // ignore: avoid_print
+          print('slice10 fixture $id not reversed: ${error.code}');
+        }
+      }
+    });
+
+    test(
+      'the server re-resolves the tax and ignores what the client claims',
+      () async {
+        final id = (await record(paise: 10000000))['id'] as String;
+        final before = await document(id);
+
+        await client.rpc<dynamic>(
+          'revenue_update',
+          params: {
+            'p_id': id,
+            'p_base_row_version': before['row_version'],
+            'p_business_date': '2026-06-15',
+            'p_notes': marker,
+            'p_components': [
+              {
+                'entered_amount_minor': 21000000,
+                // Deliberately wrong, and deliberately not sent as declared_*: the server
+                // computes its own figures and ignores anything a caller says about them.
+                'gross_amount_minor': 1,
+                'tax_amount_minor': 1,
+                'net_amount_minor': 1,
+              },
+            ],
+            'p_mutation_id': const Uuid().v4(),
+          },
+        );
+
+        final after = await document(id);
+        // 5% inclusive on 2,10,000.00.
+        expect(after['gross_amount_minor'], 21000000);
+        expect(after['tax_amount_minor'], 1000000);
+        expect(after['net_amount_minor'], 20000000);
+        expect(
+          after['net_amount_minor'],
+          (after['gross_amount_minor'] as int) -
+              (after['tax_amount_minor'] as int),
+        );
+      },
+    );
+
+    test(
+      'a declared figure that disagrees is refused KM030, not applied',
+      () async {
+        final id = (await record())['id'] as String;
+        final before = await document(id);
+
+        await expectLater(
+          client.rpc<dynamic>(
+            'revenue_update',
+            params: {
+              'p_id': id,
+              'p_base_row_version': before['row_version'],
+              'p_business_date': '2026-06-15',
+              'p_notes': marker,
+              'p_components': [
+                {
+                  'entered_amount_minor': 21000000,
+                  'declared_gross_minor': 21000000,
+                  // A rate that is not the configured one - the case where the
+                  // configuration changed between preparing the entry and delivering it.
+                  'declared_tax_minor': 999999,
+                  'declared_net_minor': 20000001,
+                },
+              ],
+              'p_mutation_id': const Uuid().v4(),
+            },
+          ),
+          throwsA(
+            predicate(
+              (e) => refusalOf(e) == 'KM030',
+              'refused with tax_configuration_mismatch',
+            ),
+          ),
+        );
+
+        // And nothing was applied: the operator's approved figures are not quietly
+        // replaced by figures they never saw (D-114).
+        final after = await document(id);
+        expect(after['row_version'], before['row_version']);
+        expect(after['gross_amount_minor'], before['gross_amount_minor']);
+      },
+    );
+
+    test(
+      'the transaction number and the identity survive a correction',
+      () async {
+        final id = (await record())['id'] as String;
+        final before = await document(id);
+        expect(before['txn_number'], startsWith('KI-REV-'));
+
+        await client.rpc<dynamic>(
+          'revenue_update',
+          params: {
+            'p_id': id,
+            'p_base_row_version': before['row_version'],
+            'p_business_date': '2026-06-16',
+            'p_notes': marker,
+            'p_components': [
+              {'entered_amount_minor': 12000000},
+            ],
+            'p_mutation_id': const Uuid().v4(),
+          },
+        );
+
+        final after = await document(id);
+        expect(after['txn_number'], before['txn_number']);
+        expect(after['id'], before['id']);
+        expect(after['financial_year'], before['financial_year']);
+        // The version advanced, which is what makes a stale second attempt a conflict.
+        expect(after['row_version'], greaterThan(before['row_version'] as int));
+        expect(after['business_date'], '2026-06-16');
+        expect(after['pnl_period_key'], '2026-06');
+      },
+    );
+
+    test(
+      'a stale correction is refused as a conflict, and applies nothing',
+      () async {
+        final id = (await record())['id'] as String;
+        final v1 = await document(id);
+
+        await client.rpc<dynamic>(
+          'revenue_update',
+          params: {
+            'p_id': id,
+            'p_base_row_version': v1['row_version'],
+            'p_business_date': '2026-06-15',
+            'p_notes': marker,
+            'p_components': [
+              {'entered_amount_minor': 12000000},
+            ],
+            'p_mutation_id': const Uuid().v4(),
+          },
+        );
+
+        // A second correction based on the version the first one replaced.
+        await expectLater(
+          client.rpc<dynamic>(
+            'revenue_update',
+            params: {
+              'p_id': id,
+              'p_base_row_version': v1['row_version'],
+              'p_business_date': '2026-06-15',
+              'p_notes': marker,
+              'p_components': [
+                {'entered_amount_minor': 13000000},
+              ],
+              'p_mutation_id': const Uuid().v4(),
+            },
+          ),
+          throwsA(
+            predicate((e) => refusalOf(e) == 'KM003', 'refused as a conflict'),
+          ),
+        );
+
+        expect((await document(id))['gross_amount_minor'], 12000000);
+      },
+    );
+
+    test(
+      'redelivering the same correction replays rather than applying twice',
+      () async {
+        final id = (await record())['id'] as String;
+        final before = await document(id);
+
+        final params = {
+          'p_id': id,
+          'p_base_row_version': before['row_version'],
+          'p_business_date': '2026-06-15',
+          'p_notes': marker,
+          'p_components': [
+            {'entered_amount_minor': 12000000},
+          ],
+          'p_mutation_id': const Uuid().v4(),
+        };
+
+        final first =
+            await client.rpc<dynamic>('revenue_update', params: params)
+                as Map<String, dynamic>;
+        final second =
+            await client.rpc<dynamic>('revenue_update', params: params)
+                as Map<String, dynamic>;
+
+        // Idempotency (D-004): the stored result is replayed, and the document moved once.
+        expect(second['status'], 'replayed');
+        expect(second['row_version'], first['row_version']);
+        final after = await document(id);
+        expect(after['row_version'], first['row_version']);
+        expect(after['gross_amount_minor'], 12000000);
+      },
+    );
+
+    test(
+      'a void needs a reason, keeps the document, and is not a delete',
+      () async {
+        final id = (await record())['id'] as String;
+        final before = await document(id);
+
+        await expectLater(
+          client.rpc<dynamic>(
+            'revenue_void',
+            params: {
+              'p_id': id,
+              'p_base_row_version': before['row_version'],
+              'p_reason': '   ',
+              'p_mutation_id': const Uuid().v4(),
+            },
+          ),
+          throwsA(predicate((e) => refusalOf(e) != null, 'refused')),
+        );
+
+        await client.rpc<dynamic>(
+          'revenue_void',
+          params: {
+            'p_id': id,
+            'p_base_row_version': before['row_version'],
+            'p_reason': '$marker voided deliberately',
+            'p_mutation_id': const Uuid().v4(),
+          },
+        );
+
+        final after = await document(id);
+        expect(after['voided_at'], isNotNull);
+        expect(after['void_reason'], contains('voided deliberately'));
+        // Still there, with its number and its components (D-006).
+        expect(after['txn_number'], before['txn_number']);
+        final components = await client
+            .from('revenue_component_detail')
+            .select('id')
+            .eq('revenue_entry_id', id);
+        expect(components, isNotEmpty);
+      },
+    );
+
+    test(
+      'a voided sale is immutable, and it says so with its own code',
+      () async {
+        final id = (await record())['id'] as String;
+        final before = await document(id);
+        await client.rpc<dynamic>(
+          'revenue_void',
+          params: {
+            'p_id': id,
+            'p_base_row_version': before['row_version'],
+            'p_reason': '$marker voided deliberately',
+            'p_mutation_id': const Uuid().v4(),
+          },
+        );
+        final voided = await document(id);
+
+        await expectLater(
+          client.rpc<dynamic>(
+            'revenue_update',
+            params: {
+              'p_id': id,
+              'p_base_row_version': voided['row_version'],
+              'p_business_date': '2026-06-15',
+              'p_notes': marker,
+              'p_components': [
+                {'entered_amount_minor': 1},
+              ],
+              'p_mutation_id': const Uuid().v4(),
+            },
+          ),
+          throwsA(
+            predicate(
+              (e) => refusalOf(e) == 'KM020',
+              'a voided document is immutable; correct by recording a new one',
+            ),
+          ),
+        );
+      },
+    );
+
+    test(
+      'a stale void is refused rather than voiding a version nobody reviewed',
+      () async {
+        final id = (await record())['id'] as String;
+        final v1 = await document(id);
+
+        await client.rpc<dynamic>(
+          'revenue_update',
+          params: {
+            'p_id': id,
+            'p_base_row_version': v1['row_version'],
+            'p_business_date': '2026-06-15',
+            'p_notes': marker,
+            'p_components': [
+              {'entered_amount_minor': 12000000},
+            ],
+            'p_mutation_id': const Uuid().v4(),
+          },
+        );
+
+        // D-021 exactly: device A loads v3, device B edits to v4, device A voids "v3".
+        await expectLater(
+          client.rpc<dynamic>(
+            'revenue_void',
+            params: {
+              'p_id': id,
+              'p_base_row_version': v1['row_version'],
+              'p_reason': '$marker stale void',
+              'p_mutation_id': const Uuid().v4(),
+            },
+          ),
+          throwsA(
+            predicate((e) => refusalOf(e) == 'KM003', 'refused as a conflict'),
+          ),
+        );
+        expect((await document(id))['voided_at'], isNull);
+      },
+    );
+
+    test('a manager cannot correct revenue somebody else recorded', () async {
+      // Recorded by the Owner; corrected by a scoped manager holding revenue.edit but
+      // not revenue.edit.all. The split expenses have had since D-072a.
+      final id = (await record())['id'] as String;
+      final before = await document(id);
+
+      final manager = await sessionFor('ccr.manager@example.com');
+      await expectLater(
+        manager.rpc<dynamic>(
+          'revenue_update',
+          params: {
+            'p_id': id,
+            'p_base_row_version': before['row_version'],
+            'p_business_date': '2026-06-15',
+            'p_notes': marker,
+            'p_components': [
+              {'entered_amount_minor': 12000000},
+            ],
+            'p_mutation_id': const Uuid().v4(),
+          },
+        ),
+        throwsA(predicate((e) => refusalOf(e) != null, 'refused')),
+      );
+      expect((await document(id))['row_version'], before['row_version']);
+    });
+
+    test(
+      'a manager cannot void at all: recording is not the right to erase',
+      () async {
+        final id = (await record())['id'] as String;
+        final before = await document(id);
+
+        final manager = await sessionFor('ccr.manager@example.com');
+        await expectLater(
+          manager.rpc<dynamic>(
+            'revenue_void',
+            params: {
+              'p_id': id,
+              'p_base_row_version': before['row_version'],
+              'p_reason': '$marker attempted by a manager',
+              'p_mutation_id': const Uuid().v4(),
+            },
+          ),
+          throwsA(
+            predicate((e) => refusalOf(e) == 'KM001', 'missing capability'),
+          ),
+        );
+        expect((await document(id))['voided_at'], isNull);
+      },
+    );
+
+    // The edit window, measured against the property's own business date (D-067) and
+    // inclusive of its last day (D-065).
+    //
+    // Driven as the **manager** on their **own** entries, because that is the only actor
+    // the age rule actually binds: the Owner holds `transaction.correct.beyond_window`,
+    // so an Owner refusal would prove nothing about the window.
+    //
+    // Both halves are here on purpose. A test that only asserts the refusal cannot tell
+    // "the window works" from "the manager can never correct anything", and the second
+    // would pass just as green.
+    group('the edit window binds the manager', () {
+      late SupabaseClient manager;
+      final managerCreated = <String>[];
+
+      /// A date unambiguously inside the window, whatever the cut-off does.
+      ///
+      /// Yesterday in the property's own zone: at least a day inside D+7 from either
+      /// side of the 05:00 boundary, so the positive control cannot fail for being a
+      /// few hours out. No RPC is added to compute it - a test-only endpoint in a
+      /// financial system is a thing that eventually gets called (D-105).
+      String insideTheWindow() {
+        final ist = DateTime.now().toUtc().add(
+          const Duration(hours: 5, minutes: 30),
+        );
+        final yesterday = DateTime.utc(
+          ist.year,
+          ist.month,
+          ist.day,
+        ).subtract(const Duration(days: 1));
+        return yesterday.toIso8601String().substring(0, 10);
+      }
+
+      Future<Map<String, dynamic>> managerRecords(String date) async {
+        final id = const Uuid().v7();
+        await manager.rpc<dynamic>(
+          'revenue_create',
+          params: {
+            'p_id': id,
+            'p_business_unit_id': ccrUnit,
+            'p_revenue_category_id': restaurant,
+            'p_business_date': date,
+            'p_notes': marker,
+            'p_components': [
+              {'entered_amount_minor': 10000000},
+            ],
+            'p_mutation_id': const Uuid().v4(),
+          },
+        );
+        managerCreated.add(id);
+        created.add(id);
+        return await manager
+            .from('revenue_document')
+            .select()
+            .eq('id', id)
+            .single();
+      }
+
+      Future<void> managerCorrects(Map<String, dynamic> doc) => manager
+          .rpc<dynamic>(
+            'revenue_update',
+            params: {
+              'p_id': doc['id'],
+              'p_base_row_version': doc['row_version'],
+              'p_business_date': doc['business_date'],
+              'p_notes': marker,
+              'p_components': [
+                {'entered_amount_minor': 12000000},
+              ],
+              'p_mutation_id': const Uuid().v4(),
+            },
+          )
+          .then((_) {});
+
+      setUp(() async {
+        manager = await sessionFor('ccr.manager@example.com');
+      });
+
+      test('their own entry from today is correctable', () async {
+        final doc = await managerRecords(insideTheWindow());
+        await managerCorrects(doc);
+
+        final after = await manager
+            .from('revenue_document')
+            .select('gross_amount_minor')
+            .eq('id', doc['id'] as String)
+            .single();
+        expect(after['gross_amount_minor'], 12000000);
+      });
+
+      test('their own entry from beyond the window is refused KM021', () async {
+        // Well past D+7, and still inside the configured baseline so the refusal is
+        // about the window rather than about an unresolvable rule.
+        final doc = await managerRecords('2026-06-15');
+
+        await expectLater(
+          managerCorrects(doc),
+          throwsA(
+            predicate(
+              (e) => refusalOf(e) == 'KM021',
+              'refused for the edit window, not for something else',
+            ),
+          ),
+        );
+
+        final after = await manager
+            .from('revenue_document')
+            .select('gross_amount_minor, row_version')
+            .eq('id', doc['id'] as String)
+            .single();
+        expect(after['gross_amount_minor'], 10000000);
+        expect(after['row_version'], doc['row_version']);
+      });
+
+      test(
+        'the Owner may still correct it, which is what the capability is for',
+        () async {
+          final doc = await managerRecords('2026-06-15');
+
+          await signInAs('giridhar@hki.com');
+          await client.rpc<dynamic>(
+            'revenue_update',
+            params: {
+              'p_id': doc['id'],
+              'p_base_row_version': doc['row_version'],
+              'p_business_date': doc['business_date'],
+              'p_notes': marker,
+              'p_components': [
+                {'entered_amount_minor': 12000000},
+              ],
+              'p_mutation_id': const Uuid().v4(),
+            },
+          );
+
+          expect(
+            (await document(doc['id'] as String))['gross_amount_minor'],
+            12000000,
+          );
+        },
+      );
+    });
+
+    test(
+      'the business unit and the category cannot be moved by a correction',
+      () async {
+        // Not a parameter at all: `revenue_update` takes no unit and no category, so an
+        // edit that moved revenue between properties is unavailable rather than refused.
+        // A named argument that does not exist cannot be forgotten later.
+        final id = (await record())['id'] as String;
+        final before = await document(id);
+
+        await expectLater(
+          client.rpc<dynamic>(
+            'revenue_update',
+            params: {
+              'p_id': id,
+              'p_base_row_version': before['row_version'],
+              'p_business_date': '2026-06-15',
+              'p_business_unit_id': await unitId('HKI'),
+              'p_notes': marker,
+              'p_components': [
+                {'entered_amount_minor': 12000000},
+              ],
+              'p_mutation_id': const Uuid().v4(),
+            },
+          ),
+          throwsA(isA<PostgrestException>()),
+        );
+
+        final after = await document(id);
+        expect(after['business_unit_id'], ccrUnit);
+        expect(after['revenue_category_id'], restaurant);
+      },
+    );
+  });
 }

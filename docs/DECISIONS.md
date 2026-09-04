@@ -3956,3 +3956,218 @@ the size where it matters. The widget suite now renders the ledger at a laptop, 
 window and a maximised screen, **in every sync state**, and asserts no exception — because
 the states differ in width and the dangerous one is the one an operator most needs to
 read.
+
+---
+
+# Phase 4 Slice 10 — Revenue correction and void (2026-09-04)
+
+The guiding rule for the slice, as the project lead set it:
+
+> Correct revenue through auditable mutation. Never silently rewrite financial history,
+> never auto-merge a financial conflict, and never destructively delete a revenue
+> document.
+
+## D-124 — `revenue_update` differs from `expense_update` in three ways, each deliberate
+**Date:** 2026-09-04 · **Status:** Accepted
+
+The correction RPC was written by reading `expense_update` and asking, for each of its
+decisions, whether it is right for revenue. Three answers came back different, and the
+migration says so at the top of the file rather than leaving the next reader to compare
+two hundred lines of SQL.
+
+**1 · The server re-resolves the tax; the client's figures are compared and never used.**
+An expense amount is a fact the operator supplies. A revenue figure's tax is not — it comes
+from configured rules, so a correction must be re-rated against the entry's category and
+its **new** business date. The client sends `declared_gross_minor` / `declared_tax_minor` /
+`declared_net_minor` describing what it showed the operator, and a disagreement is refused
+`KM030` (D-114) rather than silently replaced. Proven against the real server twice: sending
+deliberately wrong figures under the ordinary keys changes nothing, and sending a wrong
+figure as `declared_*` is refused with the document untouched.
+
+**2 · Both the source and the target period are checked.** `expense_update` checks only the
+period the document is moving *to*. Spec §13.4 says a closed period rejects every write
+*affecting* it, and moving an entry **out** of a closed month affects that month's totals as
+surely as moving one in. `revenue_update` therefore checks both.
+
+*This is a gap in `expense_update`, surfaced rather than silently changed* — see D-127.
+
+**3 · The business unit and the revenue category are not parameters.** Not refused:
+absent. `revenue_update` takes no unit and no category, so a correction that moved revenue
+between properties is unavailable rather than guarded, and there is no argument a later
+change can forget to check. A live test sends `p_business_unit_id` anyway and PostgREST
+refuses the call outright.
+
+**Unchanged, because it was already right:** permission decided before existence is revealed
+(D-046); ownership through `revenue.edit.all` or `revenue.edit` plus having recorded it;
+`base_row_version` on every mutation; the edit window measured under the property's own
+business date (D-067); idempotency by `mutation_id` (D-004); `write_audit` before the
+answer is returned.
+
+**The transaction number is not restated.** It belongs to the document's identity and
+survives every correction — the defect D-072a records for expenses, where reconciliation
+wrote every field back and erased the server-issued number on each edit.
+
+## D-125 — A revenue document has at most one queued intent, and a correction rewrites it
+**Date:** 2026-09-04 · **Status:** Accepted
+
+**Context.** An expense edit queues a **new** update intent with a fresh mutation id every
+time. That leaves two failure modes, both reachable and neither theoretical:
+
+* **A correction to a sale the server has not accepted yet.** The create and the update sit
+  in one batch. If the create fails transiently, the update still reaches the server, finds
+  no such document, and is refused `KM015` — **terminal**. A legitimate correction becomes a
+  rejection, and the operator is told their entry does not exist.
+* **Two corrections before either syncs.** Both carry the same `base_row_version`, because
+  both were based on the same local state. The first is applied and the second conflicts
+  with a version its author never saw.
+
+**Decision.** A revenue document has **at most one queued intent at a time**, and a
+correction rewrites it in place:
+
+```
+        queued create  + edit  ->  the create's payload becomes the corrected one
+        queued update  + edit  ->  the update's payload becomes the corrected one
+        nothing queued + edit  ->  a new update intent, on the current row version
+        anything queued + void ->  the void replaces it
+```
+
+A create stays a create — the server has never seen this document, and sending an update
+for it would be asking to correct something that does not exist. A void replaces a queued
+correction because voiding is the operator's later and more decisive intent, and sending
+both would ask the server to correct a document and then throw the correction away.
+
+**Nothing is deleted and no attribution is lost.** The queue entry keeps its own
+`mutation_id`, its `actor_user_id` and its creation time, so idempotency (D-004), ownership
+(D-050) and the retention rule (D-074) all still key on the same values. What changes is the
+payload, which is the operator's current intent and is what they would expect to be sent.
+A rewritten intent is also made due immediately: the operator has just acted, and making
+them wait out a backoff earned by an earlier attempt would be punishing them for the
+network.
+
+**Voiding a sale whose create is still queued is refused**, with its own reason. There is
+nothing on the server to void, and cancelling the create instead is a different decision —
+one this layer does not get to take on somebody's behalf.
+
+**Positive control:** with the coalescing removed — the lookup forced to find nothing, which
+is exactly the expense shape — three of the twenty-one repository tests fail. Verified by
+doing it.
+
+## D-126 — Review latest replaces the local copy; the attempt survives in the intent
+**Date:** 2026-09-04 · **Status:** Accepted
+
+A conflict is two defensible answers with nobody entitled to overwrite the other. Both
+refusals that produce one — a stale row version (`KM003`) and a tax mismatch (`KM030`) —
+surface as `Conflict / Attention Required`, and the only forward action re-reads the record
+first. **There is no merge and no "overwrite anyway".**
+
+`RevenueRepository.applyServerDocument` is the one legitimately destructive act in the
+slice: the local row currently holds the operator's refused attempt, and the whole point of
+Review latest is to see what the sale actually says now. Two rules make that safe.
+
+**It refuses while an intent may still be delivered.** A `pending`, `inFlight`, `failed` or
+`blockedAuth` entry is work on its way to the server, and replacing the row underneath it
+would show somebody the server's figures while their own are still about to be applied. A
+`conflict` or `rejected` entry is different, and is the case this exists for: it will not be
+retried on its own, and **the attempt is preserved in the intent's own payload**, so
+overwriting the row destroys no evidence. The predicate is written as an exclusion so a
+status added later lands on the refusing side by default.
+
+**Nothing in the outbox is deleted.** The conflicted intent stays inspectable, which is what
+D-048 §2 protects, and the sheet shows the operator's figures beside the server's before
+anybody chooses. Reapplying reopens the form on the **current** record, so the correction is
+re-entered against what the sale now says and carries the version it now holds — re-sending
+the old draft with a refreshed version number would be exactly the silent overwrite the path
+exists to prevent.
+
+The server document is copied as it stands. Nothing about tax is recomputed on the way
+through: that snapshot is the explanation of the server's own figures, and re-deriving it
+locally would be this device deciding what the server meant.
+
+## D-127 — Two things three documents claim that the code does not do
+**Date:** 2026-09-04 · **Status:** Recorded — surfaced, not silently fixed
+
+Slice 10's audit was asked to read the correction path before extending it. Two claims did
+not survive that reading. Neither is fixed here, because both are about **expenses**, and
+quietly changing the expense write path inside a revenue slice is how a scope becomes
+unreviewable.
+
+**1 · `expense_correct_business_date` does not exist.** `PROJECT_STATUS.md`,
+`ARCHITECTURE.md` and `DATABASE_SCHEMA.md` all name it — the first as one of the reviewed
+`SECURITY DEFINER` RPCs every financial write goes through. There is no such function in
+`supabase/migrations/`, none in `lib/`, and none on `krishna-mis-dev`:
+
+```
+        public.expense_create      public.expense_update      public.expense_void
+        public.revenue_create      public.revenue_update      public.revenue_void
+```
+
+The **capability** is not missing: `expense_update` takes a business date, and so does
+`revenue_update`, and both re-check the period and the window when it moves. What does not
+exist is the separately named endpoint the documents describe, and `ARCHITECTURE.md` §5.3's
+table lists "Business-date correction" as its own row with its own concurrency semantics.
+The same shape as D-072 — a surface documented as built, with nothing behind the name.
+
+**2 · `transaction.correct.business_date` is a capability nothing evaluates.** It is in the
+catalogue and granted to the accountant and owner bundles, and no policy, RPC or helper in
+`public` or `app` mentions it. *A rule that nothing evaluates is a comment* (D-068, D-071,
+D-077), arriving as a grant rather than as a check.
+
+**What Slice 10 does about it:** records both, and takes neither. The business date of a
+**revenue** entry is corrected through `revenue_update` under the ordinary edit rules, which
+is stated plainly here so nothing implies a second endpoint. Whether the expense side gains
+the named RPC, or the documents stop naming it, is the project lead's call.
+
+## D-128 — `revenue.edit.all`, and the split revenue did not have
+**Date:** 2026-09-04 · **Status:** Accepted
+
+Revenue shipped with a single `revenue.edit`, where expenses have `expense.edit.own` and
+`expense.edit.all`. Without the split there is no configured basis for the distinction spec
+§13.2 draws between a **Manager**, who records their property's takings, and an
+**Accountant**, who exists to correct them: either every manager could correct anybody's
+sales, or nobody but the Owner could correct any.
+
+`revenue.edit.all` is added beside it and granted to exactly the roles that hold
+`expense.edit.all` — accountant and owner. `revenue.edit` keeps its meaning: correct entries
+you recorded yourself. `revenue.void` is unchanged and is held by the accountant and the
+Owner alone, because recording a sale does not entitle somebody to erase it from the books.
+
+The catalogue row is written as a **literal**, not selected from `revenue.edit`'s category.
+The catalogue is what the client's capability enum is checked against, and a reviewer — or
+the parity assertion — has to be able to read the category here rather than infer it from
+another row. The parity test caught the select form and refused it, which is the assertion
+doing its job.
+
+Both halves of the window rule are proven on the real server, and the second half is the
+one that matters: a test asserting only the refusal cannot tell *"the window works"* from
+*"the manager can never correct anything"*, and the second would pass just as green. So the
+manager corrects their own entry from yesterday (permitted), their own entry from June
+(refused `KM021`), and the Owner then corrects the same June entry, which is what
+`transaction.correct.beyond_window` is for.
+
+## D-129 — A void is stamped locally as intent, and a refusal is a sentence
+**Date:** 2026-09-04 · **Status:** Accepted
+
+Two corrections to what Slice 10 first built, both found by writing the tests.
+
+**`voidLocally` threw where it should refuse.** A blank reason, an already-voided sale and a
+sale whose create is still queued are all things a person can act on, and an exception
+reaching a widget becomes either a crash or a message nobody can do anything about. All
+three are now structured `RevenueRefusal` values with their own reasons, surfaced at the
+button — the same discipline D-113 applied to creation. Only *"this sale is not in the local
+ledger"* still throws, because it is a programming error rather than a decision.
+
+**The local row is stamped as the actor's intent to void**, exactly as an expense is: the
+local write always succeeds and the server decides, and a refusal makes the intent terminal
+`Rejected` and keeps it for a person rather than quietly reversing it. Without the stamp the
+operator pressed Void and nothing visibly changed, which is the interface saying nothing
+happened when something did.
+
+**The panel shows the reason and the server time, not the actor's id.** `revenue_document`
+does not expose `voided_by`, and the locally stored value is a raw user id — a UUID rendered
+at a manager is not an answer to "who". The server's audit holds the name, and the panel
+says what it can support.
+
+**One duplicated read removed.** The detail panel took its sync state from whichever ledger
+query happened to have run, which on Android is none — so a phone would have reported
+`Synced` for everything. It now comes from `RevenueRepository.syncStateOf`, derived from the
+outbox, which is the one place that answer lives (D-119).

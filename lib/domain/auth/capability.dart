@@ -34,7 +34,19 @@ enum Capability {
   // ── Revenue ───────────────────────────────────────────────────────────────
   revenueView('revenue.view'),
   revenueCreate('revenue.create'),
+
+  /// Correct revenue you recorded yourself, within the window and while the period is
+  /// open.
   revenueEdit('revenue.edit'),
+
+  /// Correct revenue recorded by anybody, under the same window and period rules.
+  ///
+  /// The split expenses have had since D-072a, mirrored for revenue in Slice 10: without
+  /// it there is no configured basis for the distinction spec §13.2 draws between a
+  /// Manager, who records their property's takings, and an Accountant, who exists to
+  /// correct them.
+  revenueEditAll('revenue.edit.all'),
+
   revenueVoid('revenue.void'),
 
   // ── Corrections ───────────────────────────────────────────────────────────
@@ -186,6 +198,7 @@ abstract final class RoleTemplates {
     Capability.revenueView,
     Capability.revenueCreate,
     Capability.revenueEdit,
+    Capability.revenueEditAll,
     Capability.revenueVoid,
     Capability.correctBeyondWindow,
     Capability.correctBusinessDate,

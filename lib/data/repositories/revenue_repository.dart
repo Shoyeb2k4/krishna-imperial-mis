@@ -86,6 +86,22 @@ enum RevenueRefusalReason {
   /// The document carries no components.
   noComponents,
 
+  /// A void was attempted with no reason, or with only whitespace.
+  ///
+  /// Its own reason rather than a generic refusal, because the thing to do about it is
+  /// specific: type why. The server refuses it too (KM008); this exists so the operator
+  /// is told at the button rather than after a sync.
+  voidReasonRequired,
+
+  /// The sale has been voided, and a voided document is immutable (spec §14, D-006).
+  alreadyVoided,
+
+  /// A void was attempted on a sale whose create is still queued.
+  ///
+  /// There is nothing on the server to void, and cancelling the create instead is a
+  /// different decision — one this layer does not get to take on somebody's behalf.
+  notYetOnTheServer,
+
   /// The components do not sum to what the document claims.
   totalsDoNotReconcile,
 }
@@ -619,6 +635,266 @@ class RevenueRepository {
     ],
   };
 
+  /// The correction, in the shape `revenue_update` takes.
+  ///
+  /// Carries no rate and no tax as instructions. `declared_*` is what the operator was
+  /// shown; the server resolves against the entry's category and the **new** business
+  /// date and refuses on disagreement (KM030), so a rule that changed between opening the
+  /// form and saving surfaces as a conflict a person resolves rather than as a document
+  /// quietly holding different money (D-114).
+  ///
+  /// The business unit, the category and the transaction number are absent on purpose.
+  /// The number belongs to the document's identity and survives every correction; the
+  /// other two are not editable, because an edit that moved revenue between properties
+  /// would be a scope transfer wearing a correction's clothes.
+  static Map<String, Object?> updatePayload(RevenueEntry entry) => {
+    'p_id': entry.id,
+    'p_business_date': entry.businessDate.iso,
+    'p_entry_kind': entry.entryKind.wireName,
+    'p_source_reference': entry.sourceReference,
+    'p_notes': entry.notes,
+    'p_components': [
+      for (final c in entry.components)
+        {
+          'id': c.id,
+          'entered_amount_minor': c.enteredAmount.paise,
+          'value_band_id': c.valueBandId,
+          'supply_subtype_id': c.supplySubtypeId,
+          'premises_status_code': c.premisesStatusCode,
+          'declared_gross_minor': c.gross.paise,
+          'declared_tax_minor': c.tax.paise,
+          'declared_net_minor': c.net.paise,
+        },
+    ],
+  };
+
+  /// Applies a correction locally and queues it, in one transaction.
+  ///
+  /// ## At most one queued mutation per document
+  ///
+  /// This is the part that differs from the expense engine, and it is deliberate.
+  ///
+  /// An expense edit queues a **new** update intent with a fresh mutation id every time.
+  /// That leaves two failure modes, both reachable and neither theoretical:
+  ///
+  ///  * **A correction to a sale that has not been accepted yet.** The create and the
+  ///    update sit in one batch. If the create fails transiently, the update still
+  ///    reaches the server, finds no such document, and is refused `KM015` — terminal.
+  ///    A legitimate correction becomes a rejection, and the operator is told the entry
+  ///    does not exist.
+  ///  * **Two corrections before either syncs.** Both carry the same
+  ///    `base_row_version`, because both were based on the same local state. The first
+  ///    is applied and the second conflicts with a version the operator never saw.
+  ///
+  /// So a revenue document has **at most one queued intent at a time**, and a correction
+  /// rewrites it in place:
+  ///
+  /// ```
+  ///   queued create  + edit  ->  the create's payload becomes the corrected one
+  ///   queued update  + edit  ->  the update's payload becomes the corrected one
+  ///   nothing queued + edit  ->  a new update intent, based on the current row version
+  /// ```
+  ///
+  /// Nothing is deleted and no actor is lost: the entry keeps its own mutation id, its
+  /// `actor_user_id` and its creation time, so idempotency, ownership (D-050, D-074) and
+  /// the audit of who intended what all survive. What changes is the payload — which is
+  /// the operator's current intent, and is what they would expect to be sent.
+  ///
+  /// The server's audit is unaffected either way: it records what it accepted, and it
+  /// accepts one document with the values the operator settled on.
+  Future<RevenueEntry> updateLocally(
+    RevenueEntryDraft draft, {
+    required List<RevenueTaxResolved> resolutions,
+    required String actorUserId,
+    required String orgId,
+    required int baseRowVersion,
+    required String mutationId,
+    required DateTime now,
+  }) async {
+    if (resolutions.length != draft.components.length) {
+      throw ArgumentError(
+        'a resolution is required for each component: '
+        '${draft.components.length} components, ${resolutions.length} resolutions',
+      );
+    }
+
+    final existing = await (_db.select(
+      _db.revenueEntries,
+    )..where((e) => e.id.equals(draft.id))).getSingleOrNull();
+    if (existing == null) {
+      throw StateError('revenue ${draft.id} is not in the local ledger');
+    }
+    if (existing.voidedAt != null) {
+      throw StateError('revenue ${draft.id} is voided and cannot be corrected');
+    }
+
+    final components = <RevenueComponent>[];
+    for (var i = 0; i < draft.components.length; i++) {
+      final part = draft.components[i];
+      final rule = resolutions[i].rule;
+      final computed = rule.compute(part.enteredAmount);
+      components.add(
+        RevenueComponent(
+          id: part.id,
+          enteredAmount: part.enteredAmount,
+          enteredBasis: rule.inputBasis!,
+          gross: computed.gross,
+          tax: computed.tax,
+          net: computed.net,
+          taxRuleId: rule.id,
+          taxRateBasisPoints: rule.rateBasisPoints,
+          taxTreatment: rule.treatment,
+          valueBandId: rule.valueBandId,
+          valueBandLabel: rule.valueBandLabel,
+          valueBandFloor: rule.valueBandFloor,
+          valueBandCeiling: rule.valueBandCeiling,
+          supplySubtypeId: rule.supplySubtypeId,
+          premisesStatusCode: rule.premisesStatusCode,
+        ),
+      );
+    }
+
+    final entry = RevenueEntry(
+      id: draft.id,
+      // The number is the document's, not the correction's. Carried through so the
+      // payload and every local read keep it — the defect D-072a records for expenses,
+      // where reconciliation wrote every field back and erased it on each edit.
+      txnNumber: existing.txnNumber,
+      businessUnitId: existing.businessUnitId,
+      revenueCategoryId: existing.revenueCategoryId,
+      businessDate: draft.businessDate,
+      capturedAt: existing.capturedAt,
+      components: components,
+      entryKind: draft.entryKind,
+      sourceReference: draft.sourceReference,
+      notes: draft.notes,
+      createdBy: existing.createdBy,
+      rowVersion: existing.rowVersion,
+    );
+
+    await _db.transaction(() async {
+      await (_db.update(
+        _db.revenueEntries,
+      )..where((e) => e.id.equals(entry.id))).write(
+        RevenueEntriesCompanion(
+          businessDate: Value(entry.businessDate.iso),
+          pnlPeriodKey: Value(entry.businessDate.periodKey),
+          entryKind: Value(entry.entryKind.wireName),
+          sourceReference: Value(entry.sourceReference),
+          notes: Value(entry.notes),
+          updatedAt: Value(now),
+        ),
+      );
+
+      await (_db.delete(
+        _db.revenueComponents,
+      )..where((c) => c.revenueEntryId.equals(entry.id))).go();
+
+      for (final component in components) {
+        await _db
+            .into(_db.revenueComponents)
+            .insert(_companionFor(component, entry.id, orgId));
+      }
+
+      // The queued intent this correction belongs to, if there already is one.
+      final queued =
+          await (_db.select(_db.syncOutbox)
+                ..where(
+                  (o) =>
+                      o.entityId.equals(entry.id) &
+                      o.entityType.equals(revenueEntityType) &
+                      o.status.isNotIn(const ['done']),
+                )
+                ..orderBy([(o) => OrderingTerm.asc(o.createdAt)])
+                ..limit(1))
+              .getSingleOrNull();
+
+      if (queued == null) {
+        await _db
+            .into(_db.syncOutbox)
+            .insert(
+              SyncOutboxCompanion.insert(
+                mutationId: mutationId,
+                actorUserId: Value(actorUserId),
+                entityType: revenueEntityType,
+                entityId: entry.id,
+                op: MutationOp.update.name,
+                payload: jsonEncode(updatePayload(entry)),
+                // Captured when the form was opened, and never re-based here. A
+                // background pull that moved the row must make this a conflict rather
+                // than silently retarget somebody's correction (D-021, §4).
+                baseRowVersion: Value(baseRowVersion),
+                nextAttemptAt: now,
+                status: OutboxStatus.pending.name,
+                createdAt: now,
+              ),
+              mode: InsertMode.insertOrIgnore,
+            );
+      } else {
+        // Rewrite the intent that is already queued, keeping its identity.
+        //
+        // A create stays a create — the server has never seen this document, and
+        // sending an update for it would be asking to correct something that does not
+        // exist. An update stays an update, on the base version it was first based on,
+        // because that is still the version the server holds.
+        final isCreate = queued.op == MutationOp.create.name;
+        await (_db.update(
+          _db.syncOutbox,
+        )..where((o) => o.mutationId.equals(queued.mutationId))).write(
+          SyncOutboxCompanion(
+            payload: Value(
+              jsonEncode(
+                isCreate ? createPayload(entry) : updatePayload(entry),
+              ),
+            ),
+            // A rewritten intent is due again immediately: the operator has just
+            // acted, and making them wait out a backoff earned by an earlier attempt
+            // would be punishing them for the network.
+            status: const Value('pending'),
+            nextAttemptAt: Value(now),
+            lastError: const Value(null),
+          ),
+        );
+      }
+
+      // The row points at whichever intent now carries it, so every read derives the
+      // same sync state from the same place.
+      await (_db.update(
+        _db.revenueEntries,
+      )..where((e) => e.id.equals(entry.id))).write(
+        RevenueEntriesCompanion(
+          pendingMutationId: Value(queued?.mutationId ?? mutationId),
+        ),
+      );
+    });
+
+    return entry;
+  }
+
+  RevenueComponentsCompanion _companionFor(
+    RevenueComponent component,
+    String entryId,
+    String orgId,
+  ) => RevenueComponentsCompanion.insert(
+    id: component.id,
+    orgId: orgId,
+    revenueEntryId: entryId,
+    enteredAmountMinor: component.enteredAmount.paise,
+    enteredBasis: component.enteredBasis.wireName,
+    grossAmountMinor: component.gross.paise,
+    taxAmountMinor: component.tax.paise,
+    netAmountMinor: component.net.paise,
+    taxRuleId: component.taxRuleId,
+    taxRateBasisPoints: component.taxRateBasisPoints,
+    taxTreatment: component.taxTreatment.name,
+    valueBandId: Value(component.valueBandId),
+    valueBandLabel: Value(component.valueBandLabel),
+    valueBandFloorMinor: Value(component.valueBandFloor?.paise),
+    valueBandCeilingMinor: Value(component.valueBandCeiling?.paise),
+    supplySubtypeId: Value(component.supplySubtypeId),
+    premisesStatusCode: Value(component.premisesStatusCode),
+  );
+
   /// Applies the server's answer to the local row.
   ///
   /// **Only the fields the server actually restated.** D-072a records what happens
@@ -647,6 +923,118 @@ class RevenueRepository {
         );
       });
 
+  /// Replaces the local copy of one entry with the server's, from the authorised
+  /// projection.
+  ///
+  /// The conflict path's whole purpose, and its one legitimate destructive act: the local
+  /// row currently holds **the operator's refused attempt**, and the point of Review
+  /// latest is to see what the record actually says now. So the caller captures the
+  /// attempt first, and this writes the server's version over it.
+  ///
+  /// **It refuses to run while an intent may still be delivered.** A `pending`,
+  /// `inFlight` or `blocked` entry is work on its way to the server, and replacing the
+  /// row underneath it would show somebody the server's figures while their own are
+  /// still about to be applied to them.
+  ///
+  /// A `conflict` or `rejected` entry is different, and is exactly the case this exists
+  /// for: it will not be retried on its own, and **the attempt is preserved in the
+  /// intent's own payload**, so overwriting the row destroys no evidence. Nothing in the
+  /// outbox is deleted here — the intent stays inspectable, which is what D-048 §2
+  /// protects.
+  ///
+  /// Nothing about tax is recomputed here. The server's snapshot is copied as it stands,
+  /// because that snapshot is the explanation of the server's own figures and re-deriving
+  /// it locally would be this device deciding what the server meant.
+  Future<void> applyServerDocument({
+    required Map<String, dynamic> header,
+    required List<Map<String, dynamic>> components,
+    required String orgId,
+  }) async {
+    final id = header['id']! as String;
+    if (components.isEmpty) {
+      throw StateError('revenue $id came back with no components');
+    }
+
+    final queued =
+        await (_db.select(_db.syncOutbox)
+              ..where(
+                (o) =>
+                    o.entityId.equals(id) &
+                    o.entityType.equals(revenueEntityType) &
+                    // Stated as an exclusion so a status added later lands on the
+                    // refusing side by default, rather than silently becoming a case
+                    // in which the local row may be overwritten.
+                    o.status.isNotIn(const ['conflict', 'rejected', 'done']),
+              )
+              ..limit(1))
+            .getSingleOrNull();
+    if (queued != null) {
+      throw StateError(
+        'revenue $id still has an intent that may be delivered; it cannot be '
+        'replaced by the server copy yet',
+      );
+    }
+
+    await _db.transaction(() async {
+      await (_db.update(
+        _db.revenueEntries,
+      )..where((e) => e.id.equals(id))).write(
+        RevenueEntriesCompanion(
+          txnNumber: Value(header['txn_number'] as String?),
+          financialYear: Value(header['financial_year']?.toString()),
+          businessDate: Value('${header['business_date']}'),
+          pnlPeriodKey: Value('${header['pnl_period_key']}'),
+          entryKind: Value('${header['entry_kind']}'),
+          sourceReference: Value(header['source_reference'] as String?),
+          notes: Value(header['notes'] as String?),
+          rowVersion: Value(header['row_version']! as int),
+          voidedAt: Value(
+            header['voided_at'] == null
+                ? null
+                : DateTime.tryParse('${header['voided_at']}')?.toUtc(),
+          ),
+          voidReason: Value(header['void_reason'] as String?),
+          serverUpdatedAt: Value(
+            DateTime.tryParse('${header['updated_at']}')?.toUtc(),
+          ),
+          pendingMutationId: const Value(null),
+        ),
+      );
+
+      await (_db.delete(
+        _db.revenueComponents,
+      )..where((c) => c.revenueEntryId.equals(id))).go();
+
+      for (final c in components) {
+        await _db
+            .into(_db.revenueComponents)
+            .insert(
+              RevenueComponentsCompanion.insert(
+                id: c['id']! as String,
+                orgId: orgId,
+                revenueEntryId: id,
+                enteredAmountMinor: c['entered_amount_minor']! as int,
+                enteredBasis: '${c['entered_basis']}',
+                grossAmountMinor: c['gross_amount_minor']! as int,
+                taxAmountMinor: c['tax_amount_minor']! as int,
+                netAmountMinor: c['net_amount_minor']! as int,
+                taxRuleId: c['tax_rule_id']! as String,
+                taxRateBasisPoints: c['tax_rate_bp']! as int,
+                taxTreatment: '${c['tax_treatment']}',
+                valueBandId: Value(c['value_band_id'] as String?),
+                valueBandLabel: Value(c['value_band_label'] as String?),
+                valueBandFloorMinor: Value(c['value_band_floor_minor'] as int?),
+                valueBandCeilingMinor: Value(
+                  c['value_band_ceiling_minor'] as int?,
+                ),
+                supplySubtypeId: Value(c['supply_subtype_id'] as String?),
+                premisesStatusCode: Value(c['premises_status_code'] as String?),
+              ),
+            );
+      }
+    });
+  }
+
   /// The entries this actor may browse (§21).
   ///
   /// Excludes anything stamped `scope_revoked_at`: retained work is reachable only through
@@ -656,6 +1044,140 @@ class RevenueRepository {
     bool includeVoided = false,
   }) =>
       query(_AllRevenue(includeVoided: includeVoided, units: businessUnitIds));
+
+  /// Marks a sale voided locally and queues the void.
+  ///
+  /// Queued, not applied. A void is a financial state change that the server decides:
+  /// it needs `revenue.void` for that property, an open period and a matching row
+  /// version, and any of the three may refuse. So the local row is stamped as *this
+  /// actor's intent to void* — visible, reversible only by the server's answer — and the
+  /// canonical void is what comes back.
+  ///
+  /// **Nothing is deleted.** Pressing Void never removes a pending sale, and a refusal
+  /// leaves the document exactly as it was (spec §14, D-006).
+  ///
+  /// The same one-intent-per-document discipline as [updateLocally]: a void replaces a
+  /// queued correction, because voiding is the operator's later and more decisive
+  /// intent, and sending both would ask the server to correct a document and then throw
+  /// it away. The queue entry keeps its own id and actor.
+  /// Returns null when the void was queued, or the reason it was not.
+  ///
+  /// Structured rather than thrown, for the same reason [evaluate] is: a person pressing
+  /// Void needs a sentence they can act on, and an exception reaching a widget becomes
+  /// either a crash or a message nobody can do anything about.
+  Future<RevenueRefusal?> voidLocally({
+    required String entryId,
+    required String reason,
+    required String actorUserId,
+    required int baseRowVersion,
+    required String mutationId,
+    required DateTime now,
+  }) async {
+    final trimmed = reason.trim();
+    if (trimmed.isEmpty) {
+      return const RevenueRefusal(
+        RevenueRefusalReason.voidReasonRequired,
+        'Say why this sale is being voided. The reason is kept with it.',
+      );
+    }
+
+    final existing = await (_db.select(
+      _db.revenueEntries,
+    )..where((e) => e.id.equals(entryId))).getSingleOrNull();
+    if (existing == null) {
+      throw StateError('revenue $entryId is not in the local ledger');
+    }
+    if (existing.voidedAt != null) {
+      // Not an error and not a second void. Voiding twice would queue a second mutation
+      // against a document already recorded as voided, and the second reason would
+      // silently replace the first one somebody wrote.
+      return const RevenueRefusal(
+        RevenueRefusalReason.alreadyVoided,
+        'This sale has already been voided.',
+      );
+    }
+
+    RevenueRefusal? refusal;
+    await _db.transaction(() async {
+      final queued =
+          await (_db.select(_db.syncOutbox)
+                ..where(
+                  (o) =>
+                      o.entityId.equals(entryId) &
+                      o.entityType.equals(revenueEntityType) &
+                      o.status.isNotIn(const ['done']),
+                )
+                ..orderBy([(o) => OrderingTerm.asc(o.createdAt)])
+                ..limit(1))
+              .getSingleOrNull();
+
+      final payload = jsonEncode({'p_reason': trimmed});
+
+      // A queued **create** is the one case a void cannot replace: the server has never
+      // seen this document, so there is nothing to void. Voiding an unsent sale is
+      // simply the create never being sent — which is a decision this method does not
+      // get to take on somebody's behalf, so it refuses and says why.
+      if (queued != null && queued.op == MutationOp.create.name) {
+        refusal = const RevenueRefusal(
+          RevenueRefusalReason.notYetOnTheServer,
+          'This sale has not reached the office yet, so there is nothing to '
+          'void. Wait for it to sync, or correct it instead.',
+        );
+        return;
+      }
+
+      if (queued == null) {
+        await _db
+            .into(_db.syncOutbox)
+            .insert(
+              SyncOutboxCompanion.insert(
+                mutationId: mutationId,
+                actorUserId: Value(actorUserId),
+                entityType: revenueEntityType,
+                entityId: entryId,
+                op: MutationOp.void_.name,
+                payload: payload,
+                baseRowVersion: Value(baseRowVersion),
+                nextAttemptAt: now,
+                status: OutboxStatus.pending.name,
+                createdAt: now,
+              ),
+              mode: InsertMode.insertOrIgnore,
+            );
+      } else {
+        await (_db.update(
+          _db.syncOutbox,
+        )..where((o) => o.mutationId.equals(queued.mutationId))).write(
+          SyncOutboxCompanion(
+            op: Value(MutationOp.void_.name),
+            payload: Value(payload),
+            baseRowVersion: Value(queued.baseRowVersion ?? baseRowVersion),
+            status: const Value('pending'),
+            nextAttemptAt: Value(now),
+            lastError: const Value(null),
+          ),
+        );
+      }
+
+      // Stamped as **this actor's intent to void**, exactly as an expense is. The local
+      // write always succeeds and the server decides: it needs `revenue.void` for the
+      // property, an open period and a matching row version, and any of the three may
+      // refuse — at which point the intent becomes terminal `Rejected` and is kept for
+      // a person to see rather than quietly reversed.
+      await (_db.update(
+        _db.revenueEntries,
+      )..where((e) => e.id.equals(entryId))).write(
+        RevenueEntriesCompanion(
+          voidedAt: Value(now),
+          voidedBy: Value(actorUserId),
+          voidReason: Value(trimmed),
+          pendingMutationId: Value(queued?.mutationId ?? mutationId),
+          updatedAt: Value(now),
+        ),
+      );
+    });
+    return refusal;
+  }
 
   /// The ledger, filtered, ordered and paged **in SQL**.
   ///
@@ -793,6 +1315,31 @@ class RevenueRepository {
     return loaded;
   }
 
+  /// Where one sale stands in the sync lifecycle.
+  ///
+  /// Derived from the outbox, never from a column on the entry, so there is one place
+  /// the answer comes from and no second copy to drift (D-119). Needed on its own
+  /// because a detail surface is reachable without a ledger query having run — the phone
+  /// has no ledger at all — and reading the state out of whichever list happened to be
+  /// loaded is how a screen shows `Synced` for an entry that is nothing of the kind.
+  Future<SyncState> syncStateOf(String entryId) async {
+    final entry = await (_db.select(
+      _db.revenueEntries,
+    )..where((e) => e.id.equals(entryId))).getSingleOrNull();
+    if (entry == null) return SyncState.pendingSync;
+
+    final queued = entry.pendingMutationId == null
+        ? null
+        : await (_db.select(_db.syncOutbox)
+                ..where((o) => o.mutationId.equals(entry.pendingMutationId!)))
+              .getSingleOrNull();
+
+    return _stateOf(
+      queued == null || queued.status == 'done' ? null : queued.status,
+      entry.txnNumber,
+    );
+  }
+
   /// One entry with its components, for a detail surface.
   Future<RevenueEntry?> load(String id) async {
     final header = await (_db.select(
@@ -818,6 +1365,7 @@ class RevenueRepository {
       createdBy: header.createdBy,
       rowVersion: header.rowVersion,
       voidedAt: header.voidedAt,
+      voidedBy: header.voidedBy,
       voidReason: header.voidReason,
       components: [
         for (final c in rows)

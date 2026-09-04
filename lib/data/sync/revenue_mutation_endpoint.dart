@@ -108,6 +108,14 @@ class RevenueMutationEndpoint implements RemoteMutationEndpoint {
         arguments: payload,
         mutationId: mutation.mutationId,
       ),
+      // The payload is the one captured at save time, sent verbatim. The base version is
+      // the one the form opened on — never re-read, so a stale correction conflicts
+      // rather than silently retargeting whatever the server now holds (§4, D-021).
+      MutationOp.update => revenue.update(
+        arguments: payload,
+        baseRowVersion: mutation.baseRowVersion!,
+        mutationId: mutation.mutationId,
+      ),
       MutationOp.void_ => revenue.voidEntry(
         entryId: mutation.entityId,
         baseRowVersion: mutation.baseRowVersion!,
