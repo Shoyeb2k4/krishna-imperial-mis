@@ -12,6 +12,7 @@ import 'package:krishna_mis/app/routing/app_routes.dart';
 import 'package:krishna_mis/app/shell/desktop_shell.dart';
 import 'package:krishna_mis/app/shell/mobile_shell.dart';
 import 'package:krishna_mis/features/expenses/presentation/expense_ledger_page.dart';
+import 'package:krishna_mis/features/transactions/presentation/transactions_page.dart';
 import 'package:krishna_mis/features/masters/presentation/masters_page.dart';
 import 'package:krishna_mis/features/placeholder/placeholder_page.dart';
 
@@ -86,7 +87,10 @@ abstract final class AppRouter {
           ),
           _branch(
             AppRoutes.transactions,
-            const ExpenseLedgerPage(shellKind: AppShellKind.desktop),
+            // Expenses and Sales under one destination, as spec §19 lays the desktop
+            // information architecture out. A separate top-level entry for Sales would
+            // split a finance user's day across two places answering one question.
+            const TransactionsPage(shellKind: AppShellKind.desktop),
           ),
           _branch(
             AppRoutes.analytics,

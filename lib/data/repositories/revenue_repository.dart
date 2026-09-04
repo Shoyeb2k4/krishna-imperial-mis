@@ -186,7 +186,13 @@ final class RevenueLedgerRow {
     required this.net,
     required this.componentCount,
     required this.syncState,
+    required this.entryKind,
+    required this.createdBy,
+    required this.rowVersion,
     this.txnNumber,
+    this.sourceReference,
+    this.notes,
+    this.updatedAt,
     this.voidedAt,
   });
 
@@ -206,7 +212,79 @@ final class RevenueLedgerRow {
 
   final int componentCount;
   final SyncState syncState;
+
+  final RevenueEntryKind entryKind;
+  final String? sourceReference;
+  final String? notes;
+
+  /// The actor who recorded it. Resolved to a name by the presentation layer where one is
+  /// known; the id itself is diagnostic detail, not something to put in a column.
+  final String createdBy;
+
+  final int rowVersion;
+  final DateTime? updatedAt;
   final DateTime? voidedAt;
+
+  /// What to show where a reference belongs.
+  ///
+  /// Deliberately not a fabricated `KI-REV-...`: a permanent-looking reference that later
+  /// changes is worse than an honest pending state (spec 8.4).
+  String get displayReference =>
+      txnNumber ?? 'Pending number - ${id.substring(0, 8).toUpperCase()}';
+}
+
+/// What the revenue ledger is being asked for.
+///
+/// An interface rather than a concrete type so the data layer does not depend on the
+/// feature layer - the presentation's `RevenueFilter` implements it, and the repository
+/// never learns that a filter bar exists.
+abstract interface class RevenueQuery {
+  /// `YYYY-MM-DD`, inclusive, against the **business date** (D-067).
+  String? get from;
+  String? get to;
+
+  String? get businessUnitId;
+  String? get revenueCategoryId;
+  RevenueEntryKind? get entryKind;
+  String? get enteredByUserId;
+  SyncState? get syncState;
+  String? get search;
+  bool get includeVoided;
+
+  /// The units this reader may see at all, independent of what they filtered on.
+  ///
+  /// Distinct from [businessUnitId], which is a choice. This is authority, and applying
+  /// it in SQL rather than in Dart is what stops a paging window from being computed over
+  /// rows the reader may not have.
+  Set<String>? get businessUnitIds;
+}
+
+/// The unfiltered ledger, for callers that only want everything they may see.
+final class _AllRevenue implements RevenueQuery {
+  const _AllRevenue({required this.includeVoided, Set<String>? units})
+    : businessUnitIds = units;
+
+  @override
+  final bool includeVoided;
+  @override
+  final Set<String>? businessUnitIds;
+
+  @override
+  String? get from => null;
+  @override
+  String? get to => null;
+  @override
+  String? get businessUnitId => null;
+  @override
+  String? get revenueCategoryId => null;
+  @override
+  RevenueEntryKind? get entryKind => null;
+  @override
+  String? get enteredByUserId => null;
+  @override
+  SyncState? get syncState => null;
+  @override
+  String? get search => null;
 }
 
 class RevenueRepository {
@@ -576,11 +654,84 @@ class RevenueRepository {
   Future<List<RevenueLedgerRow>> list({
     Set<String>? businessUnitIds,
     bool includeVoided = false,
+  }) =>
+      query(_AllRevenue(includeVoided: includeVoided, units: businessUnitIds));
+
+  /// The ledger, filtered, ordered and paged **in SQL**.
+  ///
+  /// Nothing here fetches every sale and narrows it in Dart. At a year of history that is
+  /// the difference between a ledger that opens and one that does not (spec 27), and it
+  /// is the shape the expense ledger already proved.
+  ///
+  /// Ordering is `business_date desc, captured_at desc, id desc`. The third term is not
+  /// decoration: two sales recorded in the same second on the same day would otherwise
+  /// have no defined order, and an undefined order across a page boundary is how a row
+  /// gets shown twice or skipped entirely.
+  Future<List<RevenueLedgerRow>> query(
+    RevenueQuery filter, {
+    int limit = 100,
+    int offset = 0,
   }) async {
+    final where = <String>[
+      // D-070: never browsable, whatever the filter asks for. First predicate rather
+      // than last, so a future branch cannot be written that forgets it.
+      'e.scope_revoked_at IS NULL',
+    ];
+    final variables = <Variable<Object>>[];
+
+    if (!filter.includeVoided) where.add('e.voided_at IS NULL');
+
+    // Business **date**, never a device timestamp. A sale recorded at 02:00 belongs to
+    // the previous trading day under D-067, and filtering on `captured_at` because it is
+    // convenient for SQL would put it in the wrong month of somebody's report.
+    if (filter.from case final from? when from.isNotEmpty) {
+      where.add('e.business_date >= ?');
+      variables.add(Variable<String>(from));
+    }
+    if (filter.to case final to? when to.isNotEmpty) {
+      where.add('e.business_date <= ?');
+      variables.add(Variable<String>(to));
+    }
+    if (filter.businessUnitId case final unit?) {
+      where.add('e.business_unit_id = ?');
+      variables.add(Variable<String>(unit));
+    }
+    if (filter.revenueCategoryId case final category?) {
+      where.add('e.revenue_category_id = ?');
+      variables.add(Variable<String>(category));
+    }
+    if (filter.entryKind case final kind?) {
+      where.add('e.entry_kind = ?');
+      variables.add(Variable<String>(kind.wireName));
+    }
+    if (filter.enteredByUserId case final actor?) {
+      where.add('e.created_by = ?');
+      variables.add(Variable<String>(actor));
+    }
+    if (filter.search case final term? when term.trim().isNotEmpty) {
+      // Business identifiers a person would actually type - the KI-REV number, the till
+      // reference, the note. **Not the UUID**: that is an identity, not something anybody
+      // reads off a screen and searches for.
+      where.add(
+        '(e.txn_number LIKE ? OR e.source_reference LIKE ? OR e.notes LIKE ?)',
+      );
+      final needle = '%${term.trim()}%';
+      variables
+        ..add(Variable<String>(needle))
+        ..add(Variable<String>(needle))
+        ..add(Variable<String>(needle));
+    }
+    if (filter.businessUnitIds case final scope? when scope.isNotEmpty) {
+      final places = List.filled(scope.length, '?').join(', ');
+      where.add('e.business_unit_id IN ($places)');
+      variables.addAll(scope.map(Variable<String>.new));
+    }
+
     final rows = await _db
         .customSelect(
           'SELECT e.id, e.txn_number, e.business_unit_id, e.revenue_category_id, '
-          '       e.business_date, e.voided_at, e.pending_mutation_id, '
+          '       e.business_date, e.entry_kind, e.source_reference, e.notes, '
+          '       e.created_by, e.voided_at, e.updated_at, e.row_version, '
           '       COUNT(c.id) AS components, '
           '       COALESCE(SUM(c.gross_amount_minor), 0) AS gross, '
           '       COALESCE(SUM(c.tax_amount_minor), 0) AS tax, '
@@ -591,36 +742,55 @@ class RevenueRepository {
           '  LEFT JOIN sync_outbox o ON o.entity_id = e.id '
           "                        AND o.entity_type = '$revenueEntityType' "
           "                        AND o.status <> 'done' "
-          ' WHERE e.scope_revoked_at IS NULL '
-          '${includeVoided ? '' : '   AND e.voided_at IS NULL '}'
+          ' WHERE ${where.join(' AND ')} '
           ' GROUP BY e.id '
-          ' ORDER BY e.business_date DESC, e.captured_at DESC',
+          ' ORDER BY e.business_date DESC, e.captured_at DESC, e.id DESC '
+          ' LIMIT ? OFFSET ?',
+          variables: [
+            ...variables,
+            Variable<int>(limit),
+            Variable<int>(offset),
+          ],
         )
         .get();
 
-    return [
-      for (final row in rows)
-        if (businessUnitIds == null ||
-            businessUnitIds.contains(row.data['business_unit_id']))
-          RevenueLedgerRow(
-            id: row.data['id']! as String,
-            txnNumber: row.data['txn_number'] as String?,
-            businessUnitId: row.data['business_unit_id']! as String,
-            revenueCategoryId: row.data['revenue_category_id']! as String,
-            businessDate: _date(row.data['business_date']! as String),
-            gross: Money.fromPaise(row.data['gross']! as int),
-            tax: Money.fromPaise(row.data['tax']! as int),
-            net: Money.fromPaise(row.data['net']! as int),
-            componentCount: row.data['components']! as int,
-            voidedAt: row.data['voided_at'] == null
-                ? null
-                : DateTime.tryParse('${row.data['voided_at']}'),
-            syncState: _stateOf(
-              row.data['outbox_status'] as String?,
-              row.data['txn_number'] as String?,
-            ),
-          ),
-    ];
+    final loaded = <RevenueLedgerRow>[];
+    for (final row in rows) {
+      final entry = RevenueLedgerRow(
+        id: row.data['id']! as String,
+        txnNumber: row.data['txn_number'] as String?,
+        businessUnitId: row.data['business_unit_id']! as String,
+        revenueCategoryId: row.data['revenue_category_id']! as String,
+        businessDate: _date(row.data['business_date']! as String),
+        entryKind: RevenueEntryKind.fromName(row.data['entry_kind']! as String),
+        sourceReference: row.data['source_reference'] as String?,
+        notes: row.data['notes'] as String?,
+        createdBy: row.data['created_by']! as String,
+        rowVersion: row.data['row_version']! as int,
+        updatedAt: DateTime.tryParse('${row.data['updated_at']}'),
+        gross: Money.fromPaise(row.data['gross']! as int),
+        tax: Money.fromPaise(row.data['tax']! as int),
+        net: Money.fromPaise(row.data['net']! as int),
+        componentCount: row.data['components']! as int,
+        voidedAt: row.data['voided_at'] == null
+            ? null
+            : DateTime.tryParse('${row.data['voided_at']}'),
+        syncState: _stateOf(
+          row.data['outbox_status'] as String?,
+          row.data['txn_number'] as String?,
+        ),
+      );
+
+      // Sync state is derived from the outbox, so it cannot be a SQL predicate without
+      // duplicating it into a column that could then disagree. The window is already
+      // bounded above, so filtering it here costs nothing meaningful - the same trade
+      // the expense ledger makes, for the same reason.
+      if (filter.syncState != null && entry.syncState != filter.syncState) {
+        continue;
+      }
+      loaded.add(entry);
+    }
+    return loaded;
   }
 
   /// One entry with its components, for a detail surface.

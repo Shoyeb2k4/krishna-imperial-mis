@@ -3862,3 +3862,97 @@ the product working, and the expense suite records the identical lesson at `expe
 the assertion is about the durable consequence — one queue entry, attributed — and the
 "never fabricated locally" proof belongs in the offline phase, where no number can arrive
 at all.
+
+---
+
+# Phase 4 Slice 9 — Windows revenue ledger (2026-09-04)
+
+## D-120 — Sales sit beside Expenses under Transactions, not in a module of their own
+**Date:** 2026-09-04 · **Status:** Accepted
+
+**Context.** Slice 9 needed somewhere on the desktop to put a revenue ledger. The easy
+option was a new top-level destination beside Transactions.
+
+**Decision.** Both ledgers live under **Transactions**, chosen by a segmented control —
+which is what spec §19 lays out (*Transactions → Expenses · Sales · Other Income*) and
+what a finance user's day actually looks like. A separate destination would have split one
+question about one property across two places.
+
+The tab is held in the page rather than in a route, and both ledgers stay mounted in an
+`IndexedStack`. That is not an optimisation: a dense ledger's filters, page and selected
+row are worth a minute of somebody's assembly, and rebuilding them on every glance at the
+other tab is how a finance user learns not to look.
+
+## D-121 — The desktop ledger filters, orders and pages in SQL
+**Date:** 2026-09-04 · **Status:** Accepted
+
+`RevenueRepository.query` takes a `RevenueQuery` — an interface the presentation's
+`RevenueFilter` implements, so the data layer never learns that a filter bar exists. Every
+predicate is a SQL predicate, which is the shape the expense ledger already proved and the
+difference between a screen that opens at a year of history and one that does not
+(spec §27).
+
+Three properties are load-bearing:
+
+* **Ordering is `business_date desc, captured_at desc, id desc`.** The third term is not
+  decoration. Two sales recorded in the same second on the same day have no defined order
+  without it, and an undefined order across a page boundary is exactly how a row gets
+  shown twice or skipped. Asserted directly.
+* **Dates filter on the business date**, never `captured_at`. A sale rung up at 02:00
+  belongs to the previous trading day (D-067), and filtering on the capture instant
+  because it is convenient for SQL would put it in the wrong month of somebody's report.
+* **Scope is applied in SQL, and it is not a filter.** `businessUnitIds` comes from
+  confirmed authority; `businessUnitId` is a choice. Applying authority in Dart after
+  paging would compute a window over rows the reader may not have, and `Clear filters`
+  deliberately cannot drop it.
+
+**Quarantined work is excluded by the first predicate in the builder**, before any filter
+is considered, so no future branch can be written that forgets it. Tests assert that no
+status filter, no search and no `include voided` toggle can surface a retained attempt —
+and that `listRetainedAfterRevocation` still returns it to its own actor and to nobody
+else (D-070, D-074).
+
+## D-122 — The detail panel explains a sale from the sale, never from today's rules
+**Date:** 2026-09-04 · **Status:** Accepted
+
+Every rate, treatment, basis and band in the Windows detail panel comes from the
+component's own snapshot. Nothing re-queries `revenue_tax_rates`.
+
+That is the whole reason the snapshot exists (D-080): a sale recorded in June under a 5%
+rule must still explain itself in December after the rule has been superseded, and a panel
+that re-resolved would quietly restate history as though the new rate had always applied.
+Proven by deleting every rule and finding the panel unchanged.
+
+**The distinction the panel is most careful about is `none` versus a configured `0%`.**
+Both produce ₹0 of tax and they are different statements: one is a treatment somebody
+chose, the other a rate somebody set. Banquet reads **No GST**; a configured zero reads
+**GST at 0%**. Showing the first for the second would describe a rule that does not exist,
+and showing the second for the first would describe a rate nobody configured (D-091).
+
+Multiple components are shown separately, each with its own band, rate and figures, and
+the document totals appear underneath. Flattening two tariff bands into one rate would
+state a rate that was never applied to anything.
+
+## D-123 — Two layout defects, and the rule that catches them
+**Date:** 2026-09-04 · **Status:** Recorded
+
+Slice 8 recorded a status chip overflowing a phone by five pixels, visible only in the
+conflict state, which a screenshot would have shown as correct because the money still
+fitted. Slice 9 produced two more of the same family, both caught by rendering at
+realistic sizes rather than by review.
+
+**1 · A filter dropdown overflowed by 221 pixels.** `DropdownButtonFormField` lays its
+selected item out at natural width unless told otherwise; a property named *Crystal Canopy
+Rooftop* is wider than the field. `isExpanded: true` makes the ellipsis do its job.
+
+**2 · The table's minimum width had drifted from the columns it was meant to cover.** It
+was written down as `940` beside columns summing to `1204`, so the header overflowed by
+211 pixels on an ordinary 1366pt laptop — a laptop, not an edge case. It is now **derived
+from the column widths**, so the two cannot disagree again.
+
+**The rule this yields.** A hand-picked layout constant beside the values it is supposed
+to describe will drift from them, and the drift is invisible until something renders at
+the size where it matters. The widget suite now renders the ledger at a laptop, a resized
+window and a maximised screen, **in every sync state**, and asserts no exception — because
+the states differ in width and the dangerous one is the one an operator most needs to
+read.

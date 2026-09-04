@@ -1631,3 +1631,63 @@ page is not pushed.
 None was visible in the domain, the repository or the server. That is the argument for a
 widget suite that drives the real providers rather than one that renders a stub.
 
+---
+
+## 22. The Windows revenue ledger (2026-09-04)
+
+§21 built the phone's entry surface. This is the finance workstation's, and the three
+things about it that are not presentation.
+
+### 22.1 The query is the ledger
+
+`RevenueRepository.query` takes a `RevenueQuery` — an interface the presentation's
+`RevenueFilter` implements — so the data layer never learns a filter bar exists. Every
+predicate is SQL:
+
+```
+        e.scope_revoked_at IS NULL          <- first, so no branch can forget it
+      + voided / dates / unit / category
+      + kind / actor / search
+      + business_unit_id IN (authority)
+      ORDER BY business_date DESC, captured_at DESC, id DESC
+      LIMIT ? OFFSET ?
+```
+
+The `id` tie-break is load-bearing. Two sales recorded in the same second on the same day
+have no defined order without it, and an undefined order across a page boundary is exactly
+how a row is shown twice or skipped — asserted by paging 25 rows in windows of six and
+requiring 25 distinct ids.
+
+Dates filter on the **business date**, never `captured_at`: a sale rung up at 02:00 belongs
+to the previous trading day (D-067), and filtering on the capture instant because it suits
+SQL would put it in the wrong month of a report.
+
+**Scope is not a filter.** `businessUnitIds` comes from confirmed authority and
+`businessUnitId` is a choice; applying authority after paging would compute a window over
+rows the reader may not have, and `Clear filters` deliberately cannot drop it.
+
+### 22.2 The panel explains the sale from the sale
+
+Nothing in the detail surface re-queries `revenue_tax_rates`. Rate, treatment, basis and
+band all come from the component's own snapshot, which is the whole reason it exists
+(D-080): a June sale must still explain itself in December, and a panel that re-resolved
+would restate history the moment a rate changed. Proven by deleting every rule and finding
+the panel unchanged.
+
+`none` and a configured `0%` are shown differently — **No GST** against **GST at 0%** —
+because ₹0 arrived two different ways and only one of them is a rate anybody set (D-091).
+
+### 22.3 What rendering at real sizes finds
+
+Slice 8 recorded a chip overflowing a phone by five pixels in the conflict state alone.
+Slice 9 produced two more of the family: a dropdown that laid its selected item out at
+natural width, and a table minimum written down as `940` beside columns summing to `1204`,
+which overflowed an ordinary 1366pt laptop by 211 pixels.
+
+Both are now structural — `isExpanded`, and a minimum **derived from the column widths** —
+and the widget suite renders the ledger at three sizes in every sync state, because the
+states differ in width and the dangerous one is the one an operator most needs to read.
+
+A hand-picked layout constant sitting beside the values it describes will drift from them,
+and the drift is invisible until something renders at the size where it matters.
+

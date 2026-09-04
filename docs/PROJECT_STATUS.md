@@ -5,7 +5,7 @@ Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
-Last updated: **2026-09-04** — Phase 4 Slice 8 (Phase 3 remains complete)
+Last updated: **2026-09-04** — Phase 4 Slice 9 (Phase 3 remains complete)
 
 > A new session should be able to read this file and know exactly where work stopped.
 > This file — not chat history — is the checkpoint.
@@ -23,7 +23,7 @@ Every gate passed, including the ones that can only be passed by running the rea
 application: the Android package on a device, and the compiled Windows executable, both
 against the real `krishna-mis-dev` project, with the real development identities.
 
-**Phase 4 — Revenue Engine: IMPLEMENTATION UNDER WAY. Slices 1–8 of 14 complete**, together with four corrective audit points closed against Slice 4 (A0 … A3).
+**Phase 4 — Revenue Engine: IMPLEMENTATION UNDER WAY. Slices 1–9 of 14 complete**, together with four corrective audit points closed against Slice 4 (A0 … A3).
 
 The last business blocker closed on 2026-09-01: the project lead confirmed **effective from
 2026-04-01** for all four verified treatments, and authorised implementation.
@@ -41,6 +41,56 @@ Restaurant and Nandbhog hold independent rows and do not reference each other (D
 Banquet has exactly one rule and **no dormant 5% row** (D-091). Room's conditional
 architecture is retained: 5% is today's baseline, not a universal rate compiled into
 anything (D-081).
+
+**Slice 9 — Windows revenue ledger: complete.** Sales sit beside Expenses under
+Transactions, chosen by a segmented control, which is the desktop information architecture
+spec §19 lays out. Both ledgers stay mounted, so a filter a finance user spent a minute
+assembling survives a glance at the other tab. **63 new host tests**, 1,014 in total.
+
+**Filtering, ordering and paging all happen in SQL (D-121).** `RevenueRepository.query`
+takes an interface the presentation implements, so the data layer never learns a filter bar
+exists. Ordering is `business_date desc, captured_at desc, id desc` — the third term is not
+decoration, because two sales in the same second have no defined order without it, and an
+undefined order across a page boundary is how a row gets shown twice or skipped. Dates
+filter on the **business date**, never the capture instant: a sale rung up at 02:00 belongs
+to the previous trading day, and filtering on `captured_at` because it is convenient for
+SQL would put it in the wrong month of somebody's report.
+
+**Scope is authority, applied in SQL, and is not a filter.** `Clear filters` deliberately
+cannot drop it. Quarantined work is excluded by the *first* predicate in the builder,
+before any filter is considered, and tests assert that no status filter, no search and no
+include-voided toggle can surface a retained attempt — while its own actor still reaches it
+through the dedicated workflow (D-070, D-074).
+
+**The detail panel explains a sale from the sale (D-122).** Nothing re-queries today's tax
+configuration; every rate, treatment, basis and band comes from the component's own
+snapshot. Proven by deleting every rule and finding the panel unchanged. `none` and a
+configured `0%` both give ₹0 and are shown differently — **No GST** against **GST at 0%** —
+because one is a treatment somebody chose and the other a rate somebody set. Multiple
+components are listed separately with their own bands and rates, then the document totals;
+two tariff bands are never flattened into one rate that was applied to nothing.
+
+**Two layout defects, both of the family Slice 8 recorded (D-123).** A filter dropdown
+overflowed by 221 pixels because `DropdownButtonFormField` lays its selected item out at
+natural width. And the table's minimum width had been written down as `940` beside columns
+summing to `1204`, so the header overflowed by 211 pixels on an ordinary laptop — it is now
+derived from the column widths, so the two cannot disagree again. The widget suite renders
+the ledger at three window sizes **in every sync state**, because the states differ in
+width and the dangerous one is the one an operator most needs to read.
+
+**Real Windows acceptance, in the compiled `krishna_mis.exe` against `krishna-mis-dev`.**
+All four verified categories recorded through the shipped desktop screen, synced, given
+distinct `KI-REV-…` numbers at exactly the parity paise, and reconciled onto the same rows
+rather than new ones; filtering and paging asserted against the repository; the Banquet
+panel showing **No GST** and the Restaurant panel **GST at 5%**; and a sale recorded with
+the transport offline that syncs once on reconnect with no number invented. The D-070 and
+D-074 regressions and the Windows expense ledger phase were re-run on the accumulated
+Windows database — the persistent installation that exposed D-074 in the first place, and
+the honest one. Fixtures reversed by void; the verified four-rule baseline verified pristine
+with zero bands, subtypes and statuses.
+
+**Slice 9 ships no correction, no void UI, no attachment control and no reporting.** Those
+are Slices 10 to 12, and a test asserts the detail panel offers none of them.
 
 **Slice 8 — Android revenue entry: complete.** The evening workflow is four taps and a
 number: property → category → amount → Save. It is built on the Slice 7 repository and
@@ -611,9 +661,9 @@ Blocked.**
 
 | Item | Status | Evidence |
 |---|---|---|
-| `dart format --set-exit-if-changed` | **Tested** | clean (171 files) |
+| `dart format --set-exit-if-changed` | **Tested** | clean (175 files) |
 | `flutter analyze` | **Tested** | **No issues found** |
-| Host test suite | **Tested** | **951 tests, all passing** |
+| Host test suite | **Tested** | **1,014 tests, all passing** |
 | Secret scan — tree and git history | **Tested** | clean; the scan proves its own controls on every run (D-069) |
 | Secret scan — rebuilt clean binaries | **Tested** | tree, git history and built artefacts all clean, with the scanner's controls passing |
 | Migration audit (search_path, API surface, policy boundary) | **Tested** | 14 host tests |
@@ -630,6 +680,10 @@ Blocked.**
 | Android revenue draft model — scope, filtering, cascade, preview | **Tested** | 36 host tests, incl. the two-band form shape and the untaxed label |
 | Android revenue surfaces — entry, breakdown, recent list | **Tested** | 27 widget tests against the real repository and providers |
 | Android revenue acceptance on the emulator, real backend | **Tested** | 3 phases: four categories numbered, the Banquet label, offline → reconnect |
+| Windows revenue ledger — SQL filtering, paging, ordering, scope | **Tested** | 40 host tests, incl. no row duplicated or skipped across pages |
+| Windows revenue surfaces — table, filters, detail panel, layout | **Tested** | 23 widget tests at three window sizes in every sync state |
+| Windows revenue acceptance in the real `krishna_mis.exe` | **Tested** | 2 phases: four categories numbered and explained, offline → reconnect |
+| D-070/D-074 and the Windows ledger on the accumulated database | **Tested** | `d068-switch`, `d068-revoke`, `windows-ledger` re-run green |
 | Revenue acceptance fixture reversal | **Tested** | voided through the real API; baseline verified pristine (4 rules, 0 bands, 0 subtypes, 0 statuses) |
 | Revenue transport — idempotency, response loss, restart, retry classification | **Tested** | 18 host tests against a fake server that loses a response after committing |
 | Live revenue create against `krishna-mis-dev` | **Tested** | 4 categories through the real repository and worker; replay returns the same KI-REV number; KM030 refused |
@@ -676,7 +730,7 @@ Blocked.**
 
 | Suite | Count | Result |
 |---|---|---|
-| Host (`flutter test`) | **951** | all passing |
+| Host (`flutter test`) | **1,014** | all passing |
 | Live backend against `krishna-mis-dev` (opt-in) | 19 | all passing — re-run in full |
 | Live expense suite against `krishna-mis-dev` (opt-in) | 16 | all passing — **re-run at this checkpoint** |
 | Android Phase 2 device acceptance (real APK) | 19 | all passing |

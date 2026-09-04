@@ -99,6 +99,7 @@ import 'package:krishna_mis/data/remote/remote_outcome.dart';
 import 'package:krishna_mis/data/remote/revenue_gateway.dart';
 import 'package:krishna_mis/features/expenses/presentation/expense_filters.dart';
 import 'package:krishna_mis/features/expenses/presentation/expense_providers.dart';
+import 'package:krishna_mis/features/revenue/presentation/revenue_filters.dart';
 import 'package:krishna_mis/features/expenses/presentation/widgets/expense_detail_panel.dart';
 import 'package:krishna_mis/data/sync/expense_pull.dart';
 import 'package:krishna_mis/data/sync/sync_engine.dart';
@@ -5798,6 +5799,352 @@ void main() {
       // One record, not two: the same mutation id was re-sent, never a fresh one.
       final all = await RevenueRepository(boot.database).list();
       expect(all.where((row) => row.id == id), hasLength(1));
+    });
+  });
+
+  // ── The Windows revenue ledger, in the real executable (Slice 9) ─────────────
+  //
+  // Driven through the shipped desktop surfaces against `krishna-mis-dev`. Nothing here
+  // reaches into the repository to make a save happen: if these pass, the path a finance
+  // user will actually use works, which is the assertion D-077 exists to insist on.
+
+  /// Opens Transactions and switches to the Sales tab.
+  Future<void> openRevenueLedger(WidgetTester tester) async {
+    await pumpUntil(
+      tester,
+      'the Transactions destination',
+      () => visible('Transactions'),
+    );
+    await tester.tap(find.text('Transactions').last);
+    await tester.pump(const Duration(milliseconds: 800));
+
+    await pumpUntil(
+      tester,
+      'the Expenses / Sales tabs',
+      () => find.byKey(const Key('transactions-tabs')).evaluate().isNotEmpty,
+    );
+    await tester.tap(find.text('Sales').last);
+    await tester.pump(const Duration(milliseconds: 800));
+
+    await pumpUntil(
+      tester,
+      'the Add Sale action',
+      () => find.byKey(const Key('add-revenue')).evaluate().isNotEmpty,
+    );
+  }
+
+  /// Records one sale through the desktop screen, and returns its local id.
+  Future<String> recordSaleOnWindows(
+    WidgetTester tester, {
+    required String unit,
+    required String category,
+    required String amount,
+  }) async {
+    await revealAndTap(tester, const Key('add-revenue'));
+    await tester.pump(const Duration(milliseconds: 900));
+
+    await pumpUntil(
+      tester,
+      'the sales entry screen',
+      () => visible('Sales category') || visible('Property'),
+    );
+
+    final unitChip = find.byKey(Key('revenue-unit-$unit'));
+    if (unitChip.evaluate().isNotEmpty) {
+      await tester.tap(unitChip);
+      await tester.pump(const Duration(milliseconds: 600));
+    }
+
+    await pumpUntil(
+      tester,
+      'the $category category',
+      () => find.byKey(Key('revenue-category-$category')).evaluate().isNotEmpty,
+    );
+    await tester.tap(find.byKey(Key('revenue-category-$category')));
+    await tester.pump(const Duration(milliseconds: 800));
+
+    await pumpUntil(
+      tester,
+      'the amount field',
+      () => find.byType(TextField).evaluate().isNotEmpty,
+    );
+    await tester.enterText(find.byType(TextField).first, amount);
+    await tester.pump(const Duration(milliseconds: 500));
+
+    await revealAndTap(tester, const Key('revenue-more-details'));
+    await tester.pump(const Duration(milliseconds: 600));
+    await pumpUntil(
+      tester,
+      'the notes field',
+      () => find.byKey(const Key('revenue-notes')).evaluate().isNotEmpty,
+    );
+    await tester.enterText(
+      find.byKey(const Key('revenue-notes')),
+      '$_acceptanceMarker $category',
+    );
+    await tester.pump(const Duration(milliseconds: 400));
+
+    final before = await RevenueRepository(boot.database).list();
+    await revealAndTap(tester, const Key('revenue-save'));
+    await tester.pump(const Duration(seconds: 2));
+
+    final after = await RevenueRepository(boot.database).list();
+    expect(
+      after.length,
+      before.length + 1,
+      reason: 'the save wrote exactly one sale',
+    );
+    return after.firstWhere((row) => !before.any((b) => b.id == row.id)).id;
+  }
+
+  Future<void> syncRevenueOnWindows(
+    WidgetTester tester,
+    String entryId, {
+    Duration timeout = const Duration(seconds: 120),
+  }) async {
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(KrishnaMisApp)),
+    );
+    final deadline = DateTime.now().add(timeout);
+    while (DateTime.now().isBefore(deadline)) {
+      await container.read(syncEngineProvider)?.pushOnce();
+      final entry = await RevenueRepository(boot.database).load(entryId);
+      if (entry?.txnNumber != null) return;
+      await tester.pump(const Duration(seconds: 2));
+    }
+    fail('the sale never received a transaction number');
+  }
+
+  group('windows-revenue', skip: _phase != 'windows-revenue', () {
+    testWidgets('the four categories record, sync, filter and explain themselves', (
+      tester,
+    ) async {
+      expect(
+        boot.shellKind.name,
+        isNot('mobile'),
+        reason:
+            'this phase is about the desktop ledger; run it with -d windows',
+      );
+
+      await launch(tester);
+      await signIn(tester, 'giridhar@hki.com');
+      await expectSignedIn(tester, 'giridhar@hki.com');
+
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(KrishnaMisApp)),
+      );
+      await container.read(sessionProvider.notifier).refreshAuthority();
+      await tester.pump(const Duration(seconds: 2));
+
+      await openRevenueLedger(tester);
+
+      // Entered amount → (gross, tax, net). The parity figures, through the desktop UI.
+      const expected = <String, (String, int, int, int)>{
+        'RESTAURANT': ('CCR', 10000000, 476190, 9523810),
+        'NANDBHOG': ('CCR', 1250000, 59524, 1190476),
+        'ROOM': ('HKI', 6500000, 309524, 6190476),
+        'BANQUET': ('HKI', 4034300, 0, 4034300),
+      };
+      const typed = <String, String>{
+        'RESTAURANT': '100000',
+        'NANDBHOG': '12500',
+        'ROOM': '65000',
+        'BANQUET': '40343',
+      };
+
+      final ids = <String, String>{};
+      for (final entry in expected.entries) {
+        ids[entry.key] = await recordSaleOnWindows(
+          tester,
+          unit: entry.value.$1,
+          category: entry.key,
+          amount: typed[entry.key]!,
+        );
+
+        final saved = await RevenueRepository(
+          boot.database,
+        ).load(ids[entry.key]!);
+        final component = saved!.components.single;
+        expect(component.gross.paise, entry.value.$2, reason: entry.key);
+        expect(component.tax.paise, entry.value.$3, reason: entry.key);
+        expect(component.net.paise, entry.value.$4, reason: entry.key);
+      }
+
+      // ── The ledger lists them, and the numbers arrive ───────────────────────
+      final numbers = <String>{};
+      for (final id in ids.values) {
+        await syncRevenueOnWindows(tester, id);
+        final saved = await RevenueRepository(boot.database).load(id);
+        expect(saved!.txnNumber, startsWith('KI-REV-'));
+        numbers.add(saved.txnNumber!);
+      }
+      expect(
+        numbers,
+        hasLength(4),
+        reason: 'four sales, four distinct numbers from one FY sequence',
+      );
+
+      // Reconciliation updates the same rows rather than creating new ones.
+      final repository = RevenueRepository(boot.database);
+      for (final id in ids.values) {
+        final matching = (await repository.list()).where((r) => r.id == id);
+        expect(matching, hasLength(1), reason: 'one act, one row');
+      }
+
+      // ── The ledger surface itself ──────────────────────────────────────────
+      container
+        ..invalidate(filteredRevenueProvider)
+        ..invalidate(revenueHasMoreProvider);
+      await tester.pump(const Duration(seconds: 2));
+      await pumpUntil(
+        tester,
+        'the sales ledger table',
+        () =>
+            find.byKey(const Key('revenue-ledger-table')).evaluate().isNotEmpty,
+      );
+
+      // Filtering happens in SQL and narrows the result, asserted against the
+      // repository — the same shape the Windows expense ledger phase uses, because a
+      // count of rows on screen is a count of what a viewport happened to build.
+      final restaurantOnly = await repository.query(
+        RevenueFilter(
+          revenueCategoryId: (await (boot.database.select(
+            boot.database.revenueCategories,
+          )..where((c) => c.code.equals('RESTAURANT'))).getSingle()).id,
+        ),
+      );
+      expect(restaurantOnly, isNotEmpty);
+      expect(
+        restaurantOnly.every(
+          (r) => r.revenueCategoryId == restaurantOnly.first.revenueCategoryId,
+        ),
+        isTrue,
+      );
+
+      final firstPage = await repository.query(const RevenueFilter(), limit: 2);
+      final secondPage = await repository.query(
+        const RevenueFilter(),
+        limit: 2,
+        offset: 2,
+      );
+      expect(firstPage, hasLength(2));
+      expect(
+        firstPage
+            .map((r) => r.id)
+            .toSet()
+            .intersection(secondPage.map((r) => r.id).toSet()),
+        isEmpty,
+        reason: 'paging in SQL, with no row on two pages',
+      );
+
+      // ── The detail panel explains a sale from its own snapshot ──────────────
+      final banquetId = ids['BANQUET']!;
+      await pumpUntil(
+        tester,
+        'the Banquet row',
+        () => find
+            .byKey(Key('revenue-ledger-row-$banquetId'))
+            .evaluate()
+            .isNotEmpty,
+      );
+      await revealAndTap(tester, Key('revenue-ledger-row-$banquetId'));
+      await tester.pump(const Duration(seconds: 1));
+
+      expect(
+        find.byKey(const Key('revenue-detail-panel')).evaluate().isNotEmpty,
+        isTrue,
+      );
+      // The distinction the panel exists to keep: `none` is a treatment somebody chose,
+      // not a rate somebody set (D-091).
+      expect(visible('No GST'), isTrue);
+      expect(visible('GST at 0%'), isFalse);
+
+      // And no correction control is offered — that is Slice 10.
+      expect(find.widgetWithText(FilledButton, 'Void'), findsNothing);
+      expect(find.widgetWithText(FilledButton, 'Edit'), findsNothing);
+
+      final restaurantId = ids['RESTAURANT']!;
+      await revealAndTap(tester, Key('revenue-ledger-row-$restaurantId'));
+      await tester.pump(const Duration(seconds: 1));
+      expect(visible('GST at 5%'), isTrue);
+    });
+  });
+
+  group('windows-revenue-offline', skip: _phase != 'windows-revenue-offline', () {
+    testWidgets('a sale recorded with no network syncs once on reconnect', (
+      tester,
+    ) async {
+      expect(boot.shellKind.name, isNot('mobile'));
+
+      await launch(tester);
+      await signIn(tester, 'giridhar@hki.com');
+      await expectSignedIn(tester, 'giridhar@hki.com');
+
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(KrishnaMisApp)),
+      );
+      // Configuration arrives while the network works. D-112 then permits offline
+      // creation for 24 hours, which is what this phase exercises.
+      await container.read(sessionProvider.notifier).refreshAuthority();
+      await tester.pump(const Duration(seconds: 2));
+
+      await openRevenueLedger(tester);
+      _transport.online = false;
+
+      final id = await recordSaleOnWindows(
+        tester,
+        unit: 'CCR',
+        category: 'RESTAURANT',
+        amount: '80000',
+      );
+
+      final repository = RevenueRepository(boot.database);
+      var saved = await repository.load(id);
+      expect(
+        saved!.txnNumber,
+        isNull,
+        reason: 'nothing may claim a server-issued number offline',
+      );
+      expect(saved.components.single.tax.paise, 380952);
+
+      final queued = await boot.database.select(boot.database.syncOutbox).get();
+      expect(queued.where((q) => q.entityId == id), hasLength(1));
+      expect(
+        queued.firstWhere((q) => q.entityId == id).actorUserId,
+        isNotNull,
+        reason: 'no unattributed revenue intent may exist (D-050, D-074)',
+      );
+
+      // The row is in the ledger immediately, and visibly not yet on the server.
+      container.invalidate(filteredRevenueProvider);
+      await tester.pump(const Duration(seconds: 1));
+      final rows = await repository.list();
+      expect(rows.where((r) => r.id == id), hasLength(1));
+      expect(
+        rows.firstWhere((r) => r.id == id).syncState,
+        isNot(SyncState.synced),
+      );
+
+      // A push while offline changes nothing durable and invents nothing.
+      await container.read(syncEngineProvider)?.pushOnce();
+      await tester.pump(const Duration(seconds: 1));
+      expect((await repository.load(id))!.txnNumber, isNull);
+
+      _transport.online = true;
+      await syncRevenueOnWindows(tester, id);
+
+      saved = await repository.load(id);
+      expect(saved!.txnNumber, startsWith('KI-REV-'));
+      expect(
+        saved.components.single.tax.paise,
+        380952,
+        reason: 'the figures the operator approved survived the round trip',
+      );
+      expect(
+        (await repository.list()).where((r) => r.id == id),
+        hasLength(1),
+        reason: 'the same intent was re-sent, never a fresh one',
+      );
     });
   });
 
