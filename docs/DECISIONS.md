@@ -3759,3 +3759,106 @@ the `revenue_entries` policy, which the fix had missed.
 *A rule that nothing evaluates is a comment* (D-068, D-071, D-077). This is its quieter
 twin: **a rule that can never evaluate true refuses everything, silently, and looks like a
 security boundary working.**
+
+---
+
+# Phase 4 Slice 8 — Android revenue entry (2026-09-04)
+
+## D-117 — The D-112 clock-skew tolerance is five minutes, and it is not a general clock rule
+**Date:** 2026-09-04 · **Status:** Accepted (project-lead decision) — makes explicit what
+Slice 7 implemented
+
+**Context.** D-112 requires the age of a revenue configuration snapshot to be measured from
+the **server-confirmed** timestamp, and fails closed when the device clock reads earlier
+than that timestamp — because a backwards clock would otherwise make every snapshot look
+newly fresh, which is the one direction the error must not go.
+
+"Earlier" needed a number. Slice 7 chose five minutes and the project lead has now approved
+it explicitly, so it is a recorded decision rather than a constant somebody picked.
+
+**Decision.** For V1: if the device clock reads **more than five minutes earlier** than the
+server-confirmed timestamp of a scope's revenue configuration snapshot, that snapshot's
+freshness is treated as **unmeasurable**, and creating new offline revenue is refused with
+its own reason — `clockUnreliable`, never `expired`, because *"your clock is wrong"* sends
+somebody to fix a different thing from *"your configuration is old"*.
+
+**What it is not.** Not a universal application clock rule, not an authority check, not a
+business-date rule, and not a tolerance applied anywhere else in the product. Business
+dates are derived from the property's timezone and cut-off under D-067 and are unaffected;
+server timestamps remain authoritative for everything they already govern.
+
+**Why five minutes.** It absorbs ordinary disagreement between two machines — the sort a
+phone that has not synchronised its time in a while produces — without absorbing a clock
+that has been moved. V1 deliberately builds no time attestation: the point is to notice
+that the measurement is meaningless, not to prove what the real time is.
+
+**It does not change silently.** The value lives in one place, is named, and is asserted at
+the boundary: two minutes' skew is tolerated, two hours is refused, and both are tested.
+
+## D-118 — The Android revenue surface reads its shape from the configuration
+**Date:** 2026-09-04 · **Status:** Accepted
+
+**Context.** Slice 8 had to render a form for a category whose number of amount fields, and
+whose field labels, are properties of configured tax rules rather than of the category.
+Room has one generic rule today and may have two banded ones later (D-081); Banquet is
+untaxed and must never be labelled as though GST were inside its figure (D-097).
+
+**Decision.** The entry screen asks the resolved rule set what applies, and renders that.
+
+* `RevenueTaxRuleSet.liveBandsFor` returns the distinct value bands configured for a
+  category on a business date. **No band gives one plain amount field**, which is every
+  verified category today; two bands give two labelled fields carrying the band identities
+  the operator is stating. **No threshold is a constant in application code**, and nothing
+  in the widget layer compares an amount against a band's bounds — a band is selected,
+  never calculated (D-094).
+* The amount field's label comes from `EnteredBasis.fieldLabelFor(treatment)`, so Banquet
+  reads *"Amount billed to the customer"* and never *"Customer total (incl. GST)"*. Proven
+  on the real Android client, not only in a widget test.
+* Every figure in the live preview comes from `TaxRule.compute` — the same call the
+  repository makes when it writes. The preview and the record cannot disagree because they
+  are one function called twice, rather than two that agree today.
+
+**Consequence.** A second configured Room band is a configuration change and a sync, not a
+release. That is asserted rather than claimed: a test configures two bands and finds two
+labelled fields.
+
+## D-119 — Three defects the Android surface exposed, and one duplicated rule removed
+**Date:** 2026-09-04 · **Status:** Recorded
+
+None of these was visible in the domain, the repository or the server. All three needed a
+screen.
+
+**1 · An infinite rebuild.** `withComponentsFor` re-shapes the form from the configuration
+and returned a **new** draft on every call, including when nothing had changed. The screen
+applies the result with `setState`, so it rebuilt for ever. Found as a `pumpAndSettle`
+timeout in the two-band widget test — never as anything a reader would spot, and on a real
+phone it would have presented as heat and a flickering form rather than as an error.
+Corrected by returning the same instance when the component set already matches.
+
+**2 · A layout overflow on a phone.** The recent-sales row put the sync chip beside the
+amounts. `Conflict / Attention Required` is long enough to overflow a 430pt screen by five
+pixels — and only in the conflict state, which is the one an operator most needs to read.
+The status now has its own line. Worth naming because the money still fitted: a screenshot
+would have looked correct.
+
+**3 · A screen that assumed it had been pushed.** Saving called `Navigator.pop`
+unconditionally. That is true in production, where the page is always pushed from the quick
+-add sheet, and it asserts if the page is ever the root of a route — which the widget suite
+made it. It now pops only when there is somewhere to go back to, and otherwise clears to a
+fresh form so a second sale can be recorded immediately.
+
+**And one duplicated rule, removed rather than kept in step.** `RevenueRepository` mapped
+outbox status to a user-visible sync state with its own `switch`. The project already has
+exactly one such mapping — `OutboxStatus.userVisibleState` — and the copy had already
+drifted: it called a `blocked` queue a failure, where the canonical mapping calls it
+pending, because a queue paused on an authentication problem has not failed at anything.
+The copy is gone. Two surfaces describing one entry differently is not a risk worth
+carrying for a `switch` statement.
+
+**Also recorded: the acceptance assertion that raced the product.** The first Android
+acceptance asserted that a freshly saved sale carries no transaction number. On a fast
+emulator the worker had already delivered and reconciled it before the line ran. That is
+the product working, and the expense suite records the identical lesson at `expense-simple`:
+the assertion is about the durable consequence — one queue entry, attributed — and the
+"never fabricated locally" proof belongs in the offline phase, where no number can arrive
+at all.

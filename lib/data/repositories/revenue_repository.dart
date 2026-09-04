@@ -694,17 +694,24 @@ class RevenueRepository {
     return [for (final row in rows) row.data['id']! as String];
   }
 
-  static SyncState _stateOf(String? outboxStatus, String? txnNumber) =>
-      switch (outboxStatus) {
-        null => SyncState.synced,
-        'pending' => SyncState.pendingSync,
-        'in_flight' => SyncState.syncing,
-        'conflict' => SyncState.conflict,
-        'rejected' => SyncState.rejected,
-        'blocked' => SyncState.syncFailed,
-        'failed' => SyncState.syncFailed,
-        _ => txnNumber == null ? SyncState.pendingSync : SyncState.synced,
-      };
+  /// Sync state, read from the outbox rather than from a column.
+  ///
+  /// Delegates to [OutboxStatus.userVisibleState], which is the project's one mapping
+  /// from queue status to what a person is shown. A second copy here — even one that
+  /// agreed today — is how two surfaces start describing the same entry differently, and
+  /// the first version of this method was exactly that: it mapped `blocked` to a failure
+  /// where the canonical mapping calls it pending, because a paused queue has not failed
+  /// at anything.
+  ///
+  /// A row with no queued intent and a server-issued number is synced. One whose intent
+  /// has vanished without being reconciled is reported as pending rather than quietly
+  /// called synced, because something went wrong and saying "sent" would be a guess.
+  static SyncState _stateOf(String? outboxStatus, String? txnNumber) {
+    if (outboxStatus == null) {
+      return txnNumber == null ? SyncState.pendingSync : SyncState.synced;
+    }
+    return OutboxStatus.fromName(outboxStatus).userVisibleState;
+  }
 
   static BusinessDate _date(String iso) {
     final parts = iso.split('-').map(int.parse).toList();

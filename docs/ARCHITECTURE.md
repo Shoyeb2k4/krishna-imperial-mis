@@ -8,7 +8,7 @@ the application role named **Owner** is a separate concept — D-057)
 Status: **Sections 1–12 proposed (Phase 0, revised); sections 13–16 describe what is built
 and verified; section 17 is the approved Phase 4 plan and is NOT built.** Sections 6, 5.3 and 8 carry the project lead's mandated corrections.
 Implementation status is tracked in `PROJECT_STATUS.md`.
-Last updated: 2026-09-02
+Last updated: 2026-09-04
 
 ---
 
@@ -1575,3 +1575,59 @@ migration on the first run, naming a place the fix had missed.
 *A rule that nothing evaluates is a comment* (D-068, D-071, D-077). This is its quieter
 twin: **a rule that can never evaluate true refuses everything, silently, and looks like a
 security boundary working.**
+
+---
+
+## 21. The Android revenue surface (2026-09-04)
+
+§20 built the create path. This is the screen that calls it, and the two things about it
+that are not cosmetic.
+
+### 21.1 The form's shape is configuration, not code
+
+An entry screen for revenue cannot know how many amount fields a category has, because
+that is a property of the configured tax rules rather than of the category. Room has one
+generic rule today and may have two banded ones later (D-081).
+
+So the screen asks:
+
+```
+        rules.liveBandsFor(category, businessDate)
+          []            -> one plain amount field
+          [lower]       -> one field, labelled with the band
+          [lower, upper]-> two fields, in configured boundary order
+```
+
+No threshold appears anywhere in the widget layer, and nothing compares an amount against a
+band's bounds — a band is **selected**, never calculated (D-094). A second Room band is
+therefore a configuration change and a sync, not a release, which is asserted by a test
+that configures two bands and finds two labelled fields.
+
+The amount label comes from `EnteredBasis.fieldLabelFor(treatment)` and so takes the
+**treatment** as well as the basis. Banquet reads *"Amount billed to the customer"*, and its
+breakdown says **No GST** rather than "GST ₹0" — the first is the statement the
+configuration makes; the second reads like an amount that happened to come out at nothing.
+
+### 21.2 The preview is the record
+
+Every figure under the amount field comes from `TaxRule.compute`, which is the same call
+`RevenueRepository.createLocally` makes when it writes and the same arithmetic
+`app.revenue_compute` is proven equal to, to the paise (D-105). They cannot disagree,
+because they are one function called twice rather than two that agree today.
+
+That is why the acceptance asserts the stored component's paise against the same parity
+vectors the migration asserts: what the operator approved and what was persisted are
+checked to be the same number, on a real device.
+
+### 21.3 What a screen finds that nothing below it can
+
+Three defects reached a working, reviewed, green state and were caught only by rendering
+(D-119): an infinite rebuild loop that presented as a `pumpAndSettle` timeout and would have
+presented on a phone as heat and a flickering form; a five-pixel overflow that appeared only
+in the conflict state, which is the one an operator most needs to read; and a screen that
+called `Navigator.pop` unconditionally — true in production, an assertion the moment the
+page is not pushed.
+
+None was visible in the domain, the repository or the server. That is the argument for a
+widget suite that drives the real providers rather than one that renders a stub.
+

@@ -9,6 +9,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:krishna_mis/core/design/tokens/app_tokens.dart';
 import 'package:krishna_mis/features/expenses/presentation/expense_entry_page.dart';
+import 'package:krishna_mis/features/revenue/presentation/revenue_entry_page.dart';
+import 'package:krishna_mis/features/revenue/presentation/revenue_recent_page.dart';
 
 class MobileShell extends StatelessWidget {
   const MobileShell({required this.navigationShell, super.key});
@@ -150,11 +152,34 @@ class MobileShell extends StatelessWidget {
               },
             ),
             ListTile(
+              key: const Key('quick-add-revenue'),
               leading: const Icon(Icons.point_of_sale_outlined),
               title: const Text('Add Sale'),
-              subtitle: const Text('Phase 4 — Revenue Engine'),
-              enabled: false,
-              onTap: () {},
+              subtitle: const Text('Works offline'),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                Navigator.of(context).push(
+                  MaterialPageRoute<String>(
+                    builder: (_) => const RevenueEntryPage(),
+                  ),
+                );
+              },
+            ),
+            ListTile(
+              key: const Key('quick-open-recent-revenue'),
+              leading: const Icon(Icons.receipt_long_outlined),
+              title: const Text('Recent sales'),
+              subtitle: const Text(
+                'What has been recorded, and its sync status',
+              ),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const RevenueRecentPage(),
+                  ),
+                );
+              },
             ),
             const SizedBox(height: AppSpacing.lg),
           ],

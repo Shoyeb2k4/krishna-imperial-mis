@@ -94,6 +94,9 @@ import 'package:krishna_mis/app/session/session_controller.dart';
 import 'package:krishna_mis/data/remote/expense_gateway.dart';
 import 'package:krishna_mis/data/local/app_database.dart';
 import 'package:krishna_mis/data/repositories/expense_repository.dart';
+import 'package:krishna_mis/data/repositories/revenue_repository.dart';
+import 'package:krishna_mis/data/remote/remote_outcome.dart';
+import 'package:krishna_mis/data/remote/revenue_gateway.dart';
 import 'package:krishna_mis/features/expenses/presentation/expense_filters.dart';
 import 'package:krishna_mis/features/expenses/presentation/expense_providers.dart';
 import 'package:krishna_mis/features/expenses/presentation/widgets/expense_detail_panel.dart';
@@ -5447,6 +5450,415 @@ void main() {
         {_hki},
       );
       expect(await db.customSelect('PRAGMA foreign_key_check').get(), isEmpty);
+    });
+  });
+
+  // ── Revenue, on the real Android client (Slice 8) ────────────────────────────
+  //
+  // Driven through the shipped screen and the shipped controller, against
+  // `krishna-mis-dev`. Nothing here reaches into the repository to make a save happen:
+  // if these pass, the path a person will actually use works — which is the assertion
+  // D-077 exists to insist on, and the one that was missing when the attachment picker
+  // reached two real devices without existing.
+
+  /// Opens the sales entry screen from the central add action.
+  Future<void> openRevenueEntry(WidgetTester tester) async {
+    await pumpUntil(
+      tester,
+      'the add button',
+      () => find.byType(FloatingActionButton).evaluate().isNotEmpty,
+    );
+    await tester.tap(find.byType(FloatingActionButton));
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.tap(find.byKey(const Key('quick-add-revenue')));
+    await tester.pump(const Duration(milliseconds: 800));
+
+    await pumpUntil(
+      tester,
+      'the sales entry screen',
+      () => visible('Sales category') || visible('Property'),
+    );
+  }
+
+  Future<void> openRecentRevenue(WidgetTester tester) async {
+    await pumpUntil(
+      tester,
+      'the add button',
+      () => find.byType(FloatingActionButton).evaluate().isNotEmpty,
+    );
+    await tester.tap(find.byType(FloatingActionButton));
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.tap(find.byKey(const Key('quick-open-recent-revenue')));
+    await tester.pump(const Duration(milliseconds: 800));
+    await pumpUntil(
+      tester,
+      'the recent sales screen',
+      () =>
+          find.byKey(const Key('revenue-recent-list')).evaluate().isNotEmpty ||
+          find.byKey(const Key('revenue-recent-empty')).evaluate().isNotEmpty,
+    );
+  }
+
+  Future<void> openRevenueMoreDetails(WidgetTester tester) async {
+    await revealAndTap(tester, const Key('revenue-more-details'));
+    await tester.pump(const Duration(milliseconds: 600));
+    await pumpUntil(
+      tester,
+      'the notes field',
+      () => find.byKey(const Key('revenue-notes')).evaluate().isNotEmpty,
+    );
+  }
+
+  /// Records one sale through the screen, and returns its local id.
+  ///
+  /// The marker in the notes is how the cleanup phase finds it across a process
+  /// boundary, and it survives everything this phase does to the document (D-071,
+  /// D-076).
+  Future<String> recordSale(
+    WidgetTester tester, {
+    required String unit,
+    required String category,
+    required String amount,
+  }) async {
+    await openRevenueEntry(tester);
+
+    // The property picker appears only for a multi-property user, which the development
+    // Owner is. A single-property manager would find it already chosen.
+    final unitChip = find.byKey(Key('revenue-unit-$unit'));
+    if (unitChip.evaluate().isNotEmpty) {
+      await tester.tap(unitChip);
+      await tester.pump(const Duration(milliseconds: 600));
+    }
+
+    await pumpUntil(
+      tester,
+      'the $category category',
+      () => find.byKey(Key('revenue-category-$category')).evaluate().isNotEmpty,
+    );
+    await tester.tap(find.byKey(Key('revenue-category-$category')));
+    await tester.pump(const Duration(milliseconds: 800));
+
+    await pumpUntil(
+      tester,
+      'the amount field',
+      () => find.byType(TextField).evaluate().isNotEmpty,
+    );
+    await tester.enterText(find.byType(TextField).first, amount);
+    await tester.pump(const Duration(milliseconds: 400));
+
+    await openRevenueMoreDetails(tester);
+    await tester.enterText(
+      find.byKey(const Key('revenue-notes')),
+      '$_acceptanceMarker $category',
+    );
+    await tester.pump(const Duration(milliseconds: 400));
+
+    final before = await RevenueRepository(boot.database).list();
+    await revealAndTap(tester, const Key('revenue-save'));
+    await tester.pump(const Duration(seconds: 2));
+
+    final after = await RevenueRepository(boot.database).list();
+    expect(
+      after.length,
+      before.length + 1,
+      reason: 'the save wrote exactly one sale',
+    );
+    return after.firstWhere((row) => !before.any((b) => b.id == row.id)).id;
+  }
+
+  Future<void> syncRevenueUntilNumbered(
+    WidgetTester tester,
+    String entryId, {
+    Duration timeout = const Duration(seconds: 120),
+  }) async {
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(KrishnaMisApp)),
+    );
+    final deadline = DateTime.now().add(timeout);
+    while (DateTime.now().isBefore(deadline)) {
+      await container.read(syncEngineProvider)?.pushOnce();
+      final entry = await RevenueRepository(boot.database).load(entryId);
+      if (entry?.txnNumber != null) return;
+      await tester.pump(const Duration(seconds: 2));
+    }
+    fail('the sale never received a transaction number');
+  }
+
+  group('revenue-entry', skip: _phase != 'revenue-entry', () {
+    testWidgets('the four verified categories record, sync and are numbered', (
+      tester,
+    ) async {
+      await launch(tester);
+      await signIn(tester, 'giridhar@hki.com');
+      await expectSignedIn(tester, 'giridhar@hki.com');
+
+      // Configuration first: the screen refuses to resolve tax without an
+      // authoritative, fresh snapshot, which is the whole of D-113.
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(KrishnaMisApp)),
+      );
+      await container.read(sessionProvider.notifier).refreshAuthority();
+      await tester.pump(const Duration(seconds: 2));
+
+      // Entered amount → (gross, tax, net). The parity figures, through the UI.
+      const expected = <String, (String, int, int, int)>{
+        'RESTAURANT': ('CCR', 10000000, 476190, 9523810),
+        'NANDBHOG': ('CCR', 1250000, 59524, 1190476),
+        'ROOM': ('HKI', 6500000, 309524, 6190476),
+        'BANQUET': ('HKI', 4034300, 0, 4034300),
+      };
+      const typed = <String, String>{
+        'RESTAURANT': '100000',
+        'NANDBHOG': '12500',
+        'ROOM': '65000',
+        'BANQUET': '40343',
+      };
+
+      final numbers = <String>{};
+      for (final entry in expected.entries) {
+        final id = await recordSale(
+          tester,
+          unit: entry.value.$1,
+          category: entry.key,
+          amount: typed[entry.key]!,
+        );
+
+        var saved = await RevenueRepository(boot.database).load(id);
+        expect(saved, isNotNull, reason: entry.key);
+
+        // Queued in the same transaction as the document. Whether the worker has
+        // *already* delivered it by the time this line runs is a race the product wins
+        // on a fast connection, so the assertion is about the queue entry existing
+        // rather than about the number still being absent. The deterministic "never
+        // fabricated locally" proof lives in `revenue-offline`, where no number can
+        // arrive at all.
+        final queued = await boot.database
+            .select(boot.database.syncOutbox)
+            .get();
+        expect(
+          queued.where((q) => q.entityId == id),
+          hasLength(1),
+          reason: 'saved and unqueued must be impossible',
+        );
+        expect(
+          queued.firstWhere((q) => q.entityId == id).actorUserId,
+          isNotNull,
+          reason: 'no unattributed revenue intent may exist (D-050, D-074)',
+        );
+
+        // The figures the screen showed are the figures that were stored.
+        final component = saved!.components.single;
+        expect(component.gross.paise, entry.value.$2, reason: entry.key);
+        expect(component.tax.paise, entry.value.$3, reason: entry.key);
+        expect(component.net.paise, entry.value.$4, reason: entry.key);
+        expect(
+          component.net.paise + component.tax.paise,
+          component.gross.paise,
+        );
+
+        await syncRevenueUntilNumbered(tester, id);
+        saved = await RevenueRepository(boot.database).load(id);
+
+        expect(saved!.txnNumber, startsWith('KI-REV-'), reason: entry.key);
+        numbers.add(saved.txnNumber!);
+        expect(
+          saved.components.single.tax.paise,
+          entry.value.$3,
+          reason: '${entry.key}: acceptance did not reprice anything',
+        );
+      }
+
+      expect(
+        numbers,
+        hasLength(4),
+        reason: 'four sales, four distinct numbers from one FY sequence',
+      );
+    });
+  });
+
+  group('revenue-banquet-label', skip: _phase != 'revenue-banquet-label', () {
+    testWidgets('an untaxed category is never labelled as GST-inclusive', (
+      tester,
+    ) async {
+      await launch(tester);
+      await signIn(tester, 'giridhar@hki.com');
+      await expectSignedIn(tester, 'giridhar@hki.com');
+
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(KrishnaMisApp)),
+      );
+      await container.read(sessionProvider.notifier).refreshAuthority();
+      await tester.pump(const Duration(seconds: 2));
+
+      await openRevenueEntry(tester);
+      final unitChip = find.byKey(const Key('revenue-unit-HKI'));
+      if (unitChip.evaluate().isNotEmpty) {
+        await tester.tap(unitChip);
+        await tester.pump(const Duration(milliseconds: 600));
+      }
+      await pumpUntil(
+        tester,
+        'the Banquet category',
+        () => find
+            .byKey(const Key('revenue-category-BANQUET'))
+            .evaluate()
+            .isNotEmpty,
+      );
+      await tester.tap(find.byKey(const Key('revenue-category-BANQUET')));
+      await tester.pump(const Duration(seconds: 1));
+
+      // D-097, on the real device: the label follows the treatment as well as the
+      // basis, so a figure carrying no GST is never described as containing some.
+      expect(visible('AMOUNT BILLED TO THE CUSTOMER'), isTrue);
+      expect(visible('CUSTOMER TOTAL (INCL. GST)'), isFalse);
+
+      await tester.enterText(find.byType(TextField).first, '40343');
+      await tester.pump(const Duration(milliseconds: 600));
+
+      expect(visible('No GST'), isTrue);
+      expect(
+        visible('GST included'),
+        isFalse,
+        reason: 'there is none to include',
+      );
+    });
+  });
+
+  group('revenue-offline', skip: _phase != 'revenue-offline', () {
+    testWidgets('a sale is recorded with no network and syncs once on reconnect', (
+      tester,
+    ) async {
+      await launch(tester);
+      await signIn(tester, 'giridhar@hki.com');
+      await expectSignedIn(tester, 'giridhar@hki.com');
+
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(KrishnaMisApp)),
+      );
+      // Configuration arrives while the network still works. D-112 then permits offline
+      // creation for 24 hours, which is what this phase exercises.
+      await container.read(sessionProvider.notifier).refreshAuthority();
+      await tester.pump(const Duration(seconds: 2));
+
+      _transport.online = false;
+
+      final id = await recordSale(
+        tester,
+        unit: 'CCR',
+        category: 'RESTAURANT',
+        amount: '80000',
+      );
+
+      var saved = await RevenueRepository(boot.database).load(id);
+      expect(
+        saved!.txnNumber,
+        isNull,
+        reason: 'nothing may claim a server-issued number offline',
+      );
+      expect(saved.components.single.tax.paise, 380952);
+
+      // The queue holds it, attributed, and the screen says so rather than failing.
+      final queued = await boot.database.select(boot.database.syncOutbox).get();
+      expect(queued.where((q) => q.entityId == id), hasLength(1));
+      expect(
+        queued.firstWhere((q) => q.entityId == id).actorUserId,
+        isNotNull,
+        reason: 'no unattributed revenue intent may exist (D-050, D-074)',
+      );
+
+      // The list says it has not reached the server. *Which* not-synced state depends on
+      // whether the controller's push attempt had already failed by now — a race, and
+      // not the claim worth asserting. What matters is that nothing says "Synced" for
+      // something the server has never seen.
+      await openRecentRevenue(tester);
+      expect(
+        visible('Pending Sync') || visible('Sync Failed'),
+        isTrue,
+        reason: 'the sale is visibly not yet on the server',
+      );
+      expect(visible('Synced'), isFalse);
+
+      // A push while offline changes nothing durable and invents nothing.
+      await container.read(syncEngineProvider)?.pushOnce();
+      await tester.pump(const Duration(seconds: 1));
+      saved = await RevenueRepository(boot.database).load(id);
+      expect(saved!.txnNumber, isNull);
+
+      _transport.online = true;
+      await syncRevenueUntilNumbered(tester, id);
+
+      saved = await RevenueRepository(boot.database).load(id);
+      expect(saved!.txnNumber, startsWith('KI-REV-'));
+      expect(
+        saved.components.single.tax.paise,
+        380952,
+        reason: 'the figures the operator approved survived the round trip',
+      );
+
+      // One record, not two: the same mutation id was re-sent, never a fresh one.
+      final all = await RevenueRepository(boot.database).list();
+      expect(all.where((row) => row.id == id), hasLength(1));
+    });
+  });
+
+  group('revenue-cleanup', skip: _phase != 'revenue-cleanup', () {
+    testWidgets('every sale this suite created is reversed', (tester) async {
+      await launch(tester);
+      await signIn(tester, 'giridhar@hki.com');
+      await expectSignedIn(tester, 'giridhar@hki.com');
+
+      final client = Supabase.instance.client;
+
+      // Found by the marker, which is the one identifier that survives a process
+      // boundary. Voided rather than deleted: financial history is corrected by void
+      // plus audit, never by removing rows (D-006), and no client role holds DELETE on
+      // a financial table.
+      final open = await client
+          .from('revenue_document')
+          .select('id, row_version, notes')
+          .like('notes', '%$_acceptanceMarker%')
+          .isFilter('voided_at', null);
+
+      var reversed = 0;
+      for (final row in open.cast<Map<String, dynamic>>()) {
+        final outcome = await RevenueGateway(client).voidEntry(
+          entryId: row['id'] as String,
+          baseRowVersion: row['row_version'] as int? ?? 1,
+          reason: 'Slice 8 Android acceptance fixture reversal',
+          mutationId: const Uuid().v4(),
+        );
+        expect(outcome, isA<RemoteOk<Map<String, dynamic>>>());
+        reversed++;
+      }
+
+      final remaining = await client
+          .from('revenue_document')
+          .select('id')
+          .like('notes', '%$_acceptanceMarker%')
+          .isFilter('voided_at', null);
+      expect(
+        remaining,
+        isEmpty,
+        reason: 'reversed $reversed of ${open.length}; none may remain open',
+      );
+
+      // And the verified configuration is exactly as the migration installed it.
+      expect(
+        await client
+            .from('revenue_tax_rates')
+            .select('id')
+            .isFilter('archived_at', null),
+        hasLength(4),
+      );
+      expect(await client.from('revenue_value_bands').select('id'), isEmpty);
+      expect(
+        await client.from('revenue_supply_subtypes').select('id'),
+        isEmpty,
+      );
+      expect(
+        await client.from('business_unit_tax_statuses').select('id'),
+        isEmpty,
+      );
     });
   });
 

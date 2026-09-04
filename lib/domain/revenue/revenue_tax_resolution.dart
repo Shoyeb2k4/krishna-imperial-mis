@@ -19,6 +19,7 @@ library;
 
 import 'package:krishna_mis/domain/tax/tax_rule.dart';
 import 'package:krishna_mis/domain/value_objects/business_date.dart';
+import 'package:krishna_mis/domain/value_objects/money.dart';
 
 /// The bounded set of facts a revenue component presents for resolution.
 ///
@@ -275,6 +276,44 @@ final class RevenueTaxRuleSet {
     for (final r in rules)
       if (!r.isArchived) r,
   ]..sort((a, b) => a.effectiveFrom.compareTo(b.effectiveFrom));
+
+  /// The distinct value bands an entry form must offer for this category on this date.
+  ///
+  /// **This is what makes a second Room band a configuration change rather than a
+  /// release** (D-081). An entry screen asks this instead of knowing how many amount
+  /// fields a category has: no banded rule gives an empty answer and therefore one plain
+  /// amount, and two banded rules give two labelled fields carrying the band identities
+  /// the operator is stating.
+  ///
+  /// Returned in configured order — by the band's lower boundary, then its label — so the
+  /// fields do not reshuffle between builds. Nothing here compares a band's bounds
+  /// against any amount: a band is selected, never calculated (D-094).
+  List<({String id, String label, Money? floor, Money? ceiling})> liveBandsFor({
+    required String revenueCategoryId,
+    required BusinessDate businessDate,
+  }) {
+    final seen = <String>{};
+    final bands = <({String id, String label, Money? floor, Money? ceiling})>[];
+
+    for (final rule in active) {
+      if (rule.revenueCategoryId != revenueCategoryId) continue;
+      if (!rule.coversDate(businessDate)) continue;
+      final id = rule.valueBandId;
+      if (id == null || !seen.add(id)) continue;
+      bands.add((
+        id: id,
+        label: rule.valueBandLabel ?? 'Band',
+        floor: rule.valueBandFloor,
+        ceiling: rule.valueBandCeiling,
+      ));
+    }
+
+    bands.sort((a, b) {
+      final byFloor = (a.floor?.paise ?? 0).compareTo(b.floor?.paise ?? 0);
+      return byFloor != 0 ? byFloor : a.label.compareTo(b.label);
+    });
+    return bands;
+  }
 
   /// Every rule that matches [facts] — which must be zero or one for the configuration
   /// to be valid.

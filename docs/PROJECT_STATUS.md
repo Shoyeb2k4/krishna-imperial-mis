@@ -5,7 +5,7 @@ Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
-Last updated: **2026-09-02** — Phase 4 Slice 7 (Phase 3 remains complete)
+Last updated: **2026-09-04** — Phase 4 Slice 8 (Phase 3 remains complete)
 
 > A new session should be able to read this file and know exactly where work stopped.
 > This file — not chat history — is the checkpoint.
@@ -23,7 +23,7 @@ Every gate passed, including the ones that can only be passed by running the rea
 application: the Android package on a device, and the compiled Windows executable, both
 against the real `krishna-mis-dev` project, with the real development identities.
 
-**Phase 4 — Revenue Engine: IMPLEMENTATION UNDER WAY. Slices 1–7 of 14 complete**, together with four corrective audit points closed against Slice 4 (A0 … A3).
+**Phase 4 — Revenue Engine: IMPLEMENTATION UNDER WAY. Slices 1–8 of 14 complete**, together with four corrective audit points closed against Slice 4 (A0 … A3).
 
 The last business blocker closed on 2026-09-01: the project lead confirmed **effective from
 2026-04-01** for all four verified treatments, and authorised implementation.
@@ -41,6 +41,60 @@ Restaurant and Nandbhog hold independent rows and do not reference each other (D
 Banquet has exactly one rule and **no dormant 5% row** (D-091). Room's conditional
 architecture is retained: 5% is today's baseline, not a universal rate compiled into
 anything (D-081).
+
+**Slice 8 — Android revenue entry: complete.** The evening workflow is four taps and a
+number: property → category → amount → Save. It is built on the Slice 7 repository and
+adds no second calculation path, no direct Supabase call from a widget, and no tax
+arithmetic in the interface — every figure in the live breakdown comes from
+`TaxRule.compute`, which is the call the repository makes when it writes and the one
+`app.revenue_compute` is proven equal to. **63 new host tests**, 951 in total.
+
+**The form's shape is read from the configuration, not written in code (D-118).** The
+screen asks the resolved rule set which value bands apply for this category on this
+business date. None gives one plain amount field — which is every verified category today
+— and two give two labelled fields carrying the band identities the operator states. A
+second Room band is therefore a configuration change and a sync, not a release, and that is
+asserted rather than claimed. No threshold is a constant anywhere in the widget layer, and
+nothing compares an amount against a band's bounds (D-094).
+
+**Banquet is never told it contains GST.** The amount label takes the treatment as well as
+the basis (D-097), so an untaxed category reads *"Amount billed to the customer"* and the
+breakdown says **No GST** rather than "GST ₹0" — the first is the statement the
+configuration makes, the second reads like an amount that happened to come out at nothing.
+Proven on the real Android client, not only in a widget test.
+
+**D-112 has a user experience, and it distinguishes three things.** Fresh configuration
+warns about nothing. Expired configuration refuses new sales and offers a refresh, because
+"connect and try again" is only worth saying when trying again might work. A device clock
+that cannot measure the age says so in its own words. A test asserts that no refusal
+message contains `KM0`, `D-112`, `snapshot`, `SQL`, an exception name or a table name.
+
+**Three defects the surface exposed, none of them visible below it (D-119).** An infinite
+rebuild loop, found as a `pumpAndSettle` timeout rather than by reading — on a phone it
+would have presented as heat and a flickering form. A five-pixel overflow on a 430pt screen
+in the conflict state, which is the one an operator most needs to read, and which a
+screenshot would have shown as correct because the money still fitted. And a screen that
+called `Navigator.pop` unconditionally, which is true in production and asserts the moment
+the page is not pushed.
+
+**And one duplicated rule removed rather than kept in step.** `RevenueRepository` mapped
+outbox status to a user-visible state with its own `switch`, and the copy had already
+drifted — it called a `blocked` queue a failure where the canonical
+`OutboxStatus.userVisibleState` calls it pending, because a queue paused on an
+authentication problem has not failed at anything. Two surfaces describing one entry
+differently is not a risk worth carrying for a `switch` statement.
+
+**Real Android acceptance, on the emulator against `krishna-mis-dev`.** All four verified
+categories recorded through the shipped screen and controller, synced, and given distinct
+`KI-REV-…` numbers at exactly the parity-vector paise; Banquet's label and its **No GST**
+line proven on the device; and a sale recorded with the transport offline, shown as not
+yet synced, pushed once with no number invented, then reconciled to a single canonical row
+on reconnect. Fixtures reversed by void; the verified four-rule baseline verified pristine
+with zero bands, subtypes and statuses.
+
+**Slice 8 ships no Windows revenue ledger, no edit or void surface, no attachment control
+and no reporting.** Those are Slices 9 to 12, and a test asserts the entry surface does not
+grow into them.
 
 **Slice 7 — revenue create workflow: complete.** Draft → eligibility → deterministic
 local resolution → one atomic write → outbox → `revenue_create` → reconciliation, working
@@ -557,9 +611,9 @@ Blocked.**
 
 | Item | Status | Evidence |
 |---|---|---|
-| `dart format --set-exit-if-changed` | **Tested** | clean (159 files) |
+| `dart format --set-exit-if-changed` | **Tested** | clean (171 files) |
 | `flutter analyze` | **Tested** | **No issues found** |
-| Host test suite | **Tested** | **888 tests, all passing** |
+| Host test suite | **Tested** | **951 tests, all passing** |
 | Secret scan — tree and git history | **Tested** | clean; the scan proves its own controls on every run (D-069) |
 | Secret scan — rebuilt clean binaries | **Tested** | tree, git history and built artefacts all clean, with the scanner's controls passing |
 | Migration audit (search_path, API surface, policy boundary) | **Tested** | 14 host tests |
@@ -573,6 +627,10 @@ Blocked.**
 | Real revenue configuration sync against `krishna-mis-dev` | **Tested** | the four verified rules with `input_basis`, 0 bands / 0 subtypes / 0 statuses, both units marked complete |
 | Offline resolution after a real sync, in a fresh process | **Tested** | Restaurant, Nandbhog, Room and Banquet resolved to exact paise with no network call made |
 | Revenue create — eligibility, atomic write, refusals, D-112 | **Tested** | 47 host tests, incl. the 24-hour boundary, backwards-clock fail-closed and rollback |
+| Android revenue draft model — scope, filtering, cascade, preview | **Tested** | 36 host tests, incl. the two-band form shape and the untaxed label |
+| Android revenue surfaces — entry, breakdown, recent list | **Tested** | 27 widget tests against the real repository and providers |
+| Android revenue acceptance on the emulator, real backend | **Tested** | 3 phases: four categories numbered, the Banquet label, offline → reconnect |
+| Revenue acceptance fixture reversal | **Tested** | voided through the real API; baseline verified pristine (4 rules, 0 bands, 0 subtypes, 0 statuses) |
 | Revenue transport — idempotency, response loss, restart, retry classification | **Tested** | 18 host tests against a fake server that loses a response after committing |
 | Live revenue create against `krishna-mis-dev` | **Tested** | 4 categories through the real repository and worker; replay returns the same KI-REV number; KM030 refused |
 | Repository ↔ server migration integrity (D-056) | **Tested** | live `drift` phase |
@@ -618,7 +676,7 @@ Blocked.**
 
 | Suite | Count | Result |
 |---|---|---|
-| Host (`flutter test`) | **888** | all passing |
+| Host (`flutter test`) | **951** | all passing |
 | Live backend against `krishna-mis-dev` (opt-in) | 19 | all passing — re-run in full |
 | Live expense suite against `krishna-mis-dev` (opt-in) | 16 | all passing — **re-run at this checkpoint** |
 | Android Phase 2 device acceptance (real APK) | 19 | all passing |
