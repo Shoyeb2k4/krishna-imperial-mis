@@ -102,6 +102,17 @@ something that never ran — both are committed as they were applied, and each w
 byte-for-byte against `supabase_migrations.schema_migrations.statements` rather than by
 resemblance (D-056).
 
+## Phase 4 corrective — revenue business-date correction governance
+
+| Ledger version | Ledger name | Committed file |
+|---|---|---|
+| 20260905144151 | `revenue_business_date_correction_governance` | `20260905144151_revenue_business_date_correction_governance.sql` |
+
+Found by the bounded parity audit the expense corrective required, and by probe rather than
+by reading: a Manager holding no correction capability moved a sale's business date, with no
+reason and no distinct audit action. Verified byte-for-byte against the applied statements,
+like the two above.
+
 ## The full applied ledger, in order
 
 ```
@@ -167,4 +178,5 @@ resemblance (D-056).
 20260904150814 api_surface_invariant_revenue_update
 20260905141738 expense_business_date_correction
 20260905142059 correction_reason_rejects_all_whitespace
+20260905144151 revenue_business_date_correction_governance
 ```

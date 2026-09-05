@@ -5,7 +5,9 @@ Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
-Last updated: **2026-09-05** — Phase 4 Slice 10 **closed** (Phase 3 remains complete)
+Last updated: **2026-09-05** — Phase 4 Slice 10 closed; the **Phase 3 expense business-date
+corrective is done and accepted**, and the bounded revenue parity audit it required found and
+closed a governance gap of its own (D-136 … D-141). **Slice 11 is not started.**
 
 > A new session should be able to read this file and know exactly where work stopped.
 > This file — not chat history — is the checkpoint.
@@ -572,7 +574,7 @@ domain work is the conditional resolver, and even that is an extension of `TaxRu
 | ~~1~~ | ~~Spec and governance~~ **done** | Spec §8 amended, v1.2, `CLAUDE.md` and five docs, D-092, D-093, this plan | docs consistency, secret scan |
 | 2 | Domain model and resolver | `RevenueEntry` / `RevenueComponent`; `entered_basis`; conditional `TaxRuleSet.resolve(facts)`; discriminator-aware `refusalFor` (D-093); reconciliation | unit tests incl. the five D-093 rows and the refusals |
 | ~~3~~ | ~~Local schema~~ **done** | Drift v11: `revenue_entries`, `revenue_components`, extended rule cache, subtype and premises-status caches | migration test v10→v11, `CacheClassification` completeness |
-| ~~4~~ | ~~Server schema, RLS, RPC boundary~~ **done** | tables, the **replaced** exclusion constraint, `revenue_document` projection, `revenue_create/update/void/correct_business_date`, KI-REV sequence, audit, usage | migration audit, API-surface invariant, allow **and** deny tests |
+| ~~4~~ | ~~Server schema, RLS, RPC boundary~~ **done** | tables, the **replaced** exclusion constraint, `revenue_document` projection, `revenue_create/update/void`, KI-REV sequence, audit, usage | migration audit, API-surface invariant, allow **and** deny tests |
 | 5 | Offline resolution and refusal | resolver over cached config; refuse-and-queue-nothing (D-086) | repository tests |
 | 6 | Sync, outbox, gateway | `RevenueGateway`, `RevenueMutationEndpoint`, `RevenuePull` | idempotency, response-loss, stale-version tests |
 | 7 | Create workflow | atomic local write + outbox in one transaction | rollback-at-each-boundary tests |
@@ -725,7 +727,7 @@ and keeping it *theirs*.
 path is the `expense_document` projection, which withholds the header total from a
 unit-scoped caller because on a two-property bill `total − own share` is the other share.
 Every financial write goes through a reviewed `SECURITY DEFINER` RPC — `expense_create`,
-`expense_update`, `expense_void`, `expense_correct_business_date`, `attachment_register` —
+`expense_update`, `expense_void`, `attachment_register` —
 each re-checking capability, unit scope, period lock, edit window and `base_row_version`
 server-side, and each on the declared API surface the migration invariant asserts in both
 directions (D-044).
@@ -760,13 +762,13 @@ Blocked.**
 |---|---|---|
 | `dart format --set-exit-if-changed` | **Tested** | clean (175 files) |
 | `flutter analyze` | **Tested** | **No issues found** |
-| Host test suite | **Tested** | **1,067 tests, all passing** |
+| Host test suite | **Tested** | **1,088 tests, all passing** (1,067 + 21 for the corrective) |
 | Secret scan — tree and git history | **Tested** | clean; the scan proves its own controls on every run (D-069) |
 | Secret scan — rebuilt clean binaries | **Tested** | tree, git history and built artefacts all clean, with the scanner's controls passing |
 | Migration audit (search_path, API surface, policy boundary) | **Tested** | 14 host tests |
 | Backend schema parity (migrations vs the claims made about them) | **Tested** | 18 host tests |
 | Live backend suite against `krishna-mis-dev` | **Tested** | **19 tests** across 7 phases — **re-run in the documented sequence at this checkpoint**, with the grant fixture restored to baseline afterwards (D-107) |
-| Live expense suite against `krishna-mis-dev` | **Tested** | **16 tests, re-run at this checkpoint**: reconciliation, scoped raw-cache security, period locks, the 7-day boundary, usage semantics |
+| Live expense suite against `krishna-mis-dev` | **Tested** | **30 tests, re-run in full at the corrective checkpoint**: reconciliation, scoped raw-cache security, period locks, the 7-day boundary, usage semantics, and the 14-case business-date correction matrix |
 | Live revenue suite against `krishna-mis-dev` | **Tested** | **27 tests** (13 + 14 for Slice 10), 1 deliberately skipped: the D-095 write-skew positive control, whose lock-bypassing scaffolding was dropped rather than left permanently callable |
 | Live two-client acceptance against `krishna-mis-dev` | **Tested** | **10 tests** — §44, §A3, §D, §E, §F, through the real repositories and workers |
 | Revenue arithmetic parity — Dart, Drift and Postgres | **Tested** | 13 vectors, exact paise, asserted in migration `20260901144002` and read back by the Dart suite (D-105) |
@@ -840,10 +842,10 @@ Blocked.**
 
 | Suite | Count | Result |
 |---|---|---|
-| Host (`flutter test`) | **1,067** | all passing |
-| Live backend against `krishna-mis-dev` (opt-in) | 19 | all passing — re-run in full |
-| Live expense suite against `krishna-mis-dev` (opt-in) | 16 | all passing — **re-run at this checkpoint** |
-| Live revenue boundary suite (opt-in) | 27 | all passing, 1 deliberately skipped |
+| Host (`flutter test`) | **1,088** | all passing |
+| Live backend against `krishna-mis-dev` (opt-in) | 19 | the phases this change touches re-run at the corrective checkpoint (`drift`, `conflict`, and the revenue chain, twice in succession); the four scope phases need administrative grant changes between them and were **not** re-run |
+| Live expense suite against `krishna-mis-dev` (opt-in) | **30** | all passing — re-run in full at the corrective checkpoint |
+| Live revenue boundary suite (opt-in) | **33** | all passing, 1 deliberately skipped |
 | Live two-client acceptance (opt-in) | 10 | all passing |
 | **Slice 10 Android acceptance** (`revenue-edit`, `-edit-banquet`, `-conflict`, `-void`, `-user-switch`) | **5** | **all passing** |
 | **Slice 10 Windows acceptance** (`windows-revenue-edit`, `-void`, `-conflict`) | **3** | **all passing** |
@@ -1082,7 +1084,11 @@ are supplied, Phase 4 has no remaining business blocker.
 
 ## Phase 3 corrective — expense business date and period protection
 
-**Recorded 2026-09-05. Audited, not implemented. Awaiting the project lead's approval.**
+**Recorded 2026-09-05. Audited, then APPROVED and IMPLEMENTED the same day — see
+*Phase 3 corrective — expense business-date and closed-period integrity: DONE* further down,
+and D-136 … D-139. The audit below is left exactly as it was written, because it is the
+evidence the fix was built from, and this file records what was found as well as what was
+done.**
 
 Found while auditing the correction path before extending it for revenue (D-127), and
 deliberately not touched inside a revenue slice: quietly altering the expense write path
@@ -1253,20 +1259,188 @@ declaration that Phase 3 is closed.
 - **The P&L and reporting engines** — Phase 5. Phase 4 defines and populates
   `revenue_period_contributions` and builds no reporting (D-087).
 
+---
+
+## Phase 3 corrective — expense business-date and closed-period integrity: **DONE**
+
+Approved by the project lead as **Option A** — `expense_update` stays the one Expense
+correction contract, and no `expense_correct_business_date` is created merely because stale
+documentation named one. Recorded as D-136 … D-139; the bounded revenue parity audit it
+required is D-140, and three acceptance defects it surfaced are D-141.
+
+### The defect, proven red before anything changed
+
+A probe against the shipped `expense_update` on `krishna-mis-dev`, with no new parameter
+involved:
+
+```
+        contributions BEFORE   {2026-03: 4500000}
+        2026-03 closed for Crystal Canopy
+        expense_update -> business_date 2026-04-10, as the Accountant
+        applied                {status: applied, row_version: 3}
+        refused                null
+        contributions AFTER    {2026-04: 4500000}
+        document AFTER         business_date_source: derived
+        audit actions          [expense_edited (reason null), expense_created]
+```
+
+₹45,000 left a **closed** month through an ordinary edit. All four findings of the audit
+are visible in that one run: the source period unprotected, the move ungated, no reason
+collected, and the provenance still reading `derived`.
+
+The permanent control that replaces it fails **14 of 14** against the unfixed server and
+passes 14 of 14 against the fixed one.
+
+### What the contract is now
+
+| | |
+|---|---|
+| **Authoritative RPC** | `public.expense_update` — ordinary edits *and* business-date corrections |
+| **Date move detected** | server-side, `p_business_date is distinct from e.business_date`; never a client flag |
+| **Source periods** | every `pnl_period_key` in `expense_period_allocations` must be open |
+| **Target periods** | unchanged — inside `app.validate_expense_allocations`, shared with create |
+| **Capability** | `transaction.correct.business_date`, per property the document charges |
+| **Reason** | required on the move branch only, non-blank after **all** whitespace |
+| **Provenance** | `business_date_source = 'corrected'` on that branch and only there |
+| **Audit** | a distinct `expense_business_date_corrected` action, with both dates and the reason |
+| **Unchanged** | edit window under the property's date (D-067), `base_row_version`, `mutation_id` replay, the transaction number |
+
+Closed source → refused. Closed target → refused. Both open → the ordinary checks continue.
+No role and no capability reopens a period; the Owner is refused and the same correction is
+accepted only after a deliberate, reasoned, audited reopen.
+
+### The client surface that exists today
+
+The Expense edit form has always had a business-date row, so this is a change to an existing
+control and not a new screen:
+
+* **new expense** — the date row is editable exactly as before (`manual`, not a correction);
+* **edit, without the capability** — the date is shown and does not open;
+* **edit, with it** — the date opens, and the moment it differs from the one the form was
+  loaded with a reason field appears and Save waits for a non-blank one.
+
+The loaded date is captured once and `copyWith` cannot move it, exactly as `baseRowVersion`
+cannot. The reason travels in the outbox payload, so an authorised correction queued offline
+still carries it when it is delivered.
+
+**The Revenue client offers no business-date control at all**, on either platform, and none
+was built here.
+
+### Verified
+
+| Item | Status | Evidence |
+|---|---|---|
+| `dart format --set-exit-if-changed` | **Tested** | clean, 190 files |
+| `flutter analyze` | **Tested** | **No issues found** |
+| Host suite | **Tested** | **1,088 tests, all passing** (1,067 + 21 new) |
+| Secret scan — tree and git history | **Tested** | clean, with the scanner's own controls passing |
+| Migration audit, incl. the two new invariants | **Tested** | 19 host tests |
+| Live expense suite | **Tested** | **30 tests** (16 + 14 new), all passing |
+| Live revenue boundary suite | **Tested** | **33 tests** (27 + 6 new), 1 deliberately skipped |
+| Live two-client acceptance | **Tested** | 10 tests, all passing |
+| Live `drift` phase — repository ↔ server migration parity (D-056) | **Tested** | every applied migration has a committed file |
+| Live `conflict` phase | **Tested** | 4 tests |
+| Live revenue phase chain (`revenue-sync` → `-offline` → `-create` → `-cleanup`) | **Tested** | run **twice in succession**, green both times |
+| Development fixtures reversed | **Tested** | **0** open expenses created this session remain; 0 open revenue |
+| Verified tax baseline after the run | **Tested** | 4 live rules, 0 bands, 0 subtypes, 0 statuses, 0 closed periods |
+
+### The live matrix, in full
+
+| Case | Result |
+|---|---|
+| Ordinary edit, date unmoved, by Data Entry — no capability, no reason needed | **PASS** |
+| Permitted correction: new date canonical, `corrected`, reason audited, KI-EXP preserved | **PASS** |
+| Date moved without `transaction.correct.business_date` | **PASS** — refused |
+| Blank reason | **PASS** — refused KM008 |
+| Whitespace-only reason (incl. a bare tab) | **PASS** — refused KM008 |
+| **Closed source, open target** | **PASS** — refused KM004, contributions unchanged |
+| Open source, closed target | **PASS** — refused KM004 |
+| Both closed | **PASS** — refused KM004 |
+| Owner does not bypass the period lock, and succeeds after a reopen | **PASS** |
+| The two correction capabilities compose | **PASS** |
+| Stale `base_row_version` | **PASS** — Conflict, nothing applied |
+| Idempotent replay | **PASS** — one version step, one audit row |
+| Response loss, then retry (`ControllableTransport`, D-132) | **PASS** — replayed, same number |
+| Cross-period bill protected on **every** month it contributes to | **PASS** |
+
+The contribution regression is asserted on the **figures**, before and after, not on the RPC
+status: a refusal that still moved the rows would be no protection, and the amounts asserted
+are the ones Phase 5 will aggregate.
+
+### Migration ledger
+
+| Ledger version | Name |
+|---|---|
+| 20260905141738 | `expense_business_date_correction` |
+| 20260905142059 | `correction_reason_rejects_all_whitespace` |
+| 20260905144151 | `revenue_business_date_correction_governance` |
+
+Three versions, three committed files, each verified **byte-for-byte by hash** against
+`supabase_migrations.schema_migrations.statements` rather than by resemblance (D-056). The
+second exists because the first's own live test found a defect **in the fix** — `btrim(text)`
+strips spaces and not tabs — and the applied file is not rewritten to look like something
+that never ran.
+
+---
+
+## Phase 4 corrective — revenue business-date correction governance: **DONE**
+
+The bounded parity audit was run against the shipped `revenue_update`, and **four of the
+seven** requirements were already met and were left alone: both periods checked, tax
+re-resolved against the new date, `KI-REV` preserved, `base_row_version` enforced (D-124).
+
+**Three were missing**, proven by probe rather than by reading. A Manager holding
+`revenue.edit` and no correction capability moved a sale from 2026-09-04 to 2026-09-03:
+`status: updated`, no capability asked for, no reason collected, one `edited` audit row with
+a null reason. Spec §9 and §14 are not scoped to expenses, so the gap is real.
+
+`revenue_update` now detects the move **by date rather than by period key** — 15 June to
+20 June is the ordinary correction and stays inside one period — requires
+`transaction.correct.business_date` for the property, requires a non-blank reason, and
+writes a distinct `business_date_corrected` audit action. **Six new live tests**, including
+the control that the same manager may still correct the *figure*, so the refusal means "the
+capability binds" rather than "nobody can correct anything".
+
+**No `business_date_source` column was added to revenue.** See the open question below.
+
+---
+
+## Open questions for the project lead
+
+**One, and it blocks nothing.** Should a revenue entry record **how its business date was
+arrived at**, the way an expense does?
+
+`expenses.business_date_source ∈ {derived, manual, corrected}` exists and, since this
+corrective, is written on the branch where a date actually moves (D-019). `revenue_entries`
+has no such column and never has. The two binding readings disagree:
+
+* **spec §8.0** enumerates what a revenue entry carries and does **not** include it;
+* **spec §9** says the record notes whether a date was `derived`, `manual` or `corrected`,
+  and is written generally rather than about expenses.
+
+Adding a column to the revenue document because the expense document has one would be
+settling a product question by symmetry, which is exactly what the corrective brief
+forbade — so it was not done, and the audit trail carries the correction meanwhile
+(`business_date_corrected`, with both dates, the actor and the reason). If the answer is
+yes, it is a small migration plus a value written by `revenue_create`; if no, spec §8.0
+should say so explicitly.
+
+**Also recorded, not asked:** `expense_void` and `revenue_void` check their mandatory
+reasons with one-argument `btrim`, so a single tab satisfies both — the same defect D-138
+fixed in the correction path, in two functions outside this corrective's reviewed scope. It
+is reported rather than fixed in passing (D-127).
+
+---
+
 ## Next exact task
 
-**A Phase 3 corrective item, before Slice 11.** The Slice 10 audit found three things about
-the *expense* engine that are recorded and deliberately untouched (D-127), because quietly
-altering the expense write path inside a revenue slice is how a reviewed scope stops being
-reviewable. One of them is a financial-integrity gap rather than a documentation one:
-`expense_update` checks the target period and not the source, so an expense can be moved
-**out** of a closed month, restating that month's totals. `revenue_update` checks both.
+**Slice 11 — attachments, reusing D-073a unchanged.** The Phase 3 corrective that stood in
+front of it is **done, tested and accepted**; nothing else blocks Slice 11, and it has not
+been started.
 
-The audit and the recommended plan are below under **Phase 3 corrective — expense business
-date and period protection**, and it awaits the project lead's approval before any code is
-written.
-
-After that: Slice 11 (attachments, reusing D-073a unchanged).
+One project-lead decision is open and does **not** block Slice 11: whether a revenue entry
+should record how its business date was arrived at, the way an expense does. See *Open
+questions* below.
 
 ---
 
@@ -1303,9 +1477,10 @@ no Owner or Accountant override — a tax-correctness gate rather than a privile
 Implemented in Slice 7 and tested at the boundary, one second past it, and against a
 backwards device clock.
 
-**One open: approval for the Phase 3 corrective**, set out in full under *Phase 3
-corrective — expense business date and period protection*. Four findings, all evidenced
-against the shipped functions on `krishna-mis-dev`:
+~~**One open: approval for the Phase 3 corrective**~~ **Approved and implemented
+2026-09-05.** All four findings below are closed and proven against `krishna-mis-dev`; the
+evidence is under *Phase 3 corrective — expense business-date and closed-period integrity:
+DONE*, and the reasoning is D-136 … D-139. The four findings, as they were put:
 
 1. **`expense_update` protects the target period and not the source**, so an expense can be
    moved *out* of a closed month and that month's Operating Profit changes with nobody's
@@ -1317,11 +1492,13 @@ against the shipped functions on `krishna-mis-dev`:
    `business_date_source`, which D-019 requires, and collects no reason, which spec §9
    requires.
 
-The recommendation is **one contract**: keep the correction inside `expense_update`, and
+The recommendation was **one contract**: keep the correction inside `expense_update`, and
 make it a first-class act there — both periods checked, a reason required when the date
 actually moves, `business_date_source = 'corrected'`, its own audit action, gated on the
-capability that currently evaluates to nothing — then correct the three documents to
-describe what production does. **Awaiting approval; nothing is implemented.**
+capability that evaluated to nothing — then correct the documents to describe what
+production does. **That is what was approved, and that is what was built.** The one item
+deliberately left open is whether *revenue* should carry the same date provenance, which is
+a product decision and is asked under **Open questions for the project lead** above.
 
 ## Project lead actions required
 

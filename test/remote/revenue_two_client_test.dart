@@ -1005,6 +1005,13 @@ void main() {
             'p_base_row_version': doc['row_version'],
             'p_business_date': date ?? doc['business_date'],
             'p_notes': _marker,
+            // A correction that moves the trading day states why (spec §9), and the
+            // reason is checked before the period locks are. Supplying one here keeps
+            // these cases about the rule each of them is for: without it every dated
+            // correction below would be refused KM008 and would prove nothing about
+            // the period lock or the edit window.
+            if (date != null)
+              'p_correction_reason': '$_marker business-date correction',
             'p_components': [
               {'entered_amount_minor': paise},
             ],

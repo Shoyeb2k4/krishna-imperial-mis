@@ -849,37 +849,38 @@ void main() {
       },
     );
 
-    test(
-      'the transaction number and the identity survive a correction',
-      () async {
-        final id = (await record())['id'] as String;
-        final before = await document(id);
-        expect(before['txn_number'], startsWith('KI-REV-'));
+    test('the transaction number and the identity survive a correction', () async {
+      final id = (await record())['id'] as String;
+      final before = await document(id);
+      expect(before['txn_number'], startsWith('KI-REV-'));
 
-        await client.rpc<dynamic>(
-          'revenue_update',
-          params: {
-            'p_id': id,
-            'p_base_row_version': before['row_version'],
-            'p_business_date': '2026-06-16',
-            'p_notes': marker,
-            'p_components': [
-              {'entered_amount_minor': 12000000},
-            ],
-            'p_mutation_id': const Uuid().v4(),
-          },
-        );
+      await client.rpc<dynamic>(
+        'revenue_update',
+        params: {
+          'p_id': id,
+          'p_base_row_version': before['row_version'],
+          'p_business_date': '2026-06-16',
+          'p_notes': marker,
+          // A moved business date is a correction, and a correction states why
+          // (spec §9). Before the Phase 4 corrective this call was accepted with no
+          // reason and no capability at all.
+          'p_correction_reason': 'Recorded against the wrong trading day',
+          'p_components': [
+            {'entered_amount_minor': 12000000},
+          ],
+          'p_mutation_id': const Uuid().v4(),
+        },
+      );
 
-        final after = await document(id);
-        expect(after['txn_number'], before['txn_number']);
-        expect(after['id'], before['id']);
-        expect(after['financial_year'], before['financial_year']);
-        // The version advanced, which is what makes a stale second attempt a conflict.
-        expect(after['row_version'], greaterThan(before['row_version'] as int));
-        expect(after['business_date'], '2026-06-16');
-        expect(after['pnl_period_key'], '2026-06');
-      },
-    );
+      final after = await document(id);
+      expect(after['txn_number'], before['txn_number']);
+      expect(after['id'], before['id']);
+      expect(after['financial_year'], before['financial_year']);
+      // The version advanced, which is what makes a stale second attempt a conflict.
+      expect(after['row_version'], greaterThan(before['row_version'] as int));
+      expect(after['business_date'], '2026-06-16');
+      expect(after['pnl_period_key'], '2026-06');
+    });
 
     test(
       'a stale correction is refused as a conflict, and applies nothing',
@@ -1303,5 +1304,263 @@ void main() {
         expect(after['revenue_category_id'], restaurant);
       },
     );
+
+    // ── The Phase 4 corrective: moving a sale's trading day is a correction ──
+    //
+    // The bounded parity audit the expense corrective required found this, and found it
+    // by probe rather than by reading the SQL: a **Manager** — holding `revenue.edit` and
+    // not `transaction.correct.business_date` — moved a sale from one trading day to
+    // another, and the call returned `status: updated` with no capability asked for, no
+    // reason collected, and one audit row reading `edited` with a null reason.
+    //
+    // Four of the seven parity requirements were already met (both periods, tax
+    // re-resolution, KI-REV preserved, concurrency) and are not re-tested here — the
+    // group above covers them. These are the three that were missing.
+    group('a moved business date is a correction (spec §9)', () {
+      late SupabaseClient manager;
+
+      setUp(() async {
+        manager = await sessionFor('ccr.manager@example.com');
+      });
+
+      /// A sale the manager recorded themselves, inside the edit window, so neither
+      /// ownership nor the age rule is what refuses anything below.
+      Future<Map<String, dynamic>> managerSale() async {
+        final id = const Uuid().v7();
+        final ist = DateTime.now().toUtc().add(
+          const Duration(hours: 5, minutes: 30),
+        );
+        final yesterday = DateTime.utc(
+          ist.year,
+          ist.month,
+          ist.day,
+        ).subtract(const Duration(days: 1));
+        await manager.rpc<dynamic>(
+          'revenue_create',
+          params: {
+            'p_id': id,
+            'p_business_unit_id': ccrUnit,
+            'p_revenue_category_id': restaurant,
+            'p_business_date': yesterday.toIso8601String().substring(0, 10),
+            'p_notes': marker,
+            'p_components': [
+              {'entered_amount_minor': 10000000},
+            ],
+            'p_mutation_id': const Uuid().v4(),
+          },
+        );
+        created.add(id);
+        return await manager
+            .from('revenue_document')
+            .select()
+            .eq('id', id)
+            .single();
+      }
+
+      /// The same sale, asked to move one day earlier.
+      Future<void> moveOneDay(
+        SupabaseClient as,
+        Map<String, dynamic> doc, {
+        String? reason,
+      }) async {
+        final from = DateTime.parse(doc['business_date'] as String);
+        await as.rpc<dynamic>(
+          'revenue_update',
+          params: {
+            'p_id': doc['id'],
+            'p_base_row_version': doc['row_version'],
+            'p_business_date': from
+                .subtract(const Duration(days: 1))
+                .toIso8601String()
+                .substring(0, 10),
+            'p_notes': marker,
+            'p_correction_reason': ?reason,
+            'p_components': [
+              {'entered_amount_minor': 10000000},
+            ],
+            'p_mutation_id': const Uuid().v4(),
+          },
+        );
+      }
+
+      test('a manager cannot move a trading day at all', () async {
+        final doc = await managerSale();
+
+        await expectLater(
+          moveOneDay(manager, doc, reason: 'I made a mistake'),
+          throwsA(
+            predicate(
+              (e) => refusalOf(e) == 'KM001' || refusalOf(e) == 'KM002',
+              'refused for the correction capability',
+            ),
+          ),
+        );
+
+        final after = await document(doc['id'] as String);
+        expect(
+          after['business_date'],
+          doc['business_date'],
+          reason: 'the trading day a sale is reported on did not move',
+        );
+        expect(after['row_version'], doc['row_version']);
+      });
+
+      test('the same manager may still correct the figure', () async {
+        // The control that makes the refusal above mean something. Without it, "the
+        // capability binds" and "the manager can never correct anything" look the same.
+        final doc = await managerSale();
+        await manager.rpc<dynamic>(
+          'revenue_update',
+          params: {
+            'p_id': doc['id'],
+            'p_base_row_version': doc['row_version'],
+            'p_business_date': doc['business_date'],
+            'p_notes': marker,
+            'p_components': [
+              {'entered_amount_minor': 12000000},
+            ],
+            'p_mutation_id': const Uuid().v4(),
+          },
+        );
+        expect(
+          (await document(doc['id'] as String))['gross_amount_minor'],
+          12000000,
+        );
+      });
+
+      test('a holder of the capability still needs a reason', () async {
+        final doc = await managerSale();
+        await signInAs('accountant@example.com');
+
+        for (final blank in ['', '   ', '\t', '\n ']) {
+          await expectLater(
+            moveOneDay(client, doc, reason: blank),
+            throwsA(
+              predicate((e) => refusalOf(e) == 'KM008', 'reason required'),
+            ),
+            reason: 'blank is not a reason, whichever whitespace it is made of',
+          );
+        }
+
+        await expectLater(
+          moveOneDay(client, doc),
+          throwsA(predicate((e) => refusalOf(e) == 'KM008', 'reason required')),
+          reason: 'and neither is omitting it',
+        );
+
+        final after = await document(doc['id'] as String);
+        expect(after['business_date'], doc['business_date']);
+        expect(after['row_version'], doc['row_version']);
+      });
+
+      test(
+        'a permitted correction succeeds and is audited as its own act',
+        () async {
+          final doc = await managerSale();
+          await signInAs('accountant@example.com');
+          await moveOneDay(
+            client,
+            doc,
+            reason: 'Rung up after midnight against the wrong trading day',
+          );
+
+          await signInAs('giridhar@hki.com');
+          final after = await document(doc['id'] as String);
+          expect(
+            after['business_date'],
+            isNot(doc['business_date']),
+            reason: 'the correction was applied',
+          );
+          expect(
+            after['txn_number'],
+            doc['txn_number'],
+            reason:
+                'the number belongs to the identity and survives a correction',
+          );
+
+          final audit = await client
+              .from('audit_logs')
+              .select('action,reason,before_state,after_state')
+              .eq('entity_id', doc['id'] as String)
+              .eq('action', 'business_date_corrected');
+          expect(
+            audit,
+            hasLength(1),
+            reason:
+                'spec §14 lists business date corrected among the audited actions, '
+                'and a generic edited row does not answer which days were moved',
+          );
+          expect(
+            audit.single['reason'],
+            'Rung up after midnight against the wrong trading day',
+          );
+          expect(
+            (audit.single['before_state'] as Map)['business_date'],
+            doc['business_date'],
+          );
+        },
+      );
+
+      test('an ordinary correction writes no correction audit row', () async {
+        // The gate binds on the branch it is for and on no other: a figure corrected on
+        // the same trading day is not a business-date correction and must not look like
+        // one in the audit trail.
+        final doc = await managerSale();
+        await manager.rpc<dynamic>(
+          'revenue_update',
+          params: {
+            'p_id': doc['id'],
+            'p_base_row_version': doc['row_version'],
+            'p_business_date': doc['business_date'],
+            'p_notes': marker,
+            'p_components': [
+              {'entered_amount_minor': 11000000},
+            ],
+            'p_mutation_id': const Uuid().v4(),
+          },
+        );
+
+        await signInAs('giridhar@hki.com');
+        final audit = await client
+            .from('audit_logs')
+            .select('action')
+            .eq('entity_id', doc['id'] as String)
+            .eq('action', 'business_date_corrected');
+        expect(audit, isEmpty);
+      });
+
+      test('a correction within one month is still a correction', () async {
+        // The reason the detection compares **dates** and not period keys: 15 June to
+        // 20 June is the ordinary case, and a guard keyed on `pnl_period_key` would have
+        // seen no change at all and let it through ungated.
+        final doc = await managerSale();
+        await signInAs('accountant@example.com');
+        final from = DateTime.parse(doc['business_date'] as String);
+        final sameMonth = DateTime.utc(from.year, from.month, 1)
+            .add(Duration(days: from.day == 3 ? 5 : 2))
+            .toIso8601String()
+            .substring(0, 10);
+
+        await expectLater(
+          client.rpc<dynamic>(
+            'revenue_update',
+            params: {
+              'p_id': doc['id'],
+              'p_base_row_version': doc['row_version'],
+              'p_business_date': sameMonth,
+              'p_notes': marker,
+              'p_components': [
+                {'entered_amount_minor': 10000000},
+              ],
+              'p_mutation_id': const Uuid().v4(),
+            },
+          ),
+          throwsA(predicate((e) => refusalOf(e) == 'KM008', 'reason required')),
+          reason:
+              'the period key is unchanged, and the trading day is not — the '
+              'correction rules follow the date',
+        );
+      });
+    });
   });
 }

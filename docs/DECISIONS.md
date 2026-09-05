@@ -4529,3 +4529,89 @@ policy expressions only**, which is what "evaluated" means, and the sabotage fai
 That is the fourth time this project has had to find a control by expecting red and getting
 green (D-071, D-074, D-094, and now this). The lesson does not seem to generalise on its
 own, so it is written down again: **a check is not a check until it has been seen to fail.**
+
+---
+
+# Phase 4 corrective — revenue business-date correction governance (2026-09-05)
+
+## D-140 — The revenue parity audit, and the three things it actually found
+**Date:** 2026-09-05 · **Status:** Accepted (project-lead decision) — **not a mirror**
+
+The brief was explicit: do not mirror the expense contract into `revenue_update` on the
+strength of symmetry; prove the current behaviour first. Audited point by point against the
+shipped function, four of the seven requirements were **already met** and are untouched:
+
+| | |
+|---|---|
+| source **and** target period checked | already correct (D-124) |
+| tax re-resolved against the **new** date | already correct (D-124) |
+| `KI-REV` preserved across a correction | already correct |
+| `base_row_version` concurrency | already correct |
+
+Three were missing, and a probe proved it rather than a reading of the SQL. A **Manager** —
+holding `revenue.edit` and not `transaction.correct.business_date` — recorded a sale and
+then moved its business date from 2026-09-04 to 2026-09-03:
+
+```
+        update applied   {status: updated, row_version: 2}
+        update refused   null
+        audit actions    [{action: edited, reason: null}, {action: created, reason: null}]
+```
+
+No capability asked for, no reason collected, no distinct audit action. Spec §9 requires a
+business-date correction to be "subject to permission" and "audited with before and after
+values, actor, timestamp **and reason**", and spec §14 lists **business date corrected**
+among the audited actions. Neither section is scoped to expenses, and a revenue entry
+carries a business date like any other financial row. So this is a governance gap in the
+revenue engine rather than an argument from symmetry, and it is a **Phase 4 corrective
+defect found after Slice 10 closure** — a separate commit, with Slice 10's history left
+exactly as it is.
+
+**The detection compares dates, not period keys.** `revenue_update` already computed a
+target period key, and a guard keyed on that would have seen no change at all when a sale
+moved from 15 June to 20 June — which is what most real corrections look like. Tested
+explicitly.
+
+**No `business_date_source` is added to revenue.** The expense document has one (D-019);
+`revenue_entries` never has, and spec §8.0 enumerates what a revenue entry carries without
+including it, while spec §9 says the record notes how its date was arrived at. Those two
+readings disagree, and settling a product question by copying the expense schema is exactly
+what the brief forbade. **Raised for the project lead, not decided here** — see the open
+question in `PROJECT_STATUS.md`.
+
+**There is no revenue business-date control in the client**, and none is built here: the
+Android and Windows revenue surfaces show the trading day and do not offer to change it.
+The server boundary is corrected anyway, because `revenue_update` takes the parameter and
+the boundary is where authority lives (D-037). The repository carries a correction reason
+so the surface can supply one the day it exists, and so an authorised correction queued
+offline delivers its reason with it.
+
+## D-141 — Three acceptance assertions that could only pass on a fresh database
+**Date:** 2026-09-05 · **Status:** Accepted — found by running the regression set, not by
+reading it
+
+The Phase 3 regression run surfaced three defects in the *suites*, all of the family D-074
+records: **a test whose fixture is recreated every run cannot see a defect that needs
+history.** The Windows machine's persistent database taught that lesson once; here it was
+`build/live_test.sqlite`, which the phased live suite keeps between runs and across
+identities.
+
+1. **The expense fixture teardown voided at a hard-coded `base_row_version: 2`.** Every
+   document the new correction tests create sits at v3, so the teardown would have silently
+   failed to reverse exactly the fixtures this work added — reporting nothing. It now reads
+   the version first. Verified: **zero** open expenses created during this session remain.
+2. **A Slice 6 phase asserted that every revenue configuration snapshot is `complete`**,
+   over *every user's* rows. Completeness is keyed (user, unit) since D-108, and a `revoked`
+   snapshot belonging to a manager whose scope an earlier phase deliberately withdrew is the
+   correct record of that withdrawal. It now asserts about the signed-in user, which is what
+   the phase established.
+3. **The offline-resolution phase resolved as `rows.first.userId`** — the Owner on a fresh
+   database, and on an accumulated one a manager with a stale snapshot, so a device whose
+   configuration had just arrived intact reported `configurationUnavailable`. It now picks
+   the most recently confirmed complete snapshot **for the property being resolved**. And
+   its sibling assertion, "no revenue was created doing it", was `isEmpty` — true only until
+   the Slice 7 create phase wrote revenue into the same file — so it now counts across the
+   phase, which is what the sentence actually claims (D-076).
+
+All four phases were then run **twice in succession**, in the documented order, and passed
+both times. A phase that can only pass once is not a regression test.

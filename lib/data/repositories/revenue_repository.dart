@@ -647,9 +647,19 @@ class RevenueRepository {
   /// The number belongs to the document's identity and survives every correction; the
   /// other two are not editable, because an edit that moved revenue between properties
   /// would be a scope transfer wearing a correction's clothes.
-  static Map<String, Object?> updatePayload(RevenueEntry entry) => {
+  ///
+  /// [correctionReason] is sent only when the correction moves the business date, which
+  /// the server decides for itself from canonical state (spec §9). It rides in the
+  /// durable payload, so an authorised correction queued offline still carries its reason
+  /// when it is finally delivered.
+  static Map<String, Object?> updatePayload(
+    RevenueEntry entry, {
+    String? correctionReason,
+  }) => {
     'p_id': entry.id,
     'p_business_date': entry.businessDate.iso,
+    if (correctionReason != null && correctionReason.trim().isNotEmpty)
+      'p_correction_reason': correctionReason.trim(),
     'p_entry_kind': entry.entryKind.wireName,
     'p_source_reference': entry.sourceReference,
     'p_notes': entry.notes,
@@ -710,6 +720,7 @@ class RevenueRepository {
     required int baseRowVersion,
     required String mutationId,
     required DateTime now,
+    String? correctionReason,
   }) async {
     if (resolutions.length != draft.components.length) {
       throw ArgumentError(
@@ -819,7 +830,9 @@ class RevenueRepository {
                 entityType: revenueEntityType,
                 entityId: entry.id,
                 op: MutationOp.update.name,
-                payload: jsonEncode(updatePayload(entry)),
+                payload: jsonEncode(
+                  updatePayload(entry, correctionReason: correctionReason),
+                ),
                 // Captured when the form was opened, and never re-based here. A
                 // background pull that moved the row must make this a conflict rather
                 // than silently retarget somebody's correction (D-021, §4).
@@ -856,7 +869,9 @@ class RevenueRepository {
           SyncOutboxCompanion(
             payload: Value(
               jsonEncode(
-                isCreate ? createPayload(entry) : updatePayload(entry),
+                isCreate
+                    ? createPayload(entry)
+                    : updatePayload(entry, correctionReason: correctionReason),
               ),
             ),
             // A rewritten intent is due again immediately: the operator has just

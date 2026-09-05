@@ -525,28 +525,44 @@ void main() {
         }
       });
 
-      test(
-        'the optional datasets arrive empty, and that is a synchronised answer',
-        () async {
-          // Acceptance facts for the current baseline, not runtime assumptions: the code
-          // must treat any count as valid, and it is this table's job to say what the
-          // count happens to be today.
-          expect(await db.select(db.revenueValueBands).get(), isEmpty);
-          expect(await db.select(db.revenueSupplySubtypes).get(), isEmpty);
-          expect(await db.select(db.businessUnitTaxStatuses).get(), isEmpty);
+      test('the optional datasets arrive empty, and that is a synchronised answer', () async {
+        // Acceptance facts for the current baseline, not runtime assumptions: the code
+        // must treat any count as valid, and it is this table's job to say what the
+        // count happens to be today.
+        expect(await db.select(db.revenueValueBands).get(), isEmpty);
+        expect(await db.select(db.revenueSupplySubtypes).get(), isEmpty);
+        expect(await db.select(db.businessUnitTaxStatuses).get(), isEmpty);
 
-          final snapshots = await db.select(db.revenueConfigSnapshots).get();
-          expect(snapshots, isNotEmpty);
-          for (final snapshot in snapshots) {
-            expect(snapshot.status, 'complete');
-            expect(
-              RevenueConfigDataset.decode(snapshot.datasets),
-              RevenueConfigDataset.all,
-              reason: 'all four datasets, or the claim is not completeness',
-            );
-          }
-        },
-      );
+        // Scoped to the signed-in user, which is what this phase established.
+        //
+        // Completeness is per user and per business unit (D-108), and this database
+        // persists across runs and across identities. Asserting over *every* row made
+        // the phase assert something it had not done: a `revoked` snapshot belonging to
+        // a manager whose scope an earlier phase deliberately withdrew is the correct
+        // record of that withdrawal, and reading it here failed a phase that had
+        // synchronised perfectly.
+        //
+        // A test whose fixture is recreated every run cannot see this; one that keeps
+        // its database can, and does — the asymmetry D-074 records, arriving in an
+        // assertion rather than in the product.
+        final actor = client.auth.currentUser!.id;
+        final snapshots = (await db.select(db.revenueConfigSnapshots).get())
+            .where((s) => s.userId == actor)
+            .toList();
+        expect(
+          snapshots,
+          isNotEmpty,
+          reason: 'the signed-in user synchronised something',
+        );
+        for (final snapshot in snapshots) {
+          expect(snapshot.status, 'complete');
+          expect(
+            RevenueConfigDataset.decode(snapshot.datasets),
+            RevenueConfigDataset.all,
+            reason: 'all four datasets, or the claim is not completeness',
+          );
+        }
+      });
     },
   );
 
@@ -554,60 +570,128 @@ void main() {
     'revenue-sync-offline · resolution with the transport gone',
     skip: phase != 'revenue-sync-offline',
     () {
-      test(
-        'all four categories resolve from the cache, exactly in paise',
-        () async {
-          // No sign-in and no sync: this phase reads what the previous one left on disk,
-          // which is the whole point. If the cached configuration did not survive, nothing
-          // below can pass.
-          final repository = RevenueTaxRepository(db);
-          final categories = {
-            for (final c in await db.select(db.revenueCategories).get())
-              c.code: (id: c.id, unit: c.businessUnitId),
-          };
-          expect(
-            categories.keys,
-            containsAll(['RESTAURANT', 'ROOM', 'BANQUET']),
+      test('all four categories resolve from the cache, exactly in paise', () async {
+        // No sign-in and no sync: this phase reads what the previous one left on disk,
+        // which is the whole point. If the cached configuration did not survive, nothing
+        // below can pass.
+        final repository = RevenueTaxRepository(db);
+        final categories = {
+          for (final c in await db.select(db.revenueCategories).get())
+            c.code: (id: c.id, unit: c.businessUnitId),
+        };
+        expect(categories.keys, containsAll(['RESTAURANT', 'ROOM', 'BANQUET']));
+
+        // The user whose configuration is complete **for the property being resolved**,
+        // rather than whichever snapshot row happened to be first.
+        //
+        // Completeness is keyed (user, unit) since D-108, and this database persists
+        // across runs and across identities: `rows.first` was the Owner on a fresh
+        // database and, on an accumulated one, a manager whose scope an earlier phase
+        // deliberately revoked — so the phase resolved as somebody with no
+        // configuration and reported `configurationUnavailable` for a device that had
+        // just synchronised correctly. `firstWhere` throws loudly if no such user
+        // exists, which is the failure this phase should have.
+        final snapshots = await db.select(db.revenueConfigSnapshots).get();
+        String actorWithConfigFor(String unitId) {
+          // The **most recently confirmed** complete snapshot for this property, which
+          // is the user the previous phase synchronised as. Taking any complete one
+          // still picked wrongly: this database also holds a stale complete snapshot for
+          // a manager who no longer has that property, left by an earlier multi-scope
+          // run, and resolving as them reported `configurationUnavailable` for a device
+          // whose configuration had just arrived intact.
+          final candidates =
+              snapshots
+                  .where(
+                    (s) => s.businessUnitId == unitId && s.status == 'complete',
+                  )
+                  .toList()
+                // A snapshot with no confirmed time sorts last: it cannot be the one the
+                // previous phase just wrote.
+                ..sort(
+                  (a, b) => (b.confirmedAt ?? DateTime.utc(1970)).compareTo(
+                    a.confirmedAt ?? DateTime.utc(1970),
+                  ),
+                );
+          if (candidates.isEmpty) {
+            throw StateError(
+              'no complete revenue configuration is cached for unit $unitId — '
+              'run the revenue-sync phase first',
+            );
+          }
+          return candidates.first.userId;
+        }
+
+        for (final expected in const [
+          ('RESTAURANT', 10000000, 476190, 9523810),
+          ('NANDBHOG', 10000000, 476190, 9523810),
+          ('ROOM', 6500000, 309524, 6190476),
+          ('BANQUET', 4034300, 0, 4034300),
+        ]) {
+          final category = categories[expected.$1]!;
+          final outcome = await repository.resolve(
+            RevenueTaxFacts(
+              revenueCategoryId: category.id,
+              businessDate: BusinessDate.of(2026, 6, 15),
+            ),
+            userId: actorWithConfigFor(category.unit),
+            businessUnitId: category.unit,
           );
 
-          final owner = await db
-              .select(db.revenueConfigSnapshots)
-              .get()
-              .then((rows) => rows.first.userId);
-
-          for (final expected in const [
-            ('RESTAURANT', 10000000, 476190, 9523810),
-            ('NANDBHOG', 10000000, 476190, 9523810),
-            ('ROOM', 6500000, 309524, 6190476),
-            ('BANQUET', 4034300, 0, 4034300),
-          ]) {
-            final category = categories[expected.$1]!;
-            final outcome = await repository.resolve(
-              RevenueTaxFacts(
-                revenueCategoryId: category.id,
-                businessDate: BusinessDate.of(2026, 6, 15),
-              ),
-              userId: owner,
-              businessUnitId: category.unit,
-            );
-
-            expect(outcome, isA<RevenueTaxResolved>(), reason: expected.$1);
-            final computed = (outcome as RevenueTaxResolved).rule.compute(
-              Money.fromPaise(expected.$2),
-            );
-            expect(computed.gross.paise, expected.$2, reason: expected.$1);
-            expect(computed.tax.paise, expected.$3, reason: expected.$1);
-            expect(computed.net.paise, expected.$4, reason: expected.$1);
-            expect(computed.reconciles, isTrue, reason: expected.$1);
-          }
-        },
-      );
+          expect(outcome, isA<RevenueTaxResolved>(), reason: expected.$1);
+          final computed = (outcome as RevenueTaxResolved).rule.compute(
+            Money.fromPaise(expected.$2),
+          );
+          expect(computed.gross.paise, expected.$2, reason: expected.$1);
+          expect(computed.tax.paise, expected.$3, reason: expected.$1);
+          expect(computed.net.paise, expected.$4, reason: expected.$1);
+          expect(computed.reconciles, isTrue, reason: expected.$1);
+        }
+      });
 
       test('and no revenue was created doing it', () async {
         // Slice 6 synchronises configuration. It does not record revenue, and asserting
         // that is cheaper than discovering later that something did.
-        expect(await db.select(db.revenueEntries).get(), isEmpty);
-        expect(await db.select(db.revenueComponents).get(), isEmpty);
+        //
+        // Counted across this phase rather than asserted to be zero. `isEmpty` was true
+        // only while this persistent database had never run the Slice 7 create phase,
+        // which writes revenue into the very same file — so the assertion passed once and
+        // then reported another phase's fixtures as this phase's defect. The claim
+        // actually being made is "resolving created nothing", and that is what is now
+        // measured (D-076: a check that can only pass once is not a regression test).
+        final entriesBefore = (await db.select(db.revenueEntries).get()).length;
+        final componentsBefore =
+            (await db.select(db.revenueComponents).get()).length;
+
+        final repository = RevenueTaxRepository(db);
+        final snapshots = await db.select(db.revenueConfigSnapshots).get();
+        for (final category in await db.select(db.revenueCategories).get()) {
+          final actor = snapshots
+              .where(
+                (s) =>
+                    s.businessUnitId == category.businessUnitId &&
+                    s.status == 'complete',
+              )
+              .map((s) => s.userId)
+              .firstOrNull;
+          if (actor == null) continue;
+          await repository.resolve(
+            RevenueTaxFacts(
+              revenueCategoryId: category.id,
+              businessDate: BusinessDate.of(2026, 6, 15),
+            ),
+            userId: actor,
+            businessUnitId: category.businessUnitId,
+          );
+        }
+
+        expect(
+          await db.select(db.revenueEntries).get(),
+          hasLength(entriesBefore),
+        );
+        expect(
+          await db.select(db.revenueComponents).get(),
+          hasLength(componentsBefore),
+        );
       });
     },
   );
