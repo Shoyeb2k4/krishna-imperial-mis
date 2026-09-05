@@ -129,6 +129,24 @@ voiding two development fixtures with one before anything was changed. The secon
 Both verified byte-for-byte against `supabase_migrations.schema_migrations.statements`
 rather than by resemblance (D-056).
 
+## Final pre-Slice-11 corrective — the last mandatory financial reason
+
+| Ledger version | Ledger name | Committed file |
+|---|---|---|
+| 20260905202325 | `period_reopen_uses_canonical_reason` | `20260905202325_period_reopen_uses_canonical_reason.sql` |
+
+The fifth and last mandatory financial reason to reach the canonical all-whitespace rule.
+D-142 fixed the two voids and recorded this one as outside its approved scope; proven by
+reopening a genuinely closed period with a lone tab before anything was changed.
+
+It also makes the reason constraints **validate where the data allows**. All three are
+installed `NOT VALID` and then validated by a block that counts violating rows, so a clean
+environment ends up fully validated while `krishna-mis-dev` — which holds one immutable
+probe row per table — stays unvalidated and says why. No environment is named, no fixture
+id is hardcoded, and no financial history is rewritten.
+
+Verified byte-for-byte against `supabase_migrations.schema_migrations.statements` (D-056).
+
 ## The full applied ledger, in order
 
 ```
@@ -197,4 +215,5 @@ rather than by resemblance (D-056).
 20260905144151 revenue_business_date_correction_governance
 20260905185903 financial_reasons_reject_all_whitespace
 20260905190229 revenue_business_date_provenance
+20260905202325 period_reopen_uses_canonical_reason
 ```

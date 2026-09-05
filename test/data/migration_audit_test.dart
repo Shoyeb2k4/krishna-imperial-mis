@@ -430,6 +430,119 @@ void main() {
       );
     });
 
+    test('every mandatory financial reason uses the canonical rule', () {
+      // A mandatory financial reason is any operation that can refuse for a missing one.
+      // There are five — expense void, revenue void, the two business-date corrections,
+      // and the period reopen — and every one of them must decide it the same way:
+      // all whitespace stripped, not just spaces.
+      //
+      // One-argument `btrim`/`trim` strips spaces alone. That let a lone tab void an
+      // expense, void a sale, and reopen a closed accounting period, each proven against
+      // the real server (D-142, D-145). The rule is now `app.stated_reason`.
+      //
+      // Written as a **search**, not a list. A list is something somebody has to remember
+      // to extend, and the sixth mandatory reason is exactly the one that would arrive
+      // without anybody remembering.
+      //
+      // Only the **latest** definition of each function counts. Migrations are immutable
+      // history: 0029's `expense_void` genuinely contained the weak form, and it was
+      // correct when it ran.
+      final all = _migrations();
+      final latest = <String, String>{};
+      final pattern = RegExp(
+        r'create or replace function\s+(public|app)\.(\w+)[\s\S]*?\$\$;',
+      );
+      for (final m in all) {
+        for (final match in pattern.allMatches(m.sql)) {
+          latest['${match.group(1)}.${match.group(2)}'] = match.group(0)!;
+        }
+      }
+      expect(
+        latest.length,
+        greaterThan(20),
+        reason:
+            'the function-body extraction found almost nothing — a guard that reads '
+            'an empty haystack reports success',
+      );
+
+      final mandatory = {
+        for (final entry in latest.entries)
+          if (entry.value.contains('reason_required')) entry.key: entry.value,
+      };
+      expect(
+        mandatory.keys,
+        containsAll(const [
+          'public.expense_void',
+          'public.revenue_void',
+          'public.expense_update',
+          'public.revenue_update',
+          'public.period_reopen',
+        ]),
+        reason:
+            'the five known mandatory financial reasons must all still be found — if '
+            'one has gone missing the search is broken, not the schema',
+      );
+
+      // The canonical rule, in either accepted form: the shared helper, or the identical
+      // expression inlined. `expense_update` predates the helper by one migration and
+      // carries the expression; restating a large financial function for no behavioural
+      // change would be the worse trade.
+      const canonicalHelper = 'app.stated_reason(';
+      final canonicalInline = RegExp(
+        r"regexp_replace\(\s*coalesce\(\s*p_\w+,\s*''\s*\),\s*'\^\\s\+\|\\s\+\$'",
+      );
+
+      final weak = [
+        for (final entry in mandatory.entries)
+          if (!entry.value.contains(canonicalHelper) &&
+              !canonicalInline.hasMatch(entry.value))
+            entry.key,
+      ];
+      expect(
+        weak,
+        isEmpty,
+        reason:
+            'a mandatory financial reason is decided by something other than the '
+            'canonical all-whitespace rule. One-argument btrim strips spaces only, and '
+            'a reason that says nothing is not a reason (D-142, D-145)',
+      );
+
+      // And none of them still reaches for the weak form anywhere in its reason handling.
+      for (final entry in mandatory.entries) {
+        expect(
+          RegExp(r'btrim\(\s*coalesce\(\s*p_reason').hasMatch(entry.value),
+          isFalse,
+          reason: '${entry.key} still trims spaces only',
+        );
+      }
+    });
+
+    test('the reason backstops carry the canonical expression', () {
+      // The CHECK constraints behind those reasons. They are inlined rather than calling
+      // the helper — a CHECK that calls a function is not re-validated when the function
+      // changes — so they are asserted here instead.
+      final everySql = _migrations().map((m) => m.sql).join('\n');
+      for (final constraint in const [
+        'expenses_void_has_reason',
+        'revenue_entries_void_states_why',
+        'period_lock_events_reopen_needs_reason',
+      ]) {
+        final declarations = RegExp(
+          'add constraint $constraint[\\s\\S]*?not valid;',
+        ).allMatches(everySql).toList();
+        expect(
+          declarations,
+          isNotEmpty,
+          reason: '$constraint is never declared with the strict expression',
+        );
+        expect(
+          declarations.last.group(0),
+          contains('regexp_replace'),
+          reason: '$constraint still trims spaces only',
+        );
+      }
+    });
+
     test('the owner bootstrap is never reachable by a client', () {
       final bootstrap = _migrations()
           .firstWhere((m) => m.name.endsWith('_owner_bootstrap.sql'))

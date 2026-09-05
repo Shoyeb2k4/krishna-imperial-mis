@@ -4786,3 +4786,127 @@ narrowing it.
 Recorded beside it: two schema tests asserted `PRAGMA user_version` against a hard-coded
 `12`. Their subject is "the database opens at the current version", not "at 12", so they
 now read `db.schemaVersion` and do not need editing on every bump.
+
+---
+
+# Final pre-Slice-11 corrective (2026-09-05)
+
+## D-145 — Reopening a closed period states why, and the rule is now project-wide
+**Date:** 2026-09-05 · **Status:** Accepted (project-lead decision) — closes the last of the
+five mandatory financial reasons, which D-142 recorded and deliberately left
+
+**The defect, proven against the shipped function before anything was changed.**
+`period_reopen` normalised its mandatory reason with `btrim(coalesce(p_reason, ''))`:
+
+```
+        period 2026-05 / Crystal Canopy · lock 6fce38ca-9a3d-4ec7-b2ce-e157199c38df
+        closed legitimately                  state: closed, row_version 1
+        period_reopen(p_reason => E'\t')     APPLIED, state: open, row_version 2
+        refusal                              none
+        period_lock_events                   {action: reopen, reason: "\t"}
+        audit_logs                           {action: period_reopened, reason: "\t"}
+        period_locks.reopen_reason           "\t"
+        actor                                the Owner
+```
+
+A **closed financial period was reopened** — the most privileged financial act this system
+has, the one spec §13.4 reserves to the Owner and D-026 requires to record "actor, timestamp
+and a mandatory reason" — and the entire justification on record is a tab. Every downstream
+protection worked exactly as designed; the thing that failed is the only one that was
+supposed to make the act accountable.
+
+**Decision.** `period_reopen` uses `app.stated_reason` (D-142). The restatement changes two
+lines. Every other protection is asserted, by name, to have survived it: the capability
+(unscoped for an organisation-wide reopen, per-unit otherwise), the reason checked *after*
+the capability so a caller who may not reopen is not taught how to phrase a request they
+cannot make, the period lookup, the not-closed refusal, `base_row_version`, the append-only
+`period_lock_events` row, the audit row and `mutation_id` replay.
+
+**The rule is now stated once, for all five.** Spec §14.1 records the requirement — void an
+expense, void a revenue entry, correct either business date, reopen a period; a
+whitespace-only reason is refused; internal spacing is content — and deliberately does *not*
+record the mechanism, which is an implementation matter.
+
+**And the invariant is a search, not a list.** Both the migration and a host test find every
+function that can raise `reason_required` and require each to decide it by the canonical
+rule — the helper, or the identical expression inlined. A list is something somebody has to
+remember to extend, and the sixth mandatory reason is exactly the one that would arrive
+without anybody remembering. Proven to have teeth by putting `btrim` back and watching it
+fail.
+
+**The caller audit, in full.** Five, and only five, functions can refuse for a missing
+reason:
+
+| | Rule |
+|---|---|
+| `expense_void` | helper (D-142) |
+| `revenue_void` | helper (D-142) |
+| `revenue_update` — business-date correction | helper (D-143) |
+| `expense_update` — business-date correction | the identical expression, inlined |
+| `period_reopen` | helper (this decision) |
+
+`expense_update` predates the helper by one migration and carries the expression rather than
+the call. Its semantics are identical, the invariant accepts either form and would fail on a
+weaker one, and restating a large financial function for no behavioural change is the worse
+trade. **Reported rather than refactored** — the brief's instruction not to turn this into a
+generic text-validation exercise is the right one.
+
+`expense_attachments_removal_has_reason` also trims spaces only and is **not** one of the
+five: no function raises `reason_required` for it, and V1 ships no destructive attachment
+removal at all (D-072a), so nothing can write the column. Tightening a constraint whose
+writer does not exist would be changing a rule nothing evaluates — the very thing this
+project keeps recording. Noted so whoever builds attachment removal starts from the rule.
+
+## D-146 — A constraint validates where the data allows, and says why where it does not
+**Date:** 2026-09-05 · **Status:** Accepted — corrects the architecture D-142 shipped
+
+D-142 installed two tightened void-reason CHECKs `NOT VALID`, because two probe rows could
+not be repaired: `app.refuse_voided_mutation` refuses every update to a voided document,
+including one issued as the table owner, and it is right to (D-006).
+
+That was correct for `krishna-mis-dev` and **wrong as a migration**. `NOT VALID` is written
+into the migration, so a fresh replay — staging, production, a new developer's database —
+would have inherited an unvalidated schema for a reason that exists only in one development
+database's history. A constraint that has never been checked against any row is a weaker
+guarantee than one that has, and nothing about staging deserved that.
+
+**Decision: the migration validates by counting.** Each reason constraint is installed
+`NOT VALID` and then a block counts the rows that would violate it. Zero → `VALIDATE
+CONSTRAINT`. More than zero → left unvalidated, with a `raise notice` naming the constraint
+and the count.
+
+```
+        clean environment    0 rows  →  validated
+        krishna-mis-dev      1 row   →  NOT VALID, and it says which and why
+```
+
+No environment is named. No fixture id is hardcoded. Nothing is deleted, no DELETE is
+granted, D-006 is untouched, and no "validated" state is fabricated. The block is
+environment-adaptive because it asks the data, which is the only thing that can honestly
+answer.
+
+**Proven both ways.** On the development project all three constraints report exactly one
+blocking row each — the expense void probe, the revenue void probe and the period reopen
+probe, one per table. The clean branch was proven by replaying the identical constraints and
+the identical block against a throwaway schema holding only legitimate rows: all three came
+back `convalidated = true`, and an attempted insert of a tab-only reopen reason was refused.
+
+**What is not proven, stated plainly.** A full migration-chain replay against a genuinely
+fresh Postgres needs a provisioned database — a Supabase branch — which is a paid resource,
+so it was not created unilaterally. What is proven is the property in question: the
+constraints install, and they validate when no violating row exists. A branch replay is
+worth doing once before the first staging deploy, and is recorded here as the thing a person
+should run.
+
+**The residue, named once so it is not mysterious later.** Three rows on `krishna-mis-dev`
+hold a whitespace-only mandatory reason, each created deliberately to prove a defect, each
+in an append-only or immutable-once-voided table:
+
+| Table | Row |
+|---|---|
+| `expenses` | the void probe, `KI-EXP-26-27-000446` |
+| `revenue_entries` | the void probe, `KI-REV-26-27-000306` |
+| `period_lock_events` | the reopen probe, period 2026-05 |
+
+They are evidence, not damage. Keeping them and leaving the constraint honest about them is
+better than rewriting financial history to make a flag read `true`.

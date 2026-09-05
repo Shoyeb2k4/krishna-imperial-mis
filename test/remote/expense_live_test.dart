@@ -1634,4 +1634,240 @@ void main() {
       expect(audit, hasLength(1), reason: 'one void, one audit effect (D-004)');
     });
   });
+  // ── Reopening a closed period states why, and a tab is not why ────────────
+  //
+  // The last of the five mandatory financial reasons to reach the canonical rule.
+  // `period_reopen` normalised its reason with `btrim(coalesce(p_reason, ''))`, which
+  // strips spaces alone, and the probe that proved it reopened a genuinely closed period
+  // with a lone tab:
+  //
+  //     period 2026-05 / CCR   closed, row_version 1
+  //     period_reopen(E'\t')   APPLIED, state open, row_version 2, no refusal
+  //     period_lock_events     {action: reopen, reason: "\t"}
+  //     audit_logs             {action: period_reopened, reason: "\t"}
+  //
+  // The most privileged financial act in the system, justified by a tab.
+  //
+  // **Every case restores the fixture deliberately.** A financial period left closed or
+  // reopened by a test is a real change to what the rest of the suite may write, so each
+  // test closes the period it needs and puts it back, and the group asserts the end state.
+  group('reopening a closed period states why', () {
+    const periodKey = '2026-05';
+
+    Future<String?> stateOf() async {
+      await signInAs('giridhar@hki.com');
+      final state = await client.rpc<dynamic>(
+        'period_state',
+        params: {'p_period_key': periodKey, 'p_business_unit_id': ccr},
+      );
+      return state as String?;
+    }
+
+    Future<void> close() async {
+      await signInAs('giridhar@hki.com');
+      await client
+          .rpc<dynamic>(
+            'period_close',
+            params: {'p_period_key': periodKey, 'p_business_unit_id': ccr},
+          )
+          .then((_) {}, onError: (_) {});
+    }
+
+    Future<Object?> reopenWith(String? reason) async {
+      await signInAs('giridhar@hki.com');
+      try {
+        return await client.rpc<dynamic>(
+          'period_reopen',
+          params: {
+            'p_period_key': periodKey,
+            'p_business_unit_id': ccr,
+            'p_reason': reason,
+            'p_mutation_id': const Uuid().v4(),
+          },
+        );
+      } on PostgrestException catch (error) {
+        return error;
+      }
+    }
+
+    /// Leaves the period open, whatever the test did to it.
+    Future<void> restore() async {
+      if (await stateOf() == 'closed') {
+        final restored = await reopenWith(
+          'Live suite: restoring the period fixture to open',
+        );
+        expect(
+          restored,
+          isNot(isA<PostgrestException>()),
+          reason:
+              'the fixture must not be left closed for the rest of the suite',
+        );
+      }
+      expect(await stateOf(), 'open');
+    }
+
+    tearDown(restore);
+    tearDownAll(restore);
+
+    for (final blank in const [
+      (null, 'null'),
+      ('', 'empty'),
+      ('   ', 'spaces'),
+      ('\t', 'one tab — the case that got through'),
+      ('\n', 'newline'),
+      ('\r', 'carriage return'),
+      (' \t\r\n ', 'mixed whitespace'),
+    ]) {
+      test('refused: ${blank.$2}', () async {
+        await close();
+        expect(await stateOf(), 'closed');
+
+        final outcome = await reopenWith(blank.$1);
+        expect(outcome, isA<PostgrestException>(), reason: blank.$2);
+        expect((outcome! as PostgrestException).code, 'KM008');
+        expect(
+          (outcome as PostgrestException).message,
+          isNot(contains('SQLSTATE')),
+        );
+
+        expect(
+          await stateOf(),
+          'closed',
+          reason:
+              'a refused reopen leaves the period closed — the whole point of the '
+              'rule is that a closed month is not reopened by accident',
+        );
+      });
+    }
+
+    test('a real reason reopens it, and is stored trimmed', () async {
+      // The control. Without it, "whitespace is refused" and "nothing can be reopened"
+      // look identical, and the second would pass just as green.
+      await close();
+      final outcome = await reopenWith(
+        '  Correcting the June electricity split  ',
+      );
+      expect(outcome, isNot(isA<PostgrestException>()), reason: '$outcome');
+      expect(await stateOf(), 'open');
+
+      await signInAs('giridhar@hki.com');
+      final lock = await client
+          .from('period_locks')
+          .select('reopen_reason,reopened_by,state')
+          .eq('period_key', periodKey)
+          .eq('business_unit_id', ccr)
+          .single();
+      expect(lock['state'], 'open');
+      expect(
+        lock['reopen_reason'],
+        'Correcting the June electricity split',
+        reason: 'the ends are trimmed — the project convention — and no more',
+      );
+      expect(lock['reopened_by'], isNotNull);
+
+      // The append-only record and the audit row carry the same stated reason.
+      final events = await client
+          .from('period_lock_events')
+          .select('action,reason,actor_id')
+          .eq('action', 'reopen')
+          .order('occurred_at', ascending: false)
+          .limit(1);
+      expect(events.single['reason'], 'Correcting the June electricity split');
+      expect(events.single['actor_id'], isNotNull);
+
+      final audit = await client
+          .from('audit_logs')
+          .select('reason')
+          .eq('action', 'period_reopened')
+          .order('occurred_at', ascending: false)
+          .limit(1);
+      expect(audit.single['reason'], 'Correcting the June electricity split');
+    });
+
+    test(
+      'internal spacing is content, not whitespace to be squeezed',
+      () async {
+        await close();
+        final outcome = await reopenWith('Reopened  for  the  May  correction');
+        expect(outcome, isNot(isA<PostgrestException>()), reason: '$outcome');
+
+        await signInAs('giridhar@hki.com');
+        final lock = await client
+            .from('period_locks')
+            .select('reopen_reason')
+            .eq('period_key', periodKey)
+            .eq('business_unit_id', ccr)
+            .single();
+        expect(lock['reopen_reason'], 'Reopened  for  the  May  correction');
+      },
+    );
+
+    test('every other protection is unchanged', () async {
+      // The restatement touched two lines. These are the rules that must not have moved
+      // with them.
+      await close();
+
+      // A manager holds no `period.reopen` — and is refused for the capability, not told
+      // how to phrase a request they cannot make (the reason check runs after it).
+      await signInAs('ccr.manager@example.com');
+      Object? refused;
+      try {
+        await client.rpc<dynamic>(
+          'period_reopen',
+          params: {
+            'p_period_key': periodKey,
+            'p_business_unit_id': ccr,
+            'p_reason': '\t',
+            'p_mutation_id': const Uuid().v4(),
+          },
+        );
+      } on PostgrestException catch (error) {
+        refused = error;
+      }
+      expect(refused, isA<PostgrestException>());
+      expect(
+        (refused! as PostgrestException).code,
+        anyOf('KM001', 'KM002'),
+        reason:
+            'permission is decided before the reason, so a caller who may not reopen '
+            'learns nothing about what a valid request would look like',
+      );
+      expect(await stateOf(), 'closed');
+
+      // A period that is not closed refuses, and does not enumerate.
+      await reopenWith('Live suite: restoring the period fixture to open');
+      expect(await stateOf(), 'open');
+      final notClosed = await reopenWith('it is already open');
+      expect(notClosed, isA<PostgrestException>());
+      expect((notClosed! as PostgrestException).code, 'KM015');
+
+      // And a redelivered reopen replays rather than reopening twice.
+      await close();
+      final mutationId = const Uuid().v4();
+      await signInAs('giridhar@hki.com');
+      for (var attempt = 0; attempt < 2; attempt++) {
+        await client.rpc<dynamic>(
+          'period_reopen',
+          params: {
+            'p_period_key': periodKey,
+            'p_business_unit_id': ccr,
+            'p_reason': 'Live suite: idempotent reopen',
+            'p_mutation_id': mutationId,
+          },
+        );
+      }
+      expect(await stateOf(), 'open');
+
+      final events = await client
+          .from('period_lock_events')
+          .select('id')
+          .eq('action', 'reopen')
+          .eq('mutation_id', mutationId);
+      expect(
+        events,
+        hasLength(1),
+        reason: 'one reopen, one append-only record (D-004)',
+      );
+    });
+  });
 }

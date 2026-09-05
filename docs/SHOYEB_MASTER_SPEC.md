@@ -583,6 +583,33 @@ include expense created / edited / voided, revenue created / edited / voided, al
 changed, business date corrected, master archived, tax configuration changed, period
 closed / reopened, role changed, settings changed.
 
+### 14.1 A mandatory reason is a stated reason (added 2026-09-05)
+
+Several financial acts require the person performing them to say **why**, and the reason is
+kept in the append-only audit trail. There are five:
+
+| Act | |
+|---|---|
+| Void an expense | spec §14, D-006 |
+| Void a revenue entry | spec §14, D-006 |
+| Correct an expense's business date | spec §9 |
+| Correct a revenue entry's business date | spec §9 |
+| Reopen a closed period | spec §13.4, D-026 |
+
+**All five apply one rule: a reason consisting only of whitespace is not a reason, and is
+refused.** Empty, spaces, a tab, a newline, a carriage return and any mixture of them are
+all rejected identically. Text with spaces *inside* it is ordinary content and is kept as
+written; only the ends are trimmed before the value is stored.
+
+The requirement is stated here and the mechanism is not: how the check is expressed is an
+implementation matter recorded in `ARCHITECTURE.md` and the decision log. What is binding is
+that the five acts agree, and that a new act carrying a mandatory reason joins them rather
+than inventing its own standard.
+
+This is recorded because it was not true. Each of the five was written separately and four
+of them accepted a single tab — enough to void a financial document or reopen a closed
+accounting period with nothing on the record explaining why (D-142, D-145).
+
 Financial history is never silently overwritten. Corrections use void/reversal semantics
 with a reason, not destructive deletion. Audit records are append-only.
 
@@ -846,6 +873,12 @@ transaction path (§32).
 Clean extension points are welcome. Speculative modules are not.
 
 ## 30. Change log
+
+**v1.2 amendment — 2026-09-05 (second).** §14 gains **§14.1**, stating that every
+mandatory financial reason rejects a whitespace-only value and that the five acts carrying
+one agree on that rule. It states the requirement, not the mechanism. **No other section
+changes** and the version does not move: this makes explicit what "mandatory reason"
+already meant in §9, §13.4 and §14 (D-142, D-145).
 
 **v1.2 amendment — 2026-09-05.** §8.0 gains **business date source** on the revenue entry,
 resolving a disagreement between this section and §9: §8.0 enumerated the entry without it

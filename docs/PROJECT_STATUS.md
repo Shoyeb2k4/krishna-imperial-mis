@@ -5,10 +5,10 @@ Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
-Last updated: **2026-09-05** — Phase 4 Slice 10 closed; the **Phase 3 expense business-date
-corrective** and the **pre-Slice-11 cleanup** are both done and accepted (D-136 … D-144).
-Mandatory financial reasons now reject whitespace-only values on both engines, and revenue
-records its business-date provenance. **Slice 11 is not started.**
+Last updated: **2026-09-05** — Phase 4 Slice 10 closed, and three correctives done and
+accepted (D-136 … D-146). **All five mandatory financial reasons** now reject whitespace-only
+values, revenue records its business-date provenance, and the reason constraints validate in
+clean environments. **Slice 11 is not started.**
 
 > A new session should be able to read this file and know exactly where work stopped.
 > This file — not chat history — is the checkpoint.
@@ -763,7 +763,7 @@ Blocked.**
 |---|---|---|
 | `dart format --set-exit-if-changed` | **Tested** | clean (175 files) |
 | `flutter analyze` | **Tested** | **No issues found** |
-| Host test suite | **Tested** | **1,099 tests, all passing** (1,067 + 21 + 11 for the two correctives) |
+| Host test suite | **Tested** | **1,101 tests, all passing** (1,067 + 34 across three correctives) |
 | Secret scan — tree and git history | **Tested** | clean; the scan proves its own controls on every run (D-069) |
 | Secret scan — rebuilt clean binaries | **Tested** | tree, git history and built artefacts all clean, with the scanner's controls passing |
 | Migration audit (search_path, API surface, policy boundary) | **Tested** | 14 host tests |
@@ -843,9 +843,9 @@ Blocked.**
 
 | Suite | Count | Result |
 |---|---|---|
-| Host (`flutter test`) | **1,099** | all passing |
+| Host (`flutter test`) | **1,101** | all passing |
 | Live backend against `krishna-mis-dev` (opt-in) | 19 | the phases this change touches re-run at the corrective checkpoint (`drift`, `conflict`, and the revenue chain, twice in succession); the four scope phases need administrative grant changes between them and were **not** re-run |
-| Live expense suite against `krishna-mis-dev` (opt-in) | **40** | all passing — re-run in full at the pre-Slice-11 checkpoint |
+| Live expense suite against `krishna-mis-dev` (opt-in) | **50** | all passing — re-run in full at the final pre-Slice-11 checkpoint |
 | Live revenue boundary suite (opt-in) | **49** | all passing, 1 deliberately skipped |
 | Live two-client acceptance (opt-in) | 10 | all passing |
 | **Slice 10 Android acceptance** (`revenue-edit`, `-edit-banquet`, `-conflict`, `-void`, `-user-switch`) | **5** | **all passing** |
@@ -1554,11 +1554,113 @@ read back.*
 
 ---
 
+---
+
+## Final pre-Slice-11 corrective — the last mandatory financial reason: **DONE**
+
+One approved item, and the constraint-architecture correction it forced.
+
+### The defect, proven red first
+
+`period_reopen` normalised its mandatory reason with `btrim(coalesce(p_reason, ''))`,
+which strips spaces and nothing else. Against the shipped function:
+
+```
+period 2026-05 / Crystal Canopy · lock 6fce38ca-9a3d-4ec7-b2ce-e157199c38df
+closed legitimately                  state: closed, row_version 1
+period_reopen(p_reason => E'\t')     APPLIED, state: open, row_version 2
+refusal                              none
+period_lock_events                   {action: reopen, reason: "\t"}
+audit_logs                           {action: period_reopened, reason: "\t"}
+period_locks.reopen_reason           "\t"
+actor                                the Owner
+```
+
+A closed financial period was reopened — the act spec §13.4 reserves to the Owner and
+requires to carry a mandatory reason — with a tab as the whole justification.
+
+### The five mandatory financial reasons, audited in full
+
+| Operation | Rule |
+|---|---|
+| `expense_void` | `app.stated_reason` (D-142) |
+| `revenue_void` | `app.stated_reason` (D-142) |
+| `revenue_update` — business-date correction | `app.stated_reason` (D-143) |
+| `expense_update` — business-date correction | the identical expression, inlined |
+| `period_reopen` | `app.stated_reason` (this corrective) |
+
+**There is no sixth.** The list is produced by searching the catalogue for every function
+that can raise `reason_required`, not by remembering. `expense_update` predates the helper
+by one migration and carries the same expression rather than the call — identical
+semantics, reported rather than refactored. `expense_attachments_removal_has_reason` also
+trims spaces only and is **not** one of the five: nothing raises `reason_required` for it
+and V1 ships no destructive attachment removal (D-072a), so it has no writer.
+
+### Constraint state, per environment (D-146)
+
+| Environment | `expenses` | `revenue_entries` | `period_lock_events` |
+|---|---|---|---|
+| `krishna-mis-dev` | NOT VALID, 1 blocking row | NOT VALID, 1 | NOT VALID, 1 |
+| fresh replay / staging / production | **validated** | **validated** | **validated** |
+
+D-142 wrote `NOT VALID` into the migration, which would have handed staging and production
+an unvalidated schema for a reason that exists only in one development database's history.
+The migration now installs each constraint `NOT VALID` and then **counts** the rows that
+would violate it: zero validates, more than zero is left unvalidated with a notice naming
+the constraint and the count. No environment is named, no fixture id is hardcoded, nothing
+is deleted, and D-006 is untouched.
+
+The three blocking rows are the probes that proved the three defects, one per table, each
+in a table that correctly refuses to be rewritten. They are evidence, not damage.
+
+### Verified
+
+| Item | Status | Evidence |
+|---|---|---|
+| `dart format --set-exit-if-changed` | **Tested** | clean |
+| `flutter analyze` | **Tested** | **No issues found** |
+| Host suite | **Tested** | **1,101 tests, all passing** (1,099 + 2 invariants) |
+| Secret scan — tree and git history | **Tested** | clean, controls passing |
+| Live reopen matrix | **Tested** | 10 tests: null, empty, spaces, tab, newline, CR, mixed all refused `KM008` with the period left **closed**; a real reason reopens and is stored trimmed; internal spacing preserved |
+| Positive control | **Tested** | the shared helper degraded to `btrim`; **both** the void tab case and the reopen tab case turned RED, then green after restore — with the helper read back rather than assumed (D-142) |
+| Other reopen protections | **Tested** | capability refused before the reason; not-closed refusal; idempotent replay writes one append-only event |
+| Clean-environment constraint replay | **Tested** | identical constraints and identical validation block against a throwaway schema: all three `convalidated = true`, and a tab-only reopen reason refused on insert |
+| Canonical-reason invariant | **Tested** | asserted at deploy and at host level, as a **search** over every `reason_required` function; proven to fail when `btrim` is put back |
+| Live expense suite | **Tested** | **50 tests** (40 + 10) |
+| Migration ledger parity (A0 / D-056) | **Tested** | every applied version has a committed file, verified byte-for-byte |
+| Period fixtures | **Tested** | 2026-05 left **open**; 0 closed periods across the project |
+
+### Not rerun, and why
+
+**`phase-a`, `phase-b`, `phase-c`, `multi-scope-a`, `multi-scope-b` — not rerun,**
+**unaffected.** No authority caching, grant, scope-resolution or purge code changed. They
+are **not** claimed as freshly passing.
+
+**Android and Windows acceptance — not rerun.** No controller or UI path changed; this
+corrective is one server function and its backstop.
+
+### Migration ledger
+
+| Ledger version | Name |
+|---|---|
+| 20260905202325 | `period_reopen_uses_canonical_reason` |
+
+Verified byte-for-byte against `supabase_migrations.schema_migrations.statements`.
+
+### Open, and worth doing once
+
+**A full migration-chain replay against a genuinely fresh Postgres** has not been run: it
+needs a provisioned database (a Supabase branch), which is a paid resource and was not
+created unilaterally. The property in question — that the reason constraints install and
+validate on clean data — is proven by the throwaway-schema replay above. A branch replay
+is worth running once before the first staging deploy.
+
 ## Next exact task
 
-**Slice 11 — attachments, reusing D-073a unchanged.** Both correctives that stood in front
-of it are **done, tested and accepted**, and the one open product question they raised has
-been answered and built (D-143). Nothing blocks Slice 11, and it has **not** been started.
+**Slice 11 — attachments, reusing D-073a unchanged.** All three correctives that stood in
+front of it are **done, tested and accepted**, and the one open product question they raised
+has been answered and built (D-143). Nothing blocks Slice 11, and it has **not** been
+started.
 
 ---
 
