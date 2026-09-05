@@ -1078,6 +1078,131 @@ Room 5%, Banquet `none`.
 a different date per category. What cannot happen is the software choosing one. Once these
 are supplied, Phase 4 has no remaining business blocker.
 
+---
+
+## Phase 3 corrective — expense business date and period protection
+
+**Recorded 2026-09-05. Audited, not implemented. Awaiting the project lead's approval.**
+
+Found while auditing the correction path before extending it for revenue (D-127), and
+deliberately not touched inside a revenue slice: quietly altering the expense write path
+there is how a reviewed scope stops being reviewable.
+
+### What the audit found, each with its evidence
+
+Evidence is the **shipped function bodies on `krishna-mis-dev`**, read directly, plus the
+repository and the binding spec. Nothing below is inferred from documentation.
+
+**1 · `expense_update` protects the target period and not the source.**
+
+```
+        expense_update                     calls require_period_open   NO
+        app.validate_expense_allocations   calls require_period_open   YES
+        app.validate_expense_allocations   reads expense_period_allocations  NO
+        expense_void                       calls require_period_open   YES
+        revenue_update                     calls require_period_open   YES  (both periods)
+```
+
+The validator only ever sees the periods in the **incoming payload**. It never reads the
+contributions the expense currently has, so it cannot know where the amount is being taken
+*from*. `replace_expense_allocations` then deletes those rows and writes the new ones.
+
+An expense sitting in a **closed** month can therefore be moved to an open one, and the
+closed month's Total Expenses and Operating Profit change with nobody's permission.
+
+Spec §13.4 is explicit, and the operative word is *affecting*:
+
+> every create, edit, void and business-date correction **affecting that period** is
+> rejected server-side
+
+Removing an amount from a closed month affects it as surely as adding one. `expense_void`
+already understands this — it checks the period the expense is in.
+
+**2 · `expense_correct_business_date` does not exist.** `PROJECT_STATUS.md`,
+`ARCHITECTURE.md` (including §5.3's concurrency table, where it has its own row) and
+`DATABASE_SCHEMA.md` all name it. The server exposes exactly six financial RPCs:
+
+```
+        expense_create   expense_update   expense_void
+        revenue_create   revenue_update   revenue_void
+```
+
+The **capability** is not missing — `expense_update` takes `p_business_date`, the edit form
+offers a date row, and a moved date re-checks the window. The separately named endpoint is.
+
+**3 · `transaction.correct.business_date` is evaluated by nothing.** Granted to the
+accountant and owner bundles; named by **0** functions and **0** policies in `public` or
+`app`; no client code reads it. For contrast, `transaction.correct.beyond_window` is named
+by 2 functions and works. *A rule that nothing evaluates is a comment* (D-068, D-071,
+D-077), arriving as a grant rather than as a check.
+
+**4 · A corrected business date is not marked as corrected.** `expenses.business_date_source`
+exists and `expense_create` sets it. `expense_update` never writes it, so an expense whose
+date has been moved still reads `derived`. Every row in the development project says
+`derived`, including ones the acceptance suite moved. D-019 requires the record to note
+whether the date was `derived`, `manual` or `corrected`, and spec §9 requires every
+correction to be audited **with a reason** — which `expense_update` does not collect.
+
+Finding 4 is the one that decides the shape of the fix, so it is listed last rather than
+first: it is what makes a business-date correction a distinct *act* rather than just
+another edited field.
+
+### The two candidate contracts
+
+**A · the correction lives inside `expense_update`.** This is what production already does
+and what the client already offers, and it is what `revenue_update` does (D-124).
+
+**B · a dedicated `expense_correct_business_date`.** This is what three canonical documents
+describe, and it is the only shape in which the correction naturally carries its own
+mandatory reason and its own audit action.
+
+### Recommendation — A, with the correction made a first-class act inside it
+
+One RPC, because two write paths for one document is the thing this project keeps paying
+for; and revenue would otherwise need a matching second endpoint, doubling the divergence
+surface rather than halving it. But the *act* stops being an ordinary field edit:
+
+1. **Check both periods.** The source periods are read from the expense's existing
+   contributions before they are replaced, and each is required open — the rule
+   `revenue_update` already applies, and the one `expense_void` already applies.
+2. **Require a reason when the date actually moves**, and only then. An ordinary amount
+   correction is unaffected, so the fast path does not grow a field.
+3. **Set `business_date_source = 'corrected'`** on that branch, which is what D-019 asks
+   for and what makes a moved date visible in the record rather than only in the audit.
+4. **Emit a distinct audit action** for it, so "which dates were moved, by whom, and why"
+   is answerable without diffing every `edited` row's before/after state.
+5. **Gate it on `transaction.correct.business_date`**, which gives finding 3 its evaluator
+   instead of withdrawing a capability the project lead granted deliberately.
+6. **Correct the three documents** to describe one contract: no
+   `expense_correct_business_date`, and `ARCHITECTURE.md` §5.3's row restated as
+   *"business-date correction — inside `expense_update` / `revenue_update`, requires
+   `base_row_version`"*. There must be one authoritative contract, not documentation
+   promising one API while production implements another.
+7. **Mirror 1–5 into `revenue_update`** where they are not already there. It checks both
+   periods and takes no reason; it should collect one on the same branch, so the two
+   engines agree about what a business-date correction is.
+
+### What must be proven, and in what order
+
+* A **failing** live test first: an expense in a closed month is moved out and the move
+  succeeds. That is the defect, demonstrated before anything is changed — the standard A1
+  and A2 set. Then the same test passing after the fix, with a control that fails without
+  it.
+* D+7 / D+8 and the beyond-window capability unchanged; a closed **target** period still
+  refused, so the fix adds a rule rather than moving one.
+* Cross-period allocations (D-034): every period a line contributes to, on both sides.
+* The audit shows one correction, with its reason, and `business_date_source` reads
+  `corrected` afterwards.
+* The three migration invariants and the ledger parity check on the new migration, and the
+  documentation change in the same commit as the code, so they cannot disagree again.
+
+### Scope, stated so it cannot creep
+
+This is a **Phase 3 financial-integrity hotfix**. It does not build a period-close console,
+does not change the edit window, does not touch revenue's create path, and does not add a
+new client screen — the date row already exists and gains a reason field on the branch that
+needs one.
+
 ## Known issues
 
 1. **`flutter_secure_storage` pinned to 9.2.4.** 11.x requires `compileSdk 37`; this
@@ -1178,19 +1303,25 @@ no Owner or Accountant override — a tax-correctness gate rather than a privile
 Implemented in Slice 7 and tested at the boundary, one second past it, and against a
 backwards device clock.
 
-**Two open, both raised by the Slice 10 audit (D-127) and both about expenses rather than
-revenue:**
+**One open: approval for the Phase 3 corrective**, set out in full under *Phase 3
+corrective — expense business date and period protection*. Four findings, all evidenced
+against the shipped functions on `krishna-mis-dev`:
 
-1. **`expense_correct_business_date` is named by `PROJECT_STATUS.md`, `ARCHITECTURE.md` and
-   `DATABASE_SCHEMA.md`, and does not exist** — not in the repository, not in `lib/`, not on
-   `krishna-mis-dev`. The capability is not missing: `expense_update` takes a business date
-   and re-checks the period and the window when it moves. The separately named endpoint is.
-   Build it, or stop naming it?
-2. **`transaction.correct.business_date` is granted to the accountant and owner bundles and
-   evaluated by nothing.** Give it an evaluator, or withdraw it?
+1. **`expense_update` protects the target period and not the source**, so an expense can be
+   moved *out* of a closed month and that month's Operating Profit changes with nobody's
+   permission. Spec §13.4 says every edit **affecting** a closed period is rejected.
+2. **`expense_correct_business_date` is named by three canonical documents and does not
+   exist.** The capability is not missing; the separately named endpoint is.
+3. **`transaction.correct.business_date` is granted to two roles and evaluated by nothing.**
+4. **A corrected business date is not marked as corrected** — `expense_update` never writes
+   `business_date_source`, which D-019 requires, and collects no reason, which spec §9
+   requires.
 
-Neither is changed inside a revenue slice, because quietly altering the expense write path
-here is how a reviewed scope stops being reviewable.
+The recommendation is **one contract**: keep the correction inside `expense_update`, and
+make it a first-class act there — both periods checked, a reason required when the date
+actually moves, `business_date_source = 'corrected'`, its own audit action, gated on the
+capability that currently evaluates to nothing — then correct the three documents to
+describe what production does. **Awaiting approval; nothing is implemented.**
 
 ## Project lead actions required
 
