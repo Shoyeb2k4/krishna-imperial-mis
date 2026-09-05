@@ -1562,5 +1562,164 @@ void main() {
         );
       });
     });
+    // ── A void reason that says nothing is not a reason ─────────────────────
+    //
+    // `revenue_void` used `coalesce(trim(p_reason), '') = ''`, and one-argument `trim`
+    // strips spaces alone. Proven against the shipped function before it was changed: a
+    // lone tab voided a sale and was stored as its `void_reason`.
+    //
+    // The same matrix the correction reason is held to, because they are now one rule —
+    // `app.stated_reason` — rather than two expressions that happened to agree.
+    group('a void reason rejects every whitespace-only value', () {
+      Future<Map<String, dynamic>> voidable() async {
+        final id = (await record(paise: 15000))['id'] as String;
+        return await document(id);
+      }
+
+      Future<void> voidWith(Map<String, dynamic> doc, String reason) async {
+        await signInAs('accountant@example.com');
+        await client.rpc<dynamic>(
+          'revenue_void',
+          params: {
+            'p_id': doc['id'],
+            'p_base_row_version': doc['row_version'],
+            'p_reason': reason,
+            'p_mutation_id': const Uuid().v4(),
+          },
+        );
+      }
+
+      for (final blank in const [
+        ('', 'empty'),
+        ('   ', 'spaces'),
+        ('\t', 'one tab — the case that got through'),
+        ('\n', 'newline'),
+        ('\r', 'carriage return'),
+        (' \t\r\n ', 'mixed whitespace'),
+      ]) {
+        test('refused: ${blank.$2}', () async {
+          final doc = await voidable();
+
+          await expectLater(
+            voidWith(doc, blank.$1),
+            throwsA(
+              predicate((e) => refusalOf(e) == 'KM008', 'reason required'),
+            ),
+            reason: blank.$2,
+          );
+
+          await signInAs('giridhar@hki.com');
+          final after = await document(doc['id'] as String);
+          expect(
+            after['voided_at'],
+            isNull,
+            reason: 'a refused void leaves the sale exactly as it was',
+          );
+          expect(after['row_version'], doc['row_version']);
+        });
+      }
+
+      test('an ordinary reason still voids, and is stored trimmed', () async {
+        // The control. Without it, "whitespace is refused" and "nothing can be voided"
+        // look identical, and the second would pass just as green.
+        final doc = await voidable();
+        await voidWith(doc, '  Recorded twice by mistake  ');
+
+        await signInAs('giridhar@hki.com');
+        final after = await document(doc['id'] as String);
+        expect(after['voided_at'], isNotNull);
+        expect(
+          after['void_reason'],
+          'Recorded twice by mistake',
+          reason: 'the ends are trimmed and nothing else is touched',
+        );
+        expect(
+          after['txn_number'],
+          doc['txn_number'],
+          reason: 'a void keeps the document, its number and its components',
+        );
+      });
+
+      test(
+        'internal spacing is content, not whitespace to be squeezed',
+        () async {
+          final doc = await voidable();
+          await voidWith(doc, 'Duplicate  of  KI-REV-26-27-000001');
+
+          await signInAs('giridhar@hki.com');
+          expect(
+            (await document(doc['id'] as String))['void_reason'],
+            'Duplicate  of  KI-REV-26-27-000001',
+          );
+        },
+      );
+
+      test('the Slice 10 void contract is otherwise unchanged', () async {
+        final doc = await voidable();
+
+        // A manager holds no `revenue.void`: recording a sale is not the right to erase it.
+        final manager = await sessionFor('ccr.manager@example.com');
+        await expectLater(
+          manager.rpc<dynamic>(
+            'revenue_void',
+            params: {
+              'p_id': doc['id'],
+              'p_base_row_version': doc['row_version'],
+              'p_reason': 'a manager should not be able to do this',
+              'p_mutation_id': const Uuid().v4(),
+            },
+          ),
+          throwsA(
+            predicate((e) => refusalOf(e) == 'KM001', 'missing capability'),
+          ),
+        );
+
+        // A stale view cannot void a version nobody reviewed (D-021).
+        await signInAs('accountant@example.com');
+        await expectLater(
+          client.rpc<dynamic>(
+            'revenue_void',
+            params: {
+              'p_id': doc['id'],
+              'p_base_row_version': (doc['row_version'] as int) + 5,
+              'p_reason': 'a stale void',
+              'p_mutation_id': const Uuid().v4(),
+            },
+          ),
+          throwsA(predicate((e) => refusalOf(e) == 'KM003', 'stale version')),
+        );
+
+        // And the ordinary void still works, replays on redelivery, and audits once.
+        final mutationId = const Uuid().v4();
+        for (var attempt = 0; attempt < 2; attempt++) {
+          await client.rpc<dynamic>(
+            'revenue_void',
+            params: {
+              'p_id': doc['id'],
+              'p_base_row_version': doc['row_version'],
+              'p_reason': 'Recorded in error',
+              'p_mutation_id': mutationId,
+            },
+          );
+        }
+
+        await signInAs('giridhar@hki.com');
+        final after = await document(doc['id'] as String);
+        expect(after['voided_at'], isNotNull);
+        expect(after['txn_number'], doc['txn_number']);
+        expect(after['row_version'], (doc['row_version'] as int) + 1);
+
+        final audit = await client
+            .from('audit_logs')
+            .select('id')
+            .eq('entity_id', doc['id'] as String)
+            .eq('action', 'voided');
+        expect(
+          audit,
+          hasLength(1),
+          reason: 'one void, one audit effect (D-004)',
+        );
+      });
+    });
   });
 }

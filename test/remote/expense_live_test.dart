@@ -1423,4 +1423,215 @@ void main() {
       },
     );
   });
+
+  // ── A void reason that says nothing is not a reason ───────────────────────
+  //
+  // One-argument `btrim` strips spaces and nothing else, so a lone tab satisfied the rule
+  // that a void always states why. Proven against the shipped function before it was
+  // changed: `expense_void(p_reason => E'\t')` applied, the document was permanently
+  // voided, and the audit row's reason was a tab.
+  //
+  // The matrix is the same one the correction reason is held to, because they are now one
+  // rule — `app.stated_reason` — rather than two expressions that happened to agree.
+  group('a void reason rejects every whitespace-only value', () {
+    const marker = 'Phase 3 corrective: void reason whitespace';
+
+    String today() {
+      final d = DateTime.now().toUtc();
+      return '${d.year.toString().padLeft(4, '0')}-'
+          '${d.month.toString().padLeft(2, '0')}-'
+          '${d.day.toString().padLeft(2, '0')}';
+    }
+
+    /// A fresh expense, voidable by the Accountant.
+    Future<String> voidable({int amount = 15000}) async {
+      final id = const Uuid().v4();
+      await createAs('giridhar@hki.com', {
+        'p_id': id,
+        'p_business_date': today(),
+        'p_total_minor': amount,
+        'p_notes': marker,
+        'p_allocations': [
+          {...ccrKirana, 'amount_minor': amount},
+        ],
+      });
+      return id;
+    }
+
+    Future<RemoteOutcome<Map<String, dynamic>>> voidWith(
+      String id,
+      String? reason,
+    ) async {
+      await signInAs('accountant@example.com');
+      return ExpenseGateway(client).voidExpense(
+        expenseId: id,
+        baseRowVersion: 2,
+        reason: reason ?? '',
+        mutationId: const Uuid().v4(),
+      );
+    }
+
+    Future<bool> isVoided(String id) async {
+      await signInAs('giridhar@hki.com');
+      final row = await client
+          .from('expense_document')
+          .select('voided_at')
+          .eq('id', id)
+          .single();
+      return row['voided_at'] != null;
+    }
+
+    for (final blank in const [
+      ('', 'empty'),
+      ('   ', 'spaces'),
+      ('\t', 'one tab — the case that got through'),
+      ('\n', 'newline'),
+      ('\r', 'carriage return'),
+      (' \t\r\n ', 'mixed whitespace'),
+    ]) {
+      test('refused: ${blank.$2}', () async {
+        final id = await voidable();
+        final outcome = await voidWith(id, blank.$1);
+
+        expect(outcome.isRefused, isTrue, reason: blank.$2);
+        expect(outcome.refusalOrNull!.kind, RefusalKind.reasonRequired);
+        expect(outcome.refusalOrNull!.message, isNot(contains('SQLSTATE')));
+        expect(
+          await isVoided(id),
+          isFalse,
+          reason: 'a refused void leaves the document exactly as it was',
+        );
+      });
+    }
+
+    test('an ordinary reason still voids, and is stored trimmed', () async {
+      // The control. Without it, "whitespace is refused" and "nothing can be voided"
+      // look identical, and the second would pass just as green.
+      final id = await voidable();
+      final outcome = await voidWith(
+        id,
+        '  Duplicate of an entry recorded twice  ',
+      );
+      expect(
+        outcome.isOk,
+        isTrue,
+        reason: 'refused: ${outcome.refusalOrNull?.message}',
+      );
+      expect(await isVoided(id), isTrue);
+
+      await signInAs('giridhar@hki.com');
+      final audit = await client
+          .from('audit_logs')
+          .select('reason')
+          .eq('entity_id', id)
+          .eq('action', 'expense_voided');
+      expect(audit, hasLength(1));
+      expect(
+        audit.single['reason'],
+        'Duplicate of an entry recorded twice',
+        reason:
+            'the ends are trimmed — the project convention — and nothing else about '
+            'the operator s words is touched',
+      );
+    });
+
+    test(
+      'internal spacing is content, not whitespace to be squeezed',
+      () async {
+        final id = await voidable();
+        final outcome = await voidWith(
+          id,
+          'Duplicate  of  KI-EXP-26-27-000012',
+        );
+        expect(outcome.isOk, isTrue);
+
+        await signInAs('giridhar@hki.com');
+        final audit = await client
+            .from('audit_logs')
+            .select('reason')
+            .eq('entity_id', id)
+            .eq('action', 'expense_voided');
+        expect(audit.single['reason'], 'Duplicate  of  KI-EXP-26-27-000012');
+      },
+    );
+
+    test('everything else about a void is unchanged', () async {
+      // The restatement touched two lines. These are the rules that must not have moved
+      // with them, and they are asserted here rather than assumed from a green suite.
+      final id = await voidable(amount: 21000);
+
+      // A manager holds no `expense.void` at all.
+      await signInAs('ccr.manager@example.com');
+      final refused = await ExpenseGateway(client).voidExpense(
+        expenseId: id,
+        baseRowVersion: 2,
+        reason: 'a manager should not be able to do this',
+        mutationId: const Uuid().v4(),
+      );
+      expect(refused.isRefused, isTrue);
+      expect(
+        refused.refusalOrNull!.kind,
+        anyOf(RefusalKind.missingCapability, RefusalKind.outOfUnitScope),
+      );
+
+      // A stale version is a conflict, not an overwrite.
+      final stale = await voidWith(id, 'stale attempt');
+      expect(stale.isOk, isTrue, reason: 'v2 is current, so this one applies');
+
+      final second = await voidWith(id, 'a second void on a stale view');
+      expect(second.isRefused, isTrue);
+      expect(
+        second.refusalOrNull!.kind,
+        anyOf(RefusalKind.recordVoided, RefusalKind.versionConflict),
+        reason: 'a voided document is immutable, and a stale intent is refused',
+      );
+
+      // The number survives, and the void is audited once.
+      await signInAs('giridhar@hki.com');
+      final row = await client
+          .from('expense_document')
+          .select('txn_number,voided_at')
+          .eq('id', id)
+          .single();
+      expect(row['txn_number'], startsWith('KI-EXP-'));
+      expect(row['voided_at'], isNotNull);
+      final audit = await client
+          .from('audit_logs')
+          .select('id')
+          .eq('entity_id', id)
+          .eq('action', 'expense_voided');
+      expect(audit, hasLength(1));
+    });
+
+    test('a redelivered void replays rather than voiding twice', () async {
+      final id = await voidable(amount: 24000);
+      final mutationId = const Uuid().v4();
+
+      await signInAs('accountant@example.com');
+      final first = await ExpenseGateway(client).voidExpense(
+        expenseId: id,
+        baseRowVersion: 2,
+        reason: 'Recorded in error',
+        mutationId: mutationId,
+      );
+      expect(first.isOk, isTrue);
+
+      final replay = await ExpenseGateway(client).voidExpense(
+        expenseId: id,
+        baseRowVersion: 2,
+        reason: 'Recorded in error',
+        mutationId: mutationId,
+      );
+      expect(replay.isOk, isTrue);
+      expect(replay.valueOrNull!['status'], 'replayed');
+
+      await signInAs('giridhar@hki.com');
+      final audit = await client
+          .from('audit_logs')
+          .select('id')
+          .eq('entity_id', id)
+          .eq('action', 'expense_voided');
+      expect(audit, hasLength(1), reason: 'one void, one audit effect (D-004)');
+    });
+  });
 }

@@ -4615,3 +4615,75 @@ identities.
 
 All four phases were then run **twice in succession**, in the documented order, and passed
 both times. A phase that can only pass once is not a regression test.
+
+---
+
+# Pre-Slice-11 corrective — two approved items (2026-09-05)
+
+## D-142 — A mandatory financial reason rejects every whitespace-only value
+**Date:** 2026-09-05 · **Status:** Accepted (project-lead decision) — closes the defect
+D-138 recorded and deliberately left unfixed
+
+**The defect, proven against the shipped functions before anything was changed.**
+One-argument `btrim`/`trim` strips **spaces only**:
+
+```
+        expense_void(p_reason => E'\t')   applied, row_version 3
+                                          audit reason: "\t"
+        revenue_void(p_reason => E'\t')   applied, row_version 2
+                                          revenue_entries.void_reason: "\t"
+```
+
+Two financial documents were permanently voided, and the only record of *why* is a tab.
+Spec §14 requires the act to carry a reason; the rule that a void always states why was
+satisfiable by pressing one key. Both engines, both boundaries.
+
+**Decision.** One rule, in one place. `app.stated_reason` removes every leading and
+trailing whitespace character and returns what is left; both voids call it, and so does
+the business-date correction reason D-138 introduced. Neither boundary carries its own
+regex to drift from the other — which was D-138's own finding, arriving a second time.
+
+The helper is `immutable`, lives in `app`, is revoked from `public`, `anon` and
+`authenticated`, and is **not** an addition to the reviewed API surface (D-044).
+
+**What is stored is the normalised value**, which is the project's existing trimming
+convention: `period_reopen` has always stored `btrim(…)` and the correction reason stores
+its trimmed form. Storing `'  Duplicate  '` verbatim on a void while a correction stores
+`'Duplicate'` would be the inconsistency this exists to remove. Internal spacing,
+punctuation and case are the operator's and are untouched — asserted, because "trim" and
+"squeeze" are one careless `regexp_replace` apart.
+
+**The table backstops are tightened too, and are `NOT VALID` — for a good reason.** Both
+`void_has_reason` CHECKs used the same spaces-only trim, so the backstop was weaker than
+the boundary it backs. They now carry the strict expression, inlined rather than calling
+the helper (a CHECK that calls a function is not re-validated when the function changes,
+which would quietly make the constraint a comment) — and the migration asserts the two
+forms agree value for value, so the duplication is checked rather than trusted.
+
+They are `NOT VALID` because **the two probe fixtures cannot be repaired**.
+`app.refuse_voided_mutation` refuses every update to a voided financial document,
+including one issued as the table owner, and it was right to: history is corrected by void
+and re-entry, never by rewriting a row (D-006). The choice was between rewriting voided
+history to make a constraint validate, and enforcing the rule from here on. The second is
+obviously correct, and it is a good sign rather than a bad one — two guarantees held at
+once and the older one won.
+
+**The positive control was seen to fail, in both engines.** The production helper was
+temporarily replaced with the old `btrim` body — the one seam both boundaries now share —
+and the tab-only case turned red on the expense void and on the revenue void. The
+production body was then restored and both matrices re-run green.
+
+That restore is worth recording, because the first attempt at it **silently did not
+happen**: the `create or replace` was batched with a `do` block whose assertion had a
+mis-escaped literal, the raise aborted the transaction, and the degraded helper stayed
+installed. It was caught by reading the state back rather than by trusting the statement,
+and the lesson is the ordinary one — *a restore is not restored until it has been read
+back.*
+
+**Recorded and deliberately not changed:** `public.period_reopen` normalises its own
+mandatory reason with `btrim(coalesce(p_reason, ''))`, and `period_lock_events` carries
+the same spaces-only CHECK. Same defect class, and **outside the two approved items** of
+this corrective, which name the Expense and Revenue void boundaries. Reopening a period is
+a different governance act with its own decision record (D-026), and widening a reviewed
+scope because the fix would be small is how a scope stops being reviewable (D-127).
+`app.stated_reason` is shaped so that closing it later is one call per site.

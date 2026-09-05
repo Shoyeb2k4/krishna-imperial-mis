@@ -113,6 +113,20 @@ by reading: a Manager holding no correction capability moved a sale's business d
 reason and no distinct audit action. Verified byte-for-byte against the applied statements,
 like the two above.
 
+## Pre-Slice-11 corrective — whitespace-only reasons, and revenue date provenance
+
+| Ledger version | Ledger name | Committed file |
+|---|---|---|
+| 20260905185903 | `financial_reasons_reject_all_whitespace` | `20260905185903_financial_reasons_reject_all_whitespace.sql` |
+
+The first of two approved items, one migration each. This closes the defect the previous
+corrective recorded and deliberately left: one-argument `btrim` strips spaces and not
+tabs, so a lone tab satisfied the mandatory void reason on **both** engines — proven by
+voiding two development fixtures with one before anything was changed.
+
+Verified byte-for-byte against `supabase_migrations.schema_migrations.statements`
+rather than by resemblance (D-056).
+
 ## The full applied ledger, in order
 
 ```
@@ -179,4 +193,5 @@ like the two above.
 20260905141738 expense_business_date_correction
 20260905142059 correction_reason_rejects_all_whitespace
 20260905144151 revenue_business_date_correction_governance
+20260905185903 financial_reasons_reject_all_whitespace
 ```
