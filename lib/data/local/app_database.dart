@@ -86,7 +86,7 @@ class AppDatabase extends _$AppDatabase {
   /// Financial tables raise this number as they land, each with a migration step and a
   /// migration test (docs/RELEASE_CHECKLIST.md §C).
   @override
-  int get schemaVersion => 12;
+  int get schemaVersion => 13;
 
   /// Timestamps are stored as ISO-8601 **UTC text**, not as unix seconds.
   ///
@@ -233,6 +233,26 @@ class AppDatabase extends _$AppDatabase {
         await customStatement(
           "DELETE FROM app_meta WHERE key = 'revenue.configuration.synced_at'",
         );
+      }
+      if (from >= 11 && from < 13) {
+        // Revenue records how its current business date was established (spec §9, D-019).
+        //
+        // The column defaults to `derived`, so every row an upgrading device already
+        // holds gets that — which is the honest answer and the only one available.
+        // Nothing infers a past correction from `updated_at`, a row version, notes or a
+        // date comparison: none of those is evidence, and inventing provenance is worse
+        // than not having it. Where a row really was corrected, the server says so and
+        // the next pull overwrites this value with the canonical one.
+        //
+        // **`from >= 11` is load-bearing, not defensive.** `revenue_entries` is created
+        // at v11 from the *current* table definition, which now includes this column — so
+        // a device coming from v10 or earlier already has it by the time this step is
+        // reached, and adding it again fails with `duplicate column name`. Caught by the
+        // v9 attachment-migration test, on the one fixture old enough to take that path.
+        // Every column added to a table that is itself created by a later-than-v1 step
+        // needs this guard, and the guard is a range rather than a floor so the intent
+        // reads as "the versions that actually lack it".
+        await m.addColumn(revenueEntries, revenueEntries.businessDateSource);
       }
       if (from < 9) {
         // `expenses.scope_revoked_at` (D-068). Nothing is back-filled: every row that

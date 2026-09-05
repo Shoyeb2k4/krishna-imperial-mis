@@ -4687,3 +4687,102 @@ this corrective, which name the Expense and Revenue void boundaries. Reopening a
 a different governance act with its own decision record (D-026), and widening a reviewed
 scope because the fix would be small is how a scope stops being reviewable (D-127).
 `app.stated_reason` is shaped so that closing it later is one call per site.
+
+## D-143 — Revenue records how its current business date was established
+**Date:** 2026-09-05 · **Status:** **Accepted (project-lead decision)** — an approved V1
+requirement, settling the question D-140 raised and deliberately did not decide
+
+**The question.** `expenses.business_date_source` has existed since Phase 3 (D-019);
+`revenue_entries` had nothing. Spec §8.0 enumerates a revenue entry's fields without it;
+spec §9 says the record notes how its date was arrived at. Those readings disagreed, and
+D-140 refused to settle a product question by copying the expense schema.
+
+**It was a three-way disagreement, and building it found the third.**
+`DATABASE_SCHEMA.md` lists `business_date_source` on `revenue_entries` **twice** — in the
+Phase 0 sketch and in §6.1's approved Phase 4 shape — and the Slice 4 implementation
+shipped the table without it. Nobody noticed for six slices, because nothing read a column
+that did not exist. So two of the three canonical documents already said yes, and what
+looked like an open product question was partly an unrecorded implementation gap. The
+decision below is still a decision — §8.0 had to be amended either way — but it is worth
+knowing that the plan was right and the code was the thing that diverged.
+
+**The decision: revenue carries provenance**, and §9 governs. The reason is reporting.
+Revenue feeds Net Sales, which feeds Operating Profit, and the period a sale lands in is
+decided by its business date. Whether that trading day was derived by the cut-off rule or
+moved by a person afterwards is a durable financial fact about the row, and answering it
+should not require reconstructing an audit sequence.
+
+**Two values, not three.** `derived` and `corrected`. Expense also has `manual` — a date
+chosen while *recording* — and revenue has no such path: no revenue surface offers a
+trading day at entry, and `revenue_create` takes no provenance argument. A column
+admitting a value nothing can produce would claim the system can do something it cannot.
+A third value later is a migration and a decision.
+
+**The enum is shared, and its wire names are now explicit.** `BusinessDateSource` is
+reused rather than duplicated per engine: it is one concept and one stored vocabulary. Its
+stored form is stated on the enum and pinned by a host test rather than being `.name` —
+they agree today, and that is exactly the shape of D-104, where `EnteredBasis` was written
+and read through `.name` while both schemas stored the snake-case form. *A wire name that
+is a coincidence is a wire name waiting to break.* `fromWire` throws on anything else,
+because there is no safe guess between "the cut-off derived this" and "somebody moved it".
+
+**The server owns it.** `revenue_create` states `derived` itself and has no provenance
+parameter; `revenue_update` writes `corrected` only on the branch where it has already
+established, from canonical state, that the date moved. Every refusal — stale version,
+closed period, missing capability, blank reason — happens before that write, so a refused
+correction leaves the provenance exactly as it found it. **Once corrected it stays
+corrected:** an ordinary later edit preserves the value, because the question is how this
+trading day came to be and a subsequent amount correction does not change that answer.
+
+**The client copies, and never derives.** Both write paths return the canonical value; the
+acceptance carries it; the reconciler writes what it was told and, when the answer states
+nothing — a replayed result from an older build — leaves the local value alone rather than
+guessing (D-072a's rule about fields the server did not restate). The local update path
+deliberately does **not** write provenance: a local correction is an attempt, and writing
+it there would let a refused correction leave a device claiming a corrected trading day.
+
+**Backfill is `derived`, and nothing cleverer.** Nothing infers a past correction from
+`updated_at`, a row version, notes or a date comparison — none of those is evidence.
+There *is* exact canonical evidence for two rows in `audit_logs`, and both belong to
+voided development fixtures with no open corrected entry anywhere, so backfilling from the
+audit trail would be machinery written to move two voided test rows. Deliberately not
+written, and recorded as a decision rather than an oversight (all 307 existing rows are
+`derived`, asserted at deploy).
+
+**It does not replace the audit trail.** `business_date_corrected` still carries the old
+date, the new date, the reason, the actor, the server timestamp and the mutation id — the
+historical sequence, and it now carries the old and new provenance too. The column answers
+one question about the row as it stands now. Phase 5 may read it and **must not let it
+alter an amount**: aggregation stays keyed on the business date and the contribution
+model.
+
+**No UI is built for it.** It is provenance, not operator input, and no current surface
+needs it; the domain and storage are correct and Slice 10's surfaces are untouched.
+
+**Spec §8.0 is amended** to list the field, so the two readings no longer disagree.
+
+## D-144 — A column added to a table created by a later migration needs a version floor
+**Date:** 2026-09-05 · **Status:** Accepted — a real migration defect, caught by the one
+fixture old enough to take the path
+
+Local schema **v13** adds `revenue_entries.business_date_source`. Written first as
+`if (from < 13)`, it failed on a device coming from **v9**:
+
+```
+        duplicate column name: business_date_source
+```
+
+`revenue_entries` is created at v11 **from the current table definition**, which now
+includes the column — so a device upgrading from v10 or earlier already has it by the time
+the v13 step is reached. The guard is therefore a range, `from >= 11 && from < 13`, and
+the comment says why: every column added to a table that is itself created by a
+later-than-v1 step needs one.
+
+Found by the v9 attachment-migration fixture, which exists because D-073a's own migration
+failed on a machine that had real v9 rows. The same fixture, catching the same class of
+defect, two phases later — which is the argument for completing a fixture rather than
+narrowing it.
+
+Recorded beside it: two schema tests asserted `PRAGMA user_version` against a hard-coded
+`12`. Their subject is "the database opens at the current version", not "at 12", so they
+now read `db.schemaVersion` and do not need editing on every bump.

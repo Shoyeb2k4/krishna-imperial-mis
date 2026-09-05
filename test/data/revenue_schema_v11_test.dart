@@ -166,7 +166,7 @@ void main() {
         final version = await db
             .customSelect('PRAGMA user_version')
             .getSingle();
-        expect(version.data.values.first, 12);
+        expect(version.data.values.first, db.schemaVersion);
 
         final names = {
           for (final r
@@ -747,7 +747,7 @@ void main() {
       addTearDown(db.close);
 
       final version = await db.customSelect('PRAGMA user_version').getSingle();
-      expect(version.data.values.first, 12);
+      expect(version.data.values.first, db.schemaVersion);
 
       // 1 · Phase 3 data is untouched.
       final unit = await db

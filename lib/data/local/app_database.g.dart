@@ -637,7 +637,10 @@ class SyncOutboxRow extends DataClass implements Insertable<SyncOutboxRow> {
   final String entityType;
   final String entityId;
 
-  /// `create` | `update` | `void_` | `correctBusinessDate` | `archive`
+  /// `create` | `update` | `void_` | `archive`
+  ///
+  /// A business-date correction is an `update`: one document, one write path, one
+  /// contract (D-127).
   final String op;
 
   /// The canonical document as JSON, including allocation lines.
@@ -12121,6 +12124,18 @@ class $RevenueEntriesTable extends RevenueEntries
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _businessDateSourceMeta =
+      const VerificationMeta('businessDateSource');
+  @override
+  late final GeneratedColumn<String> businessDateSource =
+      GeneratedColumn<String>(
+        'business_date_source',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+        defaultValue: const Constant('derived'),
+      );
   static const VerificationMeta _capturedAtMeta = const VerificationMeta(
     'capturedAt',
   );
@@ -12277,6 +12292,7 @@ class $RevenueEntriesTable extends RevenueEntries
     revenueCategoryId,
     businessDate,
     pnlPeriodKey,
+    businessDateSource,
     capturedAt,
     entryKind,
     sourceReference,
@@ -12374,6 +12390,15 @@ class $RevenueEntriesTable extends RevenueEntries
       );
     } else if (isInserting) {
       context.missing(_pnlPeriodKeyMeta);
+    }
+    if (data.containsKey('business_date_source')) {
+      context.handle(
+        _businessDateSourceMeta,
+        businessDateSource.isAcceptableOrUnknown(
+          data['business_date_source']!,
+          _businessDateSourceMeta,
+        ),
+      );
     }
     if (data.containsKey('captured_at')) {
       context.handle(
@@ -12512,6 +12537,10 @@ class $RevenueEntriesTable extends RevenueEntries
         DriftSqlType.string,
         data['${effectivePrefix}pnl_period_key'],
       )!,
+      businessDateSource: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}business_date_source'],
+      )!,
       capturedAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}captured_at'],
@@ -12597,6 +12626,18 @@ class RevenueEntryRow extends DataClass implements Insertable<RevenueEntryRow> {
   /// `YYYY-MM` of [businessDate], for period lookups and reporting.
   final String pnlPeriodKey;
 
+  /// How the **current** [businessDate] came to be what it is: `derived` by the unit's
+  /// cut-off rule, or `corrected` afterwards by a privileged user (spec §9, D-019).
+  ///
+  /// Server-owned. `revenue_create` takes no provenance argument and states `derived`
+  /// itself; `revenue_update` writes `corrected` only on the branch where it has
+  /// established, from canonical state, that the date moved. This column is a cache of
+  /// that answer, and the pull and the reconciler copy it rather than deriving it.
+  ///
+  /// No `manual`: unlike an expense, no revenue surface offers a trading day at entry, so
+  /// the value has no producer and the server's CHECK does not admit it.
+  final String businessDateSource;
+
   /// The device instant. Forensic metadata; never authoritative (spec §9).
   final DateTime capturedAt;
 
@@ -12636,6 +12677,7 @@ class RevenueEntryRow extends DataClass implements Insertable<RevenueEntryRow> {
     required this.revenueCategoryId,
     required this.businessDate,
     required this.pnlPeriodKey,
+    required this.businessDateSource,
     required this.capturedAt,
     required this.entryKind,
     this.sourceReference,
@@ -12665,6 +12707,7 @@ class RevenueEntryRow extends DataClass implements Insertable<RevenueEntryRow> {
     map['revenue_category_id'] = Variable<String>(revenueCategoryId);
     map['business_date'] = Variable<String>(businessDate);
     map['pnl_period_key'] = Variable<String>(pnlPeriodKey);
+    map['business_date_source'] = Variable<String>(businessDateSource);
     map['captured_at'] = Variable<DateTime>(capturedAt);
     map['entry_kind'] = Variable<String>(entryKind);
     if (!nullToAbsent || sourceReference != null) {
@@ -12711,6 +12754,7 @@ class RevenueEntryRow extends DataClass implements Insertable<RevenueEntryRow> {
       revenueCategoryId: Value(revenueCategoryId),
       businessDate: Value(businessDate),
       pnlPeriodKey: Value(pnlPeriodKey),
+      businessDateSource: Value(businessDateSource),
       capturedAt: Value(capturedAt),
       entryKind: Value(entryKind),
       sourceReference: sourceReference == null && nullToAbsent
@@ -12757,6 +12801,9 @@ class RevenueEntryRow extends DataClass implements Insertable<RevenueEntryRow> {
       revenueCategoryId: serializer.fromJson<String>(json['revenueCategoryId']),
       businessDate: serializer.fromJson<String>(json['businessDate']),
       pnlPeriodKey: serializer.fromJson<String>(json['pnlPeriodKey']),
+      businessDateSource: serializer.fromJson<String>(
+        json['businessDateSource'],
+      ),
       capturedAt: serializer.fromJson<DateTime>(json['capturedAt']),
       entryKind: serializer.fromJson<String>(json['entryKind']),
       sourceReference: serializer.fromJson<String?>(json['sourceReference']),
@@ -12786,6 +12833,7 @@ class RevenueEntryRow extends DataClass implements Insertable<RevenueEntryRow> {
       'revenueCategoryId': serializer.toJson<String>(revenueCategoryId),
       'businessDate': serializer.toJson<String>(businessDate),
       'pnlPeriodKey': serializer.toJson<String>(pnlPeriodKey),
+      'businessDateSource': serializer.toJson<String>(businessDateSource),
       'capturedAt': serializer.toJson<DateTime>(capturedAt),
       'entryKind': serializer.toJson<String>(entryKind),
       'sourceReference': serializer.toJson<String?>(sourceReference),
@@ -12811,6 +12859,7 @@ class RevenueEntryRow extends DataClass implements Insertable<RevenueEntryRow> {
     String? revenueCategoryId,
     String? businessDate,
     String? pnlPeriodKey,
+    String? businessDateSource,
     DateTime? capturedAt,
     String? entryKind,
     Value<String?> sourceReference = const Value.absent(),
@@ -12835,6 +12884,7 @@ class RevenueEntryRow extends DataClass implements Insertable<RevenueEntryRow> {
     revenueCategoryId: revenueCategoryId ?? this.revenueCategoryId,
     businessDate: businessDate ?? this.businessDate,
     pnlPeriodKey: pnlPeriodKey ?? this.pnlPeriodKey,
+    businessDateSource: businessDateSource ?? this.businessDateSource,
     capturedAt: capturedAt ?? this.capturedAt,
     entryKind: entryKind ?? this.entryKind,
     sourceReference: sourceReference.present
@@ -12877,6 +12927,9 @@ class RevenueEntryRow extends DataClass implements Insertable<RevenueEntryRow> {
       pnlPeriodKey: data.pnlPeriodKey.present
           ? data.pnlPeriodKey.value
           : this.pnlPeriodKey,
+      businessDateSource: data.businessDateSource.present
+          ? data.businessDateSource.value
+          : this.businessDateSource,
       capturedAt: data.capturedAt.present
           ? data.capturedAt.value
           : this.capturedAt,
@@ -12918,6 +12971,7 @@ class RevenueEntryRow extends DataClass implements Insertable<RevenueEntryRow> {
           ..write('revenueCategoryId: $revenueCategoryId, ')
           ..write('businessDate: $businessDate, ')
           ..write('pnlPeriodKey: $pnlPeriodKey, ')
+          ..write('businessDateSource: $businessDateSource, ')
           ..write('capturedAt: $capturedAt, ')
           ..write('entryKind: $entryKind, ')
           ..write('sourceReference: $sourceReference, ')
@@ -12945,6 +12999,7 @@ class RevenueEntryRow extends DataClass implements Insertable<RevenueEntryRow> {
     revenueCategoryId,
     businessDate,
     pnlPeriodKey,
+    businessDateSource,
     capturedAt,
     entryKind,
     sourceReference,
@@ -12971,6 +13026,7 @@ class RevenueEntryRow extends DataClass implements Insertable<RevenueEntryRow> {
           other.revenueCategoryId == this.revenueCategoryId &&
           other.businessDate == this.businessDate &&
           other.pnlPeriodKey == this.pnlPeriodKey &&
+          other.businessDateSource == this.businessDateSource &&
           other.capturedAt == this.capturedAt &&
           other.entryKind == this.entryKind &&
           other.sourceReference == this.sourceReference &&
@@ -12995,6 +13051,7 @@ class RevenueEntriesCompanion extends UpdateCompanion<RevenueEntryRow> {
   final Value<String> revenueCategoryId;
   final Value<String> businessDate;
   final Value<String> pnlPeriodKey;
+  final Value<String> businessDateSource;
   final Value<DateTime> capturedAt;
   final Value<String> entryKind;
   final Value<String?> sourceReference;
@@ -13018,6 +13075,7 @@ class RevenueEntriesCompanion extends UpdateCompanion<RevenueEntryRow> {
     this.revenueCategoryId = const Value.absent(),
     this.businessDate = const Value.absent(),
     this.pnlPeriodKey = const Value.absent(),
+    this.businessDateSource = const Value.absent(),
     this.capturedAt = const Value.absent(),
     this.entryKind = const Value.absent(),
     this.sourceReference = const Value.absent(),
@@ -13042,6 +13100,7 @@ class RevenueEntriesCompanion extends UpdateCompanion<RevenueEntryRow> {
     required String revenueCategoryId,
     required String businessDate,
     required String pnlPeriodKey,
+    this.businessDateSource = const Value.absent(),
     required DateTime capturedAt,
     this.entryKind = const Value.absent(),
     this.sourceReference = const Value.absent(),
@@ -13074,6 +13133,7 @@ class RevenueEntriesCompanion extends UpdateCompanion<RevenueEntryRow> {
     Expression<String>? revenueCategoryId,
     Expression<String>? businessDate,
     Expression<String>? pnlPeriodKey,
+    Expression<String>? businessDateSource,
     Expression<DateTime>? capturedAt,
     Expression<String>? entryKind,
     Expression<String>? sourceReference,
@@ -13098,6 +13158,8 @@ class RevenueEntriesCompanion extends UpdateCompanion<RevenueEntryRow> {
       if (revenueCategoryId != null) 'revenue_category_id': revenueCategoryId,
       if (businessDate != null) 'business_date': businessDate,
       if (pnlPeriodKey != null) 'pnl_period_key': pnlPeriodKey,
+      if (businessDateSource != null)
+        'business_date_source': businessDateSource,
       if (capturedAt != null) 'captured_at': capturedAt,
       if (entryKind != null) 'entry_kind': entryKind,
       if (sourceReference != null) 'source_reference': sourceReference,
@@ -13124,6 +13186,7 @@ class RevenueEntriesCompanion extends UpdateCompanion<RevenueEntryRow> {
     Value<String>? revenueCategoryId,
     Value<String>? businessDate,
     Value<String>? pnlPeriodKey,
+    Value<String>? businessDateSource,
     Value<DateTime>? capturedAt,
     Value<String>? entryKind,
     Value<String?>? sourceReference,
@@ -13148,6 +13211,7 @@ class RevenueEntriesCompanion extends UpdateCompanion<RevenueEntryRow> {
       revenueCategoryId: revenueCategoryId ?? this.revenueCategoryId,
       businessDate: businessDate ?? this.businessDate,
       pnlPeriodKey: pnlPeriodKey ?? this.pnlPeriodKey,
+      businessDateSource: businessDateSource ?? this.businessDateSource,
       capturedAt: capturedAt ?? this.capturedAt,
       entryKind: entryKind ?? this.entryKind,
       sourceReference: sourceReference ?? this.sourceReference,
@@ -13191,6 +13255,9 @@ class RevenueEntriesCompanion extends UpdateCompanion<RevenueEntryRow> {
     }
     if (pnlPeriodKey.present) {
       map['pnl_period_key'] = Variable<String>(pnlPeriodKey.value);
+    }
+    if (businessDateSource.present) {
+      map['business_date_source'] = Variable<String>(businessDateSource.value);
     }
     if (capturedAt.present) {
       map['captured_at'] = Variable<DateTime>(capturedAt.value);
@@ -13248,6 +13315,7 @@ class RevenueEntriesCompanion extends UpdateCompanion<RevenueEntryRow> {
           ..write('revenueCategoryId: $revenueCategoryId, ')
           ..write('businessDate: $businessDate, ')
           ..write('pnlPeriodKey: $pnlPeriodKey, ')
+          ..write('businessDateSource: $businessDateSource, ')
           ..write('capturedAt: $capturedAt, ')
           ..write('entryKind: $entryKind, ')
           ..write('sourceReference: $sourceReference, ')
@@ -25209,6 +25277,7 @@ typedef $$RevenueEntriesTableCreateCompanionBuilder =
       required String revenueCategoryId,
       required String businessDate,
       required String pnlPeriodKey,
+      Value<String> businessDateSource,
       required DateTime capturedAt,
       Value<String> entryKind,
       Value<String?> sourceReference,
@@ -25234,6 +25303,7 @@ typedef $$RevenueEntriesTableUpdateCompanionBuilder =
       Value<String> revenueCategoryId,
       Value<String> businessDate,
       Value<String> pnlPeriodKey,
+      Value<String> businessDateSource,
       Value<DateTime> capturedAt,
       Value<String> entryKind,
       Value<String?> sourceReference,
@@ -25327,6 +25397,11 @@ class $$RevenueEntriesTableFilterComposer
 
   ColumnFilters<String> get pnlPeriodKey => $composableBuilder(
     column: $table.pnlPeriodKey,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get businessDateSource => $composableBuilder(
+    column: $table.businessDateSource,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -25470,6 +25545,11 @@ class $$RevenueEntriesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get businessDateSource => $composableBuilder(
+    column: $table.businessDateSource,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get capturedAt => $composableBuilder(
     column: $table.capturedAt,
     builder: (column) => ColumnOrderings(column),
@@ -25576,6 +25656,11 @@ class $$RevenueEntriesTableAnnotationComposer
 
   GeneratedColumn<String> get pnlPeriodKey => $composableBuilder(
     column: $table.pnlPeriodKey,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get businessDateSource => $composableBuilder(
+    column: $table.businessDateSource,
     builder: (column) => column,
   );
 
@@ -25697,6 +25782,7 @@ class $$RevenueEntriesTableTableManager
                 Value<String> revenueCategoryId = const Value.absent(),
                 Value<String> businessDate = const Value.absent(),
                 Value<String> pnlPeriodKey = const Value.absent(),
+                Value<String> businessDateSource = const Value.absent(),
                 Value<DateTime> capturedAt = const Value.absent(),
                 Value<String> entryKind = const Value.absent(),
                 Value<String?> sourceReference = const Value.absent(),
@@ -25720,6 +25806,7 @@ class $$RevenueEntriesTableTableManager
                 revenueCategoryId: revenueCategoryId,
                 businessDate: businessDate,
                 pnlPeriodKey: pnlPeriodKey,
+                businessDateSource: businessDateSource,
                 capturedAt: capturedAt,
                 entryKind: entryKind,
                 sourceReference: sourceReference,
@@ -25745,6 +25832,7 @@ class $$RevenueEntriesTableTableManager
                 required String revenueCategoryId,
                 required String businessDate,
                 required String pnlPeriodKey,
+                Value<String> businessDateSource = const Value.absent(),
                 required DateTime capturedAt,
                 Value<String> entryKind = const Value.absent(),
                 Value<String?> sourceReference = const Value.absent(),
@@ -25768,6 +25856,7 @@ class $$RevenueEntriesTableTableManager
                 revenueCategoryId: revenueCategoryId,
                 businessDate: businessDate,
                 pnlPeriodKey: pnlPeriodKey,
+                businessDateSource: businessDateSource,
                 capturedAt: capturedAt,
                 entryKind: entryKind,
                 sourceReference: sourceReference,

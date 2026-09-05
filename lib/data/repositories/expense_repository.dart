@@ -172,7 +172,7 @@ class ExpenseRepository {
               id: expense.id,
               orgId: expense.orgId,
               businessDate: expense.businessDate.iso,
-              businessDateSource: Value(expense.businessDateSource.name),
+              businessDateSource: Value(expense.businessDateSource.wireName),
               accountingPeriodStart: Value(expense.accountingPeriodStart?.iso),
               accountingPeriodEnd: Value(expense.accountingPeriodEnd?.iso),
               visibility: const Value('complete'),
@@ -293,7 +293,7 @@ class ExpenseRepository {
     'p_id': expense.id,
     'p_business_date': expense.businessDate.iso,
     'p_total_minor': expense.total.paise,
-    'p_business_date_source': expense.businessDateSource.name,
+    'p_business_date_source': expense.businessDateSource.wireName,
     'p_period_start': expense.accountingPeriodStart?.iso,
     'p_period_end': expense.accountingPeriodEnd?.iso,
     'p_vendor_id': expense.vendorId,
@@ -407,7 +407,7 @@ class ExpenseRepository {
       )..where((t) => t.id.equals(expense.id))).write(
         ExpensesCompanion(
           businessDate: Value(expense.businessDate.iso),
-          businessDateSource: Value(expense.businessDateSource.name),
+          businessDateSource: Value(expense.businessDateSource.wireName),
           accountingPeriodStart: Value(expense.accountingPeriodStart?.iso),
           accountingPeriodEnd: Value(expense.accountingPeriodEnd?.iso),
           documentTotalMinor: Value(expense.total.paise),

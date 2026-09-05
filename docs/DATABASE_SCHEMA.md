@@ -480,9 +480,25 @@ create index on revenue_entries (org_id, business_unit_id, revenue_category_id, 
 
 ### 6.1 The approved Phase 4 model — planned, not built
 
-Approved 2026-08-31 as the planning baseline (D-078 … D-087). **Nothing below exists**:
-no table, no RPC, no migration. Phase 4 is blocked on verified revenue tax and billing
-configuration.
+> **Correction, 2026-09-05 — `business_date_source` was in this plan and was not built.**
+> The column appears in the approved shape below *and* in the Phase 0 sketch above it, and
+> the Slice 4 implementation shipped `revenue_entries` **without** it. The omission was
+> invisible for six slices, and was found by the Phase 3 expense corrective asking whether
+> revenue carried the same provenance (D-140).
+>
+> So the §8.0-versus-§9 disagreement that decision recorded was really a three-way one, and
+> two of the three documents already said yes. It is now built and approved (D-143), with
+> two values — `derived` and `corrected` — and no `manual`, because no revenue surface
+> offers a trading day at entry. Spec §8.0 is amended to match.
+>
+> **The rest of this section is still written as a plan, and is stale in that respect.**
+> The revenue engine is built and running; `PROJECT_STATUS.md` is the record of what
+> exists. The section is left as written rather than rewritten inside a corrective whose
+> approved scope is two items.
+
+Approved 2026-08-31 as the planning baseline (D-078 … D-087). **Nothing below existed when
+this was written**: no table, no RPC, no migration. Phase 4 has since been implemented —
+see the correction above and `PROJECT_STATUS.md`.
 
 **The document and its components.** A revenue entry is a header with one or more
 components, exactly as an expense is a header with one or more allocation lines (D-003).

@@ -161,6 +161,7 @@ final class RevenueAcceptance {
     this.txnNumber,
     this.financialYear,
     this.serverUpdatedAt,
+    this.businessDateSource,
   });
 
   /// Builds one from an RPC answer, or null if the answer does not carry what is needed.
@@ -180,6 +181,15 @@ final class RevenueAcceptance {
       txnNumber: payload['txn_number'] as String?,
       financialYear: payload['financial_year']?.toString(),
       serverUpdatedAt: DateTime.tryParse('${payload['updated_at']}')?.toUtc(),
+      // Both write paths state it. Null means an older stored result that predates the
+      // field, and the reconciler leaves the local value alone rather than guessing —
+      // the same reason this whole type returns null rather than inventing a
+      // reconciliation it cannot support.
+      businessDateSource: payload['business_date_source'] is String
+          ? BusinessDateSource.fromWire(
+              payload['business_date_source'] as String,
+            )
+          : null,
     );
   }
 
@@ -188,6 +198,12 @@ final class RevenueAcceptance {
   final String? txnNumber;
   final String? financialYear;
   final DateTime? serverUpdatedAt;
+
+  /// The canonical provenance of the entry's business date, as the server stated it.
+  ///
+  /// Null only when the answer did not carry one, which is an older stored result being
+  /// replayed. Never derived on this side (spec §9).
+  final BusinessDateSource? businessDateSource;
 }
 
 /// A revenue entry as the local read model holds it, with its sync state.
@@ -541,6 +557,12 @@ class RevenueRepository {
               sourceReference: Value(entry.sourceReference),
               notes: Value(entry.notes),
               createdBy: actorUserId,
+              // A freshly recorded sale's trading day was derived by the cut-off rule.
+              // Stated rather than left to the column default, so the create path says
+              // what it means — and the server states the same thing and returns it, so
+              // reconciliation overwrites this with the canonical answer rather than
+              // trusting the two sides to agree on a constant.
+              businessDateSource: Value(BusinessDateSource.derived.wireName),
               // No transaction number. The server issues it on acceptance, and inventing
               // one here would be a permanent-looking reference two offline devices could
               // both claim (spec §8.4).
@@ -787,6 +809,12 @@ class RevenueRepository {
       await (_db.update(
         _db.revenueEntries,
       )..where((e) => e.id.equals(entry.id))).write(
+        // `businessDateSource` is deliberately absent. A local correction is an
+        // *attempt*: the server decides whether the date really moved, whether this
+        // actor may move it, and whether the period allows it — and only then is the
+        // provenance `corrected`. Writing it here would let a refused correction leave a
+        // device claiming a trading day had been corrected when it had not. It arrives
+        // with the acceptance (spec §9, D-037).
         RevenueEntriesCompanion(
           businessDate: Value(entry.businessDate.iso),
           pnlPeriodKey: Value(entry.businessDate.periodKey),
@@ -931,27 +959,37 @@ class RevenueRepository {
   /// otherwise: writing every field back erased the server-issued transaction number on
   /// every edit, because the update RPC returns only a row version. A field the server did
   /// not mention is left alone.
-  Future<void> reconcileAcceptance(RevenueAcceptance acceptance) =>
-      _db.transaction(() async {
-        await (_db.update(
-          _db.revenueEntries,
-        )..where((e) => e.id.equals(acceptance.entryId))).write(
-          RevenueEntriesCompanion(
-            rowVersion: Value(acceptance.rowVersion),
-            txnNumber: acceptance.txnNumber == null
-                ? const Value.absent()
-                : Value(acceptance.txnNumber),
-            financialYear: acceptance.financialYear == null
-                ? const Value.absent()
-                : Value(acceptance.financialYear),
-            serverUpdatedAt: acceptance.serverUpdatedAt == null
-                ? const Value.absent()
-                : Value(acceptance.serverUpdatedAt),
-            // The intent is delivered; the row is no longer waiting on one.
-            pendingMutationId: const Value(null),
-          ),
-        );
-      });
+  Future<void> reconcileAcceptance(
+    RevenueAcceptance acceptance,
+  ) => _db.transaction(() async {
+    await (_db.update(
+      _db.revenueEntries,
+    )..where((e) => e.id.equals(acceptance.entryId))).write(
+      RevenueEntriesCompanion(
+        rowVersion: Value(acceptance.rowVersion),
+        txnNumber: acceptance.txnNumber == null
+            ? const Value.absent()
+            : Value(acceptance.txnNumber),
+        financialYear: acceptance.financialYear == null
+            ? const Value.absent()
+            : Value(acceptance.financialYear),
+        serverUpdatedAt: acceptance.serverUpdatedAt == null
+            ? const Value.absent()
+            : Value(acceptance.serverUpdatedAt),
+        // The canonical provenance, carried from the server rather than derived here
+        // (spec §9). A correction that moved the date comes back `corrected`; every
+        // other acceptance comes back with whatever the row already had, so an
+        // ordinary edit cannot reset it. Absent only when the answer did not state
+        // one — an older stored result being replayed — and then the local value is
+        // left alone rather than guessed at.
+        businessDateSource: acceptance.businessDateSource == null
+            ? const Value.absent()
+            : Value(acceptance.businessDateSource!.wireName),
+        // The intent is delivered; the row is no longer waiting on one.
+        pendingMutationId: const Value(null),
+      ),
+    );
+  });
 
   /// Replaces the local copy of one entry with the server's, from the authorised
   /// projection.
@@ -1017,6 +1055,11 @@ class RevenueRepository {
           entryKind: Value('${header['entry_kind']}'),
           sourceReference: Value(header['source_reference'] as String?),
           notes: Value(header['notes'] as String?),
+          businessDateSource: Value(
+            // The projection carries it. A row read back from the server states its own
+            // provenance; nothing here re-derives it.
+            '${header['business_date_source'] ?? BusinessDateSource.derived.wireName}',
+          ),
           rowVersion: Value(header['row_version']! as int),
           voidedAt: Value(
             header['voided_at'] == null
@@ -1423,6 +1466,9 @@ class RevenueRepository {
       voidedAt: header.voidedAt,
       voidedBy: header.voidedBy,
       voidReason: header.voidReason,
+      businessDateSource: BusinessDateSource.fromWire(
+        header.businessDateSource,
+      ),
       components: [
         for (final c in rows)
           RevenueComponent(

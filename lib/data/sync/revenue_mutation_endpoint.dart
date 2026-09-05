@@ -20,6 +20,7 @@ import 'package:krishna_mis/data/remote/remote_outcome.dart';
 import 'package:krishna_mis/data/remote/revenue_gateway.dart';
 import 'package:krishna_mis/data/repositories/revenue_repository.dart';
 import 'package:krishna_mis/domain/sync/pending_mutation.dart';
+import 'package:krishna_mis/domain/value_objects/business_date.dart';
 import 'package:krishna_mis/domain/sync/server_refusal.dart';
 
 class RevenueMutationEndpoint implements RemoteMutationEndpoint {
@@ -167,6 +168,11 @@ class RevenueReconciler implements MutationReconciler {
             serverUpdatedAt: DateTime.tryParse(
               '${value['updated_at']}',
             )?.toUtc(),
+            businessDateSource: value['business_date_source'] is String
+                ? BusinessDateSource.fromWire(
+                    value['business_date_source'] as String,
+                  )
+                : null,
           ),
         );
       case RemoteOk():

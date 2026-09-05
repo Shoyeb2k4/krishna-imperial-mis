@@ -63,6 +63,19 @@ class RevenueEntries extends Table {
   /// `YYYY-MM` of [businessDate], for period lookups and reporting.
   TextColumn get pnlPeriodKey => text()();
 
+  /// How the **current** [businessDate] came to be what it is: `derived` by the unit's
+  /// cut-off rule, or `corrected` afterwards by a privileged user (spec §9, D-019).
+  ///
+  /// Server-owned. `revenue_create` takes no provenance argument and states `derived`
+  /// itself; `revenue_update` writes `corrected` only on the branch where it has
+  /// established, from canonical state, that the date moved. This column is a cache of
+  /// that answer, and the pull and the reconciler copy it rather than deriving it.
+  ///
+  /// No `manual`: unlike an expense, no revenue surface offers a trading day at entry, so
+  /// the value has no producer and the server's CHECK does not admit it.
+  TextColumn get businessDateSource =>
+      text().withDefault(const Constant('derived'))();
+
   /// The device instant. Forensic metadata; never authoritative (spec §9).
   DateTimeColumn get capturedAt => dateTime()();
 

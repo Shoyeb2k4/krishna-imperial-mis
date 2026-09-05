@@ -6,8 +6,9 @@ Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
 Last updated: **2026-09-05** — Phase 4 Slice 10 closed; the **Phase 3 expense business-date
-corrective is done and accepted**, and the bounded revenue parity audit it required found and
-closed a governance gap of its own (D-136 … D-141). **Slice 11 is not started.**
+corrective** and the **pre-Slice-11 cleanup** are both done and accepted (D-136 … D-144).
+Mandatory financial reasons now reject whitespace-only values on both engines, and revenue
+records its business-date provenance. **Slice 11 is not started.**
 
 > A new session should be able to read this file and know exactly where work stopped.
 > This file — not chat history — is the checkpoint.
@@ -762,7 +763,7 @@ Blocked.**
 |---|---|---|
 | `dart format --set-exit-if-changed` | **Tested** | clean (175 files) |
 | `flutter analyze` | **Tested** | **No issues found** |
-| Host test suite | **Tested** | **1,088 tests, all passing** (1,067 + 21 for the corrective) |
+| Host test suite | **Tested** | **1,099 tests, all passing** (1,067 + 21 + 11 for the two correctives) |
 | Secret scan — tree and git history | **Tested** | clean; the scan proves its own controls on every run (D-069) |
 | Secret scan — rebuilt clean binaries | **Tested** | tree, git history and built artefacts all clean, with the scanner's controls passing |
 | Migration audit (search_path, API surface, policy boundary) | **Tested** | 14 host tests |
@@ -842,10 +843,10 @@ Blocked.**
 
 | Suite | Count | Result |
 |---|---|---|
-| Host (`flutter test`) | **1,088** | all passing |
+| Host (`flutter test`) | **1,099** | all passing |
 | Live backend against `krishna-mis-dev` (opt-in) | 19 | the phases this change touches re-run at the corrective checkpoint (`drift`, `conflict`, and the revenue chain, twice in succession); the four scope phases need administrative grant changes between them and were **not** re-run |
-| Live expense suite against `krishna-mis-dev` (opt-in) | **30** | all passing — re-run in full at the corrective checkpoint |
-| Live revenue boundary suite (opt-in) | **33** | all passing, 1 deliberately skipped |
+| Live expense suite against `krishna-mis-dev` (opt-in) | **40** | all passing — re-run in full at the pre-Slice-11 checkpoint |
+| Live revenue boundary suite (opt-in) | **49** | all passing, 1 deliberately skipped |
 | Live two-client acceptance (opt-in) | 10 | all passing |
 | **Slice 10 Android acceptance** (`revenue-edit`, `-edit-banquet`, `-conflict`, `-void`, `-user-switch`) | **5** | **all passing** |
 | **Slice 10 Windows acceptance** (`windows-revenue-edit`, `-void`, `-conflict`) | **3** | **all passing** |
@@ -1407,8 +1408,11 @@ capability binds" rather than "nobody can correct anything".
 
 ## Open questions for the project lead
 
-**One, and it blocks nothing.** Should a revenue entry record **how its business date was
-arrived at**, the way an expense does?
+~~**One, and it blocks nothing.** Should a revenue entry record how its business date was
+arrived at, the way an expense does?~~ **Answered 2026-09-05: yes** — `derived` and
+`corrected`, server-owned, built and tested (D-143). Spec §8.0 is amended, and
+`DATABASE_SCHEMA.md` turned out to have listed the column twice all along. The question as
+it was put:
 
 `expenses.business_date_source ∈ {derived, manual, corrected}` exists and, since this
 corrective, is written on the branch where a date actually moves (D-019). `revenue_entries`
@@ -1432,15 +1436,129 @@ is reported rather than fixed in passing (D-127).
 
 ---
 
+---
+
+## Pre-Slice-11 corrective — two approved items: **DONE**
+
+Approved and scoped to exactly two items. Nothing else was changed, and the adjacent
+findings are recorded rather than fixed.
+
+### 1 · A mandatory financial reason rejects every whitespace-only value (D-142)
+
+**Proven red first, on both engines.** One-argument `btrim`/`trim` strips spaces alone:
+
+```
+        expense_void(p_reason => E'\t')   applied, row_version 3, audit reason "\t"
+        revenue_void(p_reason => E'\t')   applied, row_version 2, void_reason "\t"
+```
+
+Two documents permanently voided, with a tab as the only record of why.
+
+`app.stated_reason` is now the one rule — internal, immutable, revoked from every client
+role, and **not** on the reviewed API surface. Both voids call it, and so does the
+business-date correction reason, so the three cannot drift. The **normalised** value is
+stored, which is the project's existing trimming convention; internal spacing is content
+and is untouched.
+
+Both `void_has_reason` CHECKs are tightened to the same expression and added `NOT VALID` —
+because the two probe fixtures **cannot be repaired**: `app.refuse_voided_mutation` refuses
+every update to a voided document, including one issued as the table owner, and it was
+right to (D-006). Enforcing forward while leaving the evidence is the correct trade, and it
+is two guarantees holding at once rather than a compromise.
+
+### 2 · Revenue records how its business date was established (D-143)
+
+An approved V1 requirement, settling what D-140 raised. `revenue_entries.business_date_source`,
+two values — `derived` and `corrected` — server-owned end to end:
+
+| | |
+|---|---|
+| create | `derived`, stated by `revenue_create`, which takes **no** provenance argument |
+| correction | `corrected`, only on the branch the server has established moved the date |
+| ordinary edit | preserved — once corrected, it stays corrected |
+| every refusal | leaves it untouched; all of them happen before the write |
+| backfill | `derived` for all 307 existing rows, inferred from nothing |
+| audit | unchanged and still authoritative; the column is present-state provenance |
+| UI | none — it is provenance, not operator input |
+
+**The enum is shared and its wire names are now explicit.** `BusinessDateSource` is reused
+rather than duplicated, and its stored form is stated on the enum and pinned by a host test
+instead of being `.name` — the D-104 trap, closed before it could be walked into.
+
+`DATABASE_SCHEMA.md` listed this column **twice** and Slice 4 shipped without it, so what
+looked like an open §8.0-versus-§9 question was partly an unrecorded implementation gap.
+Spec §8.0 is amended; the change log records that the version does not move, because this
+states what §9 already required of every financial row.
+
+### Verified
+
+| Item | Status | Evidence |
+|---|---|---|
+| `dart format --set-exit-if-changed` | **Tested** | clean, 191 files |
+| `flutter analyze` | **Tested** | **No issues found** |
+| Host suite | **Tested** | **1,099 tests, all passing** (1,088 + 11) |
+| Secret scan — tree and git history | **Tested** | clean, controls passing |
+| Void whitespace **positive control** | **Tested** | the shared helper degraded to `btrim`; the tab case turned **RED on both engines**, then green after restore |
+| Expense void matrix | **Tested** | 10 live tests: empty, spaces, tab, newline, CR, mixed — all refused; ordinary reason voids and is stored trimmed |
+| Revenue void matrix | **Tested** | 10 live tests, the same matrix, plus the Slice 10 contract unchanged |
+| Revenue provenance matrix | **Tested** | 7 live tests: create, ordinary edit, correction, edit-after-correction, second correction, every refusal, response-loss replay |
+| Drift v12 → v13 migration | **Tested** | a pre-migration row becomes `derived`; number, year, version, dates, void state, components and tax snapshot all intact |
+| Fresh database | **Tested** | born with the column, NOT NULL, defaulting to `derived` |
+| Live expense suite | **Tested** | **40 tests** (30 + 10) |
+| Live revenue boundary suite | **Tested** | **49 tests** (33 + 16), 1 deliberately skipped |
+| Live two-client acceptance | **Tested** | 10 tests |
+| Live `drift`, `conflict`, revenue phase chain | **Tested** | all green |
+| Migration ledger parity (A0 / D-056) | **Tested** | every applied version has a committed file |
+| API-surface and PUBLIC-execute invariants | **Tested** | asserted in both migrations; `app.stated_reason` unreachable by any client role |
+| Baseline pristine | **Tested** | 0 closed periods, 4 live rules, 0 bands/subtypes/statuses, **0 open revenue**, 0 open expenses from this session, 0 rows with a provenance outside the approved set |
+
+### Not rerun, and why
+
+**`phase-a`, `phase-b`, `phase-c`, `multi-scope-a`, `multi-scope-b` — not rerun,
+unaffected by this corrective.** Nothing here touches authority caching, grants, scope
+resolution or purge semantics. They are **not** claimed as freshly passing.
+
+**The Android and Windows acceptance suites — not rerun.** No controller or UI behaviour
+changed: no surface was added for the provenance field, and the void surfaces call the same
+repository methods with the same signatures. The domain shape gained one field with a
+default, and the widget and draft suites cover it through the host run.
+
+### Migration ledger
+
+| Ledger version | Name |
+|---|---|
+| 20260905185903 | `financial_reasons_reject_all_whitespace` |
+| 20260905190229 | `revenue_business_date_provenance` |
+
+Both verified **byte-for-byte by hash** against `supabase_migrations.schema_migrations.statements`.
+
+### Recorded, and deliberately not fixed
+
+**`period_reopen` has the same whitespace defect.** It normalises its mandatory reason
+(D-026) with `btrim(coalesce(p_reason, ''))`, and `period_lock_events` carries the same
+spaces-only CHECK, so a lone tab satisfies both. It is **outside the two approved items**,
+which name the Expense and Revenue *void* boundaries. `app.stated_reason` is shaped so that
+closing it later is one call per site.
+
+**A migration-ordering defect this work introduced and caught (D-144).** The v13 step was
+written `if (from < 13)` and failed from v9 with `duplicate column name`: `revenue_entries`
+is created at v11 from the *current* table definition, which already includes the column.
+The guard is now `from >= 11 && from < 13`. Found by the v9 attachment fixture — the same
+fixture, the same class of defect, two phases after D-073a.
+
+**A restore that silently did not happen.** The first attempt to undo the positive control
+batched the `create or replace` with an assertion whose literal was mis-escaped; the raise
+aborted the transaction and left the **degraded** helper installed. Caught by reading the
+state back rather than trusting the statement. *A restore is not restored until it has been
+read back.*
+
+---
+
 ## Next exact task
 
-**Slice 11 — attachments, reusing D-073a unchanged.** The Phase 3 corrective that stood in
-front of it is **done, tested and accepted**; nothing else blocks Slice 11, and it has not
-been started.
-
-One project-lead decision is open and does **not** block Slice 11: whether a revenue entry
-should record how its business date was arrived at, the way an expense does. See *Open
-questions* below.
+**Slice 11 — attachments, reusing D-073a unchanged.** Both correctives that stood in front
+of it are **done, tested and accepted**, and the one open product question they raised has
+been answered and built (D-143). Nothing blocks Slice 11, and it has **not** been started.
 
 ---
 

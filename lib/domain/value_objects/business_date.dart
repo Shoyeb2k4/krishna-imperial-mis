@@ -68,15 +68,47 @@ final class BusinessDayCutoff {
 ///
 /// Persisted alongside the date so an auditor can always tell an automatic derivation
 /// from a human decision.
+/// How a financial document's **current** business date came to be what it is.
+///
+/// Shared by the expense and revenue engines rather than duplicated per engine: it is one
+/// concept and one stored vocabulary, and a second enum would be two things to keep in
+/// step. Revenue produces only [derived] and [corrected] — it has no path that lets an
+/// operator choose a trading day while recording — and its server-side CHECK says so.
+///
+/// The stored form is stated **explicitly** and is not `.name`. It happens to agree today,
+/// and that is exactly the trap D-104 recorded: `EnteredBasis` was written and read through
+/// `.name` while both schemas stored the snake-case form, and every rule carrying one would
+/// have thrown on read. A wire name that is a coincidence is a wire name waiting to break.
 enum BusinessDateSource {
   /// Derived from the capture instant under the unit's timezone and cut-off.
-  derived,
+  derived('derived'),
 
   /// Entered explicitly by the user at the time of recording (e.g. yesterday's bill).
-  manual,
+  ///
+  /// Expense only. Revenue's schema does not admit it, because no revenue surface offers
+  /// a date at entry.
+  manual('manual'),
 
   /// Changed after the fact by a privileged user. Always audited, always with a reason.
-  corrected,
+  corrected('corrected');
+
+  const BusinessDateSource(this.wireName);
+
+  /// The exact string both schemas store. Pinned by a host test.
+  final String wireName;
+
+  /// Parses the stored form, and throws on anything else.
+  ///
+  /// There is no safe default: guessing between "the cut-off derived this" and "somebody
+  /// moved it" would answer a financial provenance question with a shrug.
+  static BusinessDateSource fromWire(String value) => values.firstWhere(
+    (source) => source.wireName == value,
+    orElse: () => throw ArgumentError.value(
+      value,
+      'value',
+      'unknown business date source',
+    ),
+  );
 }
 
 /// A calendar date with no time and no zone: the trading day itself.

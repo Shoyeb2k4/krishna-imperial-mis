@@ -266,8 +266,9 @@ A revenue entry is therefore a **document with one or more components**, mirrori
 expense model:
 
 ```
-Revenue Entry   business date · business unit · revenue category · entry kind ·
-                source reference · notes · entered by · audit history
+Revenue Entry   business date · business date source · business unit ·
+                revenue category · entry kind · source reference · notes ·
+                entered by · audit history
   └── Revenue Component  (1..n)
         entered amount and its basis
         → gross · tax · net
@@ -276,6 +277,19 @@ Revenue Entry   business date · business unit · revenue category · entry kind
 
 A routine day is **one** component and is no slower to enter than before. A day that
 genuinely carries two treatments is two.
+
+**Business date source (added 2026-09-05).** A revenue entry records how its **current**
+business date came to be: `derived` by the unit cut-off rule, or `corrected` afterwards by
+a privileged user. This is §9 applied to revenue, and it is stated here because an earlier
+reading of this section — which enumerated the entry without it — disagreed with §9 and the
+disagreement had to be settled rather than left. It is settled in favour of §9.
+
+The value is **server-owned**: recording a sale states `derived`, and only a correction the
+server accepts as having moved the date makes it `corrected`. There is no operator input
+for it and no third value — unlike an expense, no revenue surface offers a trading day at
+entry, so `manual` has no producer. It does **not** replace the audit trail (§14), which
+remains the historical sequence of who moved what, when and why; this answers the row's
+present-state provenance, and reporting may read it but must never let it alter an amount.
 
 The **header totals reconcile exactly to the sum of its components** — gross to gross, tax
 to tax, net to net — enforced in the database, not merely validated in the UI. No paisa may
@@ -832,6 +846,13 @@ transaction path (§32).
 Clean extension points are welcome. Speculative modules are not.
 
 ## 30. Change log
+
+**v1.2 amendment — 2026-09-05.** §8.0 gains **business date source** on the revenue entry,
+resolving a disagreement between this section and §9: §8.0 enumerated the entry without it
+while §9 requires the record to note how its date was arrived at. Settled in favour of §9
+by project-lead decision (D-143), with two values — `derived` and `corrected` — both
+server-owned. **No other section changes**, and the version does not move: this states what
+§9 already required of every financial row rather than altering the revenue model.
 
 **v1.2 — 2026-09-01.** The revenue model, and only the revenue model. A revenue entry is
 now a **document with one or more components** (§8.0), because the verified treatment of a

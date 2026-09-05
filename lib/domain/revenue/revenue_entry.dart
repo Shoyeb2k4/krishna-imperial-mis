@@ -142,6 +142,7 @@ final class RevenueEntry {
     this.voidedAt,
     this.voidedBy,
     this.voidReason,
+    this.businessDateSource = BusinessDateSource.derived,
   }) : assert(
          components.length != 0,
          'a revenue entry has at least one component',
@@ -158,6 +159,20 @@ final class RevenueEntry {
 
   /// Derived under the unit's timezone and cut-off, and persisted (D-067).
   final BusinessDate businessDate;
+
+  /// How the **current** [businessDate] came to be what it is (spec §9, D-019).
+  ///
+  /// Server-owned: nothing on either client chooses it, and the default here is the value
+  /// a freshly recorded sale genuinely has rather than a guess. It becomes
+  /// [BusinessDateSource.corrected] when — and only when — the server accepts a
+  /// correction that moved the date, and it stays that way through every later ordinary
+  /// edit, because the question is how this trading day came to be and a subsequent
+  /// amount correction does not change that answer.
+  ///
+  /// Reuses the expense engine's enum rather than a revenue copy. Revenue never produces
+  /// [BusinessDateSource.manual] — no revenue surface offers a date at entry — and the
+  /// server's CHECK admits only the two values.
+  final BusinessDateSource businessDateSource;
 
   /// The device instant. Forensic metadata; never authoritative.
   final DateTime capturedAt;

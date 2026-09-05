@@ -1721,5 +1721,335 @@ void main() {
         );
       });
     });
+
+    // ── Business-date provenance (spec §9, D-019) ───────────────────────────
+    //
+    // An approved V1 product decision: a revenue entry records how its **current** trading
+    // day came to be. The server owns the answer — there is no provenance parameter — and
+    // the audit trail remains the historical sequence.
+    group('the entry records how its business date was established', () {
+      late SupabaseClient manager;
+
+      setUp(() async {
+        manager = await sessionFor('ccr.manager@example.com');
+      });
+
+      String isoDaysAgo(int days) {
+        final ist = DateTime.now().toUtc().add(
+          const Duration(hours: 5, minutes: 30),
+        );
+        final day = DateTime.utc(
+          ist.year,
+          ist.month,
+          ist.day,
+        ).subtract(Duration(days: days));
+        return day.toIso8601String().substring(0, 10);
+      }
+
+      /// A sale the manager recorded themselves, inside the edit window.
+      Future<Map<String, dynamic>> managerSale({int daysAgo = 1}) async {
+        final id = const Uuid().v7();
+        await manager.rpc<dynamic>(
+          'revenue_create',
+          params: {
+            'p_id': id,
+            'p_business_unit_id': ccrUnit,
+            'p_revenue_category_id': restaurant,
+            'p_business_date': isoDaysAgo(daysAgo),
+            'p_notes': marker,
+            'p_components': [
+              {'entered_amount_minor': 10000000},
+            ],
+            'p_mutation_id': const Uuid().v4(),
+          },
+        );
+        created.add(id);
+        return await manager
+            .from('revenue_document')
+            .select()
+            .eq('id', id)
+            .single();
+      }
+
+      Future<Map<String, dynamic>> correctAs(
+        SupabaseClient as,
+        Map<String, dynamic> doc, {
+        String? date,
+        String? reason,
+        int? version,
+        int paise = 10000000,
+      }) async =>
+          (await as.rpc<dynamic>(
+                'revenue_update',
+                params: {
+                  'p_id': doc['id'],
+                  'p_base_row_version': version ?? doc['row_version'],
+                  'p_business_date': date ?? doc['business_date'],
+                  'p_notes': marker,
+                  'p_correction_reason': ?reason,
+                  'p_components': [
+                    {'entered_amount_minor': paise},
+                  ],
+                  'p_mutation_id': const Uuid().v4(),
+                },
+              )
+              as Map<String, dynamic>);
+
+      Future<String> sourceOf(String id) async {
+        await signInAs('giridhar@hki.com');
+        return (await document(id))['business_date_source'] as String;
+      }
+
+      test('a newly recorded sale is derived', () async {
+        final doc = await managerSale();
+        expect(doc['business_date_source'], 'derived');
+        expect(await sourceOf(doc['id'] as String), 'derived');
+      });
+
+      test('an ordinary edit leaves it derived', () async {
+        final doc = await managerSale();
+        final answer = await correctAs(manager, doc, paise: 12000000);
+        expect(answer['business_date_source'], 'derived');
+        expect(answer['business_date_corrected'], isFalse);
+        expect(await sourceOf(doc['id'] as String), 'derived');
+      });
+
+      test(
+        'a date correction makes it corrected, and says so in the answer',
+        () async {
+          final doc = await managerSale();
+          await signInAs('accountant@example.com');
+          final answer = await correctAs(
+            client,
+            doc,
+            date: isoDaysAgo(2),
+            reason: 'Rung up after midnight against the wrong trading day',
+          );
+          expect(answer['business_date_corrected'], isTrue);
+          expect(answer['business_date_source'], 'corrected');
+          expect(await sourceOf(doc['id'] as String), 'corrected');
+          expect(
+            (await document(doc['id'] as String))['txn_number'],
+            doc['txn_number'],
+          );
+
+          // The audit remains the historical sequence, and carries both provenances.
+          final audit = await client
+              .from('audit_logs')
+              .select('before_state,after_state,reason')
+              .eq('entity_id', doc['id'] as String)
+              .eq('action', 'business_date_corrected');
+          expect(audit, hasLength(1));
+          expect(
+            (audit.single['before_state'] as Map)['business_date_source'],
+            'derived',
+          );
+          expect(
+            (audit.single['after_state'] as Map)['business_date_source'],
+            'corrected',
+          );
+        },
+      );
+
+      test('an ordinary edit after a correction stays corrected', () async {
+        final doc = await managerSale();
+        await signInAs('accountant@example.com');
+        final corrected = await correctAs(
+          client,
+          doc,
+          date: isoDaysAgo(2),
+          reason: 'Wrong trading day',
+        );
+
+        final ordinary = await correctAs(
+          client,
+          doc,
+          version: corrected['row_version'] as int,
+          date: isoDaysAgo(2),
+          paise: 13000000,
+        );
+        expect(
+          ordinary['business_date_source'],
+          'corrected',
+          reason:
+              'the question is how this trading day came to be, and a later amount '
+              'correction does not change that answer',
+        );
+        expect(await sourceOf(doc['id'] as String), 'corrected');
+      });
+
+      test(
+        'a second deliberate correction stays corrected, and audits again',
+        () async {
+          final doc = await managerSale();
+          await signInAs('accountant@example.com');
+          final first = await correctAs(
+            client,
+            doc,
+            date: isoDaysAgo(2),
+            reason: 'First correction',
+          );
+          final second = await correctAs(
+            client,
+            doc,
+            version: first['row_version'] as int,
+            date: isoDaysAgo(3),
+            reason: 'Second correction',
+          );
+          expect(second['business_date_source'], 'corrected');
+
+          final audit = await client
+              .from('audit_logs')
+              .select('reason')
+              .eq('entity_id', doc['id'] as String)
+              .eq('action', 'business_date_corrected');
+          expect(
+            audit,
+            hasLength(2),
+            reason: 'the column is present-state; the audit is the sequence',
+          );
+          expect(
+            audit.map((r) => r['reason']),
+            containsAll(['First correction', 'Second correction']),
+          );
+        },
+      );
+
+      test('every refusal leaves the provenance untouched', () async {
+        // Stale version, missing capability, a blank reason and a closed period: each is
+        // refused before the write, so none of them may move the provenance.
+        await signInAs('giridhar@hki.com');
+        final stale = await managerSale();
+        await expectLater(
+          correctAs(
+            client,
+            stale,
+            date: isoDaysAgo(2),
+            reason: 'stale',
+            version: (stale['row_version'] as int) + 5,
+          ),
+          throwsA(predicate((e) => refusalOf(e) == 'KM003', 'stale version')),
+        );
+        expect(await sourceOf(stale['id'] as String), 'derived');
+
+        final noCapability = await managerSale();
+        await expectLater(
+          correctAs(
+            manager,
+            noCapability,
+            date: isoDaysAgo(2),
+            reason: 'a manager may not move a trading day',
+          ),
+          throwsA(
+            predicate(
+              (e) => refusalOf(e) == 'KM001' || refusalOf(e) == 'KM002',
+              'missing the correction capability',
+            ),
+          ),
+        );
+        expect(await sourceOf(noCapability['id'] as String), 'derived');
+
+        final blank = await managerSale();
+        await signInAs('accountant@example.com');
+        for (final reason in ['', '   ', '\t']) {
+          await expectLater(
+            correctAs(client, blank, date: isoDaysAgo(2), reason: reason),
+            throwsA(
+              predicate((e) => refusalOf(e) == 'KM008', 'reason required'),
+            ),
+          );
+        }
+        expect(await sourceOf(blank['id'] as String), 'derived');
+
+        final closed = await managerSale();
+        await signInAs('giridhar@hki.com');
+        const closedKey = '2026-03';
+        await client
+            .rpc<dynamic>(
+              'period_close',
+              params: {
+                'p_period_key': closedKey,
+                'p_business_unit_id': ccrUnit,
+              },
+            )
+            .then((_) {}, onError: (_) {});
+        try {
+          await signInAs('accountant@example.com');
+          await expectLater(
+            correctAs(
+              client,
+              closed,
+              date: '2026-03-10',
+              reason: 'into a closed month',
+            ),
+            throwsA(predicate((e) => refusalOf(e) == 'KM004', 'period closed')),
+          );
+          expect(await sourceOf(closed['id'] as String), 'derived');
+        } finally {
+          await signInAs('giridhar@hki.com');
+          await client
+              .rpc<dynamic>(
+                'period_reopen',
+                params: {
+                  'p_period_key': closedKey,
+                  'p_business_unit_id': ccrUnit,
+                  'p_reason': '$marker restoring the development fixture',
+                },
+              )
+              .then((_) {}, onError: (_) {});
+        }
+      });
+
+      test(
+        'a redelivered correction replays with the same provenance',
+        () async {
+          final doc = await managerSale();
+          await signInAs('accountant@example.com');
+          final mutationId = const Uuid().v4();
+
+          Future<Map<String, dynamic>> deliver() async =>
+              (await client.rpc<dynamic>(
+                    'revenue_update',
+                    params: {
+                      'p_id': doc['id'],
+                      'p_base_row_version': doc['row_version'],
+                      'p_business_date': isoDaysAgo(2),
+                      'p_notes': marker,
+                      'p_correction_reason': 'Wrong trading day',
+                      'p_components': [
+                        {'entered_amount_minor': 10000000},
+                      ],
+                      'p_mutation_id': mutationId,
+                    },
+                  )
+                  as Map<String, dynamic>);
+
+          final first = await deliver();
+          final replay = await deliver();
+
+          expect(first['business_date_source'], 'corrected');
+          expect(
+            replay['business_date_source'],
+            'corrected',
+            reason: 'the stored result is replayed, provenance and all',
+          );
+          expect(replay['status'], 'replayed');
+          expect(replay['txn_number'], doc['txn_number']);
+
+          await signInAs('giridhar@hki.com');
+          final after = await document(doc['id'] as String);
+          expect(after['business_date_source'], 'corrected');
+          expect(after['row_version'], (doc['row_version'] as int) + 1);
+          expect(after['txn_number'], doc['txn_number']);
+
+          final audit = await client
+              .from('audit_logs')
+              .select('id')
+              .eq('entity_id', doc['id'] as String)
+              .eq('action', 'business_date_corrected');
+          expect(audit, hasLength(1), reason: 'one effective correction');
+        },
+      );
+    });
   });
 }

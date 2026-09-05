@@ -118,13 +118,15 @@ like the two above.
 | Ledger version | Ledger name | Committed file |
 |---|---|---|
 | 20260905185903 | `financial_reasons_reject_all_whitespace` | `20260905185903_financial_reasons_reject_all_whitespace.sql` |
+| 20260905190229 | `revenue_business_date_provenance` | `20260905190229_revenue_business_date_provenance.sql` |
 
-The first of two approved items, one migration each. This closes the defect the previous
+Two approved items, one migration each. The first closes the defect the previous
 corrective recorded and deliberately left: one-argument `btrim` strips spaces and not
 tabs, so a lone tab satisfied the mandatory void reason on **both** engines — proven by
-voiding two development fixtures with one before anything was changed.
+voiding two development fixtures with one before anything was changed. The second adds
+`revenue_entries.business_date_source`, backfilled to `derived` and never inferred.
 
-Verified byte-for-byte against `supabase_migrations.schema_migrations.statements`
+Both verified byte-for-byte against `supabase_migrations.schema_migrations.statements`
 rather than by resemblance (D-056).
 
 ## The full applied ledger, in order
@@ -194,4 +196,5 @@ rather than by resemblance (D-056).
 20260905142059 correction_reason_rejects_all_whitespace
 20260905144151 revenue_business_date_correction_governance
 20260905185903 financial_reasons_reject_all_whitespace
+20260905190229 revenue_business_date_provenance
 ```
