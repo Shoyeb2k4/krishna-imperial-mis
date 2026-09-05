@@ -222,6 +222,214 @@ void main() {
       }
     });
 
+    test('no capability is granted in production and evaluated nowhere', () {
+      // D-127 §3: `transaction.correct.business_date` was granted to two role bundles and
+      // named by no function and no policy. A grant with no evaluator is the quieter twin
+      // of D-068's rule that nothing evaluates — it reads like a permission model and
+      // enforces nothing.
+      //
+      // The migrations are the whole authority here: the seed grants, the RPC bodies and
+      // the policy expressions all live in this directory, so the question can be asked
+      // statically without a database. The deploy-time form of the same assertion runs in
+      // `20260905141738_expense_business_date_correction.sql` against the live catalogue,
+      // which is what catches a grant made by hand.
+      //
+      // The exemption list is deliberately narrow and deliberately spelled out: a
+      // capability is on it only because the surface it governs has not been built yet,
+      // and a later phase has to delete its line. It must stay in step with the SQL, so
+      // the SQL's own list is what is read rather than a second copy.
+      // Comments are stripped first, and that is not tidiness. Counting a capability
+      // wherever it appears would let the *paragraph explaining that nothing evaluates
+      // it* count as its evaluator — which is precisely the failure this test exists to
+      // detect, and which it committed on its first run before this line was added.
+      final all = _migrations();
+      final everySql = all
+          .map((m) => m.sql.replaceAll(RegExp(r'--[^\n]*'), ''))
+          .join('\n');
+
+      final grantBlocks = RegExp(
+        r'insert into public\.role_capabilities[\s\S]*?on conflict',
+      ).allMatches(everySql).map((m) => m.group(0)!).join('\n');
+      final granted = RegExp(
+        r"'([a-z_]+(?:\.[a-z_]+)+)'",
+      ).allMatches(grantBlocks).map((m) => m.group(1)!).toSet();
+      expect(
+        granted.length,
+        greaterThan(15),
+        reason:
+            'the grant blocks did not parse — a guard that finds nothing to check '
+            'reports success (D-103)',
+      );
+
+      final unbuiltDeclaration = RegExp(
+        r'v_unbuilt constant text\[\] := array\[([\s\S]*?)\];',
+      ).firstMatch(everySql);
+      expect(
+        unbuiltDeclaration,
+        isNotNull,
+        reason: 'the not-yet-built exemption list has been lost',
+      );
+      final exempt = RegExp(r"'([a-z_.]+)'")
+          .allMatches(unbuiltDeclaration!.group(1)!)
+          .map((m) => m.group(1)!)
+          .toSet();
+
+      // Evaluated means: named inside a **function body** or a **policy expression** —
+      // the two places a capability can actually decide something at run time. Named
+      // anywhere else does not count, and the exclusions are the point:
+      //
+      //   * a comment can explain that nothing evaluates it;
+      //   * an `insert into role_capabilities` grants it;
+      //   * a deploy-time `do $$ … $$` block can *assert* that something evaluates it,
+      //     which is a statement about the check rather than the check.
+      //
+      // All three were counted as evaluation by the first version of this test, and all
+      // three let the sabotage control pass. Found by expecting red and getting green,
+      // which is the fourth time this project has had to look for that (D-094).
+      final bodies = RegExp(
+        r'create or replace function[\s\S]*?as \$\$([\s\S]*?)\$\$;',
+      ).allMatches(everySql).map((m) => m.group(1)!).join('\n');
+      final policies = RegExp(
+        r'create policy[\s\S]*?;',
+      ).allMatches(everySql).map((m) => m.group(0)!).join('\n');
+      final evaluators = '$bodies\n$policies';
+      expect(
+        evaluators.length,
+        greaterThan(20000),
+        reason:
+            'the function-body and policy extraction found almost nothing — a guard '
+            'that reads an empty haystack reports success',
+      );
+
+      final dead = [
+        for (final capability in granted)
+          if (!exempt.contains(capability) && !evaluators.contains(capability))
+            capability,
+      ];
+
+      expect(
+        dead,
+        isEmpty,
+        reason:
+            'granted and evaluated nowhere. Either write the check or withdraw the '
+            'grant — and if the feature simply is not built yet, say so on the '
+            'exemption list rather than leaving the next reader to guess (D-127)',
+      );
+
+      // The exemption list is not a place to park a shipped feature's capability.
+      expect(
+        exempt,
+        isNot(contains('transaction.correct.business_date')),
+        reason:
+            'the surface it governs shipped in Phase 3; exempting it would be the '
+            'defect this corrective exists to close, written down as policy',
+      );
+    });
+
+    test('the business-date correction is evaluated at the Expense boundary', () {
+      // Not a documentation search. The assertion is over the function body that the
+      // authoritative mutation boundary actually has.
+      final expenseUpdates = _functions()
+          .where((f) => f.name == 'public.expense_update')
+          .toList();
+      expect(expenseUpdates, isNotEmpty);
+
+      final all = _migrations();
+      final latest = all.lastWhere(
+        (m) =>
+            m.sql.contains('create or replace function public.expense_update'),
+      );
+      final body = latest.sql;
+
+      expect(
+        body,
+        contains("app.require_capability('transaction.correct.business_date'"),
+        reason: 'the capability must gate the act, not merely exist',
+      );
+      expect(
+        body,
+        contains(
+          "has_capability_anywhere('transaction.correct.beyond_window')",
+        ),
+        reason:
+            'and the window capability stays its own separate guard — capabilities '
+            'compose, they do not replace one another',
+      );
+      expect(
+        body,
+        contains('from public.expense_period_allocations p'),
+        reason:
+            'the source periods are read from the one reporting source (D-060), so '
+            'a cross-period bill is protected on every month it contributes to',
+      );
+      expect(
+        body,
+        contains("then 'corrected'"),
+        reason: 'a moved date must record that it was moved (D-019)',
+      );
+      expect(
+        body,
+        contains("'expense_business_date_corrected'"),
+        reason: 'the act gets its own audit action, not a disguised notes edit',
+      );
+    });
+
+    test('there is one Expense correction contract, and it is expense_update', () {
+      // D-127 finding 2: three canonical documents named `expense_correct_business_date`
+      // and no such function has ever existed. Option A keeps one contract, so nothing in
+      // the repository may create a second — and no forward-looking document may promise
+      // one either. Historical decision entries describing the finding are exempt by
+      // name, because this log is append-only.
+      final everySql = _migrations().map((m) => m.sql).join('\n');
+      expect(
+        everySql,
+        isNot(contains('function public.expense_correct_business_date')),
+        reason:
+            'two write paths for one financial document is the whole finding',
+      );
+
+      // A forward-looking document may **name** the phantom endpoint, and §24 of
+      // `ARCHITECTURE.md` does — in the sentence saying it does not exist. What it may
+      // not do is describe it as part of the architecture. So the rule is per line: any
+      // line naming it must also deny it. A blanket ban would have forbidden the
+      // correction itself, which is the wrong lesson to encode.
+      final denial = RegExp(
+        r'\b(no|not|never|does not exist|phantom|nothing)\b',
+        caseSensitive: false,
+      );
+      for (final path in const [
+        'docs/ARCHITECTURE.md',
+        'docs/DATABASE_SCHEMA.md',
+        'CLAUDE.md',
+      ]) {
+        final offending = [
+          for (final line in File(path).readAsLinesSync())
+            if ((line.contains('expense_correct_business_date') ||
+                    line.contains('revenue_correct_business_date')) &&
+                !denial.hasMatch(line))
+              line.trim(),
+        ];
+        expect(
+          offending,
+          isEmpty,
+          reason:
+              '$path must describe the contract production implements. There must '
+              'be one authoritative contract, not documentation promising one API '
+              'while the server exposes another (D-127)',
+        );
+      }
+
+      // And the denial is actually made somewhere, rather than the name simply having
+      // been deleted and the correction left unexplained.
+      expect(
+        File('docs/ARCHITECTURE.md').readAsStringSync(),
+        contains('There is no\n`expense_correct_business_date`'),
+        reason:
+            'the architecture states which contract exists and which never did — a '
+            'silent deletion teaches the next reader nothing',
+      );
+    });
+
     test('the owner bootstrap is never reachable by a client', () {
       final bootstrap = _migrations()
           .firstWhere((m) => m.name.endsWith('_owner_bootstrap.sql'))

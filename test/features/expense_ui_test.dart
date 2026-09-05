@@ -20,6 +20,8 @@ import 'package:krishna_mis/data/sync/outbox_repository.dart';
 import 'package:krishna_mis/domain/auth/authority.dart';
 import 'package:krishna_mis/domain/auth/capability.dart';
 import 'package:krishna_mis/domain/value_objects/business_date.dart';
+import 'package:krishna_mis/domain/value_objects/money.dart';
+import 'package:krishna_mis/features/expenses/presentation/expense_draft.dart';
 import 'package:krishna_mis/features/expenses/presentation/expense_entry_page.dart';
 import 'package:krishna_mis/features/expenses/presentation/expense_ledger_page.dart';
 import 'package:krishna_mis/features/expenses/presentation/expense_providers.dart';
@@ -526,6 +528,181 @@ void main() {
             .onPressed,
         isNotNull,
       );
+    });
+  });
+
+  // ── The Phase 3 corrective, on the surface a person actually meets ─────────
+  //
+  // The server refuses regardless, and that is where the boundary is (D-037). What is
+  // asserted here is that nobody is offered a control whose every outcome would be
+  // refused, and that somebody who *may* correct a date is asked for the reason the
+  // server will require rather than meeting a bare rejection after pressing Save.
+  group('correcting the business date of a recorded expense', () {
+    final june16 = BusinessDate.of(2026, 6, 16);
+
+    ExpenseDraft loaded() => ExpenseDraft.fromExisting(
+      id: 'e-edit-1',
+      rowVersion: 3,
+      businessDate: _june15,
+      total: Money.fromRupees(500),
+      txnNumber: 'KI-EXP-26-27-000031',
+      allocations: [
+        AllocationDraft(
+          id: 'a1',
+          businessUnitId: ccrId,
+          departmentId: ccrDeptId,
+          sectionId: ccrSectionId,
+          categoryId: ccrCategoryId,
+          amount: Money.fromRupees(500),
+        ),
+      ],
+    );
+
+    /// The Accountant bundle, which holds `transaction.correct.business_date`.
+    Principal finance() => _principalFor(RoleTemplates.accountant, {ccrId});
+
+    /// The Manager bundle, which does not.
+    Principal manager() => _principalFor(RoleTemplates.manager, {ccrId});
+
+    testWidgets('a new expense still offers an ordinary, editable date row', (
+      tester,
+    ) async {
+      await pump(tester, const ExpenseEntryPage(), principal: manager());
+
+      expect(find.byKey(const Key('business-date')), findsOneWidget);
+      expect(
+        tester
+            .widget<InkWell>(
+              find.ancestor(
+                of: find.byKey(const Key('business-date')),
+                matching: find.byType(InkWell),
+              ),
+            )
+            .onTap,
+        isNotNull,
+        reason:
+            'choosing the date of an expense being recorded now is `manual`, not a '
+            'correction, and has never needed a capability (D-019)',
+      );
+      expect(
+        find.byKey(const Key('business-date-correction-reason')),
+        findsNothing,
+      );
+    });
+
+    testWidgets('an editor without the capability cannot open the date picker', (
+      tester,
+    ) async {
+      await pump(
+        tester,
+        ExpenseEntryPage.editing(
+          loaded(),
+          capturedAt: DateTime.utc(2026, 6, 15),
+        ),
+        principal: manager(),
+      );
+
+      expect(
+        find.byKey(const Key('business-date')),
+        findsOneWidget,
+        reason: 'the date is part of the document and is still shown',
+      );
+      expect(
+        tester
+            .widget<InkWell>(
+              find.ancestor(
+                of: find.byKey(const Key('business-date')),
+                matching: find.byType(InkWell),
+              ),
+            )
+            .onTap,
+        isNull,
+        reason:
+            'a picker whose every outcome the server would refuse is worse than no '
+            'picker — hiding it is not the boundary, it is the honesty',
+      );
+    });
+
+    testWidgets('an editor with the capability can, and is asked why', (
+      tester,
+    ) async {
+      await pump(
+        tester,
+        ExpenseEntryPage.editing(
+          loaded(),
+          capturedAt: DateTime.utc(2026, 6, 15),
+        ),
+        principal: finance(),
+      );
+
+      // Nothing is asked for until the date actually differs from the loaded one.
+      expect(
+        find.byKey(const Key('business-date-correction-reason')),
+        findsNothing,
+      );
+      expect(
+        tester
+            .widget<InkWell>(
+              find.ancestor(
+                of: find.byKey(const Key('business-date')),
+                matching: find.byType(InkWell),
+              ),
+            )
+            .onTap,
+        isNotNull,
+      );
+    });
+
+    testWidgets('the reason appears when the date moves, and Save waits for it', (
+      tester,
+    ) async {
+      // Driven through the draft rather than the OS date picker, which is a separate
+      // route the harness cannot open — the same honest boundary D-077 records for the
+      // attachment picker. What is under test is the form's reaction to a moved date.
+      final page = ExpenseEntryPage.editing(
+        loaded().copyWith(businessDate: june16),
+        capturedAt: DateTime.utc(2026, 6, 15),
+      );
+      await pump(tester, page, principal: finance());
+
+      expect(
+        find.byKey(const Key('business-date-correction-notice')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('business-date-correction-reason')),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Business date changed from 2026-06-15 to 2026-06-16'),
+        findsOneWidget,
+        reason: 'the person is told what they changed, in both directions',
+      );
+
+      final saveButton = find.byKey(const Key('save-expense'));
+      expect(
+        tester.widget<FilledButton>(saveButton).onPressed,
+        isNull,
+        reason: 'no reason yet, and the server would refuse it',
+      );
+
+      await tester.enterText(
+        find.byKey(const Key('business-date-correction-reason')),
+        '   ',
+      );
+      await tester.pump();
+      expect(
+        tester.widget<FilledButton>(saveButton).onPressed,
+        isNull,
+        reason: 'blank is not a reason, on this side as well as the server s',
+      );
+
+      await tester.enterText(
+        find.byKey(const Key('business-date-correction-reason')),
+        'Recorded against the wrong trading day',
+      );
+      await tester.pump();
+      expect(tester.widget<FilledButton>(saveButton).onPressed, isNotNull);
     });
   });
 }

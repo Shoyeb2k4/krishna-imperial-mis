@@ -5,8 +5,8 @@ Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
-Status: **Sections 1–12 proposed (Phase 0, revised); sections 13–16 and 18–23 describe what is built
-and verified; section 17 is the approved Phase 4 plan.** Sections 6, 5.3 and 8 carry the project lead's mandated corrections.
+Status: **Sections 1–12 proposed (Phase 0, revised); sections 13–16, 18–23 and 24 describe what is
+built and verified; section 17 is the approved Phase 4 plan.** Sections 6, 5.3 and 8 carry the project lead's mandated corrections.
 Implementation status is tracked in `PROJECT_STATUS.md`.
 Last updated: 2026-09-05
 
@@ -139,8 +139,9 @@ retries.
      mutation_id      uuid v7  -- unique per user intent, generated once, never re-rolled
      entity_type      text     -- 'expense' | 'revenue_entry' | 'vendor' | ...
      entity_id        uuid
-     op               text     -- 'create' | 'update' | 'void' | 'correct_business_date'
+     op               text     -- 'create' | 'update' | 'void'
                                -- | 'archive' | 'close_period' | 'reopen_period'
+                               -- a business-date correction is an 'update' (§5.3)
      payload          json     -- full canonical document incl. allocation lines
      base_row_version int      -- version the intent was based on (null for create)
      attempt_count    int
@@ -224,7 +225,7 @@ A *new* void based on a stale version is a **conflict** and is refused.
 | Create | not applicable (new identity) | — |
 | Update | **required** | reject → `Conflict / Attention Required` |
 | **Void** | **required** | **reject → `Conflict / Attention Required`** |
-| Business-date correction | **required** | reject → conflict |
+| Business-date correction — **inside `expense_update` / `revenue_update`** | **required** | reject → conflict |
 | Master archive | **required** | reject → conflict |
 | Attachment upload-state update | not required (advisory metadata) | last write wins, audited |
 | Period close / reopen | current period state required | reject with explicit reason |
@@ -1849,3 +1850,134 @@ Both mutations are proven that way against `krishna-mis-dev`, through the real r
 and worker: the retry replays the **same** mutation id, the document moves exactly one row
 version, the KI-REV number is unchanged, no component is duplicated, and the audit holds one
 effect.
+
+---
+
+## 24. Correcting an expense's business date (2026-09-05)
+
+A Phase 3 financial-integrity corrective, found while auditing the correction path before
+extending it for revenue (D-127) and deliberately not taken inside a revenue slice.
+
+### 24.1 One contract, and the endpoint that never existed
+
+**`expense_update` is the authoritative Expense correction RPC.** It handles an ordinary
+edit *and* an authorised business-date correction, and it applies additional checks on the
+branch where the canonical date actually changes. There is no
+`expense_correct_business_date` and no `revenue_correct_business_date`; the server exposes
+exactly six financial RPCs:
+
+```
+        expense_create   expense_update   expense_void
+        revenue_create   revenue_update   revenue_void
+```
+
+Three canonical documents named the expense one, and this document's §5.3 gave it a row of
+its own in the concurrency table. Nothing was ever behind the name. Option A was taken —
+keep one write path — because two write paths for one financial document is the recurring
+cost this project has already paid twice, and because revenue would otherwise need a
+matching second endpoint, doubling the divergence surface rather than halving it.
+
+The client half is gone too: `MutationOp` no longer carries a `correctBusinessDate` value.
+Nothing ever produced one, and an op no endpoint dispatches is answered terminally by the
+router — so leaving it available would have turned the first real correction into a
+permanent rejection.
+
+### 24.2 What the server does when the date moves
+
+The question is decided from **canonical state**, never from a flag in the request:
+
+```
+        v_date_moved := p_business_date is distinct from e.business_date
+```
+
+A client able to declare "this is not a correction" would be choosing which rules apply to
+it. On that branch, and on no other:
+
+| | |
+|---|---|
+| capability | `transaction.correct.business_date`, per property the document charges |
+| reason | required, non-empty after **all** whitespace is stripped |
+| provenance | `business_date_source = 'corrected'` (D-019) |
+| audit | a distinct `expense_business_date_corrected` action carrying both dates and the reason |
+
+An ordinary correction — an amount, a vendor, a note — gains no field and no permission
+requirement, and does not restate the provenance of a row that already reads `corrected`.
+
+**The capabilities compose; none replaces another.** `transaction.correct.business_date`
+authorises the *kind* of act. It grants no relief from the edit window, the period locks,
+the unit scope or `base_row_version`, each of which is a separately written guard. Equally,
+`transaction.correct.beyond_window` lifts the age rule and authorises no date move.
+
+### 24.3 Both periods, read from the one reporting source
+
+The defect this corrective exists for: `app.validate_expense_allocations` only ever sees
+the periods in the **incoming payload**, so it could say where an amount was going and
+never where it was being taken *from*. An expense sitting in a **closed** month could be
+moved to an open one, and the closed month's Total Expenses changed with nobody's
+permission.
+
+Proven by probe against `krishna-mis-dev` before anything was changed: ₹45,000 in a closed
+2026-03, moved to an open 2026-04, `status: applied`, contributions `{2026-03: 4500000}` →
+`{2026-04: 4500000}`.
+
+```
+        source periods ← expense_period_allocations   (the rows reporting reads, D-060)
+        target periods ← app.validate_expense_allocations, shared with create
+        each one → app.require_period_open(period_key, business_unit_id)
+```
+
+Reading the source from the contributions rather than from `business_date` is what makes a
+**cross-period** bill safe: a ₹60,000 invoice split May/June contributes to both months,
+and a guard that looked at the document's own date would miss the other one entirely.
+Nothing re-implements P&L arithmetic for the lock check — the rows the reports will sum
+are the rows checked here. `expense_void` has always done this; `revenue_update` does it
+(D-124); `expense_update` now does it too.
+
+Spec §13.4 is the authority, and the operative word is *affecting*: **closed source →
+refused, closed target → refused, both open → the ordinary checks continue.** No role and
+no correction capability reopens a period. Reopening stays the separate, reasoned, audited
+Owner act it has always been.
+
+### 24.4 The surface a person meets
+
+The Expense edit form already had a business-date row, so this is a change to an existing
+control rather than a new screen. In edit mode it opens only for somebody holding
+`transaction.correct.business_date` — the date is still shown, because it is part of the
+document, and it simply does not open for anybody else. Recording a *new* expense against
+a chosen date is untouched: that is `manual`, not `corrected`, and has never needed a
+capability.
+
+When the date differs from the one the form was loaded with, a reason field appears and
+Save waits for it. The loaded date is captured once, at load, and `copyWith` cannot move
+it — the same discipline `baseRowVersion` has carried since D-072a, and for the same
+reason: a field that moved on every keystroke would stop calling an edit a correction
+halfway through typing it.
+
+Hiding the control is **not** the security boundary. The server refuses regardless
+(D-037); the client rule exists so that nobody fills in a form that was always going to be
+refused.
+
+### 24.5 Offline, and response loss
+
+The reason travels in the outbox payload like everything else, so an authorised correction
+queued with no network still carries it when it is delivered days later from a different
+process. A reason held only in a widget's state is a reason that disappears on sync.
+Nothing else about the transport changes: same outbox, same worker, same `mutation_id`,
+same `base_row_version`, and a lost response recovers by redelivering the *same* intent —
+proven against the real server with `ControllableTransport`, which lets the server commit
+and then drops the answer on the wire (D-132).
+
+### 24.6 The capability that was a comment
+
+`transaction.correct.business_date` was granted to the accountant and owner bundles and
+named by **0** functions and **0** policies. It is now evaluated at the authoritative
+mutation boundary, and two invariants keep it that way: a deploy-time assertion over the
+live catalogue, and a host test over the migrations that reads **function bodies and
+policy expressions only** — not comments, not grant blocks, and not the deploy-time
+assertions themselves, all three of which let a deliberate sabotage pass on the first
+attempt.
+
+Four capabilities are exempt by name — `reports.view`, `reports.export`, `reports.print`,
+`settings.manage` — because the surfaces they govern are Phase 5 and Phase 7 and do not
+exist yet. That is a list a later phase deletes a line from, not a rule that absorbs the
+next dead grant.

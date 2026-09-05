@@ -639,11 +639,17 @@ consumes it**, and Phase 4 builds no P&L.
 
 **Server boundary, following Phase 2/3 exactly.** `authenticated` gets no `SELECT` on
 `revenue_entries`; reads go through a `revenue_document` projection. Writes go through
-reviewed `SECURITY DEFINER` RPCs — `revenue_create`, `revenue_update`, `revenue_void`,
-`revenue_correct_business_date` — each re-checking capability, business-unit scope, period
-lock, edit window and `base_row_version`, each resolving tax **server-side as the
-authority**, and each added to the declared API surface the migration invariant asserts in
-both directions (D-044).
+reviewed `SECURITY DEFINER` RPCs — `revenue_create`, `revenue_update`, `revenue_void` —
+each re-checking capability, business-unit scope, period lock, edit window and
+`base_row_version`, each resolving tax **server-side as the authority**, and each added to
+the declared API surface the migration invariant asserts in both directions (D-044).
+
+**Corrected 2026-09-05.** An earlier draft of this paragraph named a fourth RPC,
+`revenue_correct_business_date`. No such function exists and none is planned: correcting a
+revenue entry's business date is an ordinary `revenue_update`, which re-resolves the tax
+against the new date and checks **both** the source and the target period. The expense
+side had the same phantom endpoint named in three documents (D-127) and has been corrected
+to say the same thing. **One documented contract, one shipped contract.**
 
 ## 7. Period control
 

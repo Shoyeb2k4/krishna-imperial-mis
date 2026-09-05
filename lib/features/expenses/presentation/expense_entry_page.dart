@@ -165,11 +165,35 @@ class _ExpenseEntryPageState extends ConsumerState<ExpenseEntryPage> {
                 ),
 
               const SizedBox(height: AppSpacing.md),
+              // Correcting the date of an expense that already exists is a distinct act
+              // needing `transaction.correct.business_date` (spec §9). Somebody without
+              // it is shown the date and cannot change it, rather than being offered a
+              // picker whose every outcome the server would refuse. Recording a *new*
+              // expense against a chosen date is untouched — that is `manual`, not a
+              // correction, and needs no such permission.
               _BusinessDateRow(
                 date: draft.businessDate,
+                editable:
+                    !draft.isEdit ||
+                    ExpenseDraft.mayCorrectBusinessDate(principal),
                 onChanged: (date) =>
                     _mutate((current) => current.copyWith(businessDate: date)),
               ),
+
+              // Appears the moment the date actually differs from the one this form was
+              // loaded with, and disappears again if it is put back. An ordinary
+              // correction never sees it.
+              if (draft.movesBusinessDate) ...[
+                const SizedBox(height: AppSpacing.sm),
+                _CorrectionReasonField(
+                  initial: draft.correctionReason,
+                  from: draft.originalBusinessDate!,
+                  to: draft.businessDate,
+                  onChanged: (reason) => _mutate(
+                    (current) => current.copyWith(correctionReason: reason),
+                  ),
+                ),
+              ],
 
               if (draft.isSimple && ExpenseDraft.mayUseSplit(principal)) ...[
                 const SizedBox(height: AppSpacing.sm),
@@ -281,25 +305,35 @@ class _ExpenseEntryPageState extends ConsumerState<ExpenseEntryPage> {
 }
 
 class _BusinessDateRow extends StatelessWidget {
-  const _BusinessDateRow({required this.date, required this.onChanged});
+  const _BusinessDateRow({
+    required this.date,
+    required this.onChanged,
+    this.editable = true,
+  });
 
   final BusinessDate date;
   final ValueChanged<BusinessDate> onChanged;
 
+  /// False on an edit by somebody without `transaction.correct.business_date`. The row
+  /// still shows the date — it is part of the document — and simply does not open.
+  final bool editable;
+
   @override
   Widget build(BuildContext context) => InkWell(
-    onTap: () async {
-      final picked = await showDatePicker(
-        context: context,
-        initialDate: DateTime.utc(date.year, date.month, date.day),
-        firstDate: DateTime.utc(2020),
-        lastDate: DateTime.utc(2100),
-        helpText: 'Business date',
-      );
-      if (picked != null) {
-        onChanged(BusinessDate.of(picked.year, picked.month, picked.day));
-      }
-    },
+    onTap: !editable
+        ? null
+        : () async {
+            final picked = await showDatePicker(
+              context: context,
+              initialDate: DateTime.utc(date.year, date.month, date.day),
+              firstDate: DateTime.utc(2020),
+              lastDate: DateTime.utc(2100),
+              helpText: 'Business date',
+            );
+            if (picked != null) {
+              onChanged(BusinessDate.of(picked.year, picked.month, picked.day));
+            }
+          },
     child: Container(
       padding: const EdgeInsets.symmetric(
         horizontal: AppSpacing.md,
@@ -328,10 +362,62 @@ class _BusinessDateRow extends StatelessWidget {
               ],
             ),
           ),
-          const Icon(Icons.edit_outlined, size: 16, color: AppColors.inkFaint),
+          if (editable)
+            const Icon(Icons.edit_outlined, size: 16, color: AppColors.inkFaint)
+          else
+            const Icon(
+              Icons.lock_outline,
+              size: 16,
+              color: AppColors.inkFaint,
+              semanticLabel: 'The business date cannot be changed here',
+            ),
         ],
       ),
     ),
+  );
+}
+
+/// The reason a business date is being moved.
+///
+/// Only ever built while the date actually differs from the one the form was loaded
+/// with, so an ordinary correction never grows a field (spec §9). What is typed here is
+/// carried in the outbox payload and ends up in the append-only audit row, not in the
+/// document's notes — the notes are the user's description of the expense, and a
+/// correction reason is a statement about a change to it.
+class _CorrectionReasonField extends StatelessWidget {
+  const _CorrectionReasonField({
+    required this.initial,
+    required this.from,
+    required this.to,
+    required this.onChanged,
+  });
+
+  final String? initial;
+  final BusinessDate from;
+  final BusinessDate to;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(
+        'Business date changed from ${from.iso} to ${to.iso}',
+        key: const Key('business-date-correction-notice'),
+        style: AppTypography.caption,
+      ),
+      const SizedBox(height: AppSpacing.xs),
+      TextFormField(
+        key: const Key('business-date-correction-reason'),
+        initialValue: initial,
+        onChanged: onChanged,
+        maxLines: 2,
+        decoration: const InputDecoration(
+          labelText: 'Why is the date being changed?',
+          helperText: 'Kept with the correction in the audit trail.',
+        ),
+      ),
+    ],
   );
 }
 

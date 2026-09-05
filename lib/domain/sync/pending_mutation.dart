@@ -23,8 +23,17 @@ enum MutationOp {
   /// a stale view must not silently void someone else's newer edit.
   void_,
 
-  /// Correcting a derived business date. Privileged, audited, version-checked.
-  correctBusinessDate,
+  // There is deliberately no `correctBusinessDate` op.
+  //
+  // There was one, and nothing ever produced it: it was the client half of an
+  // `expense_correct_business_date` endpoint that three canonical documents described and
+  // the server has never exposed (D-127). Correcting a business date is an [update] —
+  // privileged, audited and version-checked inside `expense_update` / `revenue_update`,
+  // which re-decide from canonical state whether the date actually moved.
+  //
+  // Removed rather than left as a comment nothing constructs. A queued op no endpoint
+  // dispatches is answered terminally by the router, so leaving it available would turn
+  // a legitimate correction into a permanent rejection the first time somebody used it.
 
   /// Archiving a master record. Version-checked.
   archive;

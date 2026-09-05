@@ -137,7 +137,9 @@ enum DraftProblem {
   unitOutsideScope,
   periodSplitNotPermitted,
   paymentIncomplete,
-  attachmentsOverLimit;
+  attachmentsOverLimit,
+  businessDateCorrectionNotPermitted,
+  businessDateCorrectionNeedsReason;
 
   String get message => switch (this) {
     DraftProblem.amountMissing => 'Enter the amount.',
@@ -164,6 +166,12 @@ enum DraftProblem {
       'At most ${AttachmentPolicy.maxPerExpense} attachments, up to '
           '${AttachmentPolicy.maxTotalBytesPerExpense ~/ (1024 * 1024)} MB in '
           'total.',
+    DraftProblem.businessDateCorrectionNotPermitted =>
+      'Changing the business date of a recorded expense needs permission you do '
+          'not have. Ask someone in finance.',
+    DraftProblem.businessDateCorrectionNeedsReason =>
+      'Say why the business date is being changed. The reason is kept with the '
+          'correction.',
   };
 }
 
@@ -187,6 +195,8 @@ final class ExpenseDraft {
     this.isSplit = false,
     this.baseRowVersion,
     this.txnNumber,
+    this.originalBusinessDate,
+    this.correctionReason,
   });
 
   /// A blank expense with one line ready to classify.
@@ -263,10 +273,33 @@ final class ExpenseDraft {
     isSplit: allocations.length > 1 || allocations.any((a) => a.hasPeriodSplit),
     baseRowVersion: rowVersion,
     txnNumber: txnNumber,
+    // Captured here, at load, for the same reason [rowVersion] is: it is the fact the
+    // form is being edited *against*. Without it "did the date move?" would have to be
+    // asked of whatever the local row says at save time, which a background pull can
+    // change under a form somebody is typing into.
+    originalBusinessDate: businessDate,
   );
 
   final String id;
   final BusinessDate businessDate;
+
+  /// The business date this draft was loaded with, or null on a new expense.
+  ///
+  /// Never a `copyWith` parameter, exactly as [baseRowVersion] is not: every keystroke
+  /// rebuilds the draft, and a field that could move there is a field that would.
+  final BusinessDate? originalBusinessDate;
+
+  /// Why the business date is being changed. Required by the server on that branch and
+  /// on no other, so an ordinary correction never sees this field (spec §9).
+  final String? correctionReason;
+
+  /// Whether this edit moves the business date of an already-recorded expense.
+  ///
+  /// The client's own answer, used to shape the form. It is not sent as a claim: the
+  /// server decides the same question from canonical state, and its answer is the one
+  /// that governs (D-037).
+  bool get movesBusinessDate =>
+      originalBusinessDate != null && businessDate != originalBusinessDate;
 
   /// The version this draft was loaded from, or null when it is a new document.
   ///
@@ -335,6 +368,7 @@ final class ExpenseDraft {
     BusinessDate? accountingPeriodEnd,
     List<ExpenseAttachment>? attachments,
     bool? isSplit,
+    String? correctionReason,
     bool clearTotal = false,
     bool clearVendor = false,
     bool clearPayment = false,
@@ -360,11 +394,15 @@ final class ExpenseDraft {
         : (accountingPeriodEnd ?? this.accountingPeriodEnd),
     attachments: attachments ?? this.attachments,
     isSplit: isSplit ?? this.isSplit,
-    // Never a parameter. The version an edit is based on is fixed at load, and a
-    // `copyWith` is how every keystroke rebuilds the draft — offering it here is exactly
-    // how a background sync would come to re-base somebody's edit silently (§3).
+    // Never parameters. The version an edit is based on, and the date it was loaded
+    // with, are both fixed at load — and a `copyWith` is how every keystroke rebuilds
+    // the draft, so offering either here is exactly how a background sync would come to
+    // re-base somebody's edit silently (§3). If `originalBusinessDate` could move, an
+    // edit that moved the date would stop looking like one halfway through typing.
     baseRowVersion: baseRowVersion,
     txnNumber: txnNumber,
+    originalBusinessDate: originalBusinessDate,
+    correctionReason: correctionReason ?? this.correctionReason,
   );
 
   // ── Editing ───────────────────────────────────────────────────────────────
@@ -584,6 +622,19 @@ final class ExpenseDraft {
       problems.add(DraftProblem.attachmentsOverLimit);
     }
 
+    // Moving the business date of a recorded expense is its own act, with its own
+    // capability and its own mandatory reason (spec §9). Both are checked here so the
+    // form can say so before the save, and both are re-decided server-side, which is
+    // where the boundary actually is (D-037).
+    if (movesBusinessDate) {
+      if (!mayCorrectBusinessDate(principal)) {
+        problems.add(DraftProblem.businessDateCorrectionNotPermitted);
+      }
+      if ((correctionReason ?? '').trim().isEmpty) {
+        problems.add(DraftProblem.businessDateCorrectionNeedsReason);
+      }
+    }
+
     return problems;
   }
 
@@ -598,6 +649,17 @@ final class ExpenseDraft {
 
   static bool mayUsePeriodSplit(Principal principal) =>
       principal.canAnywhere(Capability.expenseAllocatePeriods);
+
+  /// Whether this user may move the business date of an expense that already exists.
+  ///
+  /// Used to decide whether the edit form offers a date control at all. Hiding it is not
+  /// the security boundary — the server refuses regardless — it is so that nobody fills
+  /// in a form that was always going to be refused (spec §13.1).
+  ///
+  /// Recording a *new* expense with a chosen date is unaffected: that is `manual`, not
+  /// `corrected`, and it is what the fast path has always done (D-019).
+  static bool mayCorrectBusinessDate(Principal principal) =>
+      principal.canAnywhere(Capability.correctBusinessDate);
 
   /// The properties this user may charge an expense to. The picker offers no others.
   static List<MasterNode> selectableUnits(

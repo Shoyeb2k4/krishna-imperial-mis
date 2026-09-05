@@ -24,6 +24,8 @@ import 'package:krishna_mis/domain/value_objects/money.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../integration_test/support/controllable_transport.dart';
+
 const _identitiesVar = 'KRISHNA_DEV_IDENTITIES';
 
 String _seedId(String path) =>
@@ -97,12 +99,23 @@ void main() {
     if (created.isNotEmpty) {
       await signInAs('giridhar@hki.com');
       for (final id in created) {
+        // The version is read rather than assumed. A fixture this suite corrected sits at
+        // v3, and a hard-coded `2` would silently fail to reverse exactly the documents
+        // the correction tests created — leaving them open in the development project
+        // while the teardown reported nothing (D-071: a cleanup that cannot work is not
+        // a cleanup).
+        final row = await client
+            .from('expense_document')
+            .select('row_version')
+            .eq('id', id)
+            .maybeSingle()
+            .then((r) => r, onError: (_) => null);
         await client
             .rpc<dynamic>(
               'expense_void',
               params: {
                 'p_id': id,
-                'p_base_row_version': 2,
+                'p_base_row_version': (row?['row_version'] as int?) ?? 2,
                 'p_reason': 'Phase 3 live test fixture',
               },
             )
@@ -716,5 +729,698 @@ void main() {
         },
       );
     });
+  });
+
+  // ── The Phase 3 corrective: business-date correction and the closed source period ──
+  //
+  // Four findings, evidenced against this server before anything was changed, and each
+  // asserted here in the form that goes green only when the fix genuinely exists.
+  //
+  // The centrepiece is the first: `expense_update` protected the period an expense was
+  // moving *to* and not the one it was moving *from*, so an expense could be lifted out
+  // of a **closed** month and that month's Total Expenses changed with nobody's
+  // permission. The probe that found it is reproduced exactly — same amount, same months,
+  // same actor — and it asserts the **figures**, not the RPC status: a refusal that left
+  // the contributions moved would be no fix at all.
+  group('business-date correction, and the periods it affects', () {
+    const source = '2026-03';
+    const target = '2026-04';
+    const marker = 'Phase 3 corrective: business-date correction';
+
+    Future<void> setPeriod(String key, {required bool closed}) async {
+      await signInAs('giridhar@hki.com');
+      if (closed) {
+        await client
+            .rpc<dynamic>(
+              'period_close',
+              params: {'p_period_key': key, 'p_business_unit_id': ccr},
+            )
+            .then((_) {}, onError: (_) {});
+      } else {
+        await client
+            .rpc<dynamic>(
+              'period_reopen',
+              params: {
+                'p_period_key': key,
+                'p_business_unit_id': ccr,
+                'p_reason':
+                    'Phase 3 corrective: restoring the development fixture',
+              },
+            )
+            .then((_) {}, onError: (_) {});
+      }
+    }
+
+    /// Both months open. Called before every case, so no test inherits another's locks.
+    Future<void> bothOpen() async {
+      await setPeriod(source, closed: false);
+      await setPeriod(target, closed: false);
+    }
+
+    tearDownAll(bothOpen);
+
+    /// What each accounting period actually holds for this document — the rows Phase 5
+    /// will aggregate, read through the projection reporting will read (D-060).
+    Future<Map<String, int>> contributions(String id) async {
+      final rows = await client
+          .from('expense_period_contributions')
+          .select()
+          .eq('expense_id', id);
+      final byPeriod = <String, int>{};
+      for (final row in rows) {
+        final key = row['pnl_period_key'] as String;
+        byPeriod[key] = (byPeriod[key] ?? 0) + (row['amount_minor'] as int);
+      }
+      return byPeriod;
+    }
+
+    String isoToday([int daysAgo = 0]) {
+      final d = DateTime.now().toUtc().subtract(Duration(days: daysAgo));
+      return '${d.year.toString().padLeft(4, '0')}-'
+          '${d.month.toString().padLeft(2, '0')}-'
+          '${d.day.toString().padLeft(2, '0')}';
+    }
+
+    Map<String, Object?> marchExpense(String id, {int amount = 4500000}) => {
+      'p_id': id,
+      'p_business_date': '2026-03-10',
+      'p_total_minor': amount,
+      'p_notes': marker,
+      'p_allocations': [
+        {...ccrKirana, 'amount_minor': amount},
+      ],
+    };
+
+    /// The same document, asking to live in April instead.
+    Map<String, Object?> movedToApril(
+      String id, {
+      int amount = 4500000,
+      String? reason = 'Recorded against the wrong trading day',
+    }) => {
+      ...marchExpense(id, amount: amount),
+      'p_business_date': '2026-04-10',
+      // `?reason` omits the key entirely when null, which is how a caller that supplies
+      // no reason at all is expressed — distinct from supplying an empty one.
+      'p_correction_reason': ?reason,
+    };
+
+    Future<RemoteOutcome<Map<String, dynamic>>> updateAs(
+      String email,
+      Map<String, Object?> arguments, {
+      required int baseRowVersion,
+      String? mutationId,
+    }) async {
+      await signInAs(email);
+      return ExpenseGateway(client).update(
+        arguments: arguments,
+        baseRowVersion: baseRowVersion,
+        mutationId: mutationId ?? const Uuid().v4(),
+      );
+    }
+
+    test('an ordinary edit that does not move the date needs no correction '
+        'capability and no reason', () async {
+      await bothOpen();
+      final id = const Uuid().v4();
+      // Data Entry holds neither `transaction.correct.business_date` nor
+      // `expense.edit.all`. It records this itself and corrects only the notes, so the
+      // fast path must be exactly as it was: no new field, no new permission.
+      final iso = isoToday();
+      await createAs('data.entry@example.com', {
+        'p_id': id,
+        'p_business_date': iso,
+        'p_total_minor': 33000,
+        'p_notes': marker,
+        'p_allocations': [
+          {...ccrKirana, 'amount_minor': 33000},
+        ],
+      });
+
+      final outcome = await updateAs('data.entry@example.com', {
+        'p_id': id,
+        'p_business_date': iso,
+        'p_total_minor': 33000,
+        'p_notes': '$marker - notes corrected, date untouched',
+        'p_allocations': [
+          {...ccrKirana, 'amount_minor': 33000},
+        ],
+      }, baseRowVersion: 2);
+
+      expect(
+        outcome.isOk,
+        isTrue,
+        reason:
+            'the correction gate must bind only when the date actually moves '
+            '(${outcome.refusalOrNull?.message})',
+      );
+      expect(outcome.valueOrNull!['business_date_corrected'], isFalse);
+
+      await signInAs('giridhar@hki.com');
+      final row = await client
+          .from('expense_document')
+          .select('business_date_source')
+          .eq('id', id)
+          .single();
+      expect(
+        row['business_date_source'],
+        'derived',
+        reason:
+            'an edit that did not move the date must not restate the provenance '
+            'of one that was never corrected (D-019)',
+      );
+    });
+
+    test(
+      'a permitted correction succeeds, and says so in the record',
+      () async {
+        await bothOpen();
+        final id = const Uuid().v4();
+        final createdRow = await createAs('giridhar@hki.com', marchExpense(id));
+        final number = createdRow['txn_number'] as String;
+
+        await signInAs('giridhar@hki.com');
+        expect(await contributions(id), {source: 4500000});
+
+        final outcome = await updateAs(
+          'accountant@example.com',
+          movedToApril(id),
+          baseRowVersion: 2,
+        );
+        expect(
+          outcome.isOk,
+          isTrue,
+          reason: 'refused: ${outcome.refusalOrNull?.message}',
+        );
+        expect(outcome.valueOrNull!['business_date_corrected'], isTrue);
+
+        // The figures moved, exactly and only where they were asked to go.
+        await signInAs('giridhar@hki.com');
+        expect(await contributions(id), {target: 4500000});
+
+        final row = await client
+            .from('expense_document')
+            .select('business_date,business_date_source,txn_number')
+            .eq('id', id)
+            .single();
+        expect(row['business_date'], '2026-04-10');
+        expect(row['business_date_source'], 'corrected');
+        expect(
+          row['txn_number'],
+          number,
+          reason:
+              'the number belongs to the document identity and survives every '
+              'correction (D-072a)',
+        );
+
+        final audit = await client
+            .from('audit_logs')
+            .select('action,reason,before_state,after_state')
+            .eq('entity_id', id)
+            .eq('action', 'expense_business_date_corrected');
+        expect(
+          audit,
+          hasLength(1),
+          reason:
+              'a moved date is its own act and gets its own audit action, so '
+              '"which dates moved, by whom, and why" is one query',
+        );
+        expect(
+          audit.single['reason'],
+          'Recorded against the wrong trading day',
+        );
+        expect(
+          (audit.single['before_state'] as Map)['business_date'],
+          '2026-03-10',
+        );
+        expect(
+          (audit.single['after_state'] as Map)['business_date'],
+          '2026-04-10',
+        );
+      },
+    );
+
+    test('moving the date without the correction capability is refused', () async {
+      await bothOpen();
+      final id = const Uuid().v4();
+      // Recent, so the edit window is not what refuses it — and recorded by the same
+      // person who then tries to move it, so ownership is not either. The only thing
+      // missing is `transaction.correct.business_date`.
+      await createAs('data.entry@example.com', {
+        'p_id': id,
+        'p_business_date': isoToday(),
+        'p_total_minor': 41000,
+        'p_notes': marker,
+        'p_allocations': [
+          {...ccrKirana, 'amount_minor': 41000},
+        ],
+      });
+
+      final outcome = await updateAs('data.entry@example.com', {
+        'p_id': id,
+        'p_business_date': isoToday(1),
+        'p_total_minor': 41000,
+        'p_notes': marker,
+        'p_correction_reason': 'Wrong day',
+        'p_allocations': [
+          {...ccrKirana, 'amount_minor': 41000},
+        ],
+      }, baseRowVersion: 2);
+
+      expect(outcome.isRefused, isTrue);
+      expect(
+        outcome.refusalOrNull!.kind,
+        anyOf(RefusalKind.missingCapability, RefusalKind.outOfUnitScope),
+      );
+      expect(outcome.refusalOrNull!.message, isNot(contains('SQLSTATE')));
+    });
+
+    test('a correction with a blank reason is refused', () async {
+      await bothOpen();
+      final id = const Uuid().v4();
+      await createAs('giridhar@hki.com', marchExpense(id, amount: 12000));
+
+      final outcome = await updateAs(
+        'accountant@example.com',
+        movedToApril(id, amount: 12000, reason: ''),
+        baseRowVersion: 2,
+      );
+      expect(outcome.isRefused, isTrue);
+      expect(outcome.refusalOrNull!.kind, RefusalKind.reasonRequired);
+      await signInAs('giridhar@hki.com');
+      expect(await contributions(id), {source: 12000});
+    });
+
+    test('a correction whose reason is only whitespace is refused', () async {
+      await bothOpen();
+      final id = const Uuid().v4();
+      await createAs('giridhar@hki.com', marchExpense(id, amount: 13000));
+
+      final outcome = await updateAs(
+        'accountant@example.com',
+        movedToApril(id, amount: 13000, reason: '   \t  '),
+        baseRowVersion: 2,
+      );
+      expect(outcome.isRefused, isTrue);
+      expect(outcome.refusalOrNull!.kind, RefusalKind.reasonRequired);
+    });
+
+    test('an expense cannot be moved OUT of a closed month, and that month keeps '
+        'every paisa', () async {
+      // The defect, stated as the assertion it should always have been.
+      //
+      // Before the fix this call returned `applied` and the contributions went from
+      // {2026-03: 4500000} to {2026-04: 4500000} — a closed month's Operating Profit
+      // changed by ₹45,000 through an ordinary edit. A status assertion alone would not
+      // catch a "fix" that refused and moved the rows anyway, so the figures Phase 5
+      // will aggregate are asserted on both sides of the attempt.
+      await bothOpen();
+      final id = const Uuid().v4();
+      await createAs('giridhar@hki.com', marchExpense(id));
+
+      await signInAs('giridhar@hki.com');
+      final before = await contributions(id);
+      expect(before, {source: 4500000});
+
+      await setPeriod(source, closed: true);
+
+      // The Accountant holds `expense.edit.all`, `transaction.correct.business_date`
+      // **and** `transaction.correct.beyond_window`. Every gate except the period lock
+      // is satisfied, so the period lock is the only thing that can refuse this.
+      final outcome = await updateAs(
+        'accountant@example.com',
+        movedToApril(id),
+        baseRowVersion: 2,
+      );
+
+      expect(
+        outcome.isRefused,
+        isTrue,
+        reason:
+            'spec 13.4 rejects every edit AFFECTING a closed period, and lifting '
+            'an amount out of one affects it as surely as putting one in',
+      );
+      expect(outcome.refusalOrNull!.kind, RefusalKind.periodClosed);
+
+      await signInAs('giridhar@hki.com');
+      expect(
+        await contributions(id),
+        before,
+        reason:
+            'the closed month must hold exactly what it held — a refusal that '
+            'still moved the rows would be no protection at all',
+      );
+
+      await setPeriod(source, closed: false);
+    });
+
+    test('an expense cannot be moved INTO a closed month either', () async {
+      await bothOpen();
+      final id = const Uuid().v4();
+      await createAs('giridhar@hki.com', marchExpense(id, amount: 22000));
+
+      await setPeriod(target, closed: true);
+      final outcome = await updateAs(
+        'accountant@example.com',
+        movedToApril(id, amount: 22000),
+        baseRowVersion: 2,
+      );
+      expect(outcome.isRefused, isTrue);
+      expect(
+        outcome.refusalOrNull!.kind,
+        RefusalKind.periodClosed,
+        reason:
+            'the target check is the one that already worked; it still must',
+      );
+
+      await signInAs('giridhar@hki.com');
+      expect(await contributions(id), {source: 22000});
+      await setPeriod(target, closed: false);
+    });
+
+    test('both periods closed is refused, and nothing moves', () async {
+      await bothOpen();
+      final id = const Uuid().v4();
+      await createAs('giridhar@hki.com', marchExpense(id, amount: 31000));
+
+      await setPeriod(source, closed: true);
+      await setPeriod(target, closed: true);
+      final outcome = await updateAs(
+        'accountant@example.com',
+        movedToApril(id, amount: 31000),
+        baseRowVersion: 2,
+      );
+      expect(outcome.isRefused, isTrue);
+      expect(outcome.refusalOrNull!.kind, RefusalKind.periodClosed);
+
+      await signInAs('giridhar@hki.com');
+      expect(await contributions(id), {source: 31000});
+      await bothOpen();
+    });
+
+    test('the Owner does not bypass the period lock either', () async {
+      // The RBAC Owner holds every capability there is. None of them is permission to
+      // change a closed month's totals: reopening is a separate, reasoned, audited act
+      // and stays the only way (spec 13.4).
+      await bothOpen();
+      final id = const Uuid().v4();
+      await createAs('giridhar@hki.com', marchExpense(id, amount: 27000));
+
+      await setPeriod(source, closed: true);
+      final outcome = await updateAs(
+        'giridhar@hki.com',
+        movedToApril(id, amount: 27000),
+        baseRowVersion: 2,
+      );
+      expect(outcome.isRefused, isTrue);
+      expect(outcome.refusalOrNull!.kind, RefusalKind.periodClosed);
+
+      await signInAs('giridhar@hki.com');
+      expect(await contributions(id), {source: 27000});
+
+      // And after a deliberate reopen the same correction is accepted — which is what
+      // makes the refusal a lock rather than a wall.
+      await setPeriod(source, closed: false);
+      final afterReopen = await updateAs(
+        'giridhar@hki.com',
+        movedToApril(id, amount: 27000),
+        baseRowVersion: 2,
+      );
+      expect(
+        afterReopen.isOk,
+        isTrue,
+        reason: 'refused: ${afterReopen.refusalOrNull?.message}',
+      );
+      await signInAs('giridhar@hki.com');
+      expect(await contributions(id), {target: 27000});
+    });
+
+    test('the two correction capabilities compose; neither replaces the other', () async {
+      // Reachable in both directions with the seeded role bundles:
+      //
+      //   * the window binds on somebody who is not moving a date at all — the D+8 case
+      //     in the edit-window group above;
+      //   * the correction capability binds on somebody well inside the window — the
+      //     missing-capability case above;
+      //   * and holding both, on an entry far outside the window, succeeds here.
+      //
+      // The one combination the seeded bundles cannot express is a holder of
+      // `transaction.correct.business_date` who lacks `transaction.correct.beyond_window`
+      // — the Accountant and the Owner hold both. That the two are separate guards, and
+      // that neither is spelled in terms of the other, is asserted structurally in the
+      // migration instead. Stated rather than implied.
+      await bothOpen();
+      final id = const Uuid().v4();
+      await createAs('giridhar@hki.com', marchExpense(id, amount: 19000));
+
+      final outcome = await updateAs(
+        'accountant@example.com',
+        movedToApril(id, amount: 19000),
+        baseRowVersion: 2,
+      );
+      expect(
+        outcome.isOk,
+        isTrue,
+        reason:
+            'March is far outside the seven-day window; beyond_window covers the '
+            'age and business_date covers the act '
+            '(${outcome.refusalOrNull?.message})',
+      );
+    });
+
+    test(
+      'a correction from a stale version is a conflict, not an overwrite',
+      () async {
+        await bothOpen();
+        final id = const Uuid().v4();
+        await createAs('giridhar@hki.com', marchExpense(id, amount: 17000));
+
+        // Somebody else edits it first, so the version the corrector holds is stale.
+        final first = await updateAs('accountant@example.com', {
+          ...marchExpense(id, amount: 17000),
+          'p_notes': '$marker - edited by somebody else',
+        }, baseRowVersion: 2);
+        expect(first.isOk, isTrue, reason: '${first.refusalOrNull?.message}');
+
+        final stale = await updateAs(
+          'accountant@example.com',
+          movedToApril(id, amount: 17000),
+          baseRowVersion: 2,
+        );
+        expect(stale.isRefused, isTrue);
+        expect(
+          stale.refusalOrNull!.kind,
+          RefusalKind.versionConflict,
+          reason:
+              'the correction capability authorises the act, never the overwriting '
+              'of a version nobody reviewed (D-021)',
+        );
+
+        await signInAs('giridhar@hki.com');
+        expect(await contributions(id), {source: 17000});
+      },
+    );
+
+    test(
+      'a redelivered correction replays: one effect, one audit row',
+      () async {
+        await bothOpen();
+        final id = const Uuid().v4();
+        final createdRow = await createAs(
+          'giridhar@hki.com',
+          marchExpense(id, amount: 26000),
+        );
+        final number = createdRow['txn_number'] as String;
+
+        final mutationId = const Uuid().v4();
+        final firstAttempt = await updateAs(
+          'accountant@example.com',
+          movedToApril(id, amount: 26000),
+          baseRowVersion: 2,
+          mutationId: mutationId,
+        );
+        expect(
+          firstAttempt.isOk,
+          isTrue,
+          reason: '${firstAttempt.refusalOrNull?.message}',
+        );
+
+        final replay = await updateAs(
+          'accountant@example.com',
+          movedToApril(id, amount: 26000),
+          baseRowVersion: 2,
+          mutationId: mutationId,
+        );
+        expect(replay.isOk, isTrue);
+        expect(replay.valueOrNull!['status'], 'replayed');
+
+        await signInAs('giridhar@hki.com');
+        final row = await client
+            .from('expense_document')
+            .select('row_version,business_date,txn_number,business_date_source')
+            .eq('id', id)
+            .single();
+        expect(row['row_version'], 3, reason: 'exactly one version advanced');
+        expect(row['business_date'], '2026-04-10');
+        expect(row['business_date_source'], 'corrected');
+        expect(row['txn_number'], number);
+        expect(await contributions(id), {target: 26000});
+
+        final audit = await client
+            .from('audit_logs')
+            .select('id')
+            .eq('entity_id', id)
+            .eq('action', 'expense_business_date_corrected');
+        expect(
+          audit,
+          hasLength(1),
+          reason: 'a replay produces no second audit effect (D-004)',
+        );
+      },
+    );
+
+    test('a correction whose response is lost recovers on retry', () async {
+      // Not a duplicate call. The request is sent, the server commits, the body is
+      // drained, and only then does the transport throw the platform's own
+      // SocketException — so the client is in the one state idempotency exists for: the
+      // work is done and it does not know (D-132).
+      await bothOpen();
+      final id = const Uuid().v4();
+      final createdRow = await createAs(
+        'giridhar@hki.com',
+        marchExpense(id, amount: 38000),
+      );
+      final number = createdRow['txn_number'] as String;
+
+      final transport = ControllableTransport();
+      final lossy = SupabaseClient(
+        config['SUPABASE_URL'] as String,
+        config['SUPABASE_ANON_KEY'] as String,
+        httpClient: transport,
+      );
+      addTearDown(() async {
+        await lossy.auth.signOut();
+        await lossy.dispose();
+      });
+      await lossy.auth.signInWithPassword(
+        email: 'accountant@example.com',
+        password:
+            (identities['accountant@example.com']
+                    as Map<String, dynamic>)['password']
+                as String,
+      );
+
+      final mutationId = const Uuid().v4();
+      transport.loseResponseOnceFor = '/rpc/expense_update';
+      final lost = await ExpenseGateway(lossy).update(
+        arguments: movedToApril(id, amount: 38000),
+        baseRowVersion: 2,
+        mutationId: mutationId,
+      );
+      expect(
+        lost.failureOrNull,
+        isNotNull,
+        reason: 'the client must learn nothing, not a refusal (D-048)',
+      );
+      expect(transport.lostResponses, isNotEmpty);
+
+      // The same intent, redelivered. A fresh mutation id would be a second financial
+      // record for one act.
+      final retry = await ExpenseGateway(lossy).update(
+        arguments: movedToApril(id, amount: 38000),
+        baseRowVersion: 2,
+        mutationId: mutationId,
+      );
+      expect(
+        retry.isOk,
+        isTrue,
+        reason: 'refused: ${retry.refusalOrNull?.message}',
+      );
+      expect(retry.valueOrNull!['status'], 'replayed');
+
+      await signInAs('giridhar@hki.com');
+      final row = await client
+          .from('expense_document')
+          .select('row_version,business_date,txn_number')
+          .eq('id', id)
+          .single();
+      expect(row['row_version'], 3);
+      expect(row['business_date'], '2026-04-10');
+      expect(row['txn_number'], number);
+      expect(await contributions(id), {target: 38000});
+
+      final audit = await client
+          .from('audit_logs')
+          .select('id')
+          .eq('entity_id', id)
+          .eq('action', 'expense_business_date_corrected');
+      expect(audit, hasLength(1));
+    });
+
+    test(
+      'a cross-period expense is protected on every period it contributes to',
+      () async {
+        // D-034: a bill that genuinely spans months contributes to each of them, and each
+        // is checked individually. Reducing the source check to "the old business date"
+        // would miss the other months entirely.
+        await bothOpen();
+        final id = const Uuid().v4();
+        await createAs('giridhar@hki.com', {
+          'p_id': id,
+          'p_business_date': '2026-04-10',
+          'p_total_minor': 6000000,
+          'p_notes': marker,
+          'p_allocations': [
+            {
+              ...ccrKirana,
+              'amount_minor': 6000000,
+              'periods': [
+                {
+                  'period_start': '2026-03-15',
+                  'period_end': '2026-03-31',
+                  'amount_minor': 3000000,
+                  'is_derived': false,
+                },
+                {
+                  'period_start': '2026-04-01',
+                  'period_end': '2026-04-14',
+                  'amount_minor': 3000000,
+                  'is_derived': false,
+                },
+              ],
+            },
+          ],
+        });
+
+        await signInAs('giridhar@hki.com');
+        final before = await contributions(id);
+        expect(before, {source: 3000000, target: 3000000});
+
+        // The document's own business date is in April, and only March is closed. A guard
+        // that looked at `business_date` alone would let this through.
+        await setPeriod(source, closed: true);
+        final outcome = await updateAs('accountant@example.com', {
+          'p_id': id,
+          'p_business_date': '2026-04-10',
+          'p_total_minor': 6000000,
+          'p_notes': '$marker - recut entirely into April',
+          'p_allocations': [
+            {...ccrKirana, 'amount_minor': 6000000},
+          ],
+        }, baseRowVersion: 2);
+
+        expect(outcome.isRefused, isTrue);
+        expect(
+          outcome.refusalOrNull!.kind,
+          RefusalKind.periodClosed,
+          reason:
+              'the closed month holds 30,000 rupees of this bill; an edit that '
+              'recut it entirely into April would empty that month',
+        );
+
+        await signInAs('giridhar@hki.com');
+        expect(await contributions(id), before);
+        await setPeriod(source, closed: false);
+      },
+    );
   });
 }

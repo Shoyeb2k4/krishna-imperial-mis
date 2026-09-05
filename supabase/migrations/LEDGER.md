@@ -88,6 +88,20 @@ retyped from memory, because a file that merely resembles what ran is not proven
 | 20260904144542 | `revenue_update_boundary` | `20260904144542_revenue_update_boundary.sql` |
 | 20260904150814 | `api_surface_invariant_revenue_update` | `20260904150814_api_surface_invariant_revenue_update.sql` |
 
+## Phase 3 corrective — expense business-date correction
+
+| Ledger version | Ledger name | Committed file |
+|---|---|---|
+| 20260905141738 | `expense_business_date_correction` | `20260905141738_expense_business_date_correction.sql` |
+| 20260905142059 | `correction_reason_rejects_all_whitespace` | `20260905142059_correction_reason_rejects_all_whitespace.sql` |
+
+Two versions for one corrective, and the second is not tidiness. The first was applied and
+its live test then found a defect **in the fix**: `btrim(text)` strips spaces and not tabs,
+so a one-tab correction reason was accepted. The applied file is not rewritten to look like
+something that never ran — both are committed as they were applied, and each was verified
+byte-for-byte against `supabase_migrations.schema_migrations.statements` rather than by
+resemblance (D-056).
+
 ## The full applied ledger, in order
 
 ```
@@ -151,4 +165,6 @@ retyped from memory, because a file that merely resembles what ran is not proven
 20260902120217 revenue_projections_use_a_real_capability
 20260904144542 revenue_update_boundary
 20260904150814 api_surface_invariant_revenue_update
+20260905141738 expense_business_date_correction
+20260905142059 correction_reason_rejects_all_whitespace
 ```

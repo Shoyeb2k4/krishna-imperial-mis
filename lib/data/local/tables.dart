@@ -46,7 +46,10 @@ class SyncOutbox extends Table {
   TextColumn get entityType => text()();
   TextColumn get entityId => text()();
 
-  /// `create` | `update` | `void_` | `correctBusinessDate` | `archive`
+  /// `create` | `update` | `void_` | `archive`
+  ///
+  /// A business-date correction is an `update`: one document, one write path, one
+  /// contract (D-127).
   TextColumn get op => text()();
 
   /// The canonical document as JSON, including allocation lines.

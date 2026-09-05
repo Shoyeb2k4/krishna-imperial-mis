@@ -357,12 +357,19 @@ class ExpenseRepository {
   /// makes a stale edit a conflict instead of an overwrite: a background pull may have
   /// advanced the local row while the form was open, and the intent must still be judged
   /// against what the person actually saw (§3, D-021).
+  /// [correctionReason] is required by the server when, and only when, the business date
+  /// actually moves — which the server decides for itself by comparing the canonical row
+  /// against the request, never by believing a flag the client sent. It travels in the
+  /// outbox payload like everything else, so an authorised correction queued offline
+  /// still carries its reason when it is finally delivered, days later, from a different
+  /// process (spec §9).
   Future<void> updateLocally(
     ExpenseDocument expense, {
     required String actorUserId,
     required String mutationId,
     required int baseRowVersion,
     required DateTime now,
+    String? correctionReason,
   }) async {
     final allocated = Money.sum(expense.allocations.map((a) => a.amount));
     if (allocated != expense.total) {
@@ -504,7 +511,9 @@ class ExpenseRepository {
               entityType: 'expense',
               entityId: expense.id,
               op: MutationOp.update.name,
-              payload: jsonEncode(_updatePayload(expense)),
+              payload: jsonEncode(
+                _updatePayload(expense, correctionReason: correctionReason),
+              ),
               baseRowVersion: Value(baseRowVersion),
               nextAttemptAt: now,
               status: OutboxStatus.pending.name,
@@ -519,12 +528,24 @@ class ExpenseRepository {
   ///
   /// The same document as [_createPayload] minus the two fields an edit does not
   /// restate: `p_business_date_source`, because how the *original* date was arrived at is
-  /// history and a correction has its own audit row, and `p_captured_at`, because the
-  /// capture instant of the original entry does not move when somebody fixes a figure.
-  static Map<String, Object?> _updatePayload(ExpenseDocument expense) {
+  /// history — and because the server now writes `corrected` itself on the branch where
+  /// the date actually moved, which is a fact about the document rather than a claim the
+  /// client is entitled to make; and `p_captured_at`, because the capture instant of the
+  /// original entry does not move when somebody fixes a figure.
+  ///
+  /// The reason is added only when there is one. Sending an empty string where the caller
+  /// meant "none" would be indistinguishable from a blank reason, and blank is the thing
+  /// the server refuses.
+  static Map<String, Object?> _updatePayload(
+    ExpenseDocument expense, {
+    String? correctionReason,
+  }) {
     final payload = Map<String, Object?>.from(_createPayload(expense))
       ..remove('p_business_date_source')
       ..remove('p_captured_at');
+    if (correctionReason != null && correctionReason.trim().isNotEmpty) {
+      payload['p_correction_reason'] = correctionReason.trim();
+    }
     return payload;
   }
 

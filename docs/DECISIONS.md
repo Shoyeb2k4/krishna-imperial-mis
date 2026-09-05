@@ -4366,3 +4366,166 @@ Worth recording rather than fixing silently for two reasons. It is the **cost** 
 a streamed read model is more correct and is not free — and it is a failure whose message
 points at the framework while the cause is the application's own subscription. The next
 person to stream a read model will meet it.
+
+---
+
+# Phase 3 corrective — expense business-date correction (2026-09-05)
+
+Approved by the project lead after the Slice 10 audit recorded it (D-127). **Option A**:
+`expense_update` stays the one Expense correction contract, and the documents that
+described a second endpoint are corrected rather than the second endpoint being built.
+
+## D-136 — An expense could be lifted out of a closed month, and that is now refused
+**Date:** 2026-09-05 · **Status:** Accepted (project-lead decision) — **a financial
+integrity defect, proven against `krishna-mis-dev` before anything was changed**
+
+**The defect, demonstrated rather than argued.** `app.validate_expense_allocations` only
+ever sees the periods in the **incoming payload**. It can say where an amount is going and
+never where it is being taken *from*, so `expense_update` protected the target period and
+not the source. A probe against the shipped function:
+
+```
+        contributions BEFORE   {2026-03: 4500000}
+        2026-03 closed for Crystal Canopy
+        expense_update -> business_date 2026-04-10
+        applied                {status: applied, row_version: 3}
+        refused                null
+        contributions AFTER    {2026-04: 4500000}
+```
+
+₹45,000 left a **closed** month. Its Total Expenses and Operating Profit changed, through
+an ordinary edit, with nobody's permission and no reopen. Spec §13.4 rejects "every
+create, edit, void and business-date correction **affecting** that period", and the
+operative word is *affecting*: removing an amount from a closed month affects it as surely
+as adding one. `expense_void` has always understood this and `revenue_update` applies it
+(D-124); `expense_update` did not.
+
+**Decision.** Before any mutation, the periods the expense **currently** contributes to are
+each required open, read from `expense_period_allocations` — the one place an expense's
+period attribution lives (D-060). The target periods keep being checked inside the
+validator that create and update share, so an edit can never introduce a placement a
+create would refuse.
+
+Reading the source from the **contributions** rather than from `business_date` is what
+makes a cross-period bill safe. A ₹60,000 invoice split May/June contributes to both
+months; a guard keyed on the document's own date would have missed the other one entirely,
+and that case is now a live test of its own. No P&L arithmetic is re-implemented for the
+lock check — the rows a report will sum are the rows checked.
+
+**Doctrine, unchanged by any role or capability:** closed source → refused; closed target →
+refused; both open → the ordinary checks continue. The RBAC Owner holds every capability
+there is and none of them is permission to change a closed month; reopening remains the
+separate, reasoned, audited act it has always been. Proven both ways in the same test: the
+Owner is refused, reopens deliberately, and the same correction is then accepted — which is
+what makes the refusal a lock rather than a wall.
+
+## D-137 — Moving a business date is a first-class act, not an edited field
+**Date:** 2026-09-05 · **Status:** Accepted (project-lead decision)
+
+Three further findings from the same audit, and the reason the fix is more than one
+`require_period_open` call.
+
+**The move is detected from canonical state.** `p_business_date is distinct from
+e.business_date`, decided inside the transaction. No client boolean says "this is a
+correction": a caller able to declare its own act would be choosing which rules apply to
+it. The client computes the same thing to shape its form and sends it as nothing.
+
+**It requires `transaction.correct.business_date`** — granted to the accountant and owner
+bundles since Phase 2 and, until today, **named by 0 functions and 0 policies** on this
+project. *A rule that nothing evaluates is a comment* (D-068, D-071, D-077); this one
+arrived as a grant rather than as a check, which is the quieter shape of the same thing. It
+is scoped per property the document charges, so scope still applies.
+
+**It requires a reason**, and the reason lives in `audit_logs.reason` — append-only, the
+same field `expense_void` already uses — rather than in a new column that would be a second
+source of truth for one fact. Required only on the branch where the date actually moves, so
+an ordinary correction gains no field and the fast path is untouched.
+
+**A moved date says so.** `business_date_source = 'corrected'` (D-019), written on that
+branch and only on it: every row on the development project read `derived`, including ones
+the acceptance suite had moved. An ordinary later edit to an already-corrected row does not
+restate it, because provenance that re-fires on every save stops being provenance.
+
+**And it gets its own audit action**, `expense_business_date_corrected`, carrying both
+dates, the reason and the actor — so "which dates were moved, by whom, and why" is one query
+rather than a diff of every edited row.
+
+**The capabilities compose; none replaces another.** `transaction.correct.business_date`
+authorises the *kind* of act and grants no relief from the edit window, the period locks,
+the unit scope or `base_row_version`. `transaction.correct.beyond_window` lifts the age rule
+and authorises no date move. Both directions are proven live with the seeded bundles; the
+one combination they cannot express — holding the date capability without the window one —
+is asserted structurally in the migration instead, and that limit is stated rather than
+glossed.
+
+**One contract.** No `expense_correct_business_date` is created. Three canonical documents
+named it and the server has never exposed it; the documents are corrected,
+`ARCHITECTURE.md` §5.3's row is restated as *"inside `expense_update` / `revenue_update`"*,
+and §24 states the contract in full. `MutationOp.correctBusinessDate` is **removed** from
+the client for the same reason: nothing ever produced one, and an op no endpoint dispatches
+is answered terminally by the router — so leaving it available would have turned the first
+real correction into a permanent rejection.
+
+**The surface.** The Expense edit form already had a business-date row, so this changes an
+existing control rather than adding a screen. In edit mode it opens only for a holder of
+the capability — the date is still shown, because it is part of the document — and a reason
+field appears the moment the date differs from the one the form was loaded with. That
+loaded date is captured once, at load, and `copyWith` cannot move it, exactly as
+`baseRowVersion` cannot (D-072a): a field that moved on every keystroke would stop calling
+an edit a correction halfway through typing it. Recording a *new* expense against a chosen
+date is untouched — that is `manual`, not `corrected`. Hiding the control is not the
+security boundary; the server refuses regardless.
+
+## D-138 — `btrim(text)` strips spaces and not tabs, and a tab is not a reason
+**Date:** 2026-09-05 · **Status:** Accepted — a defect **in the fix**, found by the live
+case written to distinguish "empty" from "blank"
+
+The first migration tested the reason with `length(btrim(coalesce(p_correction_reason,
+''))) = 0`. One-argument `btrim` removes **spaces only**. So `'   <tab>  '` trimmed to a
+single tab, measured 1, and was accepted: the rule that a correction always states why
+would have been satisfiable by pressing one key, and the audit row would have carried a tab
+where the reason belongs.
+
+Corrected to `regexp_replace(…, '^\s+|\s+$', '', 'g')`, with the value table asserted at
+deploy time in the pattern 0033 established — including the positive control that raises if
+`btrim` ever starts stripping tabs, because the finding would then no longer reproduce and
+the reasoning would need re-reading.
+
+**Fixed in its own migration rather than by editing the applied one.** The committed file
+for `20260905141738` is byte-identical to the statements the server ran, verified by hash
+rather than by resemblance; rewriting it to look like something that never ran is the exact
+substitution A0 and D-056 exist to prevent. Two ledger versions for one corrective is the
+honest record of what happened.
+
+**Recorded and deliberately not changed:** `expense_void` and `revenue_void` test their own
+mandatory reasons with the same one-argument `btrim`, so a single tab satisfies both. Same
+defect class, different reviewed scope (D-127). It is reported rather than fixed in passing.
+
+## D-139 — A capability granted in production and evaluated nowhere fails the build
+**Date:** 2026-09-05 · **Status:** Accepted
+
+Two invariants, because one can be checked before a deploy and the other only against the
+live catalogue.
+
+A **deploy-time** assertion in the migration: every capability the catalogue grants to some
+role must be named by a function body or a policy expression on the server. A **host**
+assertion over the migrations, so the same question is answered before anything is applied.
+
+Four capabilities are exempt, named individually rather than matched by a pattern:
+`reports.view`, `reports.export`, `reports.print`, `settings.manage` — the surfaces they
+govern are Phase 5 and Phase 7 and do not exist yet. That is a list a later phase deletes a
+line from, not a rule that absorbs the next dead grant; a second assertion fails if a listed
+capability ever *acquires* an evaluator, so the excuse cannot go stale.
+`transaction.correct.business_date` is deliberately not on it: its surface shipped and ran
+while the capability went unread, which is the whole finding.
+
+**The host assertion earned its place by being wrong twice, in the same way, in one hour.**
+Written first as "the capability appears somewhere in the migrations", it let a deliberate
+sabotage pass — because the *comment explaining that nothing evaluates it* counted as its
+evaluator. Narrowed to strip comments, it still passed: the deploy-time assertion asserting
+that something evaluates the capability counted too. It now reads **function bodies and
+policy expressions only**, which is what "evaluated" means, and the sabotage fails it.
+
+That is the fourth time this project has had to find a control by expecting red and getting
+green (D-071, D-074, D-094, and now this). The lesson does not seem to generalise on its
+own, so it is written down again: **a check is not a check until it has been seen to fail.**

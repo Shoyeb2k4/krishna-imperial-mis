@@ -165,6 +165,12 @@ class ExpenseEntryController {
           mutationId: mutationId,
           baseRowVersion: baseRowVersion,
           now: DateTime.now().toUtc(),
+          // Sent only when this edit actually moves the date. The server decides that
+          // question again from canonical state and refuses a blank reason on its own
+          // branch, so this shapes the request rather than authorising it (spec §9).
+          correctionReason: draft.movesBusinessDate
+              ? draft.correctionReason
+              : null,
         );
 
     await _attachmentsAwaitExpense(document.id);
