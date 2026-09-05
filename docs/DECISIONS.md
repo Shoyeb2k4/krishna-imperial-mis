@@ -4171,3 +4171,198 @@ says what it can support.
 query happened to have run, which on Android is none — so a phone would have reported
 `Synced` for everything. It now comes from `RevenueRepository.syncStateOf`, derived from the
 outbox, which is the one place that answer lives (D-119).
+
+---
+
+# Phase 4 Slice 10 — what the mandatory acceptance found (2026-09-05)
+
+Slice 10's implementation was committed at `f7e00e1` with three acceptance phases recorded
+as **NOT RUN**. Running them found two defects that every layer below them had reported as
+working. Both are recorded here in full, because they are the argument for the phases
+existing at all.
+
+## D-130 — A re-applied correction carried the version it was refused on
+**Date:** 2026-09-05 · **Status:** Accepted — **a defect found by the §44 two-client chain,
+and reachable by nothing below it**
+
+**Symptom.** Client A's stale correction is refused, exactly as designed. A reviews the
+latest, sees both figures, and deliberately corrects the sale again against the version the
+record now holds. That correction is refused as stale too — and would be, for ever. **A
+conflict was unresolvable through the shipped path.**
+
+**Cause.** `updateLocally` coalesces a correction into whatever intent is already queued
+(D-125), and the first implementation rewrote the payload while **keeping the queued
+entry's `base_row_version`**. The comment beside it explained why: *"an update stays an
+update, on the base version it was first based on, because that is still the version the
+server holds."*
+
+That sentence is true only while the intent has not been refused. Once the server has
+refused it and the operator has reviewed the latest, their new correction is based on the
+**current** version, and re-sending the old one is a guaranteed second refusal.
+
+**Fix.** A rewritten *update* intent carries the base version of the correction being
+written. In the ordinary pending case the value is identical, because the row has not
+moved; it differs only after a conflict has been reviewed, which is precisely the case that
+was broken. A rewritten *create* still carries none, because a create establishes a new
+identity and has nothing to be based on (D-021).
+
+**This is not the silent rebase §4 forbids.** The value comes from the draft the form was
+opened on, which `copyWith` cannot move. It is the version the operator actually looked at,
+never one re-read at save time — which is the whole distinction, and the reason the fix is
+one line rather than a re-derivation.
+
+**Controls, both seen to fail.** Reverting the line fails the live A1 chain at the
+re-applied correction, and fails the new host regression
+(`a correction after a conflict carries the version it was made against`). A host test now
+pins it, so the live suite is no longer the only thing that would notice.
+
+**Why nothing below it saw this.** Every layer was individually right. The server was right
+to refuse a stale version twice. The repository was right to coalesce. The widget was right
+to offer Review latest. The defect lived in the *sequence*, and a sequence needs two clients
+and a real server to exist at all. This is the same shape as D-104's "conversion nothing
+exercised", one level up: **a path nothing traversed**.
+
+## D-131 — The panel derived sync state one way and the ledger another
+**Date:** 2026-09-05 · **Status:** Accepted — **a defect found by the §46 Windows
+acceptance**
+
+**Symptom.** On the real `krishna_mis.exe`, a correction is refused as a conflict — the
+outbox entry says `conflict`, the local row holds the attempted figure, everything
+underneath is correct — and the detail panel shows **Synced**, with no conflict banner and
+no Review latest. The operator's one signal that their work needs attention was absent, on
+the surface that exists to show it.
+
+**Cause, and it is a duplication.** Two derivations of one fact:
+
+```
+        the ledger    LEFT JOIN sync_outbox ON entity_id = e.id
+                                          AND entity_type = 'revenue_entry'
+                                          AND status <> 'done'
+        the panel     LEFT JOIN sync_outbox ON mutation_id = e.pending_mutation_id
+```
+
+`pending_mutation_id` is a denormalised pointer, and on the accumulated Windows database it
+was null on a document whose correction had just been refused. The ledger, joining on the
+document's id, knew better — so two surfaces in the same application described one sale
+differently, which is the exact risk D-119 recorded when it deleted a duplicated status
+mapping. It came back as a duplicated *query* instead of a duplicated `switch`.
+
+**Fix, in two parts.**
+
+1. **One derivation.** `watchSyncState` uses the ledger's join, and `syncStateOf` delegates
+   to it, so the snapshot and the stream cannot disagree either. Nothing in the revenue
+   read path consults `pending_mutation_id` any more.
+2. **A stream, not a snapshot.** A conflict is delivered by the **sync worker**, which
+   invalidates no provider and knows about no screen. A `FutureProvider` therefore kept
+   whatever it read when the panel was first opened. `revenueSyncStateProvider` is now a
+   `StreamProvider` over the outbox, and `revenueDetailProvider` watches it — so a
+   transaction number arriving, a correction being refused, or a document being replaced by
+   Review latest all reach the surface without anybody remembering to invalidate.
+
+**Why the widget suite did not catch it.** Every widget test constructs its own state and
+then renders once. Neither half of this needs a second render: the wrong join returns the
+wrong answer immediately, and the staleness needs a *worker* to change something after the
+first read. Only a real client, against a real server, with a real background worker, does
+both.
+
+## D-132 — Response loss is proven by losing a response, not by calling twice
+**Date:** 2026-09-05 · **Status:** Accepted
+
+The brief was explicit: *do not pretend a normal duplicate RPC call proves response-loss
+recovery.* It does not. A duplicate call proves idempotency, and idempotency is not the
+scenario — in a duplicate call the client was told the outcome the first time, and the state
+that matters is the one where it was not.
+
+`ControllableTransport` therefore gained a second mode beside its offline switch. With
+`loseResponseOnceFor` set, the next matching request is **sent**, the server **answers**,
+the response body is **drained**, and only then does the transport throw the platform's own
+`SocketException`. The server has committed; the client knows nothing. Nothing above the
+cable is simulated, which is the same honesty D-058 established for the offline case.
+
+Both mutations are proven that way against `krishna-mis-dev`, through the real repository
+and the real worker: an update (§E) and a void (§A3). In each the retry replays the **same**
+mutation id — a fresh one would be a second financial record for one act, and nothing
+afterwards could tell them apart — the document moves exactly one row version, the KI-REV
+number is unchanged, no component is duplicated, and the audit holds one effect.
+
+## D-133 — A mutation id may be reused across a reviewed conflict, and only there
+**Date:** 2026-09-05 · **Status:** Accepted — recorded because the acceptance made me
+reason it out rather than assume it
+
+The A1 chain showed that a correction re-applied after Review latest is delivered under the
+**same** mutation id the refused one carried, because it rewrote the queued entry rather
+than starting a second piece of unsent work (D-125).
+
+That is safe, and the argument is narrow enough to be worth writing down:
+
+* a **refused** delivery consumes nothing — `processed_mutations` holds no result for it,
+  so the id is still unused;
+* the only statuses from which a new correction can reach an existing entry are `conflict`
+  and `rejected`, and **both mean the server saw the intent and did not apply it**;
+* `applyServerDocument` — Review latest — refuses to run while an intent is `pending`,
+  `inFlight`, `failed` or `blockedAuth`, so the id can never be reused over a delivery whose
+  outcome is unknown.
+
+Take away the third rule and the reuse becomes unsafe: a lost response leaves an intent
+whose outcome nobody knows, and reusing its id for a *different* correction would let the
+server replay the old result and silently discard the new one. The guard that makes Review
+latest safe is therefore also the guard that makes id reuse safe, which is why they are
+stated together rather than in two places.
+
+The acceptance asserts the consequence directly: the refusal left **no audit row at the
+time it happened**, counted then rather than inferred afterwards, and exactly one financial
+effect exists under that id at the end.
+
+## D-134 — There are two composition roots, and they are now compared rather than trusted
+**Date:** 2026-09-05 · **Status:** Accepted — a defect the §46 acceptance found in the
+acceptance harness itself
+
+**Symptom.** On the real `krishna_mis.exe` the conflict banner appeared correctly and
+**Review latest did nothing**: it showed *"Connect to the internet to see what this sale
+says now"* on a machine with a working connection.
+
+**Cause.** `revenueGatewayProvider` defaults to null and is overridden in `main()`. The
+acceptance harness builds the application itself, with its own override list, and that list
+did not name the new provider — so the harness was driving an application in which the
+conflict path had no way to re-read anything.
+
+**This has now happened twice**, and the harness's own comment says so: the attachment
+upload worker was missing from the same list, which left a bill `staged` for ever while the
+shipped build moved it on. The comment beside it reads *"the acceptance must assemble the
+application the same way `main()` does, or it is exercising a different application"* — and
+that sentence was a comment rather than a check, which is the failure this project has
+recorded under three different names (D-068, D-071, D-077).
+
+**Decision.** The two lists are **compared**, not each trusted. A host test extracts every
+`…Provider.overrideWith…` from `lib/main.dart` and from the acceptance harness and requires
+the harness to cover everything `main()` overrides. Adding a provider to `main()` and
+forgetting the harness is now a failing test rather than an acceptance phase that quietly
+proves something about a different application.
+
+**Positive control:** removing the override from the harness fails it, naming the reason.
+Verified by doing exactly that.
+
+**What it does not assert.** That the harness overrides *nothing extra* — it legitimately
+does, because it injects a controllable transport and sometimes a synthetic attachment
+source. The direction that matters is the one that was wrong.
+
+## D-135 — A streamed read model needs a disposal the test body performs
+**Date:** 2026-09-05 · **Status:** Accepted — a consequence of D-131, recorded because it
+looks like a hang and is not one
+
+Making the sync state a Drift stream gave the detail surface a **live query
+subscription**. Drift schedules a zero-duration timer when one is cancelled, and Flutter
+checks for pending timers at the end of the test **body** — before `addTearDown` runs. So
+every widget test that rendered the panel and stopped failed with *"A Timer is still
+pending even after the widget tree was disposed"*, which the runner reports as
+`did not complete` and which reads, in a suite of thirty, exactly like a hang.
+
+The disposal therefore has to happen inside the body, and a per-test call is a thing to
+forget. `test/support/ui_test.dart` wraps `testWidgets` once: run the body, pump an empty
+tree so the scope disposes and the subscription cancels, pump once more so the
+cancellation timer fires. Both revenue widget suites use it.
+
+Worth recording rather than fixing silently for two reasons. It is the **cost** of D-131 —
+a streamed read model is more correct and is not free — and it is a failure whose message
+points at the framework while the cause is the application's own subscription. The next
+person to stream a read model will meet it.

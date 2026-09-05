@@ -835,8 +835,20 @@ class RevenueRepository {
         //
         // A create stays a create — the server has never seen this document, and
         // sending an update for it would be asking to correct something that does not
-        // exist. An update stays an update, on the base version it was first based on,
-        // because that is still the version the server holds.
+        // exist.
+        //
+        // An update carries **the base version this correction was made against**, which
+        // is not always the one the queued intent already held. An earlier draft kept the
+        // queued value on the reasoning that "it is still the version the server holds";
+        // that is true only while the intent has not been refused. Once it comes back a
+        // conflict and the operator has reviewed the latest, their new correction is based
+        // on the *current* version — and re-sending the old one refuses it as stale for
+        // ever, which makes the conflict unresolvable through the shipped path. Found by
+        // the two-client acceptance and by nothing below it.
+        //
+        // This is not the silent rebase §4 forbids. The value comes from the draft the
+        // form opened on, which `copyWith` cannot move; it is the version the operator
+        // actually saw, never one re-read at save time.
         final isCreate = queued.op == MutationOp.create.name;
         await (_db.update(
           _db.syncOutbox,
@@ -853,6 +865,9 @@ class RevenueRepository {
             status: const Value('pending'),
             nextAttemptAt: Value(now),
             lastError: const Value(null),
+            baseRowVersion: isCreate
+                ? const Value(null)
+                : Value(baseRowVersion),
           ),
         );
       }
@@ -1322,22 +1337,48 @@ class RevenueRepository {
   /// because a detail surface is reachable without a ledger query having run — the phone
   /// has no ledger at all — and reading the state out of whichever list happened to be
   /// loaded is how a screen shows `Synced` for an entry that is nothing of the kind.
-  Future<SyncState> syncStateOf(String entryId) async {
-    final entry = await (_db.select(
-      _db.revenueEntries,
-    )..where((e) => e.id.equals(entryId))).getSingleOrNull();
-    if (entry == null) return SyncState.pendingSync;
+  Future<SyncState> syncStateOf(String entryId) =>
+      watchSyncState(entryId).first;
 
-    final queued = entry.pendingMutationId == null
-        ? null
-        : await (_db.select(_db.syncOutbox)
-                ..where((o) => o.mutationId.equals(entry.pendingMutationId!)))
-              .getSingleOrNull();
-
-    return _stateOf(
-      queued == null || queued.status == 'done' ? null : queued.status,
-      entry.txnNumber,
+  /// Where one sale stands, as a stream that re-emits whenever the outbox moves.
+  ///
+  /// A snapshot is not enough here, and the Windows acceptance is what showed it. A
+  /// conflict is delivered by the **sync worker**, which invalidates no provider and
+  /// knows about no screen; so a detail surface holding a cached "Synced" went on saying
+  /// it after the server had refused the correction — the operator's one signal that
+  /// their work needs attention, absent, on the surface that exists to show it.
+  ///
+  /// Streaming removes the staleness by construction rather than by remembering to
+  /// invalidate from every place that could change it, which is the same reasoning D-119
+  /// applied to having one mapping instead of two.
+  ///
+  /// It joins the outbox **the way the ledger does** — on the document's id, taking any
+  /// entry that is not `done` — and not through `revenue_entries.pending_mutation_id`.
+  /// That pointer is a denormalised convenience that something else can leave stale, and
+  /// an earlier version of this method read it: on the real Windows executable it was
+  /// null on a document whose correction had just been refused, so the panel reported
+  /// `Synced` for a sale in conflict while the ledger beside it knew better. Two
+  /// derivations of one fact is the defect; this is the ledger's.
+  Stream<SyncState> watchSyncState(String entryId) {
+    final query = _db.customSelect(
+      'SELECT e.txn_number AS txn_number, o.status AS outbox_status '
+      '  FROM revenue_entries e '
+      '  LEFT JOIN sync_outbox o ON o.entity_id = e.id '
+      "                        AND o.entity_type = '$revenueEntityType' "
+      "                        AND o.status <> 'done' "
+      ' WHERE e.id = ?',
+      variables: [Variable<String>(entryId)],
+      readsFrom: {_db.revenueEntries, _db.syncOutbox},
     );
+    return query.watch().map((rows) {
+      if (rows.isEmpty) return SyncState.pendingSync;
+      final row = rows.first;
+      final status = row.data['outbox_status'] as String?;
+      return _stateOf(
+        status == null || status == 'done' ? null : status,
+        row.data['txn_number'] as String?,
+      );
+    });
   }
 
   /// One entry with its components, for a detail surface.

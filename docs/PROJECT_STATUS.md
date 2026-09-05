@@ -5,7 +5,7 @@ Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
-Last updated: **2026-09-04** — Phase 4 Slice 10 (Phase 3 remains complete)
+Last updated: **2026-09-05** — Phase 4 Slice 10 **closed** (Phase 3 remains complete)
 
 > A new session should be able to read this file and know exactly where work stopped.
 > This file — not chat history — is the checkpoint.
@@ -42,12 +42,16 @@ Banquet has exactly one rule and **no dormant 5% row** (D-091). Room's condition
 architecture is retained: 5% is today's baseline, not a universal rate compiled into
 anything (D-081).
 
-**Slice 10 — revenue correction and void: complete, except the two device-acceptance
-phases, which are reported as NOT RUN.** The server boundary, the local write path, the
-transport and both surfaces are built and proven; §44 (two-client), §45 (real Android) and
-§46 (real Windows) have not been executed and are listed under *Acceptance still
-outstanding* rather than claimed. **47 new host tests**, 1,061 in total, and **14 new live
-tests** against `krishna-mis-dev`, 27 in that suite.
+**Slice 10 — revenue correction and void: COMPLETE, acceptance included.** The three
+phases the first checkpoint reported as NOT RUN — §44 two-client, §45 real Android, §46 real
+Windows — have now been run, and they found **two defects that every layer below them
+reported as working**. Both are fixed at the owning layer, both carry a control that was
+seen to fail, and both are recorded in full (D-130, D-131).
+
+That is the whole argument for the phases existing, so it is stated first rather than
+buried: Slice 10 reached a clean analyze, a green host suite, a green widget suite and a
+green live boundary suite **while a conflict was unresolvable through the shipped path and
+the detail panel reported `Synced` for a sale in conflict.**
 
 **`revenue_update` is not a copy of `expense_update`, and the migration says why at the top
 of the file (D-124).** Three decisions came out different. The server **re-resolves the
@@ -77,6 +81,32 @@ delivered, permitted on a conflicted or rejected one, where the attempt survives
 intent's own payload** — shows both sets of figures, and reopens the form on the *current*
 record. The intent is never deleted, and there is no "overwrite anyway" anywhere in the
 surface.
+
+**D-130 — a correction re-applied after Review latest was refused for ever.** The
+coalesced intent kept the row version it had already been refused on, so the operator's
+deliberate second correction — made against the version the record now held — was refused as
+stale again. Every layer was individually right: the server was right to refuse a stale
+version twice, the repository was right to coalesce, the widget was right to offer Review
+latest. The defect lived in the **sequence**, which needs two clients and a real server to
+exist at all. A rewritten *update* now carries the base version of the correction being
+written; a rewritten *create* still carries none. Not a rebase: the value comes from the
+draft the form opened on, which `copyWith` cannot move.
+
+**D-131 — the panel and the ledger derived one fact two ways.** The ledger joins the outbox
+on the document's id; the detail panel joined on `pending_mutation_id`. On the accumulated
+Windows database that pointer was null for a document whose correction had just been
+refused, so the panel showed **Synced**, with no conflict banner and no Review latest — the
+operator's one signal that their work needs attention, missing from the surface that exists
+to show it. There is now one derivation, and it is a **stream**: a conflict arrives from the
+sync worker, which invalidates no provider and knows about no screen, so a cached snapshot
+went on being wrong indefinitely. `revenueDetailProvider` follows the same stream, and the
+panel keeps its loaded content while re-reading rather than flashing a spinner — which is
+how the staleness was noticed at all.
+
+**Response loss is proven by losing a response (D-132).** `ControllableTransport` gained a
+mode that sends the request, lets the server answer, drains the body and *then* throws the
+platform's own `SocketException`. The server has committed; the client knows nothing.
+A duplicate RPC call would have proven idempotency and nothing about recovery.
 
 **`revenue.edit.all` gives revenue the split expenses have had since D-072a (D-128).** A
 Manager corrects what they recorded; an Accountant corrects anybody's. Granted to exactly
@@ -730,7 +760,7 @@ Blocked.**
 |---|---|---|
 | `dart format --set-exit-if-changed` | **Tested** | clean (175 files) |
 | `flutter analyze` | **Tested** | **No issues found** |
-| Host test suite | **Tested** | **1,061 tests, all passing** |
+| Host test suite | **Tested** | **1,067 tests, all passing** |
 | Secret scan — tree and git history | **Tested** | clean; the scan proves its own controls on every run (D-069) |
 | Secret scan — rebuilt clean binaries | **Tested** | tree, git history and built artefacts all clean, with the scanner's controls passing |
 | Migration audit (search_path, API surface, policy boundary) | **Tested** | 14 host tests |
@@ -738,6 +768,7 @@ Blocked.**
 | Live backend suite against `krishna-mis-dev` | **Tested** | **19 tests** across 7 phases — **re-run in the documented sequence at this checkpoint**, with the grant fixture restored to baseline afterwards (D-107) |
 | Live expense suite against `krishna-mis-dev` | **Tested** | **16 tests, re-run at this checkpoint**: reconciliation, scoped raw-cache security, period locks, the 7-day boundary, usage semantics |
 | Live revenue suite against `krishna-mis-dev` | **Tested** | **27 tests** (13 + 14 for Slice 10), 1 deliberately skipped: the D-095 write-skew positive control, whose lock-bypassing scaffolding was dropped rather than left permanently callable |
+| Live two-client acceptance against `krishna-mis-dev` | **Tested** | **10 tests** — §44, §A3, §D, §E, §F, through the real repositories and workers |
 | Revenue arithmetic parity — Dart, Drift and Postgres | **Tested** | 13 vectors, exact paise, asserted in migration `20260901144002` and read back by the Dart suite (D-105) |
 | Offline revenue tax resolution from the cache | **Tested** | 33 host tests, incl. the `configurationUnavailable` distinction and a read-only census (D-106) |
 | Revenue ReferenceSync — datasets, atomicity, per-scope completeness | **Tested** | 27 host tests, incl. malformed-payload rejection and the retained known-good snapshot |
@@ -758,9 +789,14 @@ Blocked.**
 | Revenue correction and void surfaces, both platforms | **Tested** | 14 widget tests, incl. capability-only availability and a voided sale offering nothing |
 | Revenue update/void transport — dispatch, idempotency, response loss, classification | **Tested** | 12 host tests against a fake gateway, driving the real endpoint |
 | Live `revenue_update` / `revenue_void` against `krishna-mis-dev` | **Tested** | 14 tests: re-resolution, KM030, KM003 both ways, KM020, KM021 with its positive control, manager refusals, replay |
-| Slice 10 acceptance on a real Android device | **Not tested** | §45, not run — see *Acceptance still outstanding* |
-| Slice 10 acceptance in the real `krishna_mis.exe` | **Not tested** | §46, not run |
-| Two-client correction/void propagation | **Not tested** | §44, not run |
+| Two-client stale edit, stale void, and the voided-then-edited inverse | **Tested** | §44 — 10 live tests, two independent sessions/databases/outboxes against `krishna-mis-dev`; **found D-130** |
+| Update and void response loss, against the real server | **Tested** | §A3, §E — the transport sends, the server commits, the answer is dropped on the wire (D-132) |
+| Offline create → corrected twice → restart → sync | **Tested** | §D, with a control that fails in D-125's own failure mode |
+| D+7 / D+8, beyond-window, closed **source** and target period | **Tested** | §F — 4 live tests, business dates under D-067 |
+| Slice 10 acceptance on the real Android emulator | **Tested** | §45 — 5 phases: edit, untaxed edit, conflict, void + manager refusal, user switch |
+| Slice 10 acceptance in the real `krishna_mis.exe` | **Tested** | §46 — 3 phases: edit, void with include-voided, conflict and Review latest; **found D-131** |
+| D-070/D-074 and the Windows ledger, re-run on the accumulated database | **Tested** | `d068-switch`, `d068-revoke`, `windows-ledger` green after the Slice 10 changes |
+| Slice 10 fixture reversal and baseline verification | **Tested** | voided through the real API; 4 rules, 0 bands, 0 subtypes, 0 statuses, 0 open revenue |
 | Repository ↔ server migration integrity (D-056) | **Tested** | live `drift` phase |
 | Android device acceptance, real APK, real backend | **Tested** | **19 tests** across 10 phases |
 | Windows acceptance, real `krishna_mis.exe`, real backend | **Tested** | **18 tests** across 11 phases |
@@ -804,9 +840,13 @@ Blocked.**
 
 | Suite | Count | Result |
 |---|---|---|
-| Host (`flutter test`) | **1,061** | all passing |
+| Host (`flutter test`) | **1,067** | all passing |
 | Live backend against `krishna-mis-dev` (opt-in) | 19 | all passing — re-run in full |
 | Live expense suite against `krishna-mis-dev` (opt-in) | 16 | all passing — **re-run at this checkpoint** |
+| Live revenue boundary suite (opt-in) | 27 | all passing, 1 deliberately skipped |
+| Live two-client acceptance (opt-in) | 10 | all passing |
+| **Slice 10 Android acceptance** (`revenue-edit`, `-edit-banquet`, `-conflict`, `-void`, `-user-switch`) | **5** | **all passing** |
+| **Slice 10 Windows acceptance** (`windows-revenue-edit`, `-void`, `-conflict`) | **3** | **all passing** |
 | Android Phase 2 device acceptance (real APK) | 19 | all passing |
 | Windows Phase 2 acceptance (real executable) | 18 | all passing |
 | Windows shell (real executable) | 15 | all passing |
@@ -965,22 +1005,21 @@ reported as failed rather than re-run until it is convenient.
 
 ### Still outstanding
 
-**Three Slice 10 phases, all reported as NOT RUN rather than claimed.** A phase that has not
-run is not a phase that passed.
+**Nothing for Slice 10.** All three phases ran and pass; the two defects they found are
+fixed, regressed and controlled.
 
-| Phase | What it must prove |
+| Phase | Result |
 |---|---|
-| §44 two-client | Windows corrects, Android submits a stale correction and gets a conflict, Review latest shows both, void propagates, the reason survives |
-| §45 real Android | Correct and void on the emulator against `krishna-mis-dev`; an offline correction that syncs once; a voided sale offering neither control |
-| §46 real Windows | The same, inside the compiled `krishna_mis.exe`, on the accumulated Windows database |
+| §44 two-client stale edit chain, live | **PASS** — and it found D-130 |
+| §44 two-client stale void, and the voided-then-edited inverse | **PASS** |
+| §A3 void response loss | **PASS** |
+| §E update response loss | **PASS** |
+| §D offline create → corrected twice → restart → sync | **PASS**, with a control that fails |
+| §F D+7 / D+8, beyond-window, closed source **and** target period | **PASS** |
+| §45 Android — edit, untaxed edit, conflict, void, manager refusal, user switch | **PASS** |
+| §46 Windows — edit, void with include-voided, conflict and Review latest | **PASS** — and it found D-131 |
 
-Everything below them is proven: the server boundary against the real project, the local
-write path, the transport, and both surfaces in the widget suite.
-
-**From Phase 3, still nothing outstanding.** The manual native-picker smoke tests were the last item and both passed on
-2026-08-31 (Android **PASS**, Windows **PASS**). Their first attempt is recorded as
-**FAILED** above and in D-077, and stays recorded: it is the finding that justifies the
-whole practice of keeping a manual gate for a boundary the harness cannot drive.
+**From Phase 3, still nothing outstanding.**
 
 ## Revenue tax configuration baseline (Phase 4 — one item pending)
 
@@ -1091,15 +1130,18 @@ declaration that Phase 3 is closed.
 
 ## Next exact task
 
-**Run the three Slice 10 acceptance phases** — §44 two-client, §45 real Android, §46 real
-Windows — and report their results. They are the only thing between Slice 10 and closure,
-and they are recorded as NOT RUN rather than assumed. After them, Slice 11 (attachments,
-reusing D-073a unchanged).
+**A Phase 3 corrective item, before Slice 11.** The Slice 10 audit found three things about
+the *expense* engine that are recorded and deliberately untouched (D-127), because quietly
+altering the expense write path inside a revenue slice is how a reviewed scope stops being
+reviewable. One of them is a financial-integrity gap rather than a documentation one:
+`expense_update` checks the target period and not the source, so an expense can be moved
+**out** of a closed month, restating that month's totals. `revenue_update` checks both.
 
-**Two items for the project lead, neither taken unilaterally** (D-127): whether
-`expense_correct_business_date` should be built as the three canonical documents describe it
-or the documents should stop naming it; and whether `transaction.correct.business_date`
-should gain an evaluator or be withdrawn from the two role bundles that hold it.
+The audit and the recommended plan are below under **Phase 3 corrective — expense business
+date and period protection**, and it awaits the project lead's approval before any code is
+written.
+
+After that: Slice 11 (attachments, reusing D-073a unchanged).
 
 ---
 

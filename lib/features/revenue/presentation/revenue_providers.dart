@@ -119,12 +119,18 @@ final revenueConfigurationBlockProvider =
 /// Its own provider rather than a field plucked out of whichever ledger query happened to
 /// have run: the phone has no ledger, and a detail screen that reads its status from an
 /// empty list reports `Synced` for everything.
-final revenueSyncStateProvider = FutureProvider.family<SyncState, String>((
+/// A **stream**, not a snapshot.
+///
+/// A conflict arrives from the sync worker, which invalidates no provider — so a cached
+/// value went on saying `Synced` after the server had refused the correction, hiding the
+/// one signal that says the operator's work needs attention. Streaming from the outbox
+/// removes that by construction.
+final revenueSyncStateProvider = StreamProvider.family<SyncState, String>((
   ref,
   id,
 ) {
   ref.watch(principalProvider);
-  return ref.watch(revenueRepositoryProvider).syncStateOf(id);
+  return ref.watch(revenueRepositoryProvider).watchSyncState(id);
 });
 
 final revenueDetailProvider = FutureProvider.family<RevenueEntry?, String>((
@@ -135,6 +141,16 @@ final revenueDetailProvider = FutureProvider.family<RevenueEntry?, String>((
   // previous person's cached projection - the defect D-072a found one layer above the
   // expense read model, arriving here before it can happen again.
   ref.watch(principalProvider);
+
+  // And depending on the sync-state stream is what makes it re-read when the **worker**
+  // changes something. Nothing in the sync engine invalidates a provider, so without
+  // this the panel keeps showing whatever it read when it was first opened - including
+  // a transaction number that has since arrived, and a correction that has since been
+  // refused. The stream's query reads the entry row and the outbox, and every write to a
+  // component happens in the same transaction as one of those, so a change to any of the
+  // three re-emits.
+  ref.watch(revenueSyncStateProvider(id));
+
   return ref.watch(revenueRepositoryProvider).load(id);
 });
 

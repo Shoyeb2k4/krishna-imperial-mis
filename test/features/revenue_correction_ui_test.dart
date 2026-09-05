@@ -34,6 +34,7 @@ import 'package:krishna_mis/features/revenue/presentation/widgets/revenue_action
 import 'package:krishna_mis/features/revenue/presentation/widgets/revenue_detail_panel.dart';
 
 import '../support/test_session.dart';
+import '../support/ui_harness.dart';
 
 const _org = 'org-1';
 const _ccr = 'unit-ccr';
@@ -328,7 +329,7 @@ void main() {
       );
     });
 
-    testWidgets('a user without either capability is offered neither control', (
+    uiTest('a user without either capability is offered neither control', (
       tester,
     ) async {
       await recorded();
@@ -344,7 +345,7 @@ void main() {
       expect(find.byKey(const Key('revenue-void')), findsNothing);
     });
 
-    testWidgets('a user scoped to the other property is offered neither', (
+    uiTest('a user scoped to the other property is offered neither', (
       tester,
     ) async {
       await recorded();
@@ -368,25 +369,24 @@ void main() {
   });
 
   group('the Android correction flow (§28)', () {
-    testWidgets(
-      'Edit opens the same form, on the sale, labelled as a correction',
-      (tester) async {
-        await recorded();
-        await pump(tester, const RevenueDetailPage(entryId: 'entry-1'));
+    uiTest('Edit opens the same form, on the sale, labelled as a correction', (
+      tester,
+    ) async {
+      await recorded();
+      await pump(tester, const RevenueDetailPage(entryId: 'entry-1'));
 
-        await tester.tap(find.byKey(const Key('revenue-edit')));
-        await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('revenue-edit')));
+      await tester.pumpAndSettle();
 
-        // One form, two modes (D-072a). Not a second implementation of the arithmetic
-        // behind company revenue.
-        expect(find.byType(RevenueEntryPage), findsOneWidget);
-        expect(find.text('Correct this sale'), findsOneWidget);
-        expect(find.text('Save changes'), findsOneWidget);
-        expect(find.text('Save sales'), findsNothing);
-      },
-    );
+      // One form, two modes (D-072a). Not a second implementation of the arithmetic
+      // behind company revenue.
+      expect(find.byType(RevenueEntryPage), findsOneWidget);
+      expect(find.text('Correct this sale'), findsOneWidget);
+      expect(find.text('Save changes'), findsOneWidget);
+      expect(find.text('Save sales'), findsNothing);
+    });
 
-    testWidgets('a correction is queued and the figures are re-derived', (
+    uiTest('a correction is queued and the figures are re-derived', (
       tester,
     ) async {
       await recorded();
@@ -419,7 +419,7 @@ void main() {
   });
 
   group('the Windows correction flow (§29)', () {
-    testWidgets('the panel offers the same controls at a desktop size', (
+    uiTest('the panel offers the same controls at a desktop size', (
       tester,
     ) async {
       await recorded();
@@ -445,63 +445,58 @@ void main() {
   });
 
   group('void (§21, §30)', () {
-    testWidgets(
-      'the reason is mandatory, and Void stays disabled without one',
-      (tester) async {
-        await recorded();
-        await pump(
-          tester,
-          const RevenueDetailPage(entryId: 'entry-1'),
-          principal: _principal(
-            capabilities: const {
-              Capability.revenueView,
-              Capability.revenueVoid,
-              Capability.mastersView,
-            },
-          ),
-        );
+    uiTest('the reason is mandatory, and Void stays disabled without one', (
+      tester,
+    ) async {
+      await recorded();
+      await pump(
+        tester,
+        const RevenueDetailPage(entryId: 'entry-1'),
+        principal: _principal(
+          capabilities: const {
+            Capability.revenueView,
+            Capability.revenueVoid,
+            Capability.mastersView,
+          },
+        ),
+      );
 
-        await tester.tap(find.byKey(const Key('revenue-void')));
-        await tester.pumpAndSettle();
-        expect(find.byKey(const Key('revenue-void-dialog')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('revenue-void')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('revenue-void-dialog')), findsOneWidget);
 
-        final confirm = tester.widget<FilledButton>(
-          find.byKey(const Key('revenue-void-confirm')),
-        );
-        expect(confirm.onPressed, isNull);
+      final confirm = tester.widget<FilledButton>(
+        find.byKey(const Key('revenue-void-confirm')),
+      );
+      expect(confirm.onPressed, isNull);
 
-        // Whitespace is not a reason.
-        await tester.enterText(
-          find.byKey(const Key('revenue-void-reason')),
-          '  ',
-        );
-        await tester.pumpAndSettle();
-        expect(
-          tester
-              .widget<FilledButton>(
-                find.byKey(const Key('revenue-void-confirm')),
-              )
-              .onPressed,
-          isNull,
-        );
+      // Whitespace is not a reason.
+      await tester.enterText(
+        find.byKey(const Key('revenue-void-reason')),
+        '  ',
+      );
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<FilledButton>(find.byKey(const Key('revenue-void-confirm')))
+            .onPressed,
+        isNull,
+      );
 
-        await tester.enterText(
-          find.byKey(const Key('revenue-void-reason')),
-          'entered twice',
-        );
-        await tester.pumpAndSettle();
-        expect(
-          tester
-              .widget<FilledButton>(
-                find.byKey(const Key('revenue-void-confirm')),
-              )
-              .onPressed,
-          isNotNull,
-        );
-      },
-    );
+      await tester.enterText(
+        find.byKey(const Key('revenue-void-reason')),
+        'entered twice',
+      );
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<FilledButton>(find.byKey(const Key('revenue-void-confirm')))
+            .onPressed,
+        isNotNull,
+      );
+    });
 
-    testWidgets('voiding keeps the sale, its reason and its components', (
+    uiTest('voiding keeps the sale, its reason and its components', (
       tester,
     ) async {
       await recorded();
@@ -534,7 +529,7 @@ void main() {
       expect(reloaded.voidReason, 'entered twice');
     });
 
-    testWidgets('a voided sale offers neither control, and says why', (
+    uiTest('a voided sale offers neither control, and says why', (
       tester,
     ) async {
       await recorded();
@@ -570,7 +565,7 @@ void main() {
   });
 
   group('conflict (§25, §26, §27)', () {
-    testWidgets('a conflict offers Review latest and nothing that merges', (
+    uiTest('a conflict offers Review latest and nothing that merges', (
       tester,
     ) async {
       await recorded();
@@ -594,7 +589,7 @@ void main() {
       expect(find.textContaining('overwrite anyway'), findsNothing);
     });
 
-    testWidgets('with no backend the conflict path says so and changes nothing', (
+    uiTest('with no backend the conflict path says so and changes nothing', (
       tester,
     ) async {
       await recorded();
@@ -615,9 +610,7 @@ void main() {
       expect((await repository.load('entry-1'))!.gross.paise, 10000000);
     });
 
-    testWidgets('a rejected entry is not dressed up as a conflict', (
-      tester,
-    ) async {
+    uiTest('a rejected entry is not dressed up as a conflict', (tester) async {
       await recorded();
       await db.customStatement(
         "UPDATE sync_outbox SET status = 'rejected' WHERE entity_id = 'entry-1'",
@@ -640,26 +633,25 @@ void main() {
   });
 
   group('the surface does not grow into later slices (§49)', () {
-    testWidgets(
-      'no attachment control and no reporting on the detail surface',
-      (tester) async {
-        await recorded();
-        await pump(tester, const RevenueDetailPage(entryId: 'entry-1'));
+    uiTest('no attachment control and no reporting on the detail surface', (
+      tester,
+    ) async {
+      await recorded();
+      await pump(tester, const RevenueDetailPage(entryId: 'entry-1'));
 
-        for (final absent in const [
-          'Attach',
-          'Add bill',
-          'Profit',
-          'Net Sales',
-          'Export',
-        ]) {
-          expect(
-            find.textContaining(absent),
-            findsNothing,
-            reason: '$absent belongs to a later slice',
-          );
-        }
-      },
-    );
+      for (final absent in const [
+        'Attach',
+        'Add bill',
+        'Profit',
+        'Net Sales',
+        'Export',
+      ]) {
+        expect(
+          find.textContaining(absent),
+          findsNothing,
+          reason: '$absent belongs to a later slice',
+        );
+      }
+    });
   });
 }

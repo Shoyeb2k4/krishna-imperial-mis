@@ -8,7 +8,7 @@ the application role named **Owner** is a separate concept — D-057)
 Status: **Sections 1–12 proposed (Phase 0, revised); sections 13–16 and 18–23 describe what is built
 and verified; section 17 is the approved Phase 4 plan.** Sections 6, 5.3 and 8 carry the project lead's mandated corrections.
 Implementation status is tracked in `PROJECT_STATUS.md`.
-Last updated: 2026-09-04
+Last updated: 2026-09-05
 
 ---
 
@@ -1799,3 +1799,53 @@ rule exists so the interface does not offer what would be refused.
 had since D-072a: a Manager corrects what they recorded, an Accountant corrects anybody's.
 The client cannot know the edit window or the period lock without asking, so those are
 refused server-side and surfaced as sentences rather than predicted.
+
+### 23.6 What the mandatory acceptance found (2026-09-05)
+
+Slice 10's implementation reached a clean `analyze`, a green host suite, a green widget
+suite and a green live boundary suite. The three acceptance phases it had **not** run then
+found two defects, and both are worth stating because of *where* they lived.
+
+**A conflict was unresolvable through the shipped path (D-130).** A correction re-applied
+after Review latest carried the row version it had already been refused on, so it was
+refused again, and would have been for ever. Every layer was individually correct — the
+server was right to refuse a stale version twice, the repository was right to coalesce, the
+widget was right to offer Review latest. The defect lived in the **sequence**, which needs
+two clients and a real server to exist at all.
+
+**Two surfaces described one sale differently (D-131).** The ledger derived a sale's sync
+state by joining the outbox on the document's id; the detail panel joined on
+`pending_mutation_id`. On the accumulated Windows database that pointer was null for a
+document whose correction had just been refused, so the panel showed **Synced** for a sale
+in conflict — hiding the banner and the one action that resolves it. There is now one
+derivation, and it is a **stream**: a conflict arrives from the sync worker, which
+invalidates no provider and knows about no screen, so a cached snapshot went on being wrong
+until something else happened to refresh it.
+
+Both are the same shape as the findings this project keeps recording, one level up from
+where they usually appear. D-104 was a *conversion* nothing exercised; D-119 was a *rule*
+duplicated into two switches. These are a **path** nothing traversed, and a **query**
+duplicated into two joins.
+
+### 23.7 Proving a lost response, rather than a duplicate call
+
+A duplicate RPC call proves idempotency and proves nothing about recovery: in a duplicate
+call the client was told the outcome the first time, and the state that matters is the one
+where it was not.
+
+`ControllableTransport` therefore gained a second mode beside its offline switch. The next
+matching request is sent, the server answers, the body is drained, and only then does the
+transport throw the platform's own `SocketException` — so the server has committed and the
+client knows nothing. Nothing above the cable is simulated, which is the same honesty D-058
+established for the offline case.
+
+```
+        client ──── revenue_update ───▶ server   committed
+        client ◀───     ✗ dropped    ─── server
+        client ──── revenue_update ───▶ server   replayed, same row version
+```
+
+Both mutations are proven that way against `krishna-mis-dev`, through the real repository
+and worker: the retry replays the **same** mutation id, the document moves exactly one row
+version, the KI-REV number is unchanged, no component is duplicated, and the audit holds one
+effect.

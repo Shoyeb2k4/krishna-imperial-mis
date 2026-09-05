@@ -321,6 +321,62 @@ void main() {
     );
 
     test(
+      'a correction after a conflict carries the version it was made against',
+      () async {
+        // The defect the two-client acceptance found, pinned here so it cannot come back
+        // without the live suite.
+        //
+        // A refused correction leaves a conflicted intent based on version N. The operator
+        // reviews the latest, the document is now at N+1, and they correct it again. If the
+        // rewritten intent kept N, the server would refuse it as stale for ever and the
+        // conflict would be unresolvable through the shipped path.
+        final entry = await create(draft());
+        await accept(entry.id, rowVersion: 2);
+
+        await correct(
+          draft(id: entry.id, amounts: [12000000]),
+          baseRowVersion: 2,
+        );
+        await (db.update(db.syncOutbox)..where(
+              (o) => o.entityId.equals(entry.id) & o.status.equals('pending'),
+            ))
+            .write(const SyncOutboxCompanion(status: Value('conflict')));
+
+        // Review latest brings the document to version 5, and a fresh correction is made
+        // against that.
+        await correct(
+          draft(id: entry.id, amounts: [15000000]),
+          baseRowVersion: 5,
+        );
+
+        final queued = (await outbox(
+          entry.id,
+        )).where((o) => o.status != 'done').single;
+        expect(queued.op, MutationOp.update.name);
+        expect(
+          queued.baseRowVersion,
+          5,
+          reason:
+              'the version the operator was looking at, not the refused one',
+        );
+        expect(queued.status, 'pending', reason: 'and it is deliverable again');
+      },
+    );
+
+    test('a rewritten create still carries no base version', () async {
+      // A create establishes a new identity and has nothing to be based on (D-021).
+      final entry = await create(draft());
+      await correct(
+        draft(id: entry.id, amounts: [12000000]),
+        baseRowVersion: entry.rowVersion,
+      );
+
+      final queued = (await outbox(entry.id)).single;
+      expect(queued.op, MutationOp.create.name);
+      expect(queued.baseRowVersion, isNull);
+    });
+
+    test(
       'a rewritten intent is due immediately, not after an earlier backoff',
       () async {
         final entry = await create(draft());

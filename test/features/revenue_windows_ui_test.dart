@@ -25,6 +25,7 @@ import 'package:krishna_mis/features/revenue/presentation/revenue_ledger_page.da
 import 'package:krishna_mis/features/transactions/presentation/transactions_page.dart';
 
 import '../support/test_session.dart';
+import '../support/ui_harness.dart';
 
 const _org = 'org-1';
 const _ccr = 'unit-ccr';
@@ -282,9 +283,7 @@ void main() {
   const ledger = RevenueLedgerPage(shellKind: AppShellKind.desktop);
 
   group('Transactions holds both ledgers', () {
-    testWidgets('Expenses is the default, Sales is one click away', (
-      tester,
-    ) async {
+    uiTest('Expenses is the default, Sales is one click away', (tester) async {
       await baseline();
       await pump(
         tester,
@@ -300,7 +299,7 @@ void main() {
       expect(find.byKey(const Key('add-revenue')), findsOneWidget);
     });
 
-    testWidgets('switching tabs does not rebuild the other ledger from scratch', (
+    uiTest('switching tabs does not rebuild the other ledger from scratch', (
       tester,
     ) async {
       // `IndexedStack` keeps both mounted, so a filter a finance user spent a minute
@@ -338,7 +337,7 @@ void main() {
   });
 
   group('the ledger table', () {
-    testWidgets('renders a sale with its money and its number', (tester) async {
+    uiTest('renders a sale with its money and its number', (tester) async {
       await baseline();
       await seedSale(txnNumber: 'KI-REV-26-27-000001');
       await pump(tester, ledger);
@@ -352,7 +351,7 @@ void main() {
       expect(find.text('₹95,238.10'), findsOneWidget);
     });
 
-    testWidgets('an unnumbered sale shows a pending reference', (tester) async {
+    uiTest('an unnumbered sale shows a pending reference', (tester) async {
       await baseline();
       await seedSale(outboxStatus: 'pending');
       await pump(tester, ledger);
@@ -361,9 +360,7 @@ void main() {
       expect(find.textContaining('KI-REV-'), findsNothing);
     });
 
-    testWidgets('empty and no-match states are different sentences', (
-      tester,
-    ) async {
+    uiTest('empty and no-match states are different sentences', (tester) async {
       await baseline();
       await pump(tester, ledger);
       expect(find.byKey(const Key('revenue-ledger-empty')), findsOneWidget);
@@ -383,7 +380,7 @@ void main() {
       expect(find.byKey(const Key('revenue-ledger-empty')), findsNothing);
     });
 
-    testWidgets('a user with no permitted property is told so', (tester) async {
+    uiTest('a user with no permitted property is told so', (tester) async {
       await baseline();
       await pump(
         tester,
@@ -397,7 +394,7 @@ void main() {
   });
 
   group('filters, on the screen', () {
-    testWidgets('Clear filters appears only once something is filtered', (
+    uiTest('Clear filters appears only once something is filtered', (
       tester,
     ) async {
       await baseline();
@@ -420,7 +417,7 @@ void main() {
       expect(find.text('KI-REV-26-27-000001'), findsOneWidget);
     });
 
-    testWidgets('include voided is a toggle, and voided rows say so', (
+    uiTest('include voided is a toggle, and voided rows say so', (
       tester,
     ) async {
       await baseline();
@@ -443,9 +440,7 @@ void main() {
   });
 
   group('the detail panel explains the sale from its own snapshot', () {
-    testWidgets('a taxed sale shows the rate it was recorded under', (
-      tester,
-    ) async {
+    uiTest('a taxed sale shows the rate it was recorded under', (tester) async {
       await baseline();
       final id = await seedSale(txnNumber: 'KI-REV-26-27-000001');
       await pump(tester, ledger);
@@ -459,7 +454,7 @@ void main() {
       expect(find.textContaining('5% inclusive rule'), findsOneWidget);
     });
 
-    testWidgets('the snapshot survives the configuration being deleted', (
+    uiTest('the snapshot survives the configuration being deleted', (
       tester,
     ) async {
       // The whole reason the snapshot exists. A panel that re-resolved today's rules
@@ -476,7 +471,7 @@ void main() {
       expect(find.text('₹4,761.90'), findsWidgets);
     });
 
-    testWidgets('an untaxed sale says No GST, never 0%', (tester) async {
+    uiTest('an untaxed sale says No GST, never 0%', (tester) async {
       await baseline();
       final id = await seedSale(
         category: _banquet,
@@ -504,9 +499,7 @@ void main() {
       );
     });
 
-    testWidgets('a configured 0% is shown as a rate, not as No GST', (
-      tester,
-    ) async {
+    uiTest('a configured 0% is shown as a rate, not as No GST', (tester) async {
       // The distinction the panel exists to keep. Both give ₹0 and they are different
       // statements: one is a treatment somebody chose, the other a rate somebody set.
       await baseline();
@@ -524,7 +517,7 @@ void main() {
       expect(find.text('No GST'), findsNothing);
     });
 
-    testWidgets('a multi-component sale shows each band and then the totals', (
+    uiTest('a multi-component sale shows each band and then the totals', (
       tester,
     ) async {
       await baseline();
@@ -563,7 +556,7 @@ void main() {
       );
     });
 
-    testWidgets('a single-component sale shows no redundant totals block', (
+    uiTest('a single-component sale shows no redundant totals block', (
       tester,
     ) async {
       await baseline();
@@ -575,7 +568,7 @@ void main() {
       expect(find.byKey(const Key('revenue-detail-totals')), findsNothing);
     });
 
-    testWidgets('no edit or void control is offered — that is Slice 10', (
+    uiTest('no edit or void control is offered — that is Slice 10', (
       tester,
     ) async {
       await baseline();
@@ -596,7 +589,7 @@ void main() {
   });
 
   group('quarantined work never reaches the desktop ledger', () {
-    testWidgets('a retained attempt is absent, and the row still exists', (
+    uiTest('a retained attempt is absent, and the row still exists', (
       tester,
     ) async {
       await baseline();
@@ -615,7 +608,7 @@ void main() {
       expect(stored.data['n'], 2, reason: 'hidden, not destroyed');
     });
 
-    testWidgets("a second user sees the canonical history and none of A's work", (
+    uiTest("a second user sees the canonical history and none of A's work", (
       tester,
     ) async {
       // The accumulated-database shape that exposed D-074 on Windows: a workstation
@@ -646,7 +639,7 @@ void main() {
       ('a resized window', _narrow),
       ('maximised', _wide),
     ]) {
-      testWidgets('no overflow on $name, in every status', (tester) async {
+      uiTest('no overflow on $name, in every status', (tester) async {
         // The Slice 8 defect was a status chip overflowing only in the conflict state,
         // which a screenshot would have shown as correct because the money still fitted.
         // Every state is rendered here, at three widths.
@@ -664,7 +657,7 @@ void main() {
       });
     }
 
-    testWidgets('a financial value is never truncated to fit', (tester) async {
+    uiTest('a financial value is never truncated to fit', (tester) async {
       await baseline();
       await seedSale(amount: 100000001, txnNumber: 'KI-REV-26-27-000001');
 
@@ -676,7 +669,7 @@ void main() {
   });
 
   group('paging on the screen', () {
-    testWidgets('the pager advances and returns, and reports the page', (
+    uiTest('the pager advances and returns, and reports the page', (
       tester,
     ) async {
       await baseline();
@@ -706,7 +699,7 @@ void main() {
       expect(find.text('Page 1'), findsOneWidget);
     });
 
-    testWidgets('a filter change returns to the first page', (tester) async {
+    uiTest('a filter change returns to the first page', (tester) async {
       await baseline();
       for (var i = 0; i < 60; i++) {
         await seedSale(

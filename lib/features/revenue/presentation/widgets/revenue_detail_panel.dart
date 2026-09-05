@@ -46,21 +46,28 @@ class RevenueDetailPanel extends ConsumerWidget {
       _ => null,
     };
 
+    // A value that has been loaded once keeps being shown while it is re-read.
+    //
+    // The detail follows the sync-state stream, so it re-computes whenever the outbox
+    // moves — and matching `AsyncLoading` first would replace the whole panel with a
+    // spinner every time that happened. On a screen an operator is reading, that is a
+    // flicker; in a widget test it is an animation that never settles, which is how it
+    // was noticed.
     return switch (entry) {
-      AsyncLoading() => const Center(child: CircularProgressIndicator()),
-      AsyncError() => const _Message(
-        key: Key('revenue-detail-error'),
-        text: 'This sale could not be read.',
-      ),
-      AsyncData(value: null) => const _Message(
+      AsyncValue(hasValue: true, value: null) => const _Message(
         key: Key('revenue-detail-missing'),
         text: 'This sale is no longer in the local ledger.',
       ),
-      AsyncData(:final value) => _Detail(
+      AsyncValue(hasValue: true, :final value) => _Detail(
         entry: value!,
         graph: graph,
         syncState: syncState,
       ),
+      AsyncError() => const _Message(
+        key: Key('revenue-detail-error'),
+        text: 'This sale could not be read.',
+      ),
+      _ => const Center(child: CircularProgressIndicator()),
     };
   }
 }

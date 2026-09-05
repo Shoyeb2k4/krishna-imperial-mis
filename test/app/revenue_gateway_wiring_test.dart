@@ -48,6 +48,34 @@ void main() {
       },
     );
 
+    test('the acceptance harness assembles the same application', () {
+      // A second composition root is a second thing to forget, and it has now been
+      // forgotten twice: once for the attachment worker, which left a bill `staged` for
+      // ever while the real build moved it on, and once here, which made a conflict
+      // unresolvable in the acceptance while it resolved in the shipped app.
+      //
+      // So the two lists are compared rather than each being trusted: every provider
+      // `main()` overrides must be overridden by the harness too.
+      final harness = File(
+        'integration_test/device_acceptance_test.dart',
+      ).readAsStringSync();
+
+      final overridden = RegExp(
+        r'(\w+Provider)\.overrideWith',
+      ).allMatches(main_).map((m) => m.group(1)!).toSet();
+      final byHarness = RegExp(
+        r'(\w+Provider)\.overrideWith',
+      ).allMatches(harness).map((m) => m.group(1)!).toSet();
+
+      expect(
+        overridden.difference(byHarness),
+        isEmpty,
+        reason:
+            'the acceptance would be driving a different application from the one '
+            'main() builds',
+      );
+    });
+
     test('no shipped file overrides it with anything else', () {
       // A second override would mean two answers to "which gateway is production's",
       // and the one that lost would be invisible.

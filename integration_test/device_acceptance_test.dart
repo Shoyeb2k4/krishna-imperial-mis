@@ -238,6 +238,45 @@ final class _AdminClient {
 
   /// The spec's shared electricity bill, recorded by the Owner: ₹58,000 across both
   /// properties as ₹25,000 + ₹33,000.
+  /// The canonical revenue document, as the server holds it.
+  Future<Map<String, dynamic>> revenueDocument(String id) async {
+    final rows = await _select('revenue_document', 'select=*&id=eq.$id');
+    if (rows.isEmpty) throw StateError('no canonical revenue $id');
+    return rows.first as Map<String, dynamic>;
+  }
+
+  /// The audit rows for one document, which is where "how many times was this applied"
+  /// is durably answered. A queue snapshot is not: the worker pushes immediately after a
+  /// save, so by the time a test looks the entry may legitimately be gone.
+  Future<List<dynamic>> auditFor(String id) => _select(
+    'audit_logs',
+    'select=action,mutation_id&entity_id=eq.$id&order=occurred_at',
+  );
+
+  /// An intervening correction, made by somebody else while the device holds the old
+  /// version. This is how a conflict is produced without a second physical device: the
+  /// server is genuinely moved on, by an ordinary authorised caller over the public API.
+  Future<void> correctRevenue(String id, int paise) async {
+    final doc = await revenueDocument(id);
+    final components = await _select(
+      'revenue_component_detail',
+      'select=id&revenue_entry_id=eq.$id',
+    );
+    await _rpc('revenue_update', {
+      'p_id': id,
+      'p_base_row_version': doc['row_version'],
+      'p_business_date': doc['business_date'],
+      'p_notes': doc['notes'],
+      'p_components': [
+        {
+          'id': (components.first as Map<String, dynamic>)['id'],
+          'entered_amount_minor': paise,
+        },
+      ],
+      'p_mutation_id': const Uuid().v4(),
+    });
+  }
+
   Future<String> createSharedExpense({
     required String notes,
     String businessDate = '2026-06-15',
@@ -422,6 +461,12 @@ void main() {
           // the attachment worker being absent here made a bill stay `staged` for ever
           // while the real build moved it on.
           expensePullProvider.overrideWithValue(boot.expensePull),
+          // And this one: without it Review latest cannot re-read the sale, so a
+          // conflict is unresolvable in the acceptance while being resolvable in the
+          // shipped application. Exactly the drift the paragraph above describes,
+          // arriving again — which is why the wiring test now compares this list
+          // against `main()`'s rather than trusting either.
+          revenueGatewayProvider.overrideWithValue(boot.revenueGateway),
           attachmentUploadWorkerProvider.overrideWithValue(
             boot.attachmentUploads,
           ),
@@ -5482,6 +5527,16 @@ void main() {
   }
 
   Future<void> openRecentRevenue(WidgetTester tester) async {
+    // Back to the shell first when a pushed route is on top. A phase that looks at a
+    // sale twice would otherwise hunt for a home-screen button from inside the detail
+    // page it is already standing on.
+    for (var i = 0; i < 4; i++) {
+      if (find.byType(FloatingActionButton).evaluate().isNotEmpty) break;
+      final state = tester.state<NavigatorState>(find.byType(Navigator).first);
+      if (!state.canPop()) break;
+      state.pop();
+      await tester.pump(const Duration(milliseconds: 700));
+    }
     await pumpUntil(
       tester,
       'the add button',
@@ -5723,6 +5778,509 @@ void main() {
         reason: 'there is none to include',
       );
     });
+  });
+
+  // ── Correcting and voiding a sale, on the phone (Slice 10 §45) ──────────────
+  //
+  // Everything below goes through the shipped detail route and the shipped entry form
+  // in editing mode. Nothing constructs a controller, overrides a provider or reaches
+  // past the interface to make a correction happen: if these pass, the path an operator
+  // will actually use works (D-077).
+
+  /// Opens the detail page for one sale from the recent list.
+  Future<void> openRevenueDetail(WidgetTester tester, String id) async {
+    await openRecentRevenue(tester);
+    await pumpUntil(
+      tester,
+      'the row for the sale',
+      () => find.byKey(Key('revenue-row-$id')).evaluate().isNotEmpty,
+    );
+    await tester.tap(find.byKey(Key('revenue-row-$id')));
+    await tester.pump(const Duration(milliseconds: 900));
+    await pumpUntil(
+      tester,
+      'the sale detail',
+      () => find.byKey(const Key('revenue-detail-panel')).evaluate().isNotEmpty,
+    );
+  }
+
+  /// Corrects the open sale through the shipped form, and returns when it is saved.
+  Future<void> correctThroughTheForm(
+    WidgetTester tester,
+    String newAmount,
+  ) async {
+    await revealAndTap(tester, const Key('revenue-edit'));
+    await tester.pump(const Duration(seconds: 1));
+    await pumpUntil(
+      tester,
+      'the correction form',
+      () => visible('Correct this sale'),
+    );
+    expect(
+      visible('Save changes'),
+      isTrue,
+      reason: 'the form says it is correcting, not recording',
+    );
+
+    await tester.enterText(find.byType(TextField).first, newAmount);
+    await tester.pump(const Duration(milliseconds: 700));
+  }
+
+  group('revenue-edit', skip: _phase != 'revenue-edit', () {
+    testWidgets('a Restaurant sale is corrected through the shipped surfaces', (
+      tester,
+    ) async {
+      await launch(tester);
+      await signIn(tester, 'giridhar@hki.com');
+      await expectSignedIn(tester, 'giridhar@hki.com');
+
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(KrishnaMisApp)),
+      );
+      await container.read(sessionProvider.notifier).refreshAuthority();
+      await tester.pump(const Duration(seconds: 2));
+
+      final id = await recordSale(
+        tester,
+        unit: 'CCR',
+        category: 'RESTAURANT',
+        amount: '100000',
+      );
+      await syncRevenueUntilNumbered(tester, id);
+
+      final before = await RevenueRepository(boot.database).load(id);
+      final number = before!.txnNumber!;
+      expect(number, startsWith('KI-REV-'));
+      expect(before.components.single.tax.paise, 476190);
+
+      await openRevenueDetail(tester, id);
+      await correctThroughTheForm(tester, '210000');
+
+      // The live preview is the record: both come from TaxRule.compute, so a figure the
+      // operator approves cannot differ from the one that is stored (D-118).
+      expect(
+        visible('₹10,000.00'),
+        isTrue,
+        reason: '5% of 2,10,000 extracted, not added',
+      );
+
+      await revealAndTap(tester, const Key('revenue-save'));
+      await tester.pump(const Duration(seconds: 2));
+
+      var saved = await RevenueRepository(boot.database).load(id);
+      expect(saved!.components.single.gross.paise, 21000000);
+      expect(saved.components.single.tax.paise, 1000000);
+      expect(saved.components.single.net.paise, 20000000);
+      expect(
+        saved.txnNumber,
+        number,
+        reason: 'the number belongs to the document (D-072a)',
+      );
+
+      // Delivered once, and the server agrees to the paise.
+      //
+      // "Exactly one queued intent, on the version the form opened on" is asserted in
+      // the host suite, where it can be. Here it cannot: the controller pushes as soon
+      // as the save commits, so the queue may legitimately be empty by the next line —
+      // the same race the Slice 8 report records for "no number yet". What is asserted
+      // instead is the durable consequence, which is stronger: the server applied the
+      // correction exactly once.
+      final deadline = DateTime.now().add(const Duration(seconds: 120));
+      while (DateTime.now().isBefore(deadline)) {
+        await container.read(syncEngineProvider)?.pushOnce();
+        final rows = await boot.database.select(boot.database.syncOutbox).get();
+        if (rows.where((o) => o.entityId == id && o.status != 'done').isEmpty) {
+          break;
+        }
+        await tester.pump(const Duration(seconds: 2));
+      }
+
+      final canonical = await _admin.revenueDocument(id);
+      expect(canonical['gross_amount_minor'], 21000000);
+      expect(canonical['tax_amount_minor'], 1000000);
+      expect(canonical['net_amount_minor'], 20000000);
+      expect(canonical['txn_number'], number);
+      expect(canonical['component_count'], 1);
+
+      final audit = await _admin.auditFor(id);
+      expect(
+        audit.where((r) => (r as Map<String, dynamic>)['action'] == 'edited'),
+        hasLength(1),
+        reason: 'one accepted update, however many times the worker ran',
+      );
+      expect(
+        audit.where((r) => (r as Map<String, dynamic>)['action'] == 'created'),
+        hasLength(1),
+      );
+
+      // And the detail surface explains the corrected sale from its own snapshot.
+      saved = await RevenueRepository(boot.database).load(id);
+      expect(saved!.components.single.taxRateBasisPoints, 500);
+      await openRevenueDetail(tester, id);
+      expect(visible('GST at 5%'), isTrue);
+    });
+  });
+
+  group('revenue-edit-banquet', skip: _phase != 'revenue-edit-banquet', () {
+    testWidgets('an untaxed sale stays untaxed through a correction', (
+      tester,
+    ) async {
+      await launch(tester);
+      await signIn(tester, 'giridhar@hki.com');
+      await expectSignedIn(tester, 'giridhar@hki.com');
+
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(KrishnaMisApp)),
+      );
+      await container.read(sessionProvider.notifier).refreshAuthority();
+      await tester.pump(const Duration(seconds: 2));
+
+      final id = await recordSale(
+        tester,
+        unit: 'HKI',
+        category: 'BANQUET',
+        amount: '40343',
+      );
+      await syncRevenueUntilNumbered(tester, id);
+      final number = (await RevenueRepository(
+        boot.database,
+      ).load(id))!.txnNumber!;
+
+      await openRevenueDetail(tester, id);
+      await correctThroughTheForm(tester, '52500');
+
+      // Still never told it contains GST (D-097).
+      expect(visible('AMOUNT BILLED TO THE CUSTOMER'), isTrue);
+      expect(visible('CUSTOMER TOTAL (INCL. GST)'), isFalse);
+      expect(visible('No GST'), isTrue);
+
+      await revealAndTap(tester, const Key('revenue-save'));
+      await tester.pump(const Duration(seconds: 2));
+
+      final saved = await RevenueRepository(boot.database).load(id);
+      final component = saved!.components.single;
+      expect(component.tax.paise, 0);
+      expect(component.net.paise, 5250000);
+      expect(
+        component.net.paise,
+        component.enteredAmount.paise,
+        reason: 'net equals what was entered, because no tax applies',
+      );
+      expect(saved.txnNumber, number);
+
+      await openRevenueDetail(tester, id);
+      expect(
+        visible('No GST'),
+        isTrue,
+        reason: 'a treatment somebody chose, not a rate that came out at zero',
+      );
+      expect(visible('GST at 0%'), isFalse);
+    });
+  });
+
+  group('revenue-conflict', skip: _phase != 'revenue-conflict', () {
+    testWidgets(
+      'an intervening correction surfaces as a conflict, and never merges',
+      (tester) async {
+        await launch(tester);
+        await signIn(tester, 'giridhar@hki.com');
+        await expectSignedIn(tester, 'giridhar@hki.com');
+
+        final container = ProviderScope.containerOf(
+          tester.element(find.byType(KrishnaMisApp)),
+        );
+        await container.read(sessionProvider.notifier).refreshAuthority();
+        await tester.pump(const Duration(seconds: 2));
+
+        final id = await recordSale(
+          tester,
+          unit: 'CCR',
+          category: 'RESTAURANT',
+          amount: '100000',
+        );
+        await syncRevenueUntilNumbered(tester, id);
+        final number = (await RevenueRepository(
+          boot.database,
+        ).load(id))!.txnNumber!;
+
+        // Somebody else moves the record on while this device still holds the old
+        // version. A real correction by a real authorised caller over the public API.
+        await _admin.correctRevenue(id, 12000000);
+
+        await openRevenueDetail(tester, id);
+        await correctThroughTheForm(tester, '150000');
+        await revealAndTap(tester, const Key('revenue-save'));
+        await tester.pump(const Duration(seconds: 2));
+
+        // Deliver it, and let the server refuse.
+        final deadline = DateTime.now().add(const Duration(seconds: 120));
+        while (DateTime.now().isBefore(deadline)) {
+          await container.read(syncEngineProvider)?.pushOnce();
+          final rows = await boot.database
+              .select(boot.database.syncOutbox)
+              .get();
+          final entry = rows.where(
+            (o) => o.entityId == id && o.status != 'done',
+          );
+          if (entry.isNotEmpty && entry.first.status == 'conflict') break;
+          await tester.pump(const Duration(seconds: 2));
+        }
+
+        final intent =
+            (await boot.database.select(boot.database.syncOutbox).get())
+                .firstWhere((o) => o.entityId == id && o.status != 'done');
+        expect(intent.status, 'conflict');
+
+        // The phone says so, and offers exactly one thing.
+        await openRevenueDetail(tester, id);
+        await pumpUntil(
+          tester,
+          'the conflict banner',
+          () => find
+              .byKey(const Key('revenue-conflict-banner'))
+              .evaluate()
+              .isNotEmpty,
+        );
+        expect(
+          find.byKey(const Key('revenue-conflict-review-latest')).evaluate(),
+          isNotEmpty,
+        );
+        expect(
+          visible('Overwrite anyway'),
+          isFalse,
+          reason: 'nothing auto-merges and nothing overwrites',
+        );
+
+        // The attempt is retained exactly as it was typed.
+        final retained = await RevenueRepository(boot.database).load(id);
+        expect(retained!.components.single.gross.paise, 15000000);
+
+        // Canonical is still the other correction, untouched.
+        final canonical = await _admin.revenueDocument(id);
+        expect(canonical['gross_amount_minor'], 12000000);
+        expect(canonical['txn_number'], number);
+
+        // Review latest replaces the local copy with the server's, and does not merge.
+        await revealAndTap(tester, const Key('revenue-conflict-review-latest'));
+        await tester.pump(const Duration(seconds: 3));
+        await pumpUntil(
+          tester,
+          'the comparison sheet',
+          () => find
+              .byKey(const Key('revenue-conflict-title'))
+              .evaluate()
+              .isNotEmpty,
+        );
+        expect(
+          find.byKey(const Key('revenue-conflict-attempted')).evaluate(),
+          isNotEmpty,
+        );
+        expect(
+          find.byKey(const Key('revenue-conflict-current')).evaluate(),
+          isNotEmpty,
+        );
+
+        await tester.tap(find.byKey(const Key('revenue-conflict-dismiss')));
+        await tester.pump(const Duration(seconds: 1));
+
+        final afterReview = await RevenueRepository(boot.database).load(id);
+        expect(
+          afterReview!.components.single.gross.paise,
+          12000000,
+          reason: 'the local copy is now the server\'s, not a merge of the two',
+        );
+      },
+    );
+  });
+
+  group('revenue-void', skip: _phase != 'revenue-void', () {
+    testWidgets(
+      'voiding needs a reason, keeps the sale, and is not offered to a manager',
+      (tester) async {
+        await launch(tester);
+        await signIn(tester, 'giridhar@hki.com');
+        await expectSignedIn(tester, 'giridhar@hki.com');
+
+        final container = ProviderScope.containerOf(
+          tester.element(find.byType(KrishnaMisApp)),
+        );
+        await container.read(sessionProvider.notifier).refreshAuthority();
+        await tester.pump(const Duration(seconds: 2));
+
+        final id = await recordSale(
+          tester,
+          unit: 'CCR',
+          category: 'RESTAURANT',
+          amount: '100000',
+        );
+        await syncRevenueUntilNumbered(tester, id);
+        final number = (await RevenueRepository(
+          boot.database,
+        ).load(id))!.txnNumber!;
+
+        await openRevenueDetail(tester, id);
+        await revealAndTap(tester, const Key('revenue-void'));
+        await tester.pump(const Duration(seconds: 1));
+        await pumpUntil(
+          tester,
+          'the void dialog',
+          () => find
+              .byKey(const Key('revenue-void-dialog'))
+              .evaluate()
+              .isNotEmpty,
+        );
+
+        // Mandatory, and disabled until there is one.
+        expect(
+          tester
+              .widget<FilledButton>(
+                find.byKey(const Key('revenue-void-confirm')),
+              )
+              .onPressed,
+          isNull,
+        );
+        await tester.enterText(
+          find.byKey(const Key('revenue-void-reason')),
+          'acceptance: entered twice',
+        );
+        await tester.pump(const Duration(milliseconds: 600));
+        await tester.tap(find.byKey(const Key('revenue-void-confirm')));
+        await tester.pump(const Duration(seconds: 2));
+
+        final deadline = DateTime.now().add(const Duration(seconds: 120));
+        while (DateTime.now().isBefore(deadline)) {
+          await container.read(syncEngineProvider)?.pushOnce();
+          final rows = await boot.database
+              .select(boot.database.syncOutbox)
+              .get();
+          if (rows
+              .where((o) => o.entityId == id && o.status != 'done')
+              .isEmpty) {
+            break;
+          }
+          await tester.pump(const Duration(seconds: 2));
+        }
+
+        final canonical = await _admin.revenueDocument(id);
+        expect(canonical['voided_at'], isNotNull);
+        expect(canonical['void_reason'], contains('entered twice'));
+        expect(
+          canonical['txn_number'],
+          number,
+          reason: 'void, never delete: the document keeps its number (D-006)',
+        );
+
+        // Ordinary list behaviour: a voided sale leaves the phone's recent list, which
+        // has no include-voided toggle and is not a ledger by design (Slice 8).
+        //
+        // The voided *detail* — reason, time, and neither control offered — is asserted
+        // on Windows, where the ledger can show voided sales and there is therefore a
+        // way to reach one through the interface. Reaching it here by pushing a route
+        // directly would be asserting on a screen no operator can open, which proves
+        // nothing about the product.
+        await openRecentRevenue(tester);
+        await tester.pump(const Duration(seconds: 2));
+        expect(
+          find.byKey(Key('revenue-row-$id')).evaluate(),
+          isEmpty,
+          reason: 'a voided sale is out of the ordinary recent list',
+        );
+      },
+    );
+
+    testWidgets('recording a sale does not entitle a manager to void it', (
+      tester,
+    ) async {
+      await launch(tester);
+      await signIn(tester, 'ccr.manager@example.com');
+      await expectSignedIn(tester, 'ccr.manager@example.com');
+
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(KrishnaMisApp)),
+      );
+      await container.read(sessionProvider.notifier).refreshAuthority();
+      await tester.pump(const Duration(seconds: 2));
+
+      final id = await recordSale(
+        tester,
+        unit: 'CCR',
+        category: 'RESTAURANT',
+        amount: '100000',
+      );
+      await syncRevenueUntilNumbered(tester, id);
+
+      await openRevenueDetail(tester, id);
+      // Their own sale, inside the window: correctable.
+      expect(find.byKey(const Key('revenue-edit')).evaluate(), isNotEmpty);
+      // And still not voidable. `revenue.void` is the accountant's and the Owner's.
+      expect(
+        find.byKey(const Key('revenue-void')).evaluate(),
+        isEmpty,
+        reason: 'recording a sale is not the right to erase it',
+      );
+    });
+  });
+
+  group('revenue-user-switch', skip: _phase != 'revenue-user-switch', () {
+    testWidgets(
+      'an unsaved correction does not survive into the next person\'s session',
+      (tester) async {
+        await launch(tester);
+        await signIn(tester, 'giridhar@hki.com');
+        await expectSignedIn(tester, 'giridhar@hki.com');
+
+        final container = ProviderScope.containerOf(
+          tester.element(find.byType(KrishnaMisApp)),
+        );
+        await container.read(sessionProvider.notifier).refreshAuthority();
+        await tester.pump(const Duration(seconds: 2));
+
+        final id = await recordSale(
+          tester,
+          unit: 'CCR',
+          category: 'RESTAURANT',
+          amount: '100000',
+        );
+        await syncRevenueUntilNumbered(tester, id);
+
+        // A correction is opened and typed, and deliberately never saved.
+        await openRevenueDetail(tester, id);
+        await correctThroughTheForm(tester, '150000');
+
+        await container.read(sessionProvider.notifier).signOut();
+        await tester.pump(const Duration(seconds: 3));
+
+        await signIn(tester, 'ccr.manager@example.com');
+        await expectSignedIn(tester, 'ccr.manager@example.com');
+        await container.read(sessionProvider.notifier).refreshAuthority();
+        await tester.pump(const Duration(seconds: 3));
+
+        // The draft is gone with the screen; nothing persisted it.
+        expect(visible('Correct this sale'), isFalse);
+        expect(
+          visible('₹1,50,000.00'),
+          isFalse,
+          reason: 'the next person inherits no unsaved figure',
+        );
+
+        // And the stored sale is unchanged: an abandoned correction writes nothing.
+        final stored = await RevenueRepository(boot.database).load(id);
+        if (stored != null) {
+          expect(
+            stored.components.single.gross.paise,
+            10000000,
+            reason: 'nothing was written by opening a form',
+          );
+        }
+
+        // No queued intent for it, from anybody.
+        final queued =
+            (await boot.database.select(boot.database.syncOutbox).get()).where(
+              (o) => o.entityId == id && o.status != 'done',
+            );
+        expect(queued, isEmpty);
+      },
+    );
   });
 
   group('revenue-offline', skip: _phase != 'revenue-offline', () {
@@ -6067,6 +6625,310 @@ void main() {
       await revealAndTap(tester, Key('revenue-ledger-row-$restaurantId'));
       await tester.pump(const Duration(seconds: 1));
       expect(visible('GST at 5%'), isTrue);
+    });
+  });
+
+  // ── Correcting and voiding a sale on the finance workstation (§46) ──────────
+
+  /// Opens the ledger's detail panel for one sale.
+  Future<void> openWindowsRevenueDetail(WidgetTester tester, String id) async {
+    await openRevenueLedger(tester);
+    await pumpUntil(
+      tester,
+      'the ledger row for the sale',
+      () => find.byKey(Key('revenue-ledger-row-$id')).evaluate().isNotEmpty,
+    );
+    await tester.tap(find.byKey(Key('revenue-ledger-row-$id')));
+    await tester.pump(const Duration(milliseconds: 900));
+    await pumpUntil(
+      tester,
+      'the detail panel',
+      () => find.byKey(const Key('revenue-detail-panel')).evaluate().isNotEmpty,
+    );
+  }
+
+  group('windows-revenue-edit', skip: _phase != 'windows-revenue-edit', () {
+    testWidgets(
+      'a sale is corrected from the ledger, at realistic window sizes',
+      (tester) async {
+        await launch(tester);
+        await signIn(tester, 'giridhar@hki.com');
+        await expectSignedIn(tester, 'giridhar@hki.com');
+
+        final container = ProviderScope.containerOf(
+          tester.element(find.byType(KrishnaMisApp)),
+        );
+        await container.read(sessionProvider.notifier).refreshAuthority();
+        await tester.pump(const Duration(seconds: 2));
+
+        await openRevenueLedger(tester);
+        final id = await recordSaleOnWindows(
+          tester,
+          unit: 'CCR',
+          category: 'RESTAURANT',
+          amount: '100000',
+        );
+        await syncRevenueOnWindows(tester, id);
+        final before = await RevenueRepository(boot.database).load(id);
+        final number = before!.txnNumber!;
+
+        await openWindowsRevenueDetail(tester, id);
+        expect(find.byKey(const Key('revenue-edit')).evaluate(), isNotEmpty);
+
+        await revealAndTap(tester, const Key('revenue-edit'));
+        await tester.pump(const Duration(seconds: 1));
+        await pumpUntil(
+          tester,
+          'the correction form',
+          () => visible('Correct this sale'),
+        );
+        expect(visible('Save changes'), isTrue);
+
+        // The edit form at an ordinary laptop width, which is where D-123's drift showed.
+        expect(
+          tester.takeException(),
+          isNull,
+          reason: 'the correction form must not overflow a 1366pt laptop',
+        );
+
+        await tester.enterText(find.byType(TextField).first, '210000');
+        await tester.pump(const Duration(milliseconds: 700));
+        await revealAndTap(tester, const Key('revenue-save'));
+        await tester.pump(const Duration(seconds: 2));
+
+        final deadline = DateTime.now().add(const Duration(seconds: 120));
+        while (DateTime.now().isBefore(deadline)) {
+          await container.read(syncEngineProvider)?.pushOnce();
+          final rows = await boot.database
+              .select(boot.database.syncOutbox)
+              .get();
+          if (rows
+              .where((o) => o.entityId == id && o.status != 'done')
+              .isEmpty) {
+            break;
+          }
+          await tester.pump(const Duration(seconds: 2));
+        }
+
+        // One document, one number, the corrected figures, delivered once.
+        final canonical = await _admin.revenueDocument(id);
+        expect(canonical['txn_number'], number);
+        expect(canonical['gross_amount_minor'], 21000000);
+        expect(canonical['tax_amount_minor'], 1000000);
+        expect(canonical['net_amount_minor'], 20000000);
+        expect(canonical['component_count'], 1);
+
+        // The same ledger row, updated in place.
+        await openRevenueLedger(tester);
+        await pumpUntil(
+          tester,
+          'the updated ledger row',
+          () => find.byKey(Key('revenue-ledger-row-$id')).evaluate().isNotEmpty,
+        );
+        expect(visible('Synced'), isTrue);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  });
+
+  group('windows-revenue-void', skip: _phase != 'windows-revenue-void', () {
+    testWidgets(
+      'voiding hides the sale from the ledger unless voided are included',
+      (tester) async {
+        await launch(tester);
+        await signIn(tester, 'giridhar@hki.com');
+        await expectSignedIn(tester, 'giridhar@hki.com');
+
+        final container = ProviderScope.containerOf(
+          tester.element(find.byType(KrishnaMisApp)),
+        );
+        await container.read(sessionProvider.notifier).refreshAuthority();
+        await tester.pump(const Duration(seconds: 2));
+
+        await openRevenueLedger(tester);
+        final id = await recordSaleOnWindows(
+          tester,
+          unit: 'CCR',
+          category: 'RESTAURANT',
+          amount: '100000',
+        );
+        await syncRevenueOnWindows(tester, id);
+        final number = (await RevenueRepository(
+          boot.database,
+        ).load(id))!.txnNumber!;
+
+        await openWindowsRevenueDetail(tester, id);
+        await revealAndTap(tester, const Key('revenue-void'));
+        await tester.pump(const Duration(seconds: 1));
+        await pumpUntil(
+          tester,
+          'the void dialog',
+          () => find
+              .byKey(const Key('revenue-void-dialog'))
+              .evaluate()
+              .isNotEmpty,
+        );
+        expect(
+          tester.takeException(),
+          isNull,
+          reason: 'the void dialog must not overflow',
+        );
+        expect(
+          tester
+              .widget<FilledButton>(
+                find.byKey(const Key('revenue-void-confirm')),
+              )
+              .onPressed,
+          isNull,
+          reason: 'a reason is mandatory',
+        );
+
+        await tester.enterText(
+          find.byKey(const Key('revenue-void-reason')),
+          'acceptance: duplicated evening summary',
+        );
+        await tester.pump(const Duration(milliseconds: 600));
+        await tester.tap(find.byKey(const Key('revenue-void-confirm')));
+        await tester.pump(const Duration(seconds: 2));
+
+        final deadline = DateTime.now().add(const Duration(seconds: 120));
+        while (DateTime.now().isBefore(deadline)) {
+          await container.read(syncEngineProvider)?.pushOnce();
+          final rows = await boot.database
+              .select(boot.database.syncOutbox)
+              .get();
+          if (rows
+              .where((o) => o.entityId == id && o.status != 'done')
+              .isEmpty) {
+            break;
+          }
+          await tester.pump(const Duration(seconds: 2));
+        }
+
+        final canonical = await _admin.revenueDocument(id);
+        expect(canonical['voided_at'], isNotNull);
+        expect(
+          canonical['void_reason'],
+          contains('duplicated evening summary'),
+        );
+        expect(canonical['txn_number'], number);
+
+        // Absent from the ordinary ledger, present when voided are included.
+        await openRevenueLedger(tester);
+        await pumpUntil(tester, 'the ledger', () => visible('Sales'));
+        expect(
+          find.byKey(Key('revenue-ledger-row-$id')).evaluate(),
+          isEmpty,
+          reason: 'a voided sale is out of the ordinary ledger',
+        );
+
+        await revealAndTap(tester, const Key('revenue-filter-voided'));
+        await tester.pump(const Duration(seconds: 2));
+        await pumpUntil(
+          tester,
+          'the voided sale',
+          () => find.byKey(Key('revenue-ledger-row-$id')).evaluate().isNotEmpty,
+        );
+
+        await tester.tap(find.byKey(Key('revenue-ledger-row-$id')));
+        await tester.pump(const Duration(seconds: 1));
+        expect(visible('acceptance: duplicated evening summary'), isTrue);
+        expect(
+          find.byKey(const Key('revenue-voided-note')).evaluate(),
+          isNotEmpty,
+        );
+        expect(find.byKey(const Key('revenue-edit')).evaluate(), isEmpty);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  });
+
+  group('windows-revenue-conflict', skip: _phase != 'windows-revenue-conflict', () {
+    testWidgets('a stale correction conflicts, and Review latest resolves it', (
+      tester,
+    ) async {
+      await launch(tester);
+      await signIn(tester, 'giridhar@hki.com');
+      await expectSignedIn(tester, 'giridhar@hki.com');
+
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(KrishnaMisApp)),
+      );
+      await container.read(sessionProvider.notifier).refreshAuthority();
+      await tester.pump(const Duration(seconds: 2));
+
+      await openRevenueLedger(tester);
+      final id = await recordSaleOnWindows(
+        tester,
+        unit: 'CCR',
+        category: 'RESTAURANT',
+        amount: '100000',
+      );
+      await syncRevenueOnWindows(tester, id);
+
+      // Somebody else corrects it while this workstation holds the old version.
+      await _admin.correctRevenue(id, 12000000);
+
+      await openWindowsRevenueDetail(tester, id);
+      await revealAndTap(tester, const Key('revenue-edit'));
+      await tester.pump(const Duration(seconds: 1));
+      await pumpUntil(
+        tester,
+        'the correction form',
+        () => visible('Correct this sale'),
+      );
+      await tester.enterText(find.byType(TextField).first, '150000');
+      await tester.pump(const Duration(milliseconds: 700));
+      await revealAndTap(tester, const Key('revenue-save'));
+      await tester.pump(const Duration(seconds: 2));
+
+      final deadline = DateTime.now().add(const Duration(seconds: 120));
+      while (DateTime.now().isBefore(deadline)) {
+        await container.read(syncEngineProvider)?.pushOnce();
+        final rows = await boot.database.select(boot.database.syncOutbox).get();
+        // The **live** intent, not the completed create beside it: a synced document
+        // keeps its create entry, and reading `.first` would report `done` for ever.
+        final entry = rows.where((o) => o.entityId == id && o.status != 'done');
+        if (entry.isNotEmpty && entry.first.status == 'conflict') break;
+        await tester.pump(const Duration(seconds: 2));
+      }
+
+      // The conflict state at a real window size, which is the one D-123 says is
+      // dangerous: the states differ in width and this is the one an operator most
+      // needs to read.
+      await openWindowsRevenueDetail(tester, id);
+      // The sync state is read from the outbox asynchronously, so the banner arrives a
+      // frame after the panel does. Waited for rather than assumed - and it must still
+      // arrive, which is what makes this a wait and not a weakening.
+      await pumpUntil(
+        tester,
+        'the conflict banner',
+        () => find
+            .byKey(const Key('revenue-conflict-banner'))
+            .evaluate()
+            .isNotEmpty,
+      );
+      expect(tester.takeException(), isNull);
+
+      await revealAndTap(tester, const Key('revenue-conflict-review-latest'));
+      await tester.pump(const Duration(seconds: 3));
+      await pumpUntil(
+        tester,
+        'the comparison sheet',
+        () => find
+            .byKey(const Key('revenue-conflict-title'))
+            .evaluate()
+            .isNotEmpty,
+      );
+      expect(tester.takeException(), isNull);
+      await tester.tap(find.byKey(const Key('revenue-conflict-dismiss')));
+      await tester.pump(const Duration(seconds: 1));
+
+      // Replaced by the server's, never merged.
+      final local = await RevenueRepository(boot.database).load(id);
+      expect(local!.components.single.gross.paise, 12000000);
+      final canonical = await _admin.revenueDocument(id);
+      expect(canonical['gross_amount_minor'], 12000000);
     });
   });
 
