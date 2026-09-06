@@ -5466,3 +5466,103 @@ which build and environment the manual runs used.
 one — attributed, dated, and never restated as though a suite had made it. Where the manual
 act *should* leave a durable trace, the record says whether it did. Both halves of that are
 the same discipline: say who verified what.
+
+
+---
+
+# Phase 4 Slice 13 — full Revenue Engine acceptance (2026-09-07)
+
+## D-160 — The Windows ledger showed a stale sync state, and a weak assertion had been hiding it
+**Date:** 2026-09-07 · **Status:** Accepted — **a product defect found by the Slice 13
+acceptance, and a test defect that had concealed it since Slice 10**
+
+**The symptom.** On the accumulated Windows database, `windows-revenue-edit` failed
+deterministically — three runs out of three. A sale corrected through the shipped desktop
+surface reached the server (`revenue_document` showed the corrected figures, one row
+version, the same `KI-REV`), the outbox held nothing but `done`, and
+`RevenueRepository.syncStateOf` returned `synced` — while the **ledger row went on
+reporting `Syncing`**, indefinitely. Forty seconds of pumping did not move it.
+
+**Two defects, and the order they have to be told in.**
+
+**1 · The assertion was reading a different surface.** The line that failed was
+`expect(visible('Synced'), isTrue)`. The Windows ledger renders its sync state
+`compact` — an icon and a colour, and deliberately **no text**, because a dense financial
+table with a word in every row is noise. So `find.text('Synced')` can never match the
+ledger at all. It had been passing on text belonging to the detail panel, which happened
+still to be mounted when the assertion ran. **It proved nothing about the ledger, and it
+had proved nothing since Slice 10.**
+
+That is the family this log keeps recording: D-071's cleanup phase that ran
+`expect(true, isTrue)`, D-068's classification guard that compared a list against itself,
+D-134's two composition roots. An assertion that passes for a reason other than the one it
+states is worse than an absent one, because it occupies the space where a real check would
+go.
+
+**2 · Underneath it, the ledger was stale — D-131 exactly, one surface over.**
+`filteredRevenueProvider` was a `FutureProvider`: a one-shot read, invalidated by the
+*controller* when a person acts through the surface. **The sync worker is not the
+controller.** When it delivers a queued correction and the reconciler marks the outbox
+`done`, nothing invalidates anything, so the row keeps whatever state the query saw when it
+last ran.
+
+D-131 fixed precisely this for the *detail panel* and said so in as many words: *"a conflict
+arrives from the sync worker, which invalidates no provider and knows about no screen, so a
+cached snapshot went on being wrong indefinitely."* The ledger was left as a snapshot, and
+the assertion that should have caught it was matching somebody else's text.
+
+**Decision.** The ledger follows the outbox, as a stream.
+`RevenueRepository.watchQuery` is the same statement as `query` — one builder, one row
+mapper, so the two cannot drift — delivered through Drift with
+`readsFrom: {revenueEntries, revenueComponents, syncOutbox}`. `filteredRevenueProvider`,
+`revenueHasMoreProvider` and `recentRevenueProvider` are `StreamProvider`s over it. There is
+one derivation of a row's sync state and it is pushed rather than polled.
+
+The acceptance assertion now reads **the chip's own state** rather than a string the
+compact form never renders, and waits for it to settle rather than sampling one frame —
+which is D-152's rule (*wait for the condition, never for a number of frames*) and which
+turned up `syncing` on the first attempt, exactly the value that would have been read as a
+stuck queue.
+
+**Controls, both seen to fail.** A repository regression listens to `watchQuery`, moves the
+outbox entry to `done` **through Drift** rather than raw SQL — a `customStatement` changes
+the rows and notifies nothing, which would have made it a test of the fixture — and
+requires the stream to re-emit `synced`. Beside it sits the shape of the defect: a one-shot
+`query` is correct at the instant it runs and stale for ever afterwards, which is why every
+test that simply read again missed this.
+
+**The cost, and it is D-135's.** A streamed read model holds a live query subscription, and
+Drift schedules a zero-duration timer when one is cancelled; Flutter checks for pending
+timers at the end of the test **body**. Converting these three providers made the Android
+revenue UI suite hang — reported as `did not complete`, which reads like a product hang and
+is not one. The remedy already existed: `uiTest`, which disposes inside the body. The suite
+now uses it throughout. Recorded because the next person to stream a read model will meet
+the same thing, and because it is the second time this cost has been paid.
+
+## D-161 — What Slice 13 could not prove against the approved baseline, and how it was proved instead
+**Date:** 2026-09-07 · **Status:** Recorded
+
+Two acceptance requirements cannot be met against `krishna-mis-dev` without changing
+configuration the project lead approved, and both are recorded rather than quietly
+substituted.
+
+**A second Room value band.** D-093 is explicit: two live bands for one category over the
+same dates require the existing open-ended Room rule to be **end-dated and replaced**. That
+is an auditable change to the verified FY 2026-27 baseline (D-096), and
+`revenue_tax_rule_end_date` takes a `date` with no path back to null — so it is not a round
+trip. The Slice 13 brief says so itself (*"Do NOT add production Room bands"*), so the
+banded, multi-rate, multi-component path is proven **synthetically at host level**: two
+bands at 5% and 12%, a two-component sale, exact paise per band, document reconciliation,
+contribution rows keeping both rates apart, and an edit across both bands staying exact. On
+the real server, multi-component grain is proven under the generic rule.
+
+**A configuration change between preview and acceptance.** The same constraint applies:
+legitimately changing the authoritative rule means end-dating a baseline one. The `KM030`
+contract — server re-resolves, compares the client's declared figures, refuses, applies
+nothing — is proven against the real server through declared values that disagree with the
+configured rate, which exercises the identical server path with the baseline untouched.
+What is *not* run live is the variant where the rule itself moved underneath the client.
+
+**Neither is a gap in the product.** Both are proven; what differs is where. Stating that
+plainly is the point, because a report that said "multi-band acceptance: PASS" without this
+paragraph would be describing a live proof that did not happen.

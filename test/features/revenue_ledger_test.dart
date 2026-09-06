@@ -287,6 +287,77 @@ void main() {
     );
   });
 
+  group('the ledger follows the outbox rather than a snapshot (D-160)', () {
+    // The defect the Windows acceptance found, one layer down from where it showed.
+    //
+    // A sync state arrives from the **worker**, which invalidates no provider and
+    // knows about no screen. A one-shot read therefore keeps whatever it saw, so a
+    // corrected sale that has since been accepted goes on reading `Syncing` for ever.
+    // D-131 fixed exactly this for the detail panel and left the ledger standing,
+    // because the acceptance assertion that should have caught it was matching text
+    // belonging to a different surface (D-160).
+
+    test('a page delivered as a stream re-emits when the queue moves', () async {
+      final id = await seed(
+        outboxStatus: 'inFlight',
+        txnNumber: 'KI-REV-26-27-000001',
+      );
+
+      final seen = <SyncState>[];
+      final sub = repository
+          .watchQuery(const RevenueFilter())
+          .listen((rows) => seen.add(rows.single.syncState));
+      await pumpEventQueue();
+      expect(seen, [SyncState.syncing]);
+
+      // The worker delivers the intent. Nothing tells the surface.
+      // Through Drift, as the real worker does: a raw customStatement changes the
+      // rows and notifies nothing, which would make this a test of the fixture.
+      await (db.update(db.syncOutbox)..where((o) => o.entityId.equals(id)))
+          .write(const SyncOutboxCompanion(status: Value('done')));
+      await pumpEventQueue();
+
+      expect(
+        seen.last,
+        SyncState.synced,
+        reason:
+            'the row reaches the operator without anybody remembering to invalidate '
+            'a provider',
+      );
+      await sub.cancel();
+    });
+
+    test('a one-shot read of the same page cannot correct itself', () async {
+      // The shape of the defect, and why every test that read twice missed it: the
+      // query is right at the instant it runs and stale for ever afterwards.
+      final id = await seed(
+        outboxStatus: 'inFlight',
+        txnNumber: 'KI-REV-26-27-000001',
+      );
+
+      final before = (await repository.query(const RevenueFilter())).single;
+      expect(before.syncState, SyncState.syncing);
+
+      // Through Drift, as the real worker does: a raw customStatement changes the
+      // rows and notifies nothing, which would make this a test of the fixture.
+      await (db.update(db.syncOutbox)..where((o) => o.entityId.equals(id)))
+          .write(const SyncOutboxCompanion(status: Value('done')));
+
+      expect(
+        before.syncState,
+        SyncState.syncing,
+        reason: 'the value already handed out cannot correct itself',
+      );
+      expect(
+        (await repository.query(const RevenueFilter())).single.syncState,
+        SyncState.synced,
+        reason:
+            'and a fresh read is right, which is exactly why the stale surface '
+            'was invisible to a suite that always read again',
+      );
+    });
+  });
+
   group('ordering is deterministic', () {
     test('same date and same instant still order stably', () async {
       // Without the `id` tie-break these three have no defined order, and an undefined

@@ -1176,6 +1176,267 @@ void main() {
     });
   });
 
+  group('the trading day follows the cut-off, all the way to the period', () {
+    // Slice 13, item 11. Not a formatter test: the instant goes in at the top of the
+    // shipped derivation, through the same `BusinessDate.fromInstant` the entry
+    // surface calls, into a real create, and out the other end as the period a report
+    // would sum it into.
+    //
+    // Crystal Canopy is Asia/Kolkata with an 05:00 cut-off, so the boundary instants
+    // are the ones migration 0033 and `business_date_test.dart` already pin - what is
+    // new here is that a **sale** recorded at each of them lands in the right month.
+
+    Future<String> recordAt(DateTime instant, {required String id}) async {
+      final date = BusinessDate.fromInstant(
+        instant,
+        timeZoneId: 'Asia/Kolkata',
+        cutoff: BusinessDayCutoff.defaultCutoff,
+      );
+      await create(
+        RevenueEntryDraft(
+          id: id,
+          businessUnitId: _ccr,
+          revenueCategoryId: vCategoryRestaurant,
+          businessDate: date,
+          capturedAt: instant,
+          components: [
+            RevenueComponentDraft(
+              id: '$id-c0',
+              enteredAmount: Money.fromPaise(10000000),
+            ),
+          ],
+        ),
+      );
+      await accept(id);
+      return date.iso;
+    }
+
+    test('01:00 belongs to the evening that produced it', () async {
+      // 01:00 IST on 16 June is 19:30 UTC on the 15th.
+      final iso = await recordAt(
+        DateTime.utc(2026, 6, 15, 19, 30),
+        id: 'cut-early',
+      );
+      expect(iso, '2026-06-15');
+
+      final row = (await rows()).single;
+      expect(row.businessDate.iso, '2026-06-15');
+      expect(row.pnlPeriodKey, '2026-06');
+      expect(
+        (await totals(periodKey: '2026-06')).contributions,
+        1,
+        reason:
+            'a sale rung up after midnight is the previous trading day, and the report '
+            'it lands in follows the stored date rather than the calendar one',
+      );
+    });
+
+    test('04:59 and 05:00 fall on either side, and so do their periods', () async {
+      // The boundary that matters, chosen at a month end so the two instants land in
+      // different **months** as well as different days - which is what makes this a
+      // reporting assertion rather than a date one.
+      //
+      // 04:59 IST on 1 July  = 23:29 UTC on 30 June  -> business date 30 June
+      // 05:00 IST on 1 July  = 23:30 UTC on 30 June  -> business date  1 July
+      final before = await recordAt(
+        DateTime.utc(2026, 6, 30, 23, 29),
+        id: 'cut-before',
+      );
+      final after = await recordAt(
+        DateTime.utc(2026, 6, 30, 23, 30),
+        id: 'cut-after',
+      );
+
+      expect(before, '2026-06-30');
+      expect(after, '2026-07-01');
+
+      final june = await totals(periodKey: '2026-06');
+      final july = await totals(periodKey: '2026-07');
+      expect(june.contributions, 1);
+      expect(july.contributions, 1);
+      expect(june.gross.paise, 10000000);
+      expect(july.gross.paise, 10000000);
+      expect(
+        june.tax.paise,
+        476190,
+        reason: 'and each is taxed by the rule in force on its own trading day',
+      );
+    });
+
+    test('the device calendar date never decides the period', () async {
+      // The same instant produces the same business date whatever the machine running
+      // this thinks the local date is: `fromInstant` takes the zone as an argument and
+      // reads no clock (D-067).
+      final iso = await recordAt(
+        DateTime.utc(2026, 6, 30, 23, 29),
+        id: 'cut-tz',
+      );
+      expect(iso, '2026-06-30');
+      expect((await rows()).single.pnlPeriodKey, '2026-06');
+    });
+  });
+
+  group('a synthetic two-band day keeps its rates apart (item 17)', () {
+    // **Synthetic configuration, and deliberately not production Room bands.** D-093
+    // is explicit that a second live Room band requires the approved open-ended Room
+    // rule to be end-dated and replaced - an auditable change to the configuration the
+    // project lead signed off (D-096) - so the banded path is proven here, where the
+    // fixture is disposable, and the four live rules are left exactly as they are.
+    //
+    // The two bands carry **different rates**, which is the case that would expose a
+    // reporting layer that blended them into one.
+
+    const lower = 'band-lower';
+    const upper = 'band-upper';
+
+    setUp(() async {
+      await db.customStatement('DELETE FROM revenue_tax_rates');
+      for (final band in const [
+        (lower, 'LOWER', 0, 750000),
+        (upper, 'UPPER', 750000, null),
+      ]) {
+        await db.customStatement(
+          'INSERT INTO revenue_value_bands (id, org_id, revenue_category_id, code, '
+          'label, floor_minor, ceiling_minor, row_version, updated_at) '
+          "VALUES (?, '$_org', ?, ?, ?, ?, ?, 1, '2026-04-01T00:00:00.000Z')",
+          [band.$1, vCategoryRoom, band.$2, band.$2, band.$3, band.$4],
+        );
+      }
+      for (final rule in const [
+        ('rule-lower', lower, 500),
+        ('rule-upper', upper, 1200),
+      ]) {
+        await db.customStatement(
+          'INSERT INTO revenue_tax_rates (id, org_id, revenue_category_id, '
+          'rate_basis_points, treatment, effective_from, input_basis, '
+          'value_band_id, created_by, created_at, row_version, updated_at) '
+          "VALUES (?, '$_org', ?, ?, 'inclusive', '2026-04-01', 'inclusive_total', "
+          "?, 'u', '2026-04-01T00:00:00.000Z', 1, '2026-04-01T00:00:00.000Z')",
+          [rule.$1, vCategoryRoom, rule.$3, rule.$2],
+        );
+      }
+    });
+
+    test('two bands, two rates, two contributions that never blend', () async {
+      await create(
+        RevenueEntryDraft(
+          id: 'banded',
+          businessUnitId: _hki,
+          revenueCategoryId: vCategoryRoom,
+          businessDate: vDate('2026-06-15'),
+          capturedAt: DateTime.now().toUtc(),
+          components: [
+            RevenueComponentDraft(
+              id: 'banded-c0',
+              enteredAmount: Money.fromPaise(4200000),
+              valueBandId: lower,
+            ),
+            RevenueComponentDraft(
+              id: 'banded-c1',
+              enteredAmount: Money.fromPaise(2300000),
+              valueBandId: upper,
+            ),
+          ],
+        ),
+      );
+      await accept('banded');
+
+      final all = await rows();
+      expect(all, hasLength(2));
+      final byBand = {for (final c in all) c.valueBandId: c};
+
+      // The band is an identity the operator stated, carried into reporting - never
+      // inferred from the amount (D-094).
+      expect(byBand.keys.toSet(), {lower, upper});
+      expect(byBand[lower]!.taxRateBasisPoints, 500);
+      expect(byBand[upper]!.taxRateBasisPoints, 1200);
+
+      // Exact paise, each under its own rate.
+      expect(byBand[lower]!.gross.paise, 4200000);
+      expect(byBand[lower]!.tax.paise, 200000);
+      expect(byBand[lower]!.net.paise, 4000000);
+      expect(byBand[upper]!.gross.paise, 2300000);
+      expect(byBand[upper]!.tax.paise, 246429);
+      expect(byBand[upper]!.net.paise, 2053571);
+
+      // The document reconciles to its components, and the period total to both.
+      final t = await totals();
+      expect(t.contributions, 2);
+      expect(t.gross.paise, 6500000);
+      expect(t.tax.paise, 446429);
+      expect(t.net.paise, 6053571);
+      expect(t.reconciles, isTrue);
+
+      // And nothing anywhere reports a single blended rate for the day.
+      expect(
+        all.map((c) => c.taxRateBasisPoints).toSet(),
+        {500, 1200},
+        reason:
+            'a blended rate would be a rate that was applied to nothing, and would '
+            'make "why did room tax change?" unanswerable',
+      );
+    });
+
+    test('an edit across the two bands stays exact', () async {
+      final entry = await create(
+        RevenueEntryDraft(
+          id: 'banded-edit',
+          businessUnitId: _hki,
+          revenueCategoryId: vCategoryRoom,
+          businessDate: vDate('2026-06-15'),
+          capturedAt: DateTime.now().toUtc(),
+          components: [
+            RevenueComponentDraft(
+              id: 'be-c0',
+              enteredAmount: Money.fromPaise(4200000),
+              valueBandId: lower,
+            ),
+            RevenueComponentDraft(
+              id: 'be-c1',
+              enteredAmount: Money.fromPaise(2300000),
+              valueBandId: upper,
+            ),
+          ],
+        ),
+      );
+      await accept('banded-edit');
+
+      await edit(
+        RevenueEntryDraft(
+          id: 'banded-edit',
+          businessUnitId: _hki,
+          revenueCategoryId: vCategoryRoom,
+          businessDate: vDate('2026-06-15'),
+          capturedAt: DateTime.now().toUtc(),
+          components: [
+            RevenueComponentDraft(
+              id: 'be-c0',
+              enteredAmount: Money.fromPaise(5000000),
+              valueBandId: lower,
+            ),
+            RevenueComponentDraft(
+              id: 'be-c1',
+              enteredAmount: Money.fromPaise(1000000),
+              valueBandId: upper,
+            ),
+          ],
+        ),
+        baseRowVersion: entry.rowVersion,
+      );
+      await acceptEdit('banded-edit', entry.rowVersion + 1);
+
+      final all = await rows();
+      expect(all, hasLength(2), reason: 'replaced, not appended');
+      final byBand = {for (final c in all) c.valueBandId: c};
+      expect(byBand[lower]!.gross.paise, 5000000);
+      expect(byBand[lower]!.tax.paise, 238095);
+      expect(byBand[upper]!.gross.paise, 1000000);
+      expect(byBand[upper]!.tax.paise, 107143);
+      expect((await totals()).gross.paise, 6000000);
+      expect((await totals()).reconciles, isTrue);
+    });
+  });
+
   group('the slice boundary', () {
     test('Slice 12 builds no P&L, no dashboard and no export', () async {
       // A rule that nothing evaluates is a comment (D-068, D-071, D-077). The reporting

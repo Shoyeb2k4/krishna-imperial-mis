@@ -236,31 +236,40 @@ final revenuePageProvider = NotifierProvider<RevenuePageNotifier, int>(
 );
 
 /// The current page of the ledger.
-final filteredRevenueProvider = FutureProvider<List<RevenueLedgerRow>>((
-  ref,
-) async {
+///
+/// **A stream, not a one-shot read (D-160).** A row's sync state arrives from the
+/// sync worker, which invalidates no provider and knows about no screen, so a
+/// `FutureProvider` here kept whatever state it saw when the query last ran: a
+/// corrected sale that had since been accepted went on reading `Syncing`
+/// indefinitely. That is D-131, which was fixed for the detail panel and left
+/// standing on the ledger.
+final filteredRevenueProvider = StreamProvider<List<RevenueLedgerRow>>((ref) {
   ref.watch(principalProvider);
   final filter = ref.watch(revenueFilterProvider);
   final page = ref.watch(revenuePageProvider);
 
   return ref
       .watch(revenueRepositoryProvider)
-      .query(filter, limit: revenuePageSize, offset: page * revenuePageSize);
+      .watchQuery(
+        filter,
+        limit: revenuePageSize,
+        offset: page * revenuePageSize,
+      );
 });
 
 /// Whether a further page exists, asked by fetching one row beyond this page.
 ///
 /// Cheaper and more honest than a `COUNT(*)` over the whole filtered set, which at a year
 /// of history is a scan performed to render an arrow.
-final revenueHasMoreProvider = FutureProvider<bool>((ref) async {
+final revenueHasMoreProvider = StreamProvider<bool>((ref) {
   ref.watch(principalProvider);
   final filter = ref.watch(revenueFilterProvider);
   final page = ref.watch(revenuePageProvider);
 
-  final next = await ref
+  return ref
       .watch(revenueRepositoryProvider)
-      .query(filter, limit: 1, offset: (page + 1) * revenuePageSize);
-  return next.isNotEmpty;
+      .watchQuery(filter, limit: 1, offset: (page + 1) * revenuePageSize)
+      .map((next) => next.isNotEmpty);
 });
 
 class RevenueFilterBar extends ConsumerStatefulWidget {

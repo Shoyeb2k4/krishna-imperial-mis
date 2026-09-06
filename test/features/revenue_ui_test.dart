@@ -26,6 +26,7 @@ import 'package:krishna_mis/features/expenses/presentation/expense_providers.dar
 import 'package:krishna_mis/features/revenue/presentation/revenue_entry_page.dart';
 import 'package:krishna_mis/features/revenue/presentation/revenue_recent_page.dart';
 
+import '../support/ui_harness.dart';
 import '../support/test_session.dart';
 
 const _org = 'org-1';
@@ -198,7 +199,7 @@ void main() {
   }
 
   group('choosing where the money came from', () {
-    testWidgets('a two-property user is asked which one', (tester) async {
+    uiTest('a two-property user is asked which one', (tester) async {
       await baseline();
       await pump(tester, const RevenueEntryPage());
 
@@ -206,7 +207,7 @@ void main() {
       expect(find.byKey(const Key('revenue-unit-HKI')), findsOneWidget);
     });
 
-    testWidgets('a one-property user is not asked at all', (tester) async {
+    uiTest('a one-property user is not asked at all', (tester) async {
       await baseline();
       await pump(
         tester,
@@ -226,7 +227,7 @@ void main() {
       );
     });
 
-    testWidgets('only the chosen property\'s categories are offered', (
+    uiTest('only the chosen property\'s categories are offered', (
       tester,
     ) async {
       await baseline();
@@ -245,9 +246,7 @@ void main() {
       expect(find.byKey(const Key('revenue-category-BANQUET')), findsNothing);
     });
 
-    testWidgets('changing property clears the category selection', (
-      tester,
-    ) async {
+    uiTest('changing property clears the category selection', (tester) async {
       await baseline();
       await pump(tester, const RevenueEntryPage());
       await choose(tester, 'revenue-unit-CCR');
@@ -264,7 +263,7 @@ void main() {
       expect(find.byKey(const Key('revenue-category-ROOM')), findsOneWidget);
     });
 
-    testWidgets('a user with no permitted property is told so', (tester) async {
+    uiTest('a user with no permitted property is told so', (tester) async {
       await baseline();
       await pump(
         tester,
@@ -278,9 +277,7 @@ void main() {
   });
 
   group('the four verified categories', () {
-    testWidgets('Restaurant extracts GST rather than adding it', (
-      tester,
-    ) async {
+    uiTest('Restaurant extracts GST rather than adding it', (tester) async {
       await baseline();
       await pump(tester, const RevenueEntryPage());
       await choose(tester, 'revenue-unit-CCR');
@@ -298,7 +295,7 @@ void main() {
       );
     });
 
-    testWidgets('Nandbhog computes the same way and stays its own category', (
+    uiTest('Nandbhog computes the same way and stays its own category', (
       tester,
     ) async {
       await baseline();
@@ -311,7 +308,7 @@ void main() {
       expect(find.text('₹11,904.76'), findsOneWidget);
     });
 
-    testWidgets('Room is one plain field today, with no invented band picker', (
+    uiTest('Room is one plain field today, with no invented band picker', (
       tester,
     ) async {
       await baseline();
@@ -333,7 +330,7 @@ void main() {
       expect(find.text('₹61,904.76'), findsOneWidget);
     });
 
-    testWidgets('Banquet says No GST and never claims tax is inside', (
+    uiTest('Banquet says No GST and never claims tax is inside', (
       tester,
     ) async {
       await baseline();
@@ -358,9 +355,7 @@ void main() {
       );
     });
 
-    testWidgets('two configured bands render two labelled fields', (
-      tester,
-    ) async {
+    uiTest('two configured bands render two labelled fields', (tester) async {
       // A synthetic configuration, because no Room threshold has been verified and
       // inventing one to make a test convenient would be inventing a business fact.
       await db.customStatement(
@@ -403,31 +398,30 @@ void main() {
   });
 
   group('the business date', () {
-    testWidgets(
-      'is shown, and is the trading day rather than the calendar one',
-      (tester) async {
-        await baseline();
-        await pump(tester, const RevenueEntryPage());
+    uiTest('is shown, and is the trading day rather than the calendar one', (
+      tester,
+    ) async {
+      await baseline();
+      await pump(tester, const RevenueEntryPage());
 
-        expect(find.byKey(const Key('revenue-business-date')), findsOneWidget);
-        expect(
-          find.text('15 June 2026'),
-          findsOneWidget,
-          reason: 'written out, not an ISO string and not a debug toString',
-        );
-        expect(
-          find.text('This is the trading day these sales belong to.'),
-          findsOneWidget,
-          reason:
-              'the fixture date differs from the device calendar, so the screen '
-              'explains itself rather than looking wrong',
-        );
-      },
-    );
+      expect(find.byKey(const Key('revenue-business-date')), findsOneWidget);
+      expect(
+        find.text('15 June 2026'),
+        findsOneWidget,
+        reason: 'written out, not an ISO string and not a debug toString',
+      );
+      expect(
+        find.text('This is the trading day these sales belong to.'),
+        findsOneWidget,
+        reason:
+            'the fixture date differs from the device calendar, so the screen '
+            'explains itself rather than looking wrong',
+      );
+    });
   });
 
   group('configuration freshness (D-112)', () {
-    testWidgets('fresh configuration warns about nothing', (tester) async {
+    uiTest('fresh configuration warns about nothing', (tester) async {
       await baseline();
       await pump(tester, const RevenueEntryPage());
       await choose(tester, 'revenue-unit-CCR');
@@ -436,7 +430,7 @@ void main() {
       expect(find.byKey(const Key('revenue-refusal')), findsNothing);
     });
 
-    testWidgets('expired configuration refuses, and offers a refresh', (
+    uiTest('expired configuration refuses, and offers a refresh', (
       tester,
     ) async {
       await baseline(age: const Duration(hours: 25));
@@ -454,7 +448,7 @@ void main() {
       );
     });
 
-    testWidgets(
+    uiTest(
       'a never-synchronised device says so, not that tax is unconfigured',
       (tester) async {
         await cacheRule(id: 'rule-restaurant', category: _restaurant);
@@ -474,7 +468,7 @@ void main() {
       },
     );
 
-    testWidgets('a revoked scope says the access changed', (tester) async {
+    uiTest('a revoked scope says the access changed', (tester) async {
       await baseline();
       await db.customStatement(
         "UPDATE revenue_config_snapshots SET status = 'revoked', datasets = ''",
@@ -490,7 +484,7 @@ void main() {
       );
     });
 
-    testWidgets('no refusal message leaks an internal name', (tester) async {
+    uiTest('no refusal message leaks an internal name', (tester) async {
       await baseline(age: const Duration(hours: 25));
       await pump(tester, const RevenueEntryPage());
       await choose(tester, 'revenue-unit-CCR');
@@ -514,7 +508,7 @@ void main() {
   });
 
   group('missing configuration is a gap, not a zero rate', () {
-    testWidgets('no rule for the category refuses rather than showing ₹0 GST', (
+    uiTest('no rule for the category refuses rather than showing ₹0 GST', (
       tester,
     ) async {
       await cacheRule(id: 'rule-restaurant', category: _restaurant);
@@ -531,7 +525,7 @@ void main() {
   });
 
   group('saving', () {
-    testWidgets('a valid sale saves offline and reports pending sync', (
+    uiTest('a valid sale saves offline and reports pending sync', (
       tester,
     ) async {
       await baseline();
@@ -570,9 +564,7 @@ void main() {
       expect(component.data['net_amount_minor'], 9523810);
     });
 
-    testWidgets('Save is disabled until every field is readable', (
-      tester,
-    ) async {
+    uiTest('Save is disabled until every field is readable', (tester) async {
       await baseline();
       await pump(tester, const RevenueEntryPage());
       await choose(tester, 'revenue-unit-CCR');
@@ -590,7 +582,7 @@ void main() {
       expect(enabled.onPressed, isNotNull);
     });
 
-    testWidgets('a double tap records one sale, not two', (tester) async {
+    uiTest('a double tap records one sale, not two', (tester) async {
       await baseline();
       await pump(tester, const RevenueEntryPage());
       await choose(tester, 'revenue-unit-CCR');
@@ -617,55 +609,51 @@ void main() {
       );
     });
 
-    testWidgets(
-      'an expired configuration refuses the save and writes nothing',
-      (tester) async {
-        await baseline();
-        await pump(tester, const RevenueEntryPage());
-        await choose(tester, 'revenue-unit-CCR');
-        await choose(tester, 'revenue-category-RESTAURANT');
-        await typeAmount(tester, '100000');
+    uiTest('an expired configuration refuses the save and writes nothing', (
+      tester,
+    ) async {
+      await baseline();
+      await pump(tester, const RevenueEntryPage());
+      await choose(tester, 'revenue-unit-CCR');
+      await choose(tester, 'revenue-category-RESTAURANT');
+      await typeAmount(tester, '100000');
 
-        // The configuration goes stale between typing and pressing Save.
-        await db.customStatement(
-          'UPDATE revenue_config_snapshots SET confirmed_at = ?',
-          [
-            DateTime.now()
-                .toUtc()
-                .subtract(const Duration(hours: 30))
-                .toIso8601String(),
-          ],
-        );
+      // The configuration goes stale between typing and pressing Save.
+      await db.customStatement(
+        'UPDATE revenue_config_snapshots SET confirmed_at = ?',
+        [
+          DateTime.now()
+              .toUtc()
+              .subtract(const Duration(hours: 30))
+              .toIso8601String(),
+        ],
+      );
 
-        await tester.tap(find.byKey(const Key('revenue-save')));
-        await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('revenue-save')));
+      await tester.pumpAndSettle();
 
-        final entries = await db
-            .customSelect('SELECT COUNT(*) AS n FROM revenue_entries')
-            .getSingle();
-        expect(entries.data['n'], 0);
-        expect(find.byKey(const Key('revenue-refusal')), findsOneWidget);
-        expect(
-          find.byKey(const Key('revenue-refresh-configuration')),
-          findsOneWidget,
-          reason:
-              'a refresh is what would change this answer, so it is offered',
-        );
-      },
-    );
+      final entries = await db
+          .customSelect('SELECT COUNT(*) AS n FROM revenue_entries')
+          .getSingle();
+      expect(entries.data['n'], 0);
+      expect(find.byKey(const Key('revenue-refusal')), findsOneWidget);
+      expect(
+        find.byKey(const Key('revenue-refresh-configuration')),
+        findsOneWidget,
+        reason: 'a refresh is what would change this answer, so it is offered',
+      );
+    });
   });
 
   group('recent sales', () {
-    testWidgets('an empty list says so rather than showing nothing', (
-      tester,
-    ) async {
+    uiTest('an empty list says so rather than showing nothing', (tester) async {
       await baseline();
       await pump(tester, const RevenueRecentPage());
 
       expect(find.byKey(const Key('revenue-recent-empty')), findsOneWidget);
     });
 
-    testWidgets('a saved sale appears, pending, with no invented number', (
+    uiTest('a saved sale appears, pending, with no invented number', (
       tester,
     ) async {
       await baseline();
@@ -688,9 +676,7 @@ void main() {
       );
     });
 
-    testWidgets('reconciliation shows the KI-REV number and Synced', (
-      tester,
-    ) async {
+    uiTest('reconciliation shows the KI-REV number and Synced', (tester) async {
       await baseline();
       await pump(tester, const RevenueEntryPage());
       await choose(tester, 'revenue-unit-CCR');
@@ -712,7 +698,7 @@ void main() {
       expect(find.text('Synced'), findsOneWidget);
     });
 
-    testWidgets('a conflict reads as review, never as a repriced amount', (
+    uiTest('a conflict reads as review, never as a repriced amount', (
       tester,
     ) async {
       await baseline();
@@ -739,7 +725,7 @@ void main() {
       expect(find.text('Net ₹95,238.10'), findsOneWidget);
     });
 
-    testWidgets('a quarantined attempt is absent from the ordinary list', (
+    uiTest('a quarantined attempt is absent from the ordinary list', (
       tester,
     ) async {
       await baseline();
@@ -765,9 +751,7 @@ void main() {
       expect(still.data['n'], 1, reason: 'hidden, and not deleted');
     });
 
-    testWidgets("another user does not see the first user's work", (
-      tester,
-    ) async {
+    uiTest("another user does not see the first user's work", (tester) async {
       await baseline();
       await pump(tester, const RevenueEntryPage());
       await choose(tester, 'revenue-unit-CCR');

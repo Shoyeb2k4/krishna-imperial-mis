@@ -1160,6 +1160,15 @@ class RevenueRepository {
   }) =>
       query(_AllRevenue(includeVoided: includeVoided, units: businessUnitIds));
 
+  /// The same, delivered as a stream, for a surface that must follow the queue
+  /// rather than a snapshot of it (D-160).
+  Stream<List<RevenueLedgerRow>> watchList({
+    Set<String>? businessUnitIds,
+    bool includeVoided = false,
+  }) => watchQuery(
+    _AllRevenue(includeVoided: includeVoided, units: businessUnitIds),
+  );
+
   /// Marks a sale voided locally and queues the void.
   ///
   /// Queued, not applied. A void is a financial state change that the server decides:
@@ -1308,7 +1317,37 @@ class RevenueRepository {
     RevenueQuery filter, {
     int limit = 100,
     int offset = 0,
-  }) async {
+  }) async => _mapLedger(
+    await _ledgerSelect(filter, limit: limit, offset: offset).get(),
+    filter,
+  );
+
+  /// The same page, delivered as a stream.
+  ///
+  /// **The ledger's sync state arrives from the sync worker, which invalidates no
+  /// provider and knows about no screen.** A one-shot read therefore keeps whatever
+  /// state it saw when the query last ran, so a corrected sale that has since been
+  /// accepted goes on reading `Syncing` until something else happens to refresh the
+  /// surface. That is D-131 exactly: it was fixed for the detail panel and left
+  /// standing here, where a weak acceptance assertion hid it (D-160).
+  ///
+  /// Drift re-runs the statement whenever any of the three tables it reads changes,
+  /// so there is one derivation and it is pushed rather than polled.
+  Stream<List<RevenueLedgerRow>> watchQuery(
+    RevenueQuery filter, {
+    int limit = 100,
+    int offset = 0,
+  }) => _ledgerSelect(
+    filter,
+    limit: limit,
+    offset: offset,
+  ).watch().map((rows) => _mapLedger(rows, filter));
+
+  Selectable<QueryRow> _ledgerSelect(
+    RevenueQuery filter, {
+    required int limit,
+    required int offset,
+  }) {
     final where = <String>[
       // D-070: never browsable, whatever the filter asks for. First predicate rather
       // than last, so a future branch cannot be written that forgets it.
@@ -1364,33 +1403,31 @@ class RevenueRepository {
       variables.addAll(scope.map(Variable<String>.new));
     }
 
-    final rows = await _db
-        .customSelect(
-          'SELECT e.id, e.txn_number, e.business_unit_id, e.revenue_category_id, '
-          '       e.business_date, e.entry_kind, e.source_reference, e.notes, '
-          '       e.created_by, e.voided_at, e.updated_at, e.row_version, '
-          '       COUNT(c.id) AS components, '
-          '       COALESCE(SUM(c.gross_amount_minor), 0) AS gross, '
-          '       COALESCE(SUM(c.tax_amount_minor), 0) AS tax, '
-          '       COALESCE(SUM(c.net_amount_minor), 0) AS net, '
-          '       o.status AS outbox_status '
-          '  FROM revenue_entries e '
-          '  LEFT JOIN revenue_components c ON c.revenue_entry_id = e.id '
-          '  LEFT JOIN sync_outbox o ON o.entity_id = e.id '
-          "                        AND o.entity_type = '$revenueEntityType' "
-          "                        AND o.status <> 'done' "
-          ' WHERE ${where.join(' AND ')} '
-          ' GROUP BY e.id '
-          ' ORDER BY e.business_date DESC, e.captured_at DESC, e.id DESC '
-          ' LIMIT ? OFFSET ?',
-          variables: [
-            ...variables,
-            Variable<int>(limit),
-            Variable<int>(offset),
-          ],
-        )
-        .get();
+    return _db.customSelect(
+      'SELECT e.id, e.txn_number, e.business_unit_id, e.revenue_category_id, '
+      '       e.business_date, e.entry_kind, e.source_reference, e.notes, '
+      '       e.created_by, e.voided_at, e.updated_at, e.row_version, '
+      '       COUNT(c.id) AS components, '
+      '       COALESCE(SUM(c.gross_amount_minor), 0) AS gross, '
+      '       COALESCE(SUM(c.tax_amount_minor), 0) AS tax, '
+      '       COALESCE(SUM(c.net_amount_minor), 0) AS net, '
+      '       o.status AS outbox_status '
+      '  FROM revenue_entries e '
+      '  LEFT JOIN revenue_components c ON c.revenue_entry_id = e.id '
+      '  LEFT JOIN sync_outbox o ON o.entity_id = e.id '
+      "                        AND o.entity_type = '$revenueEntityType' "
+      "                        AND o.status <> 'done' "
+      ' WHERE ${where.join(' AND ')} '
+      ' GROUP BY e.id '
+      ' ORDER BY e.business_date DESC, e.captured_at DESC, e.id DESC '
+      ' LIMIT ? OFFSET ?',
+      variables: [...variables, Variable<int>(limit), Variable<int>(offset)],
+      // What the statement reads, so Drift knows when to re-run it.
+      readsFrom: {_db.revenueEntries, _db.revenueComponents, _db.syncOutbox},
+    );
+  }
 
+  List<RevenueLedgerRow> _mapLedger(List<QueryRow> rows, RevenueQuery filter) {
     final loaded = <RevenueLedgerRow>[];
     for (final row in rows) {
       final entry = RevenueLedgerRow(

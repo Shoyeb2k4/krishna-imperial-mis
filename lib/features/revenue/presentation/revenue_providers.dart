@@ -155,12 +155,12 @@ final revenueDetailProvider = FutureProvider.family<RevenueEntry?, String>((
   return ref.watch(revenueRepositoryProvider).load(id);
 });
 
-final recentRevenueProvider = FutureProvider<List<RevenueLedgerRow>>((ref) {
+final recentRevenueProvider = StreamProvider<List<RevenueLedgerRow>>((ref) {
   // Depending on the principal is what makes a user switch re-read rather than serve the
   // previous person's cached rows — the defect D-072a found one layer above the read
   // model, arriving here before it can happen again.
   ref.watch(principalProvider);
-  return ref.watch(revenueRepositoryProvider).list();
+  return ref.watch(revenueRepositoryProvider).watchList();
 });
 
 /// What a save produced.

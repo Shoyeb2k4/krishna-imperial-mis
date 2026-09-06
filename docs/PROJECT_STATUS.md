@@ -1657,10 +1657,15 @@ is worth running once before the first staging deploy.
 
 ## Next exact task
 
+**Slice 14 — closure: docs, totals, clean artefacts, the full gate.**
+Slices 1–13 are complete. Slice 14 has **not** been started, and is not started
+automatically.
+
+### Superseded — the Slice 13 entry
+
 **Slice 13 — live and device acceptance: both platforms, real backend, two-device.**
 Slices 11 and 12 are both formally closed (`bcf6f19`, `d6f0851`) and the Slice 11 manual
-picker gate is passed (D-156). Slice 13 has **not** been started, and is not started
-automatically.
+picker gate is passed (D-156).
 
 One question is open and should be answered before Slice 13's acceptance is designed:
 which build and environment the manual picker runs used, since `krishna-mis-dev` holds no
@@ -2551,3 +2556,186 @@ Confirmed green after the Slice 11 closure, with nothing changed between them:
 **12 of 14 slices complete.** Slices 1–12 are done; **Slice 13 (live and device
 acceptance) and Slice 14 (closure) are not started**, and Slice 13 is not started
 automatically.
+
+---
+
+## Phase 4 Slice 13 — full Revenue Engine acceptance: **COMPLETE**
+
+The final integrated acceptance of the Revenue Engine, run against the current code rather
+than carried forward. **One product defect found and fixed** (D-160), and two requirements
+that cannot be met against the approved baseline are recorded rather than substituted
+(D-161).
+
+### The acceptance environment, stated exactly
+
+| | |
+|---|---|
+| Backend | `krishna-mis-dev` only. No staging, no production |
+| Android | the real dev-flavour build on the emulator (`sdk gphone16k x86_64`, Android 17 / API 37), `flutter test integration_test/device_acceptance_test.dart -d emulator-5554 --flavor dev`, `SUPABASE_URL` / `SUPABASE_ANON_KEY` from `config/dev.json` |
+| Windows | the compiled `krishna_mis.exe`, `flutter test integration_test/device_acceptance_test.dart -d windows`, same configuration, on the **accumulated** local database |
+| Composition | the normal application root. No test-only repository, no local-seed-only mode, no fake gateway. Identity passwords come from the git-ignored development file, exactly as every earlier acceptance |
+
+**The ambiguity the manual picker run left is removed:** every end-to-end claim below comes
+from a build explicitly configured for `krishna-mis-dev`, and each phase is one process
+launch of the real application.
+
+### The verified business baseline, read from the backend
+
+Asserted from `krishna-mis-dev` before anything was run, not inferred from the local seed:
+
+| Unit | Category | Rate | Treatment | Basis | Effective from | Discriminators |
+|---|---|---|---|---|---|---|
+| Crystal Canopy Rooftop | Restaurant | 500 bp | `inclusive` | `inclusive_total` | 2026-04-01 | all null |
+| Crystal Canopy Rooftop | Nandbhog | 500 bp | `inclusive` | `inclusive_total` | 2026-04-01 | all null |
+| Hotel Krishna Imperial | Room | 500 bp | `inclusive` | `inclusive_total` | 2026-04-01 | all null |
+| Hotel Krishna Imperial | Banquet | 0 bp | **`none`** | `inclusive_total` | 2026-04-01 | all null |
+
+Four independent rule rows with four distinct ids — Restaurant and Nandbhog reference
+nothing of each other (D-089). **0 value bands, 0 supply subtypes, 0 premises statuses.**
+
+### The defect this slice existed to find (D-160)
+
+`windows-revenue-edit` failed **deterministically, three runs of three**, on the accumulated
+Windows database. A correction reached the server, the outbox was `done`, the repository
+said `synced` — and the ledger row went on reporting `Syncing` indefinitely.
+
+Two defects, one hiding the other:
+
+* the assertion was `visible('Synced')`, and the Windows ledger renders its chip **compact**
+  — an icon, no text. It had been passing on text belonging to the detail panel, which
+  happened still to be mounted. **It had proved nothing about the ledger since Slice 10.**
+* underneath it, `filteredRevenueProvider` was a `FutureProvider`. A sync state arrives from
+  the **worker**, which invalidates no provider and knows about no screen — so the row kept
+  whatever the query saw. That is D-131 exactly, fixed for the detail panel and left
+  standing on the ledger.
+
+Fixed at the owning layer: `RevenueRepository.watchQuery` is the same statement as `query`
+(one builder, one mapper, so they cannot drift) delivered as a Drift stream over
+`revenue_entries`, `revenue_components` and `sync_outbox`; the three ledger providers are
+`StreamProvider`s. The acceptance now reads the **chip's own state** and waits for it to
+settle. Two repository regressions, one of which is the shape of the defect.
+
+**The cost was D-135's**, paid a second time: a streamed read model leaves a pending Drift
+timer, and the Android revenue UI suite hung until it used the `uiTest` wrapper that exists
+for exactly this.
+
+### What was freshly rerun on the current checkpoint
+
+Nothing is carried forward. Every line below ran after the final `lib/` change.
+
+| Suite | Result |
+|---|---|
+| Android device chain — `revenue-entry`, `-banquet-label`, `-edit`, `-edit-banquet`, `-conflict`, `-void`, `-user-switch`, `-offline`, `-attachment`, `-attachment-offline`, `d068-switch`, `d068-revoke` | **12 phases, all PASS** |
+| Windows chain — `windows-revenue`, `-edit`, `-void`, `-conflict`, `-offline`, `windows-ledger`, `revenue-attachment`, `-attachment-offline`, `d068-switch`, `d068-revoke` | **10 phases, all PASS** |
+| Live backend phase chain — `drift`, `conflict`, `revenue-sync`, `revenue-sync-offline`, `revenue-create`, `revenue-cleanup` | **all PASS** |
+| Live revenue boundary suite | **81 tests**, 1 deliberately skipped |
+| Live two-client acceptance | **10 tests** |
+| Live expense suite | **50 tests** |
+| Host suite | **1,192 tests** |
+
+`revenue-user-switch` is an Android-only phase — it opens the entry screen from the phone's
+central add action, which the desktop shell does not have. Windows user-switch coverage is
+`d068-switch`, run on the accumulated database.
+
+### The acceptance matrix
+
+| Requirement | Result |
+|---|---|
+| Four verified categories, create → sync → `KI-REV` → detail → exact contribution | **PASS**, both platforms |
+| Restaurant inclusive extraction, exact paise | **PASS** — ₹1,00,000 → gross 10000000, tax 476190, net 9523810 |
+| Nandbhog independent, never merged into Restaurant | **PASS** — separate rule id, separate contribution line |
+| Room on the current generic rule, no invented band selector | **PASS** — one plain amount field, `value_band_id` null |
+| Banquet: *Amount billed to the customer*, **No GST**, tax 0, net = gross | **PASS** |
+| Edit → exact recalculation, same `KI-REV`, contribution changes exactly once | **PASS** |
+| Void → active contribution zero, evidence and history still explainable | **PASS** |
+| Offline create → visible pending, no invented number → restart → reconnect → one sale, one number, one contribution | **PASS**, both platforms |
+| D-112 freshness: 24 h window, boundary, expiry, backwards clock; a pending attempt still syncs | **PASS** (live `revenue-create`, host boundary tests) |
+| Business-date cut-off through the integrated revenue path | **PASS** — 01:00 IST lands on the previous trading day; 04:59 and 05:00 on 1 July fall in **June and July** respectively, and each period totals accordingly |
+| Business-date correction: reason required, `corrected`, same `KI-REV`, both periods enforced, no double count, audited | **PASS** |
+| Closed period: edit, move-out and void all refused; Owner does not bypass; reopen with a real reason; period left open | **PASS** |
+| Two-client stale edit → conflict → Review latest → deliberate correction accepted | **PASS** |
+| Two-client stale void → conflict; voided-then-edited refused | **PASS** |
+| KM030 tax-configuration mismatch → conflict, nothing applied | **PASS** (see D-161) |
+| Multi-component, explicit band identity, no amount inference, rates never blended | **PASS** (see D-161) |
+| Historical tax stability — configuration change cannot restate a recorded figure | **PASS** |
+| D-070 confirmed revocation; a failed refresh purges nothing | **PASS**, both platforms |
+| D-074 user switch on an accumulated database | **PASS**, both platforms |
+| ReferenceSync — both units complete, empty datasets distinguishable from unavailable, restart, offline resolver | **PASS** |
+| Reporting contributions, four categories + synthetic month + consolidated | **PASS** |
+| Attachment lifecycle and security; storage reconciliation | **PASS** |
+| Response-loss matrix — create, update, void, attachment register | **PASS** |
+| Accumulated database — Windows ledger, detail, reporting, user switch | **PASS** |
+| Layout at 1366, resized and maximised, in every sync state | **PASS** |
+| Server security — anonymous, wrong unit, scoped manager, Owner | **PASS** |
+
+### Performance sanity (item 29)
+
+Not a benchmark. What was inspected:
+
+* the ledger filters, orders, pages and scopes **in SQL**, with one `LIMIT ? OFFSET ?`;
+* the contribution aggregation is one `SUM` row off the database, never a fold in Dart;
+* the row mapper performs **no** per-row `await` — no N+1;
+* on the real server, a monthly aggregation plans as
+  `Index Scan using revenue_entries_reporting_idx … Index Cond: (org_id, pnl_period_key)`
+  then an index scan on `revenue_components_entry_idx` — no sequential scan of components.
+
+No actionable regression. No materialised aggregate added: nothing has been measured that
+needs one.
+
+### Clean artefacts (item 31)
+
+Rebuilt **without** acceptance identity defines, then scanned:
+
+| | |
+|---|---|
+| Android | `build/app/outputs/flutter-apk/app-dev-debug.apk`, dev flavour, `config/dev.json` only |
+| Windows | `build/windows/x64/runner/Release/`, release, same configuration |
+
+The scan **found a stale acceptance intermediate first** — a Windows *Debug* bundle whose
+`kernel_blob.bin` still carried a development identity password from the acceptance runs.
+It was removed and the scan re-run. That is the scanner doing its job (D-069), and it is why
+"build clean, then scan the actual artefacts" is a step rather than an assumption.
+
+Afterwards: **tree, git history and built artefacts all clean.** The production adapters and
+the revenue surfaces are demonstrably compiled in — `AndroidAttachmentSource`,
+`WindowsAttachmentSource`, `useAndroidPhotoPicker`, `RevenueEntryPage`, `RevenueLedgerPage`
+and `revenue_period_contributions` all present in the APK payload, and the Windows AOT
+image carrying its own platform's adapter and the same surfaces.
+
+### Fresh-migration provisioning gate (item 30)
+
+**Not run, and deliberately not provisioned.** A full migration-chain replay against a
+genuinely fresh Postgres needs a Supabase branch, which is a paid resource and was not
+created unilaterally. What *is* green: migration ledger parity byte-for-byte, repository
+provenance (every applied version accounted for by a committed file), the local fresh-schema
+and upgrade tests, and both API-surface invariants.
+
+**Recorded as a staging-setup gate:** run the branch replay once before the first staging
+deploy, together with the reason-constraint validation D-146 records.
+
+### Live cleanup and baseline (item 32)
+
+Every acceptance sale reversed through the real `revenue_void`; expense fixtures reversed;
+development grant fixtures restored; storage reconciled through the ordinary reclamation
+policy.
+
+| Required | Result |
+|---|---|
+| Verified live revenue rules | **4** |
+| Test bands / subtypes / premises statuses | **0 / 0 / 0** |
+| Closed periods | **0** |
+| Active acceptance revenue | **0** |
+| Active acceptance expenses | **0** |
+| Stranded Storage objects | **0** |
+| Metadata ↔ Storage | **Exact both ways** — 118 revenue rows ↔ 118 objects, 46 expense rows ↔ 46 objects |
+| Authority fixture | **Restored** — 5 grants, the development baseline |
+| The three immutable whitespace-reason evidence rows | **Untouched** (1 expense, 1 revenue, 1 reopen) |
+
+### No new features
+
+No P&L, no dashboard, no export, no tax administration, no attachment removal, no new
+revenue category, no production domain routing. The only `lib/` change is D-160's fix, and a
+test asserts the reporting layer still names no P&L, Net Sales, Operating Profit or Export.
+
+**No product gap was found.** Everything the acceptance exercised exists; what it found was
+one defect and one dishonest assertion.

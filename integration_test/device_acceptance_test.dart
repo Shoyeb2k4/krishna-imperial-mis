@@ -113,6 +113,7 @@ import 'package:krishna_mis/data/remote/master_gateway.dart';
 import 'package:krishna_mis/domain/auth/session_state.dart';
 import 'package:krishna_mis/domain/sync/pending_mutation.dart';
 import 'package:krishna_mis/domain/sync/server_refusal.dart';
+import 'package:krishna_mis/core/design/components/sync_state_chip.dart';
 import 'package:krishna_mis/domain/sync/sync_state.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
@@ -6652,87 +6653,114 @@ void main() {
   }
 
   group('windows-revenue-edit', skip: _phase != 'windows-revenue-edit', () {
-    testWidgets(
-      'a sale is corrected from the ledger, at realistic window sizes',
-      (tester) async {
-        await launch(tester);
-        await signIn(tester, 'giridhar@hki.com');
-        await expectSignedIn(tester, 'giridhar@hki.com');
+    testWidgets('a sale is corrected from the ledger, at realistic window sizes', (
+      tester,
+    ) async {
+      await launch(tester);
+      await signIn(tester, 'giridhar@hki.com');
+      await expectSignedIn(tester, 'giridhar@hki.com');
 
-        final container = ProviderScope.containerOf(
-          tester.element(find.byType(KrishnaMisApp)),
-        );
-        await container.read(sessionProvider.notifier).refreshAuthority();
-        await tester.pump(const Duration(seconds: 2));
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(KrishnaMisApp)),
+      );
+      await container.read(sessionProvider.notifier).refreshAuthority();
+      await tester.pump(const Duration(seconds: 2));
 
-        await openRevenueLedger(tester);
-        final id = await recordSaleOnWindows(
-          tester,
-          unit: 'CCR',
-          category: 'RESTAURANT',
-          amount: '100000',
-        );
-        await syncRevenueOnWindows(tester, id);
-        final before = await RevenueRepository(boot.database).load(id);
-        final number = before!.txnNumber!;
+      await openRevenueLedger(tester);
+      final id = await recordSaleOnWindows(
+        tester,
+        unit: 'CCR',
+        category: 'RESTAURANT',
+        amount: '100000',
+      );
+      await syncRevenueOnWindows(tester, id);
+      final before = await RevenueRepository(boot.database).load(id);
+      final number = before!.txnNumber!;
 
-        await openWindowsRevenueDetail(tester, id);
-        expect(find.byKey(const Key('revenue-edit')).evaluate(), isNotEmpty);
+      await openWindowsRevenueDetail(tester, id);
+      expect(find.byKey(const Key('revenue-edit')).evaluate(), isNotEmpty);
 
-        await revealAndTap(tester, const Key('revenue-edit'));
-        await tester.pump(const Duration(seconds: 1));
-        await pumpUntil(
-          tester,
-          'the correction form',
-          () => visible('Correct this sale'),
-        );
-        expect(visible('Save changes'), isTrue);
+      await revealAndTap(tester, const Key('revenue-edit'));
+      await tester.pump(const Duration(seconds: 1));
+      await pumpUntil(
+        tester,
+        'the correction form',
+        () => visible('Correct this sale'),
+      );
+      expect(visible('Save changes'), isTrue);
 
-        // The edit form at an ordinary laptop width, which is where D-123's drift showed.
-        expect(
-          tester.takeException(),
-          isNull,
-          reason: 'the correction form must not overflow a 1366pt laptop',
-        );
+      // The edit form at an ordinary laptop width, which is where D-123's drift showed.
+      expect(
+        tester.takeException(),
+        isNull,
+        reason: 'the correction form must not overflow a 1366pt laptop',
+      );
 
-        await tester.enterText(find.byType(TextField).first, '210000');
-        await tester.pump(const Duration(milliseconds: 700));
-        await revealAndTap(tester, const Key('revenue-save'));
-        await tester.pump(const Duration(seconds: 2));
+      await tester.enterText(find.byType(TextField).first, '210000');
+      await tester.pump(const Duration(milliseconds: 700));
+      await revealAndTap(tester, const Key('revenue-save'));
+      await tester.pump(const Duration(seconds: 2));
 
-        final deadline = DateTime.now().add(const Duration(seconds: 120));
-        while (DateTime.now().isBefore(deadline)) {
-          await container.read(syncEngineProvider)?.pushOnce();
-          final rows = await boot.database
-              .select(boot.database.syncOutbox)
-              .get();
-          if (rows
-              .where((o) => o.entityId == id && o.status != 'done')
-              .isEmpty) {
-            break;
-          }
-          await tester.pump(const Duration(seconds: 2));
+      final deadline = DateTime.now().add(const Duration(seconds: 120));
+      while (DateTime.now().isBefore(deadline)) {
+        await container.read(syncEngineProvider)?.pushOnce();
+        final rows = await boot.database.select(boot.database.syncOutbox).get();
+        if (rows.where((o) => o.entityId == id && o.status != 'done').isEmpty) {
+          break;
         }
+        await tester.pump(const Duration(seconds: 2));
+      }
 
-        // One document, one number, the corrected figures, delivered once.
-        final canonical = await _admin.revenueDocument(id);
-        expect(canonical['txn_number'], number);
-        expect(canonical['gross_amount_minor'], 21000000);
-        expect(canonical['tax_amount_minor'], 1000000);
-        expect(canonical['net_amount_minor'], 20000000);
-        expect(canonical['component_count'], 1);
+      // One document, one number, the corrected figures, delivered once.
+      final canonical = await _admin.revenueDocument(id);
+      expect(canonical['txn_number'], number);
+      expect(canonical['gross_amount_minor'], 21000000);
+      expect(canonical['tax_amount_minor'], 1000000);
+      expect(canonical['net_amount_minor'], 20000000);
+      expect(canonical['component_count'], 1);
 
-        // The same ledger row, updated in place.
-        await openRevenueLedger(tester);
-        await pumpUntil(
-          tester,
-          'the updated ledger row',
-          () => find.byKey(Key('revenue-ledger-row-$id')).evaluate().isNotEmpty,
-        );
-        expect(visible('Synced'), isTrue);
-        expect(tester.takeException(), isNull);
-      },
-    );
+      // The same ledger row, updated in place.
+      await openRevenueLedger(tester);
+      await pumpUntil(
+        tester,
+        'the updated ledger row',
+        () => find.byKey(Key('revenue-ledger-row-$id')).evaluate().isNotEmpty,
+      );
+      // **Read the chip, not a string.** The Windows ledger renders its sync
+      // state `compact`, which is an icon and a colour and deliberately no text
+      // — it is a dense financial table, and a word per row would be noise. So
+      // `find.text('Synced')` can never match here, and the assertion that used
+      // to stand on this line was passing on text belonging to a surface that
+      // happened still to be mounted. It proved nothing about the ledger.
+      //
+      // Asserting the widget's own state is both satisfiable and stronger: it is
+      // what the operator actually sees rendered (D-160).
+      // And it CONVERGES on Synced rather than being caught mid-cycle. The chip is
+      // fed by a Drift stream over the outbox, so the frame in which the last
+      // intent is marked done is not necessarily the frame in which the row
+      // repaints. Waiting for the condition rather than for a number of frames is
+      // the rule D-152 records; asserting immediately here reported `syncing` and
+      // would have been read as a stuck queue.
+      SyncState chipState() => tester
+          .widget<SyncStateChip>(
+            find.descendant(
+              of: find.byKey(Key('revenue-ledger-row-$id')),
+              matching: find.byType(SyncStateChip),
+            ),
+          )
+          .state;
+      await pumpUntil(
+        tester,
+        'the ledger row to settle on Synced',
+        () => chipState() == SyncState.synced,
+      );
+      expect(
+        chipState(),
+        SyncState.synced,
+        reason: 'the corrected sale is on the server and the row says so',
+      );
+      expect(tester.takeException(), isNull);
+    });
   });
 
   group('windows-revenue-void', skip: _phase != 'windows-revenue-void', () {
