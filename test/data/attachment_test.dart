@@ -20,11 +20,32 @@ import 'package:uuid/uuid.dart';
 import '../support/expense_fixtures.dart';
 
 /// An object store that records what it was given and can be told to fail.
+///
+/// It models the real store's two writes separately — [objects] is the bucket and
+/// [registered] is the canonical metadata — because the difference between them is the
+/// whole of the lifecycle this suite tests. Conflating them, as an earlier version did,
+/// makes "the bytes are there" indistinguishable from "the record says so", which is
+/// exactly the confusion that left objects stranded on the real server.
 class FakeObjectStore implements AttachmentObjectStore {
+  /// The bucket: what bytes physically exist, registered or not.
   final Map<String, List<int>> objects = {};
+
+  /// The canonical metadata rows, by object path. [hashOf] answers from here, because
+  /// the real store reads the metadata row rather than the object.
+  final Map<String, String> registered = {};
+
+  /// Paths [discardUnregistered] actually removed.
+  final List<String> discarded = [];
+
   int uploadAttempts = 0;
 
   UploadOutcome? nextOutcome;
+
+  /// The bytes land and registration then refuses — the sequence that strands an object.
+  bool refuseRegistrationOnce = false;
+
+  /// The bytes land, registration **commits**, and the answer is lost on the wire.
+  bool loseRegistrationResponseOnce = false;
 
   /// When set, the store claims to hold a different hash than it was sent.
   String? corruptReportedHash;
@@ -52,6 +73,24 @@ class FakeObjectStore implements AttachmentObjectStore {
       fileName: fileName,
     );
     objects[path] = bytes;
+
+    if (refuseRegistrationOnce) {
+      refuseRegistrationOnce = false;
+      // What the real store does at the same point: the object exists and nothing will
+      // ever name it, so this is the one moment anything knows to take it back.
+      await discardUnregistered(owner, path);
+      return const UploadRefused(
+        'That file cannot be recorded against this document.',
+      );
+    }
+
+    registered[path] = sha256Of(bytes);
+
+    if (loseRegistrationResponseOnce) {
+      loseRegistrationResponseOnce = false;
+      return const UploadUnreachable('the answer never arrived');
+    }
+
     return UploadStored(
       storagePath: path,
       reportedHash: corruptReportedHash ?? sha256Of(bytes),
@@ -59,9 +98,20 @@ class FakeObjectStore implements AttachmentObjectStore {
   }
 
   @override
-  Future<String?> hashOf(AttachmentOwnerKind owner, String storagePath) async {
-    final bytes = objects[storagePath];
-    return bytes == null ? null : sha256Of(bytes);
+  Future<String?> hashOf(AttachmentOwnerKind owner, String storagePath) async =>
+      registered[storagePath];
+
+  @override
+  Future<bool> discardUnregistered(
+    AttachmentOwnerKind owner,
+    String storagePath,
+  ) async {
+    // The server refuses the delete while a metadata row names the path. Modelled here
+    // rather than assumed, because it is the guarantee that makes reclamation safe.
+    if (registered.containsKey(storagePath)) return false;
+    if (objects.remove(storagePath) == null) return false;
+    discarded.add(storagePath);
+    return true;
   }
 }
 

@@ -79,7 +79,22 @@ abstract interface class AttachmentObjectStore {
   });
 
   /// Reads back the stored object's hash, for stores that do not report one on write.
+  ///
+  /// Answered from the **canonical metadata row**, not from the object, so a non-null
+  /// result is also the answer to *"did the registration commit?"* — which is what a
+  /// client that lost a response actually needs to know before it does anything else.
   Future<String?> hashOf(AttachmentOwnerKind owner, String storagePath);
+
+  /// Removes an object that registration terminally refused, and reports whether it went.
+  ///
+  /// Only ever called after a refusal, and the server refuses the delete outright while
+  /// any metadata row names the path — so this cannot destroy evidence even if the client
+  /// is wrong about what happened. An object nothing names is not evidence; Postgres is
+  /// the record of what evidence exists (spec §23).
+  Future<bool> discardUnregistered(
+    AttachmentOwnerKind owner,
+    String storagePath,
+  );
 }
 
 /// The deterministic object path (spec §15.2).
@@ -273,6 +288,46 @@ class AttachmentUploadWorker {
       return false;
     }
 
+    final expectedPath = attachmentStoragePath(
+      orgId: row.orgId,
+      owner: row.owner.kind,
+      ownerId: row.ownerId,
+      attachmentId: row.id,
+      fileName: row.fileName,
+    );
+
+    // **Before re-uploading, find out whether the last attempt actually landed.**
+    //
+    // An upload is two writes, and only the second is idempotent by mutation id. When the
+    // response to the second is lost, the client knows nothing and the row comes back
+    // round as `retryNeeded` — while on the server the registration may already have
+    // committed. Re-uploading then would push bytes over an object that is already
+    // canonical evidence, which the Storage policy now refuses outright, and the refusal
+    // would read as terminal for an attachment that is in fact finished.
+    //
+    // So the retry asks the metadata row first. Only a retry: a first attempt cannot have
+    // registered anything, and paying a round trip to establish that would be a round trip
+    // on the common path to answer a question with one possible answer.
+    if (row.attemptCount > 0) {
+      final registered = await store.hashOf(row.owner.kind, expectedPath);
+      if (registered != null) {
+        if (registered != row.contentHash) {
+          // A different file is recorded under this attachment's identity. Nothing this
+          // worker can do is right, and overwriting the record would be the one thing
+          // that is definitely wrong.
+          await _markFailed(
+            row,
+            now,
+            'A different file is already recorded against this attachment.',
+            retryable: false,
+          );
+          return false;
+        }
+        await _markUploaded(row, expectedPath, now);
+        return true;
+      }
+    }
+
     // Persisted before the request goes out, so a crash mid-upload is recoverable rather
     // than invisible. A row left `uploading` by a kill is picked up by the next pass,
     // because the object write is idempotent on its deterministic path.
@@ -321,20 +376,7 @@ class AttachmentUploadWorker {
           );
           return false;
         }
-        await db.customUpdate(
-          "UPDATE ${row.owner.table} SET upload_state = 'uploaded', "
-          'storage_path = ?, uploaded_at = ?, reclaimable_after = ?, '
-          'last_error = NULL, next_attempt_at = NULL WHERE id = ?',
-          variables: [
-            Variable<String>(storagePath),
-            Variable<DateTime>(now),
-            // The staged copy stays for a week after confirmation. Deleting it now would
-            // make recovery from a later problem impossible for the sake of some bytes.
-            Variable<DateTime>(now.add(AttachmentPolicy.stagingRetention)),
-            Variable<String>(row.id),
-          ],
-          updates: const {},
-        );
+        await _markUploaded(row, storagePath, now);
         return true;
 
       case UploadRefused(:final message):
@@ -345,6 +387,27 @@ class AttachmentUploadWorker {
         await _markFailed(row, now, message);
         return false;
     }
+  }
+
+  Future<void> _markUploaded(
+    _DueAttachment row,
+    String storagePath,
+    DateTime now,
+  ) async {
+    await db.customUpdate(
+      "UPDATE ${row.owner.table} SET upload_state = 'uploaded', "
+      'storage_path = ?, uploaded_at = ?, reclaimable_after = ?, '
+      'last_error = NULL, next_attempt_at = NULL WHERE id = ?',
+      variables: [
+        Variable<String>(storagePath),
+        Variable<DateTime>(now),
+        // The staged copy stays for a week after confirmation. Deleting it now would
+        // make recovery from a later problem impossible for the sake of some bytes.
+        Variable<DateTime>(now.add(AttachmentPolicy.stagingRetention)),
+        Variable<String>(row.id),
+      ],
+      updates: const {},
+    );
   }
 
   Future<void> _markFailed(

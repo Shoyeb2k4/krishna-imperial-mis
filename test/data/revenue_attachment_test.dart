@@ -644,6 +644,161 @@ void main() {
         reason: 'and the expense table, which is empty here, cost nothing',
       );
     });
+
+    /// What happens to the bytes when the second of the two writes refuses.
+    ///
+    /// Slice 11 shipped a lifecycle in which they simply stayed: the register RPC refused,
+    /// the row went terminally `rejected`, and the object sat in a private bucket named by
+    /// nothing. Four of the eight objects the Slice 11 report could not account for were
+    /// produced by exactly that, through the ordinary path with no seam involved.
+    group('bytes that were never recorded do not stay in the bucket', () {
+      test('a terminal registration refusal takes its object back', () async {
+        await create(draft(id: 'x1'));
+        await accept('x1');
+        await attach('x1', [await stage('x1')]);
+
+        // The object lands and the record refuses it — a limit reached from a second
+        // device, or a path the server derives differently. Either way there will never
+        // be a metadata row, and nothing else will ever look at the object again.
+        store.refuseRegistrationOnce = true;
+        expect(await worker().uploadDue(), 0);
+
+        expect(
+          (await repository.attachmentsOf('x1')).single.uploadState,
+          AttachmentUploadState.rejected,
+          reason: 'the refusal is still terminal; that part was right',
+        );
+        expect(
+          store.objects,
+          isEmpty,
+          reason: 'and the bytes it refused are no longer in the bucket',
+        );
+        expect(store.discarded, hasLength(1));
+        expect(store.registered, isEmpty);
+      });
+
+      test('reclamation cannot touch an object that is evidence', () async {
+        // The guarantee that makes the reclamation safe, and it is the server's rather
+        // than the client's: while a metadata row names the path the delete is refused,
+        // so a client that lost a response and guessed wrong destroys nothing.
+        await create(draft(id: 'x2'));
+        await accept('x2');
+        await attach('x2', [await stage('x2')]);
+        expect(await worker().uploadDue(), 1);
+
+        final path = store.objects.keys.single;
+        expect(
+          await store.discardUnregistered(AttachmentOwnerKind.sale, path),
+          isFalse,
+        );
+        expect(store.objects, hasLength(1));
+        expect(store.discarded, isEmpty);
+      });
+
+      test('a lost registration response reconciles without re-uploading', () async {
+        // The case reclamation must never be applied to. The server committed; the
+        // client heard nothing. The retry has to establish which of those happened
+        // before it does anything, and the answer lives in the metadata row.
+        await create(draft(id: 'x3'));
+        await accept('x3');
+        await attach('x3', [await stage('x3')]);
+
+        store.loseRegistrationResponseOnce = true;
+        expect(await worker().uploadDue(), 0);
+        expect(
+          (await repository.attachmentsOf('x3')).single.uploadState,
+          AttachmentUploadState.retryNeeded,
+          reason: 'not knowing is not a refusal (D-048 §1)',
+        );
+        expect(store.registered, hasLength(1));
+        final attemptsAfterFirst = store.uploadAttempts;
+
+        clock = clock.add(const Duration(hours: 1));
+        expect(await worker().uploadDue(), 1);
+
+        expect(
+          store.uploadAttempts,
+          attemptsAfterFirst,
+          reason:
+              'the retry asked whether the registration committed and found that it '
+              'had, so it sent no bytes over evidence that already exists',
+        );
+        expect(store.objects, hasLength(1));
+        expect(store.registered, hasLength(1));
+        expect(store.discarded, isEmpty);
+        expect(
+          (await repository.attachmentsOf('x3')).single.uploadState,
+          AttachmentUploadState.uploaded,
+        );
+      });
+
+      test(
+        'a different file recorded under this identity is not overwritten',
+        () async {
+          // The only outcome in which the pre-check finds a registration it disagrees
+          // with. Replacing the record would be the one thing that is definitely wrong,
+          // so it refuses and says so instead.
+          await create(draft(id: 'x4'));
+          await accept('x4');
+          await attach('x4', [await stage('x4')]);
+
+          store.nextOutcome = const UploadUnreachable('offline');
+          expect(await worker().uploadDue(), 0);
+
+          final expected = store.registered;
+          expect(expected, isEmpty);
+          // Somebody else's bytes are already recorded at this attachment's own path.
+          final row = await db
+              .customSelect('SELECT * FROM revenue_attachments')
+              .getSingle();
+          final path = attachmentStoragePath(
+            orgId: row.read<String>('org_id'),
+            owner: AttachmentOwnerKind.sale,
+            ownerId: row.read<String>('revenue_entry_id'),
+            attachmentId: row.read<String>('id'),
+            fileName: row.read<String>('file_name'),
+          );
+          store.registered[path] = 'a-different-file-entirely';
+
+          clock = clock.add(const Duration(hours: 1));
+          expect(await worker().uploadDue(), 0);
+          expect(
+            (await repository.attachmentsOf('x4')).single.uploadState,
+            AttachmentUploadState.rejected,
+          );
+          expect(
+            store.registered[path],
+            'a-different-file-entirely',
+            reason: 'the record stands; the client does not get to replace it',
+          );
+          expect(store.discarded, isEmpty);
+        },
+      );
+
+      test('none of it moves a financial figure (§25)', () async {
+        // The Slice 11 rule, re-asserted over the paths this closure added: a refusal, a
+        // reclamation and a lost response are all attachment events, and an attachment
+        // event changes no amount, tax figure, date, number or row version.
+        await create(draft(id: 'x5'));
+        await accept('x5');
+        final before = await financialState('x5');
+
+        await attach('x5', [await stage('x5')]);
+        store.refuseRegistrationOnce = true;
+        await worker().uploadDue();
+        expect(await financialState('x5'), before);
+
+        await create(draft(id: 'x6'));
+        await accept('x6', number: 'KI-REV-26-27-000002');
+        final beforeLost = await financialState('x6');
+        await attach('x6', [await stage('x6')]);
+        store.loseRegistrationResponseOnce = true;
+        await worker().uploadDue();
+        clock = clock.add(const Duration(hours: 1));
+        await worker().uploadDue();
+        expect(await financialState('x6'), beforeLost);
+      });
+    });
   });
 
   group('persistence survives a restart (§11, §37)', () {

@@ -356,6 +356,30 @@ to a person.
       attachment acceptance (D-077). Keep it manual, keep it per-release, and do not let a
       green suite argue you out of running it.
 
+- [ ] **Manual, once per platform, for a SALE:** the real OS picker returns a file to the
+      revenue surface. **Android PENDING · Windows PENDING.**
+
+      Revenue attachments ship on the shared strip and the shared production source, so
+      the *wiring* is asserted from the host — `attachment_source_wiring_test.dart` reads
+      what production resolves, and the revenue entry form and sale detail panel are each
+      rendered against that production source rather than an injected one, so a revenue
+      surface cannot silently resolve a picker the expense surface does not.
+
+      **That is not the same claim as this line.** The OS picker is a separate activity
+      no harness opens, so a person still has to open one from a *sale* and see the file
+      come back. The exact gate:
+
+      * **Android** — Add Sale, choose the property and category, More details, Add file,
+        the system Photo Picker opens, choose one small image, the app shows it Attached,
+        Save, let it sync, then open the sale and see the evidence listed.
+      * **Windows** — the compiled `krishna_mis.exe`, Transactions to Sales, open a
+        recorded sale, Add file, the native Windows dialog opens, choose a file, the
+        panel shows it Attached, and it is still there after the upload confirms.
+
+      D-077 is the reason the wording is this careful: a full green automated attachment
+      acceptance ran against a picker that did not exist. Do not report this line from a
+      wiring assertion, and do not report it from the expense run.
+
 ## M. Revenue write gate (planned — Phase 4, not built)
 
 **Nothing in this section is implemented.** It is recorded with the approved Phase 4

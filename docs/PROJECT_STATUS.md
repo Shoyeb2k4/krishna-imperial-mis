@@ -2117,3 +2117,126 @@ pointer changed and the removal columns absent. Two narrow tables rather than on
 polymorphic table: the foreign key that makes an orphan impossible is what a cascade and a
 purge both rely on. The v14 step needs no version floor — unlike v13 (D-144) it creates a
 table rather than adding a column to one a later step builds.
+
+---
+
+## Phase 4 Slice 11 closure — the upload lifecycle after the bytes land: **DONE, except one manual gate**
+
+Two questions were put: audit the eight Storage objects that carried no metadata row, and
+run a native-picker smoke test for revenue on each platform. The first found a production
+defect. The second has **not been run** and is not claimed.
+
+### 1 · The eight objects were not what the Slice 11 report said (D-154)
+
+The report attributed them to KM009, KM010 and the wrong-property and revoked probes.
+Against the actual rows, **three of those four attributions are wrong**: KM009 re-uploads
+to the *same* path and strands nothing, and the wrong-property and revoked probes are
+refused by the Storage write policy so no bytes are ever written.
+
+They are four pairs, one per suite run:
+
+| Class | Count | Production-reachable? |
+|---|---|---|
+| KM010 — a deliberately forged storage path | 4 | **No** — the client derives the path it sends |
+| **KM020 — a voided parent** | **4** | **Yes**, through the ordinary path with no seam involved |
+
+And the expense side showed the same shape: 50 objects, 46 rows, all four orphans with a
+voided parent — latent since D-073a.
+
+**The sequence, all of it ordinary:** a sale is recorded with a till photo and numbered; the
+upload fails transiently and goes on the backoff clock; the accountant voids the sale; the
+backoff elapses; **Storage accepts the bytes**, because its write policy asks only whether
+the caller may *read* the sale; the register RPC refuses `KM020`; the worker marks the row
+terminally `rejected`. The object then sits in a private bucket for ever, named by no
+metadata row, invisible to the ledger, counted against no limit.
+
+**Proven red before anything changed.** Seven new live tests against the shipped server:
+**4 failed**, including one showing that a competing upload replaces canonical evidence
+before the RPC refuses it. All seven pass against the fixed server.
+
+### 2 · The fix, in three layers (D-154, D-155)
+
+| | |
+|---|---|
+| Write authority | `may_attach_to_expense` / `may_attach_to_revenue` — the read predicate, plus `attachment.upload`, plus a parent that is **not voided**. Decides every INSERT and UPDATE |
+| Read authority | **unchanged** — a voided document keeps its evidence (D-006), asserted at deploy so a later change cannot take it away |
+| Reclamation | a narrow Storage `delete` policy per kind: this bucket, this caller's own bytes, a parent they may read, and **only while no metadata row names the path** |
+| Overwrite | the UPDATE policies carry the same guard, so registered evidence can no longer be replaced |
+| Lost response | the worker asks whether the registration committed **before** it re-uploads, and reconciles to `uploaded` when it has |
+
+Both document kinds, deliberately: Slice 11 made one worker and one store serve both
+(D-147), so there is no revenue-only form of this fix that does not first fork them.
+
+### 3 · The bucket reconciles, and the run now says so rather than reporting residue
+
+The Slice 11 teardown printed what it left. It now reclaims what nothing names — through
+the ordinary policy, not through any privilege a test has and a person does not — and then
+asserts there is nothing left, over both prefixes.
+
+| | Before | After |
+|---|---|---|
+| Revenue objects / metadata rows | 55 / 47 | **79 / 79** |
+| Expense objects / metadata rows | 50 / 46 | **46 / 46** |
+| Stranded objects | 8 (+8 more from the red and green runs) | **0** |
+
+**16 stranded objects reclaimed.** Registered evidence was untouched, including on voided
+sales, which is the half the policy exists to guarantee.
+
+### 4 · The native picker smoke for revenue: **NOT RUN** (D-156)
+
+**Android PENDING · Windows PENDING.** Neither is claimed, and Slice 11 is therefore not
+formally closed on this one line.
+
+*What is closed:* the wiring. `attachment_source_wiring_test.dart` reads what production
+resolves per platform, and the revenue entry form and sale detail panel are now each
+rendered **without** the injected source and asserted not to show *"Attaching a file is not
+available on this device yet."* — the exact sentence two real devices displayed for a whole
+phase (D-077). A revenue surface cannot silently resolve a picker the expense surface does
+not.
+
+*What is not:* the native interaction. The OS picker is a separate activity no harness
+opens; it needs a person to open one **from a sale** on each platform. This session had no
+way to perform a human interaction on the project lead's device, and driving an emulator's
+picker with synthetic input events would be a different test on a different machine reported
+under the same name — which is the substitution D-077 exists to forbid. The exact steps for
+each platform are in `RELEASE_CHECKLIST.md` §L, as a second manual line beside the expense
+one; running the expense gate does not discharge it.
+
+### Verified
+
+| Item | Status | Evidence |
+|---|---|---|
+| `dart format --set-exit-if-changed` | **Tested** | clean, 195 files |
+| `flutter analyze` | **Tested** | **No issues found** |
+| Host suite | **Tested** | **1,154 tests, all passing** (1,147 + 7) |
+| Secret scan — tree and git history | **Tested** | clean, controls passing |
+| Live Slice 11 boundary group | **Tested** | **20 tests** (13 + 7), all passing; **4 of the 7 new ones failed against the unfixed server** |
+| Host control — the retry pre-check | **Tested** | degraded, 2 repository tests turned RED, restored and **read back** (D-142) |
+| Migration ledger parity (A0 / D-056) | **Tested** | both versions verified **byte-for-byte by hash** |
+| API-surface and PUBLIC-execute invariants | **Tested** | restated in full; three additions named |
+| Migration audit | **Tested** | 21 host tests, after widening a parser that could not see the new predicates at all |
+| Bucket census | **Tested** | 0 stranded objects across both prefixes |
+| Baseline | **Tested** | 4 live rules, 0 bands/subtypes/statuses, 0 closed periods, 0 open acceptance revenue |
+
+### Migration ledger
+
+| Ledger version | Name |
+|---|---|
+| 20260906121007 | `attachment_upload_lifecycle` |
+| 20260906121034 | `api_surface_invariant_attachment_lifecycle` |
+
+Both verified **byte-for-byte by hash** against `supabase_migrations.schema_migrations.statements`.
+
+### Recorded, and deliberately not fixed here
+
+**`attachment_register` does not verify the stored object**, contrary to what
+`ARCHITECTURE.md` §16.3 has claimed since D-073a. Neither register RPC reads
+`storage.objects`; the size and hash are taken on trust from the caller, and it is the
+*worker* that verifies the hash before calling an upload confirmed. The document is
+corrected; adding the server-side read is a change to a reviewed financial boundary and
+belongs in its own scope (D-127).
+
+**A guard keyed on an incidental convention, for the third time.** The migration audit's
+function parser matched only a bare `$$` body tag, so three new `security definer`
+predicates were invisible to every assertion in that group — including the `search_path`
+one, which is the direction that fails quietly. Widened. D-103, D-134, and now this.

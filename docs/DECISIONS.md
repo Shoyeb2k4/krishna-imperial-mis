@@ -5137,3 +5137,170 @@ documented endpoint being claimed again (D-127, D-137); it caught an encoding ch
 instead. A check written against the *substance* of a document rather than its presence is
 worth more than one that merely counts sections — and this is the argument for phrasing
 documentation invariants as sentences the document must contain.
+
+
+---
+
+# Phase 4 Slice 11 closure — the upload lifecycle after the bytes land (2026-09-06)
+
+## D-154 — Storage write authority is not read authority, and the eight objects proved it
+**Date:** 2026-09-06 · **Status:** Accepted — **a production lifecycle defect, latent in
+the expense engine since D-073a and shipped again with revenue**
+
+**The audit that was asked for, and what it overturned.** The Slice 11 report recorded 55
+revenue objects against 47 metadata rows and attributed the eight orphans to *"KM009 for
+the same id with different bytes, KM010 for a path belonging to another sale, and the
+wrong-property and revoked attempts"*. Read against the actual rows rather than against the
+test names, **three of those four attributions are wrong**:
+
+* the **KM009** probe re-uploads to the *same* deterministic path, so it strands nothing —
+  what it does instead is overwrite canonical evidence, which is a worse finding and is
+  dealt with below;
+* the **wrong-property** and **revoked** probes are refused by the Storage *write* policy,
+  so no bytes are ever written and they strand nothing either.
+
+The eight are **four pairs, one pair per suite run**. Four are KM010, which is a forged
+path that production cannot produce. The other four are **KM020 — a voided parent** — which
+the report did not name at all, and which is the one class no seam of any kind is involved
+in. The expense side then showed exactly the same shape: 50 objects, 46 metadata rows, and
+all four of its orphans with a voided parent.
+
+**Why a legitimate client reaches it.** Both Storage write policies called the *read*
+predicate, and a read predicate must not care whether a document is voided, because a void
+keeps its evidence readable for ever (D-006, ARCHITECTURE §16.5). Both register RPCs refuse
+`KM020` when it is. So the two halves of one upload disagreed about exactly one condition:
+
+```
+        1. a manager records a sale with a till photo; it syncs and is numbered
+        2. the upload fails transiently; the row is `retryNeeded` on the backoff clock
+        3. the accountant voids the sale — an ordinary, capability-gated act
+        4. the backoff elapses; Storage ACCEPTS the bytes, because the sale is readable
+        5. the register RPC refuses KM020
+        6. the worker marks the row `rejected`, which is terminal and never retried
+```
+
+The object then sits in a private bucket for ever, named by no metadata row, invisible to
+the ledger, counted against no limit, reachable through no product surface. **That is a
+production lifecycle defect, not test residue**, and the four objects in the development
+project are what the shipped path produced when the void arrived deliberately rather than
+by chance.
+
+**Decision.** `may_attach_to_expense` and `may_attach_to_revenue` are the read predicate
+*plus* `attachment.upload` *plus* a parent that exists and is not voided. The INSERT and
+UPDATE Storage policies decide on them. **The READ policies are untouched**, and a
+deploy-time assertion refuses the migration if one of them ever acquires attach authority —
+because a voided document keeping its evidence is the rule this must not break while fixing
+the other one.
+
+The register RPCs keep their own `KM020` guard. A boundary that relies on another boundary
+having already said no is one deployment away from saying yes, so both are asserted.
+
+**Registered evidence can no longer be overwritten either.** The UPDATE policies gained the
+same not-already-evidence guard. Before it, a competing upload reached the canonical path
+*before* the refusal, so the stored object no longer hashed to the value its own metadata
+recorded — proven by a live test that turned red against the shipped server and green
+afterwards. The retry that used to depend on overwriting is handled properly instead: the
+worker asks whether the registration committed **before** it re-uploads, which is what a
+lost response actually calls for, and only on a retry, because a first attempt cannot have
+registered anything.
+
+**Both document kinds, in a revenue slice, deliberately.** D-127's rule is not to change
+the expense path quietly inside a revenue slice. This is neither quiet nor separable: Slice
+11 made one worker and one store serve both (D-147), so the fix has no revenue-only form
+that does not first fork them — and fixing one while leaving the other would recreate, on
+purpose, the duplication D-147 exists to prevent.
+
+**Proven red first.** Seven live tests were written against the shipped server and **four
+failed**, including the evidence-overwrite one; all seven pass against the fixed one. The
+host control is the retry pre-check: removing it turns two of the new repository tests red,
+and the restore was read back rather than assumed (D-142).
+
+## D-155 — An object no metadata row names is not evidence, and its uploader may take it back
+**Date:** 2026-09-06 · **Status:** Accepted
+
+D-154 closes the largest class by refusing the bytes. Two conditions remain in which bytes
+legitimately land and registration still refuses terminally: the attachment limits
+(`KM022`), reachable once a second device has filled a document's quota, and a path the
+server derives differently from the client (`KM010`). Something has to answer for those, or
+"the worker must not leave an indefinite inaccessible object" is a wish.
+
+**Decision.** A narrow Storage `delete` policy per document kind, and the client that wrote
+the bytes calls it at the one moment anything knows both that an object exists and that
+nothing will ever name it — inside the store, immediately on a registration refusal.
+
+Four conditions, each removing a way it could destroy something:
+
+| | |
+|---|---|
+| `bucket_id` | nothing outside the financial bucket is in reach |
+| the parent's **read** predicate | the caller must be entitled to the document — the read one rather than the write one, because an object needing cleanup may well belong to a sale that has since been voided, which is the very case that stranded it |
+| `owner_id = auth.uid()` | only bytes this caller themselves wrote |
+| `not attachment_object_is_registered(name)` | and only while no metadata row names the path |
+
+**This is not a hole in D-063's "nobody removes evidence through the object API".** Postgres
+is the record of what evidence exists (spec §23); an object no row names is, by that rule's
+own definition, not evidence. The guard is a `not exists` the database evaluates at delete
+time, so the guarantee is structural rather than conventional — and it is the same guard
+that answers *"the response was lost"*: if the registration in fact committed, a row names
+the path and the delete is refused rather than a bill being destroyed. Proven both ways
+against the real server.
+
+`attachment_object_is_registered` is `security definer` and not an inline subquery, because
+a policy expression runs with the **caller's** privileges and both metadata tables carry
+RLS — an inline `not exists` would answer *"nothing names this path"* for a row the caller
+merely cannot see, and would then let them delete somebody else's evidence. That is D-045
+and D-110 §1 in the one place where getting it wrong destroys a document rather than hiding
+one.
+
+**And the bucket now has to reconcile.** The Slice 11 run *reported* what it left; this one
+reclaims it and then asserts there is nothing left — a different claim, and a standing
+invariant over both prefixes rather than a tidy-up. It is written to reclaim first and
+assert afterwards, so the residue of every earlier run cleared on its first execution: **16
+stranded objects reclaimed, and the bucket now reconciles exactly — 79 revenue objects to
+79 rows, 46 expense objects to 46 rows, 0 stranded.**
+
+**Two adjacent findings, recorded rather than fixed in passing.**
+
+*A guard keyed on an incidental convention, for the third time.* The migration audit's
+function parser matched only a bare `$$` body tag. The three new predicates use `$fn$`, so
+they were invisible to **every** assertion in that group at once — including the
+`search_path` one, which is the direction that fails quietly. Widened to any dollar-quote
+tag. This is D-103 exactly, and it is now the third instance (D-103, D-134, this).
+
+*`ARCHITECTURE.md` §16.3 claims `attachment_register` "compares them against the stored
+object and refuses on disagreement".* It does not: neither register RPC reads
+`storage.objects` at all, and the byte size and hash are taken on trust from the caller.
+The hash still means something — the *worker* verifies it against what the metadata row
+reports before calling an upload confirmed — but the sentence describes a server-side check
+that has never existed. Corrected in the document rather than built here: adding a
+server-side object read is a change to a reviewed financial boundary and belongs in its own
+scope (D-127).
+
+## D-156 — The native picker gate is per document kind, and revenue's has not been run
+**Date:** 2026-09-06 · **Status:** Open — **Android PENDING · Windows PENDING**
+
+D-077 is the most expensive finding in this project: a full green automated attachment
+acceptance ran on two real devices against a picker that did not exist, because every test
+overrode `attachmentSourceProvider` and none read what production resolves.
+
+Two halves of that gate, kept apart because they are different claims.
+
+**The wiring half is closed, and is now closed for the revenue surfaces specifically.**
+`attachment_source_wiring_test.dart` reads what production resolves per platform. Added
+here: the revenue entry form and the sale detail panel are each rendered **without** the
+injected source, and asserted not to show *"Attaching a file is not available on this
+device yet."* — the exact sentence two real devices displayed for a whole phase. That is a
+different claim from the provider test, because a surface that read some other provider, or
+built its own strip, would satisfy the provider test and still fail a user.
+
+**The native half is not closed and is not claimed.** The OS picker is a separate activity
+no harness opens. It needs a person to open one **from a sale** on each platform, and it has
+not been done: this session had no way to perform a human interaction on the project lead's
+device, and driving an emulator's picker with input events would be a different test on a
+different machine reported under the same name — which is the substitution D-077 exists to
+forbid. It is recorded in `RELEASE_CHECKLIST.md` §L with the exact steps for each platform,
+as **PENDING**, and **Phase 4 Slice 11 is therefore not formally closed** on that one line.
+
+Running the expense gate does not discharge it. The strip is shared, but what the gate
+proves is that a person can attach evidence to a *sale* on a real device, and no automated
+result substitutes for it.

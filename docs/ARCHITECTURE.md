@@ -921,8 +921,17 @@ was.
 An object in a bucket is a file. The financial claim *"this expense has a verified bill"*
 is a row in `expense_attachments`, written **only** by `public.attachment_register`, which
 the client calls after the object lands, passing the byte size and SHA-256 it computed
-locally. The RPC compares them against the stored object and refuses on disagreement, so a
-truncated or substituted upload cannot be registered.
+locally.
+
+**Corrected 2026-09-06 (D-155).** An earlier version of this paragraph said the RPC
+"compares them against the stored object and refuses on disagreement". It does not, and
+never has: neither register RPC reads `storage.objects` at all, and the size and hash are
+taken on trust from the caller. What the hash does mean is one step later and on the client
+— `AttachmentUploadWorker` calls an upload `uploaded` only when the hash the **metadata
+row** reports matches the one it computed before sending, so a truncated or substituted
+upload is not *confirmed*. It could still be *registered*, and adding the server-side object
+read that would close that is a change to a reviewed financial boundary with its own scope
+(D-127). Stated as it is rather than as it was described.
 
 The consequence that matters for reporting: the canonical answer to "is there a bill?"
 comes from the same database, under the same RLS, as the expense — never from listing a
@@ -2113,3 +2122,57 @@ promote, upload — finishes inside the same two-second pump, so the assertion w
 the product to be slow. The ordering rule is now proven in the **offline** phase, where no
 number can arrive and the upload provably cannot start. Slice 8 records the identical
 lesson for *"no number yet"* (D-119).
+
+### 25.9 What happens to the bytes when the second write refuses (2026-09-06)
+
+Slice 11 shipped an upload whose two halves disagreed about one condition, and the
+disagreement left files in a private bucket that nothing could reach. This is the closure,
+and it is the third section of this document to record that **a rule which can never
+evaluate true refuses everything and looks like a boundary working** (D-110, D-116).
+
+**The two halves, and where they parted.** The Storage write policy asked
+`may_read_*_attachments` — may this caller *read* the document. The register RPC asks that
+and, additionally, refuses a **voided** parent with `KM020`. A read predicate must not care
+about a void, because a void keeps its evidence readable for ever (D-006, §16.5). So the
+ordinary sequence walked into the gap: a sale is recorded with a till photo, the upload
+fails transiently and goes on the backoff clock, the accountant voids the sale, the backoff
+elapses, **Storage accepts the bytes**, the registration refuses, the worker marks the row
+terminally `rejected`, and the object stays for ever.
+
+Four of the eight objects the Slice 11 report could not account for were produced by
+exactly that, with no seam and no forgery involved, and the expense engine had the same hole
+from D-073a (D-154).
+
+```
+        write authority   =  read predicate
+                          +  attachment.upload
+                          +  a parent that exists and is NOT voided
+        read authority    =  unchanged; a voided sale keeps its evidence
+```
+
+**Three layers, and the last one is what makes the second safe.**
+
+1. `may_attach_to_expense` / `may_attach_to_revenue` decide every INSERT and UPDATE, so the
+   largest class can no longer put bytes in the bucket at all. A deploy-time assertion
+   refuses the migration if a *read* policy ever acquires attach authority.
+2. A narrow `delete` policy per kind lets the client that wrote an object take it back when
+   registration terminally refused it — the residual classes are the attachment limits and
+   a path the server derives differently, and for those the bytes are legitimate when they
+   are written.
+3. Both the UPDATE and the DELETE policies refuse while **any metadata row names the path**.
+   That is what separates reclaiming stranded bytes from removing evidence: Postgres is the
+   record of what evidence exists (spec §23), so an object no row names is not evidence, and
+   the guard is a `not exists` the database evaluates rather than a promise the client
+   makes.
+
+**A lost response is answered by asking, not by guessing.** The worker now establishes
+whether the registration committed *before* it re-uploads — only on a retry, because a first
+attempt cannot have registered anything — and reconciles straight to `uploaded` when it has.
+That is what a lost response actually calls for, and it is also what makes layer 3 safe on
+the UPDATE side: the legitimate retry no longer depends on overwriting an object that may
+already be canonical evidence.
+
+**The bucket has to reconcile, and now says so.** The Slice 11 run reported what it left
+behind; the run now reclaims what nothing names and then asserts there is nothing left, over
+both prefixes. Sixteen stranded objects went on the first execution, and the two sides now
+agree exactly — 79 revenue objects to 79 rows, 46 expense objects to 46 rows.

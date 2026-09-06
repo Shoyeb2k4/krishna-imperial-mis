@@ -196,6 +196,7 @@ void main() {
     Principal? principal,
     Size size = const Size(430, 932),
     ThemeData? theme,
+    bool productionAttachmentSource = false,
   }) async {
     final actor = principal ?? _principal();
     await tester.binding.setSurfaceSize(size);
@@ -220,8 +221,12 @@ void main() {
           ),
           principalProvider.overrideWithValue(actor),
           currentBusinessDateProvider.overrideWithValue(_june15),
-          // The one injection, at the boundary the harness cannot cross.
-          attachmentSourceProvider.overrideWithValue(source),
+          // The one injection, at the boundary the harness cannot cross. Omitted when a
+          // test is asking what PRODUCTION resolves, which is the assertion that was
+          // missing while `UnavailableAttachmentSource` shipped to two real devices
+          // (D-077).
+          if (!productionAttachmentSource)
+            attachmentSourceProvider.overrideWithValue(source),
           attachmentStagingProvider.overrideWithValue(
             AttachmentStagingService(
               resolveStagingDirectory: () async =>
@@ -554,6 +559,53 @@ void main() {
 
       expect(find.byKey(const Key('revenue-evidence-none')), findsOneWidget);
       expect(find.byKey(const Key('attach-file')), findsNothing);
+    });
+  });
+
+  group('the picker behind the revenue surface is the production one (D-077)', () {
+    // The half of the native-picker gate a harness can actually close.
+    //
+    // D-077 shipped an attachment feature with nothing behind it, through a full green
+    // acceptance phase, because every test overrode `attachmentSourceProvider` and none
+    // read what production resolves. The wiring test closed that for the *provider*;
+    // these close it for the *revenue surfaces*, which is a different claim — a screen
+    // that read some other provider, or rendered its own strip, would satisfy the first
+    // and fail a user.
+    //
+    // What they do NOT close is the native interaction itself: the OS picker is a
+    // separate activity, and no widget test opens one. That stays a manual gate.
+    uiTest('the sale detail surface offers a real intake', (tester) async {
+      await recorded();
+      await pump(
+        tester,
+        const RevenueDetailPage(entryId: 'entry-1'),
+        productionAttachmentSource: true,
+      );
+
+      expect(
+        find.text('Attaching a file is not available on this device yet.'),
+        findsNothing,
+        reason:
+            'this is the exact sentence two real devices showed for a whole phase while '
+            'the picker did not exist',
+      );
+      expect(find.byKey(const Key('attach-file')), findsOneWidget);
+    });
+
+    uiTest('the Android entry form offers a real intake', (tester) async {
+      await pump(
+        tester,
+        const RevenueEntryPage(),
+        productionAttachmentSource: true,
+      );
+      await tapKey(tester, 'revenue-unit-CCR');
+      await tapKey(tester, 'revenue-category-RESTAURANT');
+      await tapKey(tester, 'revenue-more-details');
+
+      expect(
+        find.text('Attaching a file is not available on this device yet.'),
+        findsNothing,
+      );
     });
   });
 

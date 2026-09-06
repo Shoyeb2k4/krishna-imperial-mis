@@ -147,6 +147,22 @@ id is hardcoded, and no financial history is rewritten.
 
 Verified byte-for-byte against `supabase_migrations.schema_migrations.statements` (D-056).
 
+## Phase 4 Slice 11 closure - the upload lifecycle after the bytes land
+
+| Ledger version | Ledger name | Committed file |
+|---|---|---|
+| 20260906121007 | `attachment_upload_lifecycle` | `20260906121007_attachment_upload_lifecycle.sql` |
+| 20260906121034 | `api_surface_invariant_attachment_lifecycle` | `20260906121034_api_surface_invariant_attachment_lifecycle.sql` |
+
+Storage write authority stops being read authority, so a voided parent can no longer
+accept bytes its own register RPC will refuse; an object no metadata row names can be
+reclaimed by the client that wrote it, and one that is named cannot be touched at all.
+Proven red first: four of the eight objects the Slice 11 report could not account for
+were produced by the ordinary path against a voided sale, with no seam involved, and the
+same defect had been latent on the expense side since D-073a (D-154).
+
+Verified byte-for-byte against `supabase_migrations.schema_migrations.statements` (D-056).
+
 ## The full applied ledger, in order
 
 ```
@@ -218,4 +234,6 @@ Verified byte-for-byte against `supabase_migrations.schema_migrations.statements
 20260905202325 period_reopen_uses_canonical_reason
 20260905210226 revenue_attachments
 20260905210332 api_surface_invariant_revenue_attachments
+20260906121007 attachment_upload_lifecycle
+20260906121034 api_surface_invariant_attachment_lifecycle
 ```

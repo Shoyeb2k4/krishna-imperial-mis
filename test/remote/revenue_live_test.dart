@@ -2190,15 +2190,54 @@ void main() {
           print('slice11 fixture $id not reversed: ${error.code}');
         }
       }
-      // The objects are NOT deleted, and that is the correct outcome rather than a gap.
-      // No client role holds DELETE on the bucket (D-063), granting one for the
-      // convenience of a test would be a backdoor, and the metadata rows they belong to
-      // are attached to voided sales that remain as history (D-006, D-066). They are
-      // listed here so the run says what it left rather than calling the bucket pristine.
+      // **Registered evidence is kept; bytes nothing names are not.**
+      //
+      // Slice 11 left every object behind and said so, on the reasoning that no client
+      // role holds DELETE and that the metadata rows belong to voided sales which remain
+      // as history (D-006, D-066). The first half of that is no longer true and the second
+      // half was answering a different question: an object *a metadata row names* is
+      // evidence and stays, voided or not — and an object **nothing** names was never
+      // evidence at all (spec §23). Leaving those was not conservatism, it was a bucket
+      // slowly filling with files the ledger cannot see.
+      //
+      // So the run reclaims exactly the second kind, through the ordinary reclamation
+      // policy rather than through any privilege a test has and a person does not: the
+      // server refuses the delete while a row names the path, so this sweep cannot remove
+      // a bill however wrong it is about what happened.
+      var registered = 0;
+      var reclaimed = 0;
+      var strandedStill = 0;
+      for (final path in createdObjects.toSet()) {
+        final row = await client
+            .from('revenue_attachments')
+            .select('id')
+            .eq('storage_path', path)
+            .maybeSingle();
+        if (row != null) {
+          registered++;
+          continue;
+        }
+        await client.storage.from(bucket).remove([path]);
+        final gone = await client.storage
+            .from(bucket)
+            .list(path: path.substring(0, path.lastIndexOf('/')));
+        if (gone.any((f) => path.endsWith('/${f.name}'))) {
+          strandedStill++;
+        } else {
+          reclaimed++;
+        }
+      }
       // ignore: avoid_print
       print(
-        'slice11 retained ${createdObjects.length} acceptance object(s) under '
-        'org/$orgId/revenue/: ${createdObjects.join(', ')}',
+        'slice11 objects: $registered kept as evidence, $reclaimed reclaimed, '
+        '$strandedStill still stranded',
+      );
+      expect(
+        strandedStill,
+        0,
+        reason:
+            'a run does not get to call the bucket pristine while it has left objects '
+            'nothing can reach',
       );
     });
 
@@ -2269,7 +2308,27 @@ void main() {
       final attachmentId = const Uuid().v4();
 
       final first = await attach(sale, attachmentId: attachmentId);
-      final replay = await attach(sale, attachmentId: attachmentId);
+      // The redelivery does NOT re-upload. Since the Slice 11 closure the object is
+      // already canonical evidence and Storage refuses to have it written over, and the
+      // shipped worker asks whether the registration committed before it sends anything,
+      // which is what a lost response actually calls for. What is redelivered is the
+      // registration, and that is where idempotency has always lived (D-004).
+      final content = evidenceBytes();
+      final replay =
+          await client.rpc<dynamic>(
+                'revenue_attachment_register',
+                params: {
+                  'p_id': attachmentId,
+                  'p_revenue_entry_id': sale,
+                  'p_file_name': 'z-report.jpg',
+                  'p_content_type': 'image/jpeg',
+                  'p_byte_size': content.length,
+                  'p_content_hash': sha256.convert(content).toString(),
+                  'p_storage_path': pathFor(sale, attachmentId),
+                  'p_mutation_id': attachmentId,
+                },
+              )
+              as Map<String, dynamic>;
 
       expect(first['status'], 'registered');
       expect(
@@ -2292,27 +2351,37 @@ void main() {
       expect(listing, hasLength(1));
     });
 
-    test(
-      'the same id with different content is refused, never overwritten',
-      () async {
-        final sale = await record();
-        final attachmentId = const Uuid().v4();
-        await attach(sale, attachmentId: attachmentId);
+    test('the same id with different content is refused, never overwritten', () async {
+      final sale = await record();
+      final attachmentId = const Uuid().v4();
+      await attach(sale, attachmentId: attachmentId);
 
-        // A fresh delivery of the same file id with different bytes. The mutation id
-        // has to differ or this replays the first answer and proves nothing — which is
-        // exactly what the first version of this test did.
-        await expectLater(
-          attach(
-            sale,
-            attachmentId: attachmentId,
-            bytes: evidenceBytes(11),
-            mutationId: const Uuid().v4(),
-          ),
-          throwsA(predicate((Object e) => refusalOf(e) == 'KM009')),
-        );
-      },
-    );
+      // A fresh delivery of the same file id with different bytes, at the registration
+      // boundary. The mutation id has to differ or this replays the first answer and
+      // proves nothing, which is exactly what the first version of this test did.
+      //
+      // The RPC keeps this guard even though Storage now refuses the competing upload
+      // first (asserted separately, in `registered evidence cannot be overwritten with
+      // different bytes`). A boundary that relies on another boundary having already
+      // said no is one deployment away from saying yes, so both are proven.
+      final competing = evidenceBytes(11);
+      await expectLater(
+        client.rpc<dynamic>(
+          'revenue_attachment_register',
+          params: {
+            'p_id': attachmentId,
+            'p_revenue_entry_id': sale,
+            'p_file_name': 'z-report.jpg',
+            'p_content_type': 'image/jpeg',
+            'p_byte_size': competing.length,
+            'p_content_hash': sha256.convert(competing).toString(),
+            'p_storage_path': pathFor(sale, attachmentId),
+            'p_mutation_id': const Uuid().v4(),
+          },
+        ),
+        throwsA(predicate((Object e) => refusalOf(e) == 'KM009')),
+      );
+    });
 
     test('a path that does not belong to the attachment is refused', () async {
       final sale = await record();
@@ -2377,9 +2446,19 @@ void main() {
         hasLength(1),
         reason: 'a void does not destroy the evidence for what was recorded',
       );
-      await expectLater(
-        attach(sale),
-        throwsA(predicate((Object e) => refusalOf(e) == 'KM020')),
+      // Refused, and refused at the *first* of the two writes since the Slice 11 closure:
+      // Storage now asks the question the register RPC asks, so a voided parent no longer
+      // accepts bytes it could never register. Which layer says no is asserted separately
+      // in `an upload leaves no bytes behind when registration refuses`; here the claim is
+      // simply that nothing further can be attached.
+      await expectLater(attach(sale), throwsA(anything));
+      final under = await client.storage
+          .from(bucket)
+          .list(path: 'org/$orgId/revenue/$sale');
+      expect(
+        under,
+        hasLength(1),
+        reason: 'and the refusal stranded no second object beside the evidence',
       );
     });
 
@@ -2602,6 +2681,375 @@ void main() {
       // The bucket's own flag is asserted at deploy time by the migration, where the
       // catalogue is actually readable; no client role may list buckets, which is
       // itself the right answer.
+    });
+
+    /// What happens to the bytes when the *second* of the two writes refuses.
+    ///
+    /// Slice 11 shipped with the two halves of an upload disagreeing about one condition:
+    /// the Storage write policy asked whether the caller may *read* the sale, and the
+    /// register RPC additionally refuses a voided one. So bytes landed for a document that
+    /// could never be registered, the worker marked the row terminally `rejected`, and the
+    /// object stayed in a private bucket named by nothing — four of the eight objects the
+    /// Slice 11 report could not account for were produced by exactly that, with no seam
+    /// and no forgery involved.
+    ///
+    /// These tests are written against the shipped behaviour first, and they fail against
+    /// it. A check is not a check until it has been seen to fail (D-071, D-074, D-094,
+    /// D-139).
+    group('an upload leaves no bytes behind when registration refuses', () {
+      /// Objects visible under a sale's prefix, whether or not anything names them.
+      Future<List<String>> objectsUnder(String saleId) async {
+        final listing = await client.storage
+            .from(bucket)
+            .list(path: 'org/$orgId/revenue/$saleId');
+        return listing.map((f) => f.name).toList()..sort();
+      }
+
+      Future<List<String>> registeredUnder(String saleId) async {
+        final rows = await client
+            .from('revenue_attachments')
+            .select('storage_path')
+            .eq('revenue_entry_id', saleId);
+        return rows.map((r) => r['storage_path'] as String).toList()..sort();
+      }
+
+      Future<void> voidSale(String saleId) async {
+        final doc = await client
+            .from('revenue_document')
+            .select('row_version')
+            .eq('id', saleId)
+            .single();
+        await client.rpc<dynamic>(
+          'revenue_void',
+          params: {
+            'p_id': saleId,
+            'p_base_row_version': doc['row_version'],
+            'p_reason': '$marker lifecycle',
+            'p_mutation_id': const Uuid().v4(),
+          },
+        );
+      }
+
+      test('a voided sale refuses the bytes, not merely the registration', () async {
+        // The production sequence, with the void arriving deliberately rather than by
+        // chance: record, void, then let the upload worker's retry come round.
+        final sale = await record();
+        await voidSale(sale);
+
+        final attachmentId = const Uuid().v4();
+        await expectLater(
+          client.storage
+              .from(bucket)
+              .uploadBinary(
+                pathFor(sale, attachmentId),
+                Uint8List.fromList(evidenceBytes()),
+                fileOptions: const FileOptions(
+                  contentType: 'image/jpeg',
+                  upsert: true,
+                ),
+              ),
+          throwsA(anything),
+          reason:
+              'Storage must ask the question the register RPC will ask. Refusing the '
+              'object is the only outcome that leaves nothing stranded',
+        );
+
+        expect(
+          await objectsUnder(sale),
+          isEmpty,
+          reason: 'a refused write puts no bytes in a private bucket',
+        );
+      });
+
+      test('the register RPC keeps its own KM020 guard as well', () async {
+        // Defence in depth: the Storage policy now refuses first, and the RPC must not
+        // stop refusing on the strength of that. A boundary that relies on another
+        // boundary having already said no is one deployment away from saying yes.
+        final sale = await record();
+        await voidSale(sale);
+
+        final attachmentId = const Uuid().v4();
+        final bytes = evidenceBytes();
+        await expectLater(
+          client.rpc<dynamic>(
+            'revenue_attachment_register',
+            params: {
+              'p_id': attachmentId,
+              'p_revenue_entry_id': sale,
+              'p_file_name': 'z-report.jpg',
+              'p_content_type': 'image/jpeg',
+              'p_byte_size': bytes.length,
+              'p_content_hash': sha256.convert(bytes).toString(),
+              'p_storage_path': pathFor(sale, attachmentId),
+              'p_mutation_id': const Uuid().v4(),
+            },
+          ),
+          throwsA(predicate((Object e) => refusalOf(e) == 'KM020')),
+        );
+      });
+
+      test('bytes a terminal refusal strands are reclaimed by their uploader', () async {
+        // The residual class the write predicate cannot close: the object is legitimate
+        // when it is written and the registration refuses on something the Storage
+        // policy has no business knowing — here a forged path (KM010), which is the
+        // other half of the eight.
+        final sale = await record();
+        final other = await record();
+        final attachmentId = const Uuid().v4();
+        final bytes = evidenceBytes();
+        final orphan = pathFor(sale, attachmentId);
+
+        await client.storage
+            .from(bucket)
+            .uploadBinary(
+              orphan,
+              Uint8List.fromList(bytes),
+              fileOptions: const FileOptions(
+                contentType: 'image/jpeg',
+                upsert: true,
+              ),
+            );
+        expect(await objectsUnder(sale), hasLength(1));
+
+        await expectLater(
+          client.rpc<dynamic>(
+            'revenue_attachment_register',
+            params: {
+              'p_id': attachmentId,
+              'p_revenue_entry_id': sale,
+              'p_file_name': 'z-report.jpg',
+              'p_content_type': 'image/jpeg',
+              'p_byte_size': bytes.length,
+              'p_content_hash': sha256.convert(bytes).toString(),
+              'p_storage_path': pathFor(other, attachmentId),
+              'p_mutation_id': const Uuid().v4(),
+            },
+          ),
+          throwsA(predicate((Object e) => refusalOf(e) == 'KM010')),
+        );
+
+        // The client that wrote the bytes takes them back. Nothing names the path, so
+        // this removes no evidence — which is what the policy checks rather than what
+        // the caller promises.
+        await client.storage.from(bucket).remove([orphan]);
+        expect(
+          await objectsUnder(sale),
+          isEmpty,
+          reason: 'a terminal refusal leaves no indefinite inaccessible object',
+        );
+      });
+
+      test(
+        'a registered object cannot be discarded, however the response went',
+        () async {
+          // The rule that makes reclamation safe: if the registration actually committed,
+          // the delete is refused. So a client that lost the response and guessed wrong
+          // cannot destroy a bill by cleaning up.
+          final sale = await record();
+          final registered = await attach(sale);
+          final path = registered['storage_path'] as String;
+
+          await client.storage.from(bucket).remove([path]);
+
+          expect(
+            await objectsUnder(sale),
+            hasLength(1),
+            reason: 'the object a metadata row names is evidence and stays',
+          );
+          expect(await registeredUnder(sale), [path]);
+          final bytes = await client.storage.from(bucket).download(path);
+          expect(bytes, isNotEmpty);
+        },
+      );
+
+      test('a lost response reconciles rather than duplicating', () async {
+        // Registration commits, the answer is dropped, the client retries the *same*
+        // intent. One object, one row, and an answer the client can act on — this is the
+        // half of idempotency that must not be confused with "delete and start again".
+        final sale = await record();
+        final attachmentId = const Uuid().v4();
+        final first = await attach(sale, attachmentId: attachmentId);
+
+        // The retry, under a fresh delivery so it is the attachment id rather than the
+        // mutation id doing the work — which is what survives a lost response on a client
+        // that has since restarted.
+        final bytes = evidenceBytes();
+        final again =
+            await client.rpc<dynamic>(
+                  'revenue_attachment_register',
+                  params: {
+                    'p_id': attachmentId,
+                    'p_revenue_entry_id': sale,
+                    'p_file_name': 'z-report.jpg',
+                    'p_content_type': 'image/jpeg',
+                    'p_byte_size': bytes.length,
+                    'p_content_hash': sha256.convert(bytes).toString(),
+                    'p_storage_path': pathFor(sale, attachmentId),
+                    'p_mutation_id': const Uuid().v4(),
+                  },
+                )
+                as Map<String, dynamic>;
+
+        expect(again['status'], 'already_registered');
+        expect(again['content_hash'], first['content_hash']);
+        expect(await registeredUnder(sale), hasLength(1));
+        expect(await objectsUnder(sale), hasLength(1));
+      });
+
+      test('registered evidence cannot be overwritten with different bytes', () async {
+        // The KM009 case, one layer lower than the RPC. Before this, a competing upload
+        // reached the canonical path *before* the refusal, so the stored object no
+        // longer hashed to the value its own metadata recorded — the register RPC
+        // refused and the evidence had already been replaced.
+        final sale = await record();
+        final attachmentId = const Uuid().v4();
+        final registered = await attach(sale, attachmentId: attachmentId);
+        final path = registered['storage_path'] as String;
+        final original = await client.storage.from(bucket).download(path);
+
+        await expectLater(
+          client.storage
+              .from(bucket)
+              .uploadBinary(
+                path,
+                Uint8List.fromList(evidenceBytes(11)),
+                fileOptions: const FileOptions(
+                  contentType: 'image/jpeg',
+                  upsert: true,
+                ),
+              ),
+          throwsA(anything),
+        );
+
+        expect(
+          await client.storage.from(bucket).download(path),
+          original,
+          reason:
+              'the canonical object still holds the bytes it was registered with',
+        );
+        final row = await client
+            .from('revenue_attachments')
+            .select('content_hash')
+            .eq('id', attachmentId)
+            .single();
+        expect(row['content_hash'], registered['content_hash']);
+      });
+
+      test(
+        'the bucket holds no object that nothing names',
+        () async {
+          // A standing invariant over both prefixes, not a tidy-up. Postgres is the record
+          // of what evidence exists (spec §23), so an object no metadata row names is a
+          // file in a private bucket that the ledger cannot see, no limit counts and no
+          // surface can reach. Slice 11 left eight of them and reported the number; this
+          // reclaims them and then asserts there are none, which is a different claim.
+          //
+          // It is self-healing on purpose: it reclaims first and asserts afterwards, so the
+          // residue of every run before this one is cleared by the first execution and
+          // every run after it finds nothing to do.
+          Future<List<String>> objectsUnderPrefix(String segment) async {
+            final root = 'org/$orgId/$segment';
+            final folders = await client.storage.from(bucket).list(path: root);
+            final paths = <String>[];
+            for (final folder in folders) {
+              final files = await client.storage
+                  .from(bucket)
+                  .list(path: '$root/${folder.name}');
+              for (final file in files) {
+                paths.add('$root/${folder.name}/${file.name}');
+              }
+            }
+            return paths;
+          }
+
+          Future<Set<String>> registeredPaths(String table) async {
+            final rows = await client.from(table).select('storage_path');
+            return rows.map((r) => r['storage_path'] as String).toSet();
+          }
+
+          var stranded = <String>[];
+          for (final (segment, table) in const [
+            ('revenue', 'revenue_attachments'),
+            ('expenses', 'expense_attachments'),
+          ]) {
+            final objects = await objectsUnderPrefix(segment);
+            final named = await registeredPaths(table);
+            stranded.addAll(objects.where((p) => !named.contains(p)));
+          }
+
+          if (stranded.isNotEmpty) {
+            // ignore: avoid_print
+            print('reclaiming ${stranded.length} stranded object(s)');
+            for (final chunk in [
+              for (var i = 0; i < stranded.length; i += 50)
+                stranded.sublist(i, (i + 50).clamp(0, stranded.length)),
+            ]) {
+              await client.storage.from(bucket).remove(chunk);
+            }
+          }
+
+          stranded = <String>[];
+          for (final (segment, table) in const [
+            ('revenue', 'revenue_attachments'),
+            ('expenses', 'expense_attachments'),
+          ]) {
+            final objects = await objectsUnderPrefix(segment);
+            final named = await registeredPaths(table);
+            stranded.addAll(objects.where((p) => !named.contains(p)));
+          }
+
+          expect(
+            stranded,
+            isEmpty,
+            reason:
+                'every object in the financial bucket is named by a metadata row, so the '
+                'ledger and the bucket agree about what evidence exists',
+          );
+
+          // And the evidence itself is untouched by the sweep, which is the half that
+          // matters: the policy refuses the delete while a row names the path.
+          final rows = await client.from('revenue_attachments').select('id');
+          expect(rows, isNotEmpty);
+          // Two prefixes, one listing round trip per document that has ever carried
+          // evidence, against a real server. The default 30 seconds is a budget for a unit
+          // test, not for a census.
+        },
+        timeout: const Timeout(Duration(minutes: 5)),
+      );
+
+      test(
+        'a wrong-property manager cannot discard another property\'s bytes',
+        () async {
+          // Reclamation is not a new way in. It is narrower than the write policy, not
+          // wider: the caller must be entitled to the parent *and* be the uploader.
+          final sale = await record();
+          final attachmentId = const Uuid().v4();
+          final orphan = pathFor(sale, attachmentId);
+          await client.storage
+              .from(bucket)
+              .uploadBinary(
+                orphan,
+                Uint8List.fromList(evidenceBytes()),
+                fileOptions: const FileOptions(
+                  contentType: 'image/jpeg',
+                  upsert: true,
+                ),
+              );
+          createdObjects.add(orphan);
+
+          final hki = await sessionFor('hki.manager@example.com');
+          await hki.storage.from(bucket).remove([orphan]);
+          expect(
+            await objectsUnder(sale),
+            hasLength(1),
+            reason: 'refused, or answered with nothing — both are no',
+          );
+
+          // And the owner reclaims it, so the run leaves nothing behind.
+          await client.storage.from(bucket).remove([orphan]);
+          expect(await objectsUnder(sale), isEmpty);
+        },
+      );
     });
   });
 }

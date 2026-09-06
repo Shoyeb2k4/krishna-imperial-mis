@@ -122,18 +122,54 @@ class SupabaseAttachmentStore extends SupabaseGateway
               as Map<String, dynamic>,
     );
 
-    return switch (registered) {
-      RemoteOk(:final value) => UploadStored(
-        storagePath: value['storage_path'] as String? ?? path,
-        // The server echoes back the hash it recorded. Comparing it to the local one is
-        // what turns "the request succeeded" into a statement about bytes.
-        reportedHash: value['content_hash'] as String?,
-      ),
-      RemoteRefused(:final refusal) => UploadRefused(refusal.message),
-      RemoteUnreachable() => const UploadUnreachable(
-        'The bill was uploaded but could not be recorded. It will be retried.',
-      ),
-    };
+    switch (registered) {
+      case RemoteOk(:final value):
+        return UploadStored(
+          storagePath: value['storage_path'] as String? ?? path,
+          // The server echoes back the hash it recorded. Comparing it to the local one is
+          // what turns "the request succeeded" into a statement about bytes.
+          reportedHash: value['content_hash'] as String?,
+        );
+
+      case RemoteRefused(:final refusal):
+        // The bytes are already in the bucket and the record has refused them, so this is
+        // the moment — and the only moment — at which anything knows both that an object
+        // exists and that nothing will ever name it. Leaving it would put a file in a
+        // private bucket that the ledger cannot see, no limit counts and no surface can
+        // reach: four of the eight objects Slice 11 could not account for were exactly
+        // that, and they arrived through this line.
+        //
+        // The delete is the server's decision, not this client's: it is refused outright
+        // while any metadata row names the path, so a refusal that is really a lost
+        // response cannot destroy a bill.
+        await discardUnregistered(owner, path);
+        return UploadRefused(refusal.message);
+
+      case RemoteUnreachable():
+        // Nothing was learned, so nothing is undone. The object may be registered or not,
+        // and the retry finds out before it touches anything (D-048 §1).
+        return const UploadUnreachable(
+          'The bill was uploaded but could not be recorded. It will be retried.',
+        );
+    }
+  }
+
+  @override
+  Future<bool> discardUnregistered(
+    AttachmentOwnerKind owner,
+    String storagePath,
+  ) async {
+    try {
+      await client.storage.from(financialAttachmentBucket).remove([
+        storagePath,
+      ]);
+      return true;
+    } on Object {
+      // A reclamation that could not run leaves an object behind and nothing else. It is
+      // never allowed to change what happened to the attachment, which has already been
+      // decided by the registration boundary.
+      return false;
+    }
   }
 
   @override

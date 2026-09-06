@@ -30,8 +30,13 @@ List<({String name, String sql})> _migrations() {
 
 /// Each function definition, paired with the header text up to its body.
 Iterable<({String file, String name, String header})> _functions() sync* {
+  // The body tag is `$$` in most migrations and a named tag such as `$fn$` where a
+  // function's own text contains `$$`. Matching only the bare form is the D-103 mistake
+  // in miniature: the parser keyed on an incidental convention, so three new
+  // `security definer` predicates were invisible to every assertion in this group at
+  // once, including the search_path one, which is the direction that fails quietly.
   final pattern = RegExp(
-    r'create or replace function\s+([\w.]+)\s*\([\s\S]*?\)\s*returns[\s\S]*?as \$\$',
+    r'create or replace function\s+([\w.]+)\s*\([\s\S]*?\)\s*returns[\s\S]*?as \$\w*\$',
   );
   for (final m in _migrations()) {
     for (final match in pattern.allMatches(m.sql)) {
