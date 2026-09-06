@@ -59,6 +59,10 @@ Future<void> reviewLatestRevenue(
 
   final header = await gateway.fetchDocument(attempted.id);
   final components = await gateway.fetchComponents(attempted.id);
+  // Evidence too, so re-reading the sale re-reads all of it. Its absence is not a reason
+  // to refuse the read: the conflict being resolved is about figures, and a file list
+  // that could not be fetched is a gap in the display rather than in the decision.
+  final attachments = await gateway.fetchAttachments(attempted.id);
   if (!context.mounted) return;
 
   if (header is! RemoteOk<Map<String, dynamic>?> ||
@@ -82,6 +86,9 @@ Future<void> reviewLatestRevenue(
         header: header.value!,
         components: components.value,
         orgId: authority.orgId,
+        attachments: attachments is RemoteOk<List<Map<String, dynamic>>>
+            ? attachments.value
+            : const [],
       );
   ref.invalidate(revenueDetailProvider(attempted.id));
 

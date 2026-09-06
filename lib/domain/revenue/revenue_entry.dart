@@ -17,6 +17,7 @@ import 'package:meta/meta.dart';
 import 'package:krishna_mis/domain/revenue/revenue_tax_resolution.dart';
 import 'package:krishna_mis/domain/tax/tax_rule.dart';
 import 'package:krishna_mis/domain/value_objects/business_date.dart';
+import 'package:krishna_mis/domain/attachments/document_attachment.dart';
 import 'package:krishna_mis/domain/value_objects/money.dart';
 
 /// How a revenue entry came to exist (spec §8.2).
@@ -143,6 +144,7 @@ final class RevenueEntry {
     this.voidedBy,
     this.voidReason,
     this.businessDateSource = BusinessDateSource.derived,
+    this.attachments = const [],
   }) : assert(
          components.length != 0,
          'a revenue entry has at least one component',
@@ -189,6 +191,16 @@ final class RevenueEntry {
   /// audit question actually asks and a reason with no author answers half of it.
   final String? voidedBy;
   final String? voidReason;
+
+  /// Supporting evidence: a till report, a banquet billing document, a photograph.
+  ///
+  /// **Evidence, never a source of truth.** No figure below is derived from it, nothing
+  /// about tax resolution consults it, and a document with three attachments and one with
+  /// none produce identical gross, tax, net and reporting contributions. It hangs off the
+  /// entry rather than off a component because it supports the day's takings as recorded,
+  /// not one tax treatment within them — a two-band Room day has one evidence collection,
+  /// not two (Slice 11).
+  final List<DocumentAttachment> attachments;
 
   /// The header figures, as exact integer sums of the components.
   Money get gross => Money.sum(components.map((c) => c.gross));

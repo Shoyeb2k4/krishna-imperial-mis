@@ -8,7 +8,7 @@ the application role named **Owner** is a separate concept — D-057)
 Status: **Sections 1–12 proposed (Phase 0, revised); sections 13–16, 18–23 and 24 describe what is
 built and verified; section 17 is the approved Phase 4 plan.** Sections 6, 5.3 and 8 carry the project lead's mandated corrections.
 Implementation status is tracked in `PROJECT_STATUS.md`.
-Last updated: 2026-09-05
+Last updated: 2026-09-06
 
 ---
 
@@ -1981,3 +1981,135 @@ Four capabilities are exempt by name — `reports.view`, `reports.export`, `repo
 `settings.manage` — because the surfaces they govern are Phase 5 and Phase 7 and do not
 exist yet. That is a list a later phase deletes a line from, not a rule that absorbs the
 next dead grant.
+
+---
+
+## 25. Evidence for a sale (2026-09-06)
+
+Phase 4 Slice 11. Revenue attachments are the Phase 3 architecture applied to a second
+document, and the substance of this section is what had to be *shared* rather than
+copied, plus the one thing that legitimately differs.
+
+### 25.1 What was extracted, and why that was the smaller change
+
+Nothing in the attachment lifecycle was ever about expenses. `domain/attachments/` now
+holds `AttachmentUploadState`, `AttachmentPolicy` and `DocumentAttachment`, lifted out of
+`domain/expenses/expense.dart` unchanged in substance; `ExpenseAttachment` is a typedef of
+the last of these, so every expense call site is untouched. `AttachmentSource`, the two
+platform pickers, `ImageOptimizer` and `AttachmentTypes` already carried no document
+concept and were reused as they stood.
+
+The alternative was a `RevenueAttachment` that was a copy of a class, a second policy with
+the same five numbers in it, and a second `switch` from state to words. This project has
+recorded that outcome twice — a duplicated status mapping (D-119) and a duplicated join
+(D-131) — and both had already drifted by the time they were found.
+
+**One worker, not two.** `AttachmentUploadWorker` drives both tables through a small
+internal descriptor: table name, parent table, parent column. It keeps one backoff clock,
+one definition of `uploaded`, one recovery pass and one reclamation policy. The 73
+existing expense attachment tests pass over the rewritten worker unchanged, which is the
+evidence that the generalisation is behaviour-neutral rather than the claim that it is.
+
+**`waitingForExpense` keeps its name for both.** It means *the parent financial document
+has not been accepted yet*, and it is the value stored in `upload_state` on every device
+in the field, named by two SQLite check constraints. Renaming it would be a data migration
+of live expense rows for no behavioural gain. D-104's lesson is to pin a wire name, not to
+churn one.
+
+### 25.2 The authority is the parent's, and revenue's parent is simpler
+
+An expense attachment is complete-document-only (D-063), because a shared invoice states
+the whole total on its face and an expense can be *partly* visible. A revenue entry cannot
+be: it names one business unit and one revenue category on its header (spec §8), there is
+no allocation model and no scoped projection. So `may_read_revenue_attachments` asks the
+question the revenue projection already asks — this organisation, `attachment.view`
+anywhere, and `revenue.view` for the entry's own unit — and reproduces none of the
+allocation arithmetic. There are no lines to be outside anybody's scope.
+
+It is `security definer` for the reason every predicate here is: a policy subquery runs
+with the **caller's** privileges, so a predicate reading `revenue_entries` directly would
+answer from rows the caller can already see rather than from the truth (D-045, D-110).
+
+### 25.3 One bucket, two prefixes, two policies
+
+```
+        org/{org}/expenses/{expense}/{attachment}.{ext}   the expense predicate
+        org/{org}/revenue/{entry}/{attachment}.{ext}      the revenue predicate
+```
+
+A second bucket would duplicate the size limit, the MIME list and four policies, all then
+kept in step by hand. The bucket id still reads `expense-attachments`, which is a
+historical name for where financial evidence physically lives: renaming it would strand
+every bill already uploaded, for a word. The two path parsers are asserted at deploy time
+to be mutually exclusive, so neither prefix is reachable through the other's rule.
+
+### 25.4 Two writes, and evidence is never the ledger
+
+`revenue_attachment_register` is the only writer of `public.revenue_attachments`, exactly
+as `attachment_register` is for expenses. Putting bytes in a bucket does not put a till
+report in the books: the object listing carries no content hash this application controls,
+no uploading actor, no audit row and no foreign key to the sale (spec §23).
+
+Two RPCs rather than one with a discriminator. Each re-checks the authority of its own
+parent, and a single endpoint taking *"which kind of document is this"* from the caller
+would be a client choosing which rules apply to it.
+
+### 25.5 Attaching is not editing
+
+This is the rule the client surface is shaped around. `RevenueRepository.attachLocally`
+takes no `base_row_version`, queues no outbox intent, does not advance the entry's row
+version, and touches no amount, tax figure, business date or transaction number. Evidence
+travels on the attachment pipeline's own clock, so a correction queued against the same
+sale is unaffected — **the attachment belongs to the document's identity, not to any one
+mutation.**
+
+A test captures a sale's whole financial state before evidence is attached and compares it
+after every path that touches an attachment: attach, upload, fail, retry, restart. On the
+server the same comparison runs over `revenue_document`.
+
+### 25.6 What is deliberately absent
+
+**No removal.** V1 ships none for expenses either (D-072a), and
+`expense_attachments.removed_at` has no writer anywhere in the product.
+`revenue_attachments` therefore carries no removal columns at all, asserted by the
+migration — because a constraint with no writer is what D-145 had to reason about, and the
+honest answer is not to create a second one. If removal is ever approved, its mandatory
+reason uses `app.stated_reason` (D-142).
+
+**No download RPC and no signed-URL issuer.** Phase 3 built neither: reading an object
+back is Storage's own authenticated download under the read policy, and the surfaces show
+a file name, a size and a state. Revenue gets the same and nothing more.
+
+**No `attachment_count` on the projection.** It is a derived figure duplicated onto a
+header, which is the shape `revenue_tables.dart` declines for the money itself.
+
+### 25.7 What a revocation does
+
+The same as for an expense, with one branch fewer. A purged sale loses its evidence rows
+and its staged bytes; a sale retained because its actor still has unsent work keeps both.
+There is no partially-revoked document to downgrade, because a revenue entry is never
+partly visible. The bytes are reclaimed **after** the transaction commits, because SQLite
+can roll a delete back and the filesystem cannot put a file back (D-070 §3).
+
+An un-uploaded file on an *already synced* sale goes with the sale, and that is correct
+rather than a gap: the property has been withdrawn, and the Storage policy would refuse
+the upload from that moment anyway. Retaining bytes for a property the user has lost is
+the thing D-070 exists to prevent.
+
+### 25.8 What the acceptance can and cannot prove
+
+The same boundary as D-073a, restated because it is the boundary that cost the most. The
+OS picker is a separate activity the harness cannot drive, so a synthetic source is
+injected at exactly the point the picker returns a file. That proves the pipeline behind
+the picker and nothing about the picker. What proves the picker is wired at all is
+`attachment_source_wiring_test.dart`, which reads what **production** resolves — the
+assertion that was missing while `UnavailableAttachmentSource` shipped to two real
+devices (D-077) — and the manual smoke test, which stays in the release checklist.
+
+One acceptance assertion had to be weakened, and the reason is worth keeping. The online
+phase first asserted that a freshly saved sale's evidence had *not* yet uploaded, to
+demonstrate the ordering rule. Against a real server the whole chain — save, push, number,
+promote, upload — finishes inside the same two-second pump, so the assertion was requiring
+the product to be slow. The ordering rule is now proven in the **offline** phase, where no
+number can arrive and the upload provably cannot start. Slice 8 records the identical
+lesson for *"no number yet"* (D-119).

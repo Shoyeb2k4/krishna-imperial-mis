@@ -34,10 +34,18 @@ import 'package:krishna_mis/data/attachments/attachment_staging.dart';
 import 'package:krishna_mis/data/attachments/attachment_upload_worker.dart';
 import 'package:krishna_mis/data/remote/remote_outcome.dart';
 import 'package:krishna_mis/data/remote/supabase_gateway.dart';
+import 'package:krishna_mis/domain/attachments/document_attachment.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// The private bucket the migrations create. Named once.
-const String expenseAttachmentBucket = 'expense-attachments';
+///
+/// **Its id still reads `expense-attachments`, and that is deliberate.** It holds both
+/// kinds since Slice 11, under two path prefixes decided by two separate policies. A
+/// bucket id is where bytes physically live: renaming it would strand every bill already
+/// uploaded, for the sake of a word. One bucket rather than two is the substantive
+/// decision — a second one would duplicate the size limit, the MIME list and four
+/// policies, all of which then have to be kept in step by hand.
+const String financialAttachmentBucket = 'expense-attachments';
 
 class SupabaseAttachmentStore extends SupabaseGateway
     implements AttachmentObjectStore {
@@ -46,7 +54,8 @@ class SupabaseAttachmentStore extends SupabaseGateway
   @override
   Future<UploadOutcome> upload({
     required String orgId,
-    required String expenseId,
+    required AttachmentOwnerKind owner,
+    required String ownerId,
     required String attachmentId,
     required String fileName,
     required String contentType,
@@ -54,14 +63,15 @@ class SupabaseAttachmentStore extends SupabaseGateway
   }) async {
     final path = attachmentStoragePath(
       orgId: orgId,
-      expenseId: expenseId,
+      owner: owner,
+      ownerId: ownerId,
       attachmentId: attachmentId,
       fileName: fileName,
     );
 
     try {
       await client.storage
-          .from(expenseAttachmentBucket)
+          .from(financialAttachmentBucket)
           .uploadBinary(
             path,
             Uint8List.fromList(bytes),
@@ -84,13 +94,23 @@ class SupabaseAttachmentStore extends SupabaseGateway
 
     // The object exists. Now make it part of the record, or it is a file nobody can find
     // from the ledger.
+    //
+    // Two RPCs rather than one with a discriminator: each re-checks the authority of its
+    // own parent document, and a single endpoint taking "which kind" from the caller
+    // would be a client telling the server which rules to apply to it.
     final registered = await guard<Map<String, dynamic>>(
       () async =>
           (await client.rpc<dynamic>(
-                'attachment_register',
+                switch (owner) {
+                  AttachmentOwnerKind.expense => 'attachment_register',
+                  AttachmentOwnerKind.sale => 'revenue_attachment_register',
+                },
                 params: {
                   'p_id': attachmentId,
-                  'p_expense_id': expenseId,
+                  switch (owner) {
+                    AttachmentOwnerKind.expense => 'p_expense_id',
+                    AttachmentOwnerKind.sale => 'p_revenue_entry_id',
+                  }: ownerId,
                   'p_file_name': fileName,
                   'p_content_type': contentType,
                   'p_byte_size': bytes.length,
@@ -117,13 +137,16 @@ class SupabaseAttachmentStore extends SupabaseGateway
   }
 
   @override
-  Future<String?> hashOf(String storagePath) async {
+  Future<String?> hashOf(AttachmentOwnerKind owner, String storagePath) async {
     // Read it from the metadata row rather than from the object: this is the hash the
-    // application controls and audits, and `expense_attachments` is readable only to a
-    // caller entitled to the whole document (D-063).
+    // application controls and audits, and each metadata table is readable only to a
+    // caller entitled to the parent document — the whole of it, for an expense (D-063).
     try {
       final row = await client
-          .from('expense_attachments')
+          .from(switch (owner) {
+            AttachmentOwnerKind.expense => 'expense_attachments',
+            AttachmentOwnerKind.sale => 'revenue_attachments',
+          })
           .select('content_hash')
           .eq('storage_path', storagePath)
           .maybeSingle();
@@ -145,7 +168,7 @@ class SupabaseAttachmentStore extends SupabaseGateway
     if (status == null) return null;
     if (status == 401 || status == 403) {
       return const UploadRefused(
-        'You are not permitted to attach a bill to this expense. It may still '
+        'You are not permitted to attach a file to this record. It may still '
         'be syncing, or you may only be able to see part of the document.',
       );
     }

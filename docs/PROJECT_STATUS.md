@@ -5,10 +5,10 @@ Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
-Last updated: **2026-09-05** — Phase 4 Slice 10 closed, and three correctives done and
-accepted (D-136 … D-146). **All five mandatory financial reasons** now reject whitespace-only
-values, revenue records its business-date provenance, and the reason constraints validate in
-clean environments. **Slice 11 is not started.**
+Last updated: **2026-09-06** — **Phase 4 Slice 11 (revenue attachments) is complete**,
+built on the Phase 3 attachment architecture rather than beside it: one shared lifecycle,
+one upload worker, one private bucket under two path prefixes, and evidence that provably
+moves no financial figure (D-147 … D-152). **Slice 12 is not started.**
 
 > A new session should be able to read this file and know exactly where work stopped.
 > This file — not chat history — is the checkpoint.
@@ -761,9 +761,9 @@ Blocked.**
 
 | Item | Status | Evidence |
 |---|---|---|
-| `dart format --set-exit-if-changed` | **Tested** | clean (175 files) |
+| `dart format --set-exit-if-changed` | **Tested** | clean (192 files) |
 | `flutter analyze` | **Tested** | **No issues found** |
-| Host test suite | **Tested** | **1,101 tests, all passing** (1,067 + 34 across three correctives) |
+| Host test suite | **Tested** | **1,147 tests, all passing** (1,101 + 46 for Slice 11) |
 | Secret scan — tree and git history | **Tested** | clean; the scan proves its own controls on every run (D-069) |
 | Secret scan — rebuilt clean binaries | **Tested** | tree, git history and built artefacts all clean, with the scanner's controls passing |
 | Migration audit (search_path, API surface, policy boundary) | **Tested** | 14 host tests |
@@ -843,10 +843,10 @@ Blocked.**
 
 | Suite | Count | Result |
 |---|---|---|
-| Host (`flutter test`) | **1,101** | all passing |
+| Host (`flutter test`) | **1,147** | all passing |
 | Live backend against `krishna-mis-dev` (opt-in) | 19 | the phases this change touches re-run at the corrective checkpoint (`drift`, `conflict`, and the revenue chain, twice in succession); the four scope phases need administrative grant changes between them and were **not** re-run |
 | Live expense suite against `krishna-mis-dev` (opt-in) | **50** | all passing — re-run in full at the final pre-Slice-11 checkpoint |
-| Live revenue boundary suite (opt-in) | **49** | all passing, 1 deliberately skipped |
+| Live revenue boundary suite (opt-in) | **61** | all passing, 1 deliberately skipped |
 | Live two-client acceptance (opt-in) | 10 | all passing |
 | **Slice 10 Android acceptance** (`revenue-edit`, `-edit-banquet`, `-conflict`, `-void`, `-user-switch`) | **5** | **all passing** |
 | **Slice 10 Windows acceptance** (`windows-revenue-edit`, `-void`, `-conflict`) | **3** | **all passing** |
@@ -1657,10 +1657,13 @@ is worth running once before the first staging deploy.
 
 ## Next exact task
 
-**Slice 11 — attachments, reusing D-073a unchanged.** All three correctives that stood in
-front of it are **done, tested and accepted**, and the one open product question they raised
-has been answered and built (D-143). Nothing blocks Slice 11, and it has **not** been
-started.
+**Slice 12 — reporting contributions: `revenue_period_contributions` populated (D-087).**
+Slice 11 is done, tested and accepted, and it deliberately built no reporting: a test
+asserts the revenue detail surface names no P&L, Net Sales, Operating Profit or Export.
+Nothing blocks Slice 12, and it has **not** been started.
+
+Slice 12 defines and **populates** the reporting interface. It does not build the P&L or
+the engines — those are Phase 5, with the parity suite D-020 requires.
 
 ---
 
@@ -1901,3 +1904,216 @@ failed. The persistent installation was the honest one.
 ## Master Spec version
 
 **1.2** — bumped 2026-09-01 for the revenue model amendment only (spec §8, D-092).
+
+---
+
+## Phase 4 Slice 11 — Revenue attachments: **COMPLETE**
+
+Evidence for a sale, built on the Phase 3 attachment architecture rather than beside it.
+Decisions D-147 … D-152; `ARCHITECTURE.md` §25; `DATABASE_SCHEMA.md` gains the Slice 11
+section.
+
+**The whole of the design decision is what was *shared* rather than copied.** The audit
+found the split cleanly: the picker, the staging service, the optimiser, the accepted-type
+table and the eight-state lifecycle were never about expenses, and were reused as they
+stood. What was named for expenses and only that — a file record, two policy constants, a
+directory parameter, and the worker's typed queries — moved into `domain/attachments/`,
+with `ExpenseAttachment` left as a typedef so no expense call site changed.
+
+**One worker, not two.** `AttachmentUploadWorker` drives both tables through one internal
+descriptor: one backoff clock, one definition of `uploaded`, one recovery pass, one
+reclamation policy. Two would have been two of each, agreeing only until somebody edited
+one — D-119 for a duplicated `switch`, D-131 for a duplicated join, both already drifted
+when found. **The evidence that the refactor is neutral is the existing suite:** all 73
+expense attachment tests pass over the rewritten worker unchanged.
+
+**A revenue entry is never partly visible, so its predicate is not the expense one
+(D-148).** D-063 makes an expense attachment complete-document-only because a shared
+invoice states the whole total and an expense *can* be partly visible. A revenue entry
+names one business unit on its header, has no allocation lines and no scoped projection —
+so `may_read_revenue_attachments` asks what the revenue projection already asks, and
+reproduces none of the allocation arithmetic. Copying it would have been cargo cult.
+
+**One bucket, two prefixes, two policies (D-149).** `org/{org}/revenue/{entry}/…` beside
+`org/{org}/expenses/{expense}/…`, decided by separate policy sets over one private bucket.
+A second bucket would duplicate the size limit, the MIME list and four policies, all then
+kept in step by hand. The two path parsers are asserted mutually exclusive at deploy time
+and again from a client.
+
+**Attaching is not editing (D-150).** `attachLocally` takes no `base_row_version`, queues
+no outbox intent, advances no row version, and changes no amount, tax figure, business
+date or transaction number. A test captures a sale's whole financial state before evidence
+is attached and compares it after attach, upload, failure, retry, reclamation and restart;
+the same comparison runs against `revenue_document` on the real server. The local schema is
+asserted to carry no money-shaped column at all, so the mistake is unavailable rather than
+avoided — the move D-094 made for `RevenueTaxFacts`.
+
+**No removal, determined rather than assumed (D-151).** Spec §15 describes capture, storage
+and access control; §28 lists attachments and says nothing about removing one; D-072a
+states V1 offers none. `expense_attachments` carries the removal trio with **no writer
+anywhere in the product**, which is why D-145 excluded its constraint from the five
+mandatory reasons. `revenue_attachments` therefore has no removal columns, and the
+migration asserts their absence. A second unwritable constraint is not a feature.
+
+**No download RPC, no signed-URL issuer, no viewer.** Phase 3 built none — reading an
+object back is Storage's own authenticated download under the read policy — so revenue got
+the same and nothing more (§32 of the brief: reuse what exists, and existing behaviour is
+"no viewer").
+
+### The client surface
+
+| | |
+|---|---|
+| Android entry | `More details` → the shared strip. Four taps and a number is unchanged; nothing about evidence appears until asked for |
+| Detail, both shells | an `EVIDENCE` section on the one panel both platforms use, with an attach control for a recorded sale |
+| A voided sale | shows its evidence, offers no control, and says why rather than leaving a button missing |
+| Wording | file name, size and lifecycle state; **no storage key, no bucket, no path** |
+| Taking a file back out | offered only while `staged` — a draft nobody has recorded, which is not removal |
+
+### Verified
+
+| Item | Status | Evidence |
+|---|---|---|
+| `dart format --set-exit-if-changed` | **Tested** | clean, 192 files |
+| `flutter analyze` | **Tested** | **No issues found** |
+| Host suite | **Tested** | **1,147 tests, all passing** (1,101 + 46) |
+| Revenue evidence — repository, lifecycle, limits, revocation, user switch | **Tested** | 32 host tests |
+| Revenue evidence surfaces, both shells | **Tested** | 13 widget tests at three window sizes |
+| Expense attachment suite over the rewritten worker | **Tested** | 73 tests, unchanged except parameter names |
+| Migration audit, incl. the Slice 11 table scope | **Tested** | 21 host tests |
+| Live revenue boundary suite | **Tested** | **61 tests** (49 + 12), 1 deliberately skipped |
+| Migration ledger parity (A0 / D-056) | **Tested** | both versions verified **byte-for-byte by hash** |
+| API-surface and PUBLIC-execute invariants | **Tested** | restated in full; three additions named |
+| Secret scan — tree, git history and **rebuilt clean artefacts** | **Tested** | clean, with the scanner's own controls passing |
+| Android acceptance, real dev APK on the emulator | **Tested** | `revenue-attachment`, `revenue-attachment-offline` |
+| Windows acceptance, real `krishna_mis.exe` | **Tested** | the same two phases |
+| Acceptance fixture reversal | **Tested** | 0 open revenue of any kind; baseline pristine |
+
+### Real device acceptance
+
+Both phases on both platforms, against `krishna-mis-dev`, through the shipped screens.
+
+| Phase | Android | Windows |
+|---|---|---|
+| `revenue-attachment` — form → save → number → upload → detail | **PASS** | **PASS** |
+| `revenue-attachment-offline` — offline create + attach → restart → reconnect | **PASS** | **PASS** |
+
+The online phase proves the durable consequence: one metadata row, one object, the content
+hash matching what the device staged, and nine `revenue_document` fields unchanged by any
+of it. The **offline** phase is where the ordering rule is observable — the sale has no
+number, so the file provably cannot upload — and it proves the staged bytes and the queued
+intent both outlive a process kill, that the attachment identity is stable across it, and
+that a reconnect yields exactly one sale, one attachment row and one object.
+
+### Live fixture and storage state, stated rather than called pristine
+
+| | |
+|---|---|
+| Live tax rules | **4** — the verified baseline, untouched |
+| Value bands / supply subtypes / premises statuses | **0 / 0 / 0** |
+| Closed periods | **0** |
+| Open revenue, of any kind | **0** — every acceptance sale voided through the real API |
+| Authority grants | **5**, the development baseline; the revocation test's restore **read back** |
+| `revenue_attachments` rows | **47**, every one on a **voided** sale |
+| Objects under `org/…/revenue/` | **55**, of which **8** carry no metadata row |
+
+**The rows are not cleaned up, and that is the correct outcome.** They are evidence for
+voided documents, which D-006 keeps: a void excludes a sale from reporting and destroys
+nothing. No client role holds DELETE on the bucket (D-063), and granting one for a test's
+convenience would be a backdoor — so the objects stay and the run says how many rather
+than claiming a pristine bucket (§43).
+
+**The eight objects without a metadata row are the security tests working.** Each is an
+upload whose `revenue_attachment_register` was then refused — `KM009` for the same id with
+different bytes, `KM010` for a path belonging to another sale, and the wrong-property and
+revoked attempts. Postgres is the record of what evidence exists; the bucket is where bytes
+live, and the two disagreeing in exactly this direction is what the design intends
+(spec §23).
+
+### The live security matrix, in full (§36)
+
+| Case | Result |
+|---|---|
+| Authorised actor attaches; metadata row **and** object read back | **PASS** |
+| Attaching moves no figure on `revenue_document` | **PASS** — nine fields compared |
+| Redelivery: one object, one row, replayed answer | **PASS** |
+| Same attachment id, different bytes, fresh mutation id | **PASS** — refused `KM009` |
+| A storage path belonging to another sale | **PASS** — refused `KM010` |
+| Voided sale keeps evidence and accepts none | **PASS** — refused `KM020` |
+| Wrong-property manager: metadata not enumerable, object refused, registration refused | **PASS** |
+| The property's own manager reads both halves | **PASS** |
+| **Revoked** user loses both, and regains them on restore | **PASS** — grant genuinely withdrawn, restoration **read back** |
+| Anonymous: no rows, no object, no RPC | **PASS** |
+| The two storage prefixes decide separately | **PASS** |
+| No unauthenticated URL serves an object | **PASS** — the fetch, not the configuration, says so |
+
+### Positive controls, each seen to fail
+
+| Control | Result |
+|---|---|
+| Purge without `revenue_attachments` | **RED** — the D-070 revocation test fails |
+| Ordering degraded to "uploadable at once" | **RED** |
+| Identity dedup removed | **RED** — 3 of 32 fail; restored and read back |
+
+### Two acceptance findings (D-152)
+
+Neither is a product defect, and both were assertions about the wrong thing.
+
+**The online phase asserted that the product is slow.** It checked that a freshly saved
+sale's evidence had *not* yet uploaded, to demonstrate the D-073 §2 ordering rule. Against
+a real server the whole chain — save, push, number, promote, upload — finishes inside the
+same two-second pump, so it failed on a run in which everything worked. It now asserts the
+durable consequence, and the ordering rule is proven in the **offline** phase where no
+number can arrive and the upload provably cannot start. Slice 8 records the identical
+lesson for *"no number yet"*.
+
+**A widget test cannot await real file I/O without saying so.** A `testWidgets` body runs
+inside the fake-async zone: `pumpAndSettle` returns before a staging copy completes, and an
+await on real I/O in the body never completes at all — which presents as a hung suite
+rather than a failed one. Both are handled with `tester.runAsync` in a named helper.
+
+**And the first version of that helper was a wall-clock race.** It yielded a fixed twelve
+turns — 240 ms of real time — which passed the file alone and failed intermittently under
+the full suite: three tests one run, six the next, none the third. A count of turns is a
+bet on how busy the machine is, not a wait. It now waits for **the staged file to appear**
+and fails with a sentence if it does not. **Three consecutive full host runs, green.**
+
+**A document invariant caught a line-ending rewrite (D-153).** Appending the Slice 11
+sections with a text-mode write turned all four canonical documents from LF to CRLF in
+every line. D-137's assertion — that `ARCHITECTURE.md` states in as many words that there
+is no `expense_correct_business_date` — matches a phrase spanning a line break, so it went
+red. Restored to LF; the diffs are additions plus the intended restatements and nothing
+else.
+
+### Recorded, and deliberately not changed
+
+**An un-uploaded file on an already-synced sale is destroyed by a confirmed revocation**,
+for both document kinds. That is the shipped D-070 behaviour and it is **correct rather
+than a gap**: the property has been withdrawn, the Storage policy would refuse the upload
+from that moment anyway, and retaining bytes for a property the user has lost is the thing
+D-070 exists to prevent. Stated here because it looks like a gap until the reasoning is
+written down.
+
+**The expense detail panel's attachment status switch is stale.** It matches `'failed'`,
+which the v10 lifecycle replaced with `retryNeeded` / `rejected` (D-073a), so a bill
+needing attention reads *"Pending upload"* there. Cosmetic, on the expense surface, and
+outside a revenue slice's reviewed scope (D-127). The revenue surface takes its words from
+the enum itself, so it cannot drift the same way.
+
+### Migration ledger
+
+| Ledger version | Name |
+|---|---|
+| 20260905210226 | `revenue_attachments` |
+| 20260905210332 | `api_surface_invariant_revenue_attachments` |
+
+Both verified **byte-for-byte by hash** against
+`supabase_migrations.schema_migrations.statements`.
+
+### Local schema
+
+**Drift v14** adds `revenue_attachments`, mirroring `expense_attachments` with the parent
+pointer changed and the removal columns absent. Two narrow tables rather than one
+polymorphic table: the foreign key that makes an orphan impossible is what a cascade and a
+purge both rely on. The v14 step needs no version floor — unlike v13 (D-144) it creates a
+table rather than adding a column to one a later step builds.

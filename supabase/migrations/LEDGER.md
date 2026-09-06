@@ -216,4 +216,6 @@ Verified byte-for-byte against `supabase_migrations.schema_migrations.statements
 20260905185903 financial_reasons_reject_all_whitespace
 20260905190229 revenue_business_date_provenance
 20260905202325 period_reopen_uses_canonical_reason
+20260905210226 revenue_attachments
+20260905210332 api_surface_invariant_revenue_attachments
 ```

@@ -14,6 +14,9 @@ library;
 
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
+
+import 'package:crypto/crypto.dart';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -2050,6 +2053,555 @@ void main() {
           expect(audit, hasLength(1), reason: 'one effective correction');
         },
       );
+    });
+  });
+
+  // ── Phase 4 Slice 11 · evidence, and who may have it ───────────────────────
+  //
+  // The matrix the brief calls for (§36), against the real project. Every refusal here
+  // is Storage or RLS answering, never a hidden control: the client is asked directly
+  // for the object and for the metadata row, and is told no.
+  group('revenue attachments, against the real boundary (Slice 11)', () {
+    const marker = 'ACCEPTANCE slice11-evidence';
+    const bucket = 'expense-attachments';
+
+    late String ccrUnit;
+    late String restaurant;
+    late String orgId;
+    final createdSales = <String>[];
+    final createdObjects = <String>[];
+
+    Future<String> unitId(String code) async {
+      final row = await client
+          .from('business_units')
+          .select('id')
+          .eq('code', code)
+          .single();
+      return row['id'] as String;
+    }
+
+    /// Bytes that are not a real JPEG, which is fine: nothing on this path decodes them,
+    /// and the bucket's MIME list is matched on the declared content type.
+    List<int> evidenceBytes([int seed = 3]) =>
+        List<int>.generate(1024, (i) => (i * seed) % 251);
+
+    String pathFor(String saleId, String attachmentId) =>
+        'org/$orgId/revenue/$saleId/$attachmentId.jpg';
+
+    Future<String> record({String date = '2026-06-15'}) async {
+      final id = const Uuid().v7();
+      await client.rpc<dynamic>(
+        'revenue_create',
+        params: {
+          'p_id': id,
+          'p_business_unit_id': ccrUnit,
+          'p_revenue_category_id': restaurant,
+          'p_business_date': date,
+          'p_notes': marker,
+          'p_components': [
+            {'entered_amount_minor': 10000000},
+          ],
+          'p_mutation_id': const Uuid().v4(),
+        },
+      );
+      createdSales.add(id);
+      return id;
+    }
+
+    /// The full two-write act the client performs: object, then metadata.
+    Future<Map<String, dynamic>> attach(
+      String saleId, {
+      String? attachmentId,
+      String fileName = 'z-report.jpg',
+      List<int>? bytes,
+      SupabaseClient? as,
+      String? mutationId,
+    }) async {
+      final c = as ?? client;
+      final id = attachmentId ?? const Uuid().v4();
+      final content = bytes ?? evidenceBytes();
+      final path = pathFor(saleId, id);
+      await c.storage
+          .from(bucket)
+          .uploadBinary(
+            path,
+            Uint8List.fromList(content),
+            fileOptions: const FileOptions(
+              contentType: 'image/jpeg',
+              upsert: true,
+            ),
+          );
+      createdObjects.add(path);
+      return await c.rpc<dynamic>(
+            'revenue_attachment_register',
+            params: {
+              'p_id': id,
+              'p_revenue_entry_id': saleId,
+              'p_file_name': fileName,
+              'p_content_type': 'image/jpeg',
+              'p_byte_size': content.length,
+              'p_content_hash': sha256.convert(content).toString(),
+              'p_storage_path': path,
+              // Defaults to the attachment id, which is what the client sends: one
+              // delivery per file. A test that wants the *other* idempotency guard —
+              // the same file id arriving under a fresh delivery — supplies its own.
+              'p_mutation_id': mutationId ?? id,
+            },
+          )
+          as Map<String, dynamic>;
+    }
+
+    setUpAll(() async {
+      await signInAs('giridhar@hki.com');
+      ccrUnit = await unitId('CCR');
+      restaurant = await categoryId('CCR', 'RESTAURANT');
+      orgId =
+          (await client
+                  .from('revenue_categories')
+                  .select('org_id')
+                  .limit(1)
+                  .single())['org_id']
+              as String;
+    });
+
+    setUp(() => signInAs('giridhar@hki.com'));
+
+    tearDownAll(() async {
+      await signInAs('giridhar@hki.com');
+      for (final id in createdSales) {
+        try {
+          final row = await client
+              .from('revenue_document')
+              .select('row_version, voided_at')
+              .eq('id', id)
+              .maybeSingle();
+          if (row == null || row['voided_at'] != null) continue;
+          await client.rpc<dynamic>(
+            'revenue_void',
+            params: {
+              'p_id': id,
+              'p_base_row_version': row['row_version'],
+              'p_reason': '$marker fixture reversal',
+              'p_mutation_id': const Uuid().v4(),
+            },
+          );
+        } on PostgrestException catch (error) {
+          // ignore: avoid_print
+          print('slice11 fixture $id not reversed: ${error.code}');
+        }
+      }
+      // The objects are NOT deleted, and that is the correct outcome rather than a gap.
+      // No client role holds DELETE on the bucket (D-063), granting one for the
+      // convenience of a test would be a backdoor, and the metadata rows they belong to
+      // are attached to voided sales that remain as history (D-006, D-066). They are
+      // listed here so the run says what it left rather than calling the bucket pristine.
+      // ignore: avoid_print
+      print(
+        'slice11 retained ${createdObjects.length} acceptance object(s) under '
+        'org/$orgId/revenue/: ${createdObjects.join(', ')}',
+      );
+    });
+
+    test('the authorised actor attaches, and reads both halves back', () async {
+      final sale = await record();
+      final answer = await attach(sale);
+
+      expect(answer['status'], 'registered');
+      expect(answer['revenue_entry_id'], sale);
+      expect(
+        answer['storage_path'],
+        startsWith('org/$orgId/revenue/$sale/'),
+        reason: 'the server derives the path; it does not accept the caller\'s',
+      );
+
+      // The metadata row.
+      final rows = await client
+          .from('revenue_attachments')
+          .select()
+          .eq('revenue_entry_id', sale);
+      expect(rows, hasLength(1));
+      expect(rows.first['file_name'], 'z-report.jpg');
+      expect(rows.first['content_hash'], answer['content_hash']);
+
+      // And the object itself.
+      final bytes = await client.storage
+          .from(bucket)
+          .download(answer['storage_path'] as String);
+      expect(bytes, isNotEmpty);
+    });
+
+    test('attaching moves no financial figure (§25)', () async {
+      final sale = await record();
+      final before = await client
+          .from('revenue_document')
+          .select()
+          .eq('id', sale)
+          .single();
+
+      await attach(sale);
+
+      final after = await client
+          .from('revenue_document')
+          .select()
+          .eq('id', sale)
+          .single();
+      for (final field in const [
+        'gross_amount_minor',
+        'tax_amount_minor',
+        'net_amount_minor',
+        'business_date',
+        'pnl_period_key',
+        'txn_number',
+        'row_version',
+        'business_date_source',
+        'component_count',
+      ]) {
+        expect(
+          after[field],
+          before[field],
+          reason: '$field changed because a file was attached',
+        );
+      }
+    });
+
+    test('a redelivery is idempotent: one object, one row', () async {
+      final sale = await record();
+      final attachmentId = const Uuid().v4();
+
+      final first = await attach(sale, attachmentId: attachmentId);
+      final replay = await attach(sale, attachmentId: attachmentId);
+
+      expect(first['status'], 'registered');
+      expect(
+        replay['status'],
+        'replayed',
+        reason: 'the mutation id replays its stored answer (D-004)',
+      );
+      expect(replay['storage_path'], first['storage_path']);
+      expect(
+        await client
+            .from('revenue_attachments')
+            .select('id')
+            .eq('revenue_entry_id', sale),
+        hasLength(1),
+      );
+      // The object path is deterministic, so the second upload overwrote itself.
+      final listing = await client.storage
+          .from(bucket)
+          .list(path: 'org/$orgId/revenue/$sale');
+      expect(listing, hasLength(1));
+    });
+
+    test(
+      'the same id with different content is refused, never overwritten',
+      () async {
+        final sale = await record();
+        final attachmentId = const Uuid().v4();
+        await attach(sale, attachmentId: attachmentId);
+
+        // A fresh delivery of the same file id with different bytes. The mutation id
+        // has to differ or this replays the first answer and proves nothing — which is
+        // exactly what the first version of this test did.
+        await expectLater(
+          attach(
+            sale,
+            attachmentId: attachmentId,
+            bytes: evidenceBytes(11),
+            mutationId: const Uuid().v4(),
+          ),
+          throwsA(predicate((Object e) => refusalOf(e) == 'KM009')),
+        );
+      },
+    );
+
+    test('a path that does not belong to the attachment is refused', () async {
+      final sale = await record();
+      final other = await record();
+      final attachmentId = const Uuid().v4();
+      final bytes = evidenceBytes();
+      await client.storage
+          .from(bucket)
+          .uploadBinary(
+            pathFor(sale, attachmentId),
+            Uint8List.fromList(bytes),
+            fileOptions: const FileOptions(
+              contentType: 'image/jpeg',
+              upsert: true,
+            ),
+          );
+      createdObjects.add(pathFor(sale, attachmentId));
+
+      await expectLater(
+        client.rpc<dynamic>(
+          'revenue_attachment_register',
+          params: {
+            'p_id': attachmentId,
+            'p_revenue_entry_id': sale,
+            'p_file_name': 'z-report.jpg',
+            'p_content_type': 'image/jpeg',
+            'p_byte_size': bytes.length,
+            'p_content_hash': sha256.convert(bytes).toString(),
+            // Somebody else's sale.
+            'p_storage_path': pathFor(other, attachmentId),
+            'p_mutation_id': const Uuid().v4(),
+          },
+        ),
+        throwsA(predicate((Object e) => refusalOf(e) == 'KM010')),
+      );
+    });
+
+    test('a voided sale keeps its evidence and accepts none (§30)', () async {
+      final sale = await record();
+      await attach(sale);
+
+      final doc = await client
+          .from('revenue_document')
+          .select('row_version')
+          .eq('id', sale)
+          .single();
+      await client.rpc<dynamic>(
+        'revenue_void',
+        params: {
+          'p_id': sale,
+          'p_base_row_version': doc['row_version'],
+          'p_reason': '$marker void with evidence',
+          'p_mutation_id': const Uuid().v4(),
+        },
+      );
+
+      expect(
+        await client
+            .from('revenue_attachments')
+            .select('id')
+            .eq('revenue_entry_id', sale),
+        hasLength(1),
+        reason: 'a void does not destroy the evidence for what was recorded',
+      );
+      await expectLater(
+        attach(sale),
+        throwsA(predicate((Object e) => refusalOf(e) == 'KM020')),
+      );
+    });
+
+    group('who may have it', () {
+      test('a wrong-property manager cannot enumerate the metadata', () async {
+        final sale = await record();
+        final registered = await attach(sale);
+
+        // Hotel Krishna's manager, looking at a Crystal Canopy sale.
+        final hki = await sessionFor('hki.manager@example.com');
+        expect(
+          await hki
+              .from('revenue_attachments')
+              .select()
+              .eq('revenue_entry_id', sale),
+          isEmpty,
+          reason: 'RLS, not a hidden control',
+        );
+        expect(
+          await hki.from('revenue_attachments').select(),
+          isEmpty,
+          reason: 'and not by asking for everything either',
+        );
+
+        // Nor the object, which is Storage refusing on its own predicate.
+        await expectLater(
+          hki.storage
+              .from(bucket)
+              .download(registered['storage_path'] as String),
+          throwsA(anything),
+        );
+
+        // Nor may they register one against it.
+        await expectLater(
+          attach(sale, as: hki),
+          throwsA(anything),
+          reason: 'attaching implies reading back',
+        );
+      });
+
+      test('the property\'s own manager may read it', () async {
+        final sale = await record();
+        final registered = await attach(sale);
+
+        final ccr = await sessionFor('ccr.manager@example.com');
+        expect(
+          await ccr
+              .from('revenue_attachments')
+              .select('file_name')
+              .eq('revenue_entry_id', sale),
+          hasLength(1),
+          reason:
+              'canonical evidence follows the parent sale\'s read authority',
+        );
+        final bytes = await ccr.storage
+            .from(bucket)
+            .download(registered['storage_path'] as String);
+        expect(bytes, isNotEmpty);
+      });
+
+      test('a revoked user loses both halves, and gets them back on restore', () async {
+        // The one case the scoped-manager test cannot cover: not "somebody who never
+        // had it", but somebody whose access is *withdrawn*. Server-side that is the
+        // same predicate re-evaluated — there is no per-session cache to invalidate —
+        // and this proves it rather than arguing it.
+        final sale = await record();
+        final registered = await attach(sale);
+        final path = registered['storage_path'] as String;
+
+        final ccr = await sessionFor('ccr.manager@example.com');
+        expect(
+          await ccr
+              .from('revenue_attachments')
+              .select('id')
+              .eq('revenue_entry_id', sale),
+          hasLength(1),
+          reason: 'held before the revocation, or the rest proves nothing',
+        );
+
+        await signInAs('giridhar@hki.com');
+        final target = await client
+            .from('profiles')
+            .select('id')
+            .eq('email', 'ccr.manager@example.com')
+            .single();
+        final grant = await client
+            .from('user_roles')
+            .select('id, roles!inner(code)')
+            .eq('user_id', target['id'] as String)
+            .eq('business_unit_id', ccrUnit)
+            .isFilter('revoked_at', null)
+            .single();
+        final roleCode =
+            (grant['roles'] as Map<String, dynamic>)['code'] as String;
+
+        await client.rpc<dynamic>(
+          'user_role_revoke',
+          params: {'p_grant_id': grant['id']},
+        );
+
+        try {
+          // A fresh session, because the point is what the *server* now decides.
+          final revoked = await sessionFor(
+            'ccr.manager@example.com',
+            tag: 'slice11-revoked',
+          );
+          expect(
+            await revoked
+                .from('revenue_attachments')
+                .select('id')
+                .eq('revenue_entry_id', sale),
+            isEmpty,
+            reason: 'the metadata row is gone from their reach',
+          );
+          await expectLater(
+            revoked.storage.from(bucket).download(path),
+            throwsA(anything),
+            reason: 'and so is the object',
+          );
+        } finally {
+          // Restored, and **read back** rather than assumed: a restore is not restored
+          // until it has been read back (D-142).
+          await signInAs('giridhar@hki.com');
+          await client.rpc<dynamic>(
+            'user_role_grant',
+            params: {
+              'p_user_id': target['id'],
+              'p_role_code': roleCode,
+              'p_business_unit_id': ccrUnit,
+            },
+          );
+          final back = await client
+              .from('user_roles')
+              .select('id')
+              .eq('user_id', target['id'] as String)
+              .eq('business_unit_id', ccrUnit)
+              .isFilter('revoked_at', null);
+          expect(
+            back,
+            hasLength(1),
+            reason: 'the development grant fixture is left as it was found',
+          );
+        }
+      });
+
+      test('an anonymous caller gets neither half', () async {
+        final sale = await record();
+        final registered = await attach(sale);
+
+        final anon = SupabaseClient(
+          config['SUPABASE_URL'] as String,
+          config['SUPABASE_ANON_KEY'] as String,
+        );
+        // Refused outright or answered with nothing — both are "no", and which one the
+        // stack chooses is not a product decision worth pinning.
+        try {
+          expect(await anon.from('revenue_attachments').select(), isEmpty);
+        } on PostgrestException {
+          // refused, which is the stronger of the two
+        }
+        await expectLater(
+          anon.storage
+              .from(bucket)
+              .download(registered['storage_path'] as String),
+          throwsA(anything),
+        );
+        await expectLater(
+          anon.rpc<dynamic>(
+            'revenue_attachment_register',
+            params: {
+              'p_id': const Uuid().v4(),
+              'p_revenue_entry_id': sale,
+              'p_file_name': 'x.jpg',
+              'p_content_type': 'image/jpeg',
+              'p_byte_size': 10,
+              'p_content_hash': 'x',
+              'p_storage_path': 'x',
+            },
+          ),
+          throwsA(anything),
+          reason: 'nothing in public is callable by anon (D-044)',
+        );
+      });
+
+      test('the expense prefix and the revenue prefix decide separately', () async {
+        // A revenue object must not be reachable through the expense predicate, and the
+        // reverse. Proven on the parsers, which are what the two policies branch on.
+        final probe = await client.rpc<dynamic>(
+          'storage_revenue_id',
+          params: {'p_name': 'org/$orgId/expenses/${const Uuid().v7()}/a.jpg'},
+        );
+        expect(probe, isNull);
+        final other = await client.rpc<dynamic>(
+          'storage_expense_id',
+          params: {'p_name': 'org/$orgId/revenue/${const Uuid().v7()}/a.jpg'},
+        );
+        expect(other, isNull);
+      });
+    });
+
+    test('the bucket is private: no unauthenticated URL serves an object', () async {
+      final sale = await record();
+      final registered = await attach(sale);
+      final path = registered['storage_path'] as String;
+
+      // A public bucket would serve this to anybody who could guess the path — and the
+      // path is deliberately guessable, because path secrecy is not authorisation
+      // (spec §15.2). So the check is what an unauthenticated fetch actually returns.
+      final publicUrl = client.storage.from(bucket).getPublicUrl(path);
+      final response = await HttpClient()
+          .getUrl(Uri.parse(publicUrl))
+          .then((request) => request.close());
+      expect(
+        response.statusCode,
+        greaterThanOrEqualTo(400),
+        reason:
+            'financial evidence is never in a public bucket, and this is the fetch '
+            'rather than the configuration saying so (§5)',
+      );
+      // The bucket's own flag is asserted at deploy time by the migration, where the
+      // catalogue is actually readable; no client role may list buckets, which is
+      // itself the right answer.
     });
   });
 }

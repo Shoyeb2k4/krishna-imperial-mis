@@ -5,14 +5,18 @@
 /// kind, source reference and notes exist because the schema deliberately permits shift
 /// summaries, imports and corrections (D-023) — not because anybody types them daily.
 ///
-/// **No attachment control here.** The revenue attachment workflow is Slice 11, and a
-/// placeholder that looked like one would be the D-077 mistake again: a control that
-/// implies a feature exists behind it.
+/// **Attaching evidence lives here too, and nowhere earlier.** A till report or a
+/// banquet billing document is worth keeping and is never required — no configured
+/// category demands one, and the fast path stays four taps and a number. So it sits
+/// behind the same disclosure as the entry kind and the notes, using the shared strip the
+/// expense form uses rather than a revenue copy of it (Slice 11).
 library;
 
 import 'package:flutter/material.dart';
 import 'package:krishna_mis/core/design/tokens/app_tokens.dart';
+import 'package:krishna_mis/domain/attachments/document_attachment.dart';
 import 'package:krishna_mis/domain/revenue/revenue_entry.dart';
+import 'package:krishna_mis/features/attachments/presentation/attachment_strip.dart';
 import 'package:krishna_mis/features/revenue/presentation/revenue_draft.dart';
 
 class RevenueOptionalDetails extends StatelessWidget {
@@ -33,7 +37,7 @@ class RevenueOptionalDetails extends StatelessWidget {
       tilePadding: EdgeInsets.zero,
       title: Text('More details', style: AppTypography.body),
       subtitle: Text(
-        'Entry type, reference, notes',
+        'Entry type, reference, notes, attachments',
         style: AppTypography.caption.copyWith(color: AppColors.inkMuted),
       ),
       children: [
@@ -86,6 +90,14 @@ class RevenueOptionalDetails extends StatelessWidget {
                   notes: value.trim().isEmpty ? null : value.trim(),
                 ),
               ),
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            AttachmentStrip(
+              owner: AttachmentOwnerKind.sale,
+              ownerId: draft.id,
+              attachments: draft.attachments,
+              onChanged: (attachments) =>
+                  onChanged(draft.withAttachments(attachments)),
             ),
           ],
         ),

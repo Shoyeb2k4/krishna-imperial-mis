@@ -219,9 +219,9 @@ Future<BootstrapResult> bootstrap({http.Client? transport}) async {
     // precisely the thing D-063 says a scoped user may not have.
     final purge = ScopeCachePurge(
       database,
-      reclaimStaging: (expenseId) => AttachmentStagingService(
+      reclaimStaging: (documentId) => AttachmentStagingService(
         resolveStagingDirectory: resolveAttachmentStagingDirectory,
-      ).discardExpense(expenseId),
+      ).discardDocument(documentId),
     );
     session = SessionDependencies(
       auth: AuthGateway(client),

@@ -37,6 +37,7 @@ part 'app_database.g.dart';
     RevenueSupplySubtypes,
     BusinessUnitTaxStatuses,
     RevenueConfigSnapshots,
+    RevenueAttachments,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -86,7 +87,7 @@ class AppDatabase extends _$AppDatabase {
   /// Financial tables raise this number as they land, each with a migration step and a
   /// migration test (docs/RELEASE_CHECKLIST.md §C).
   @override
-  int get schemaVersion => 13;
+  int get schemaVersion => 14;
 
   /// Timestamps are stored as ISO-8601 **UTC text**, not as unix seconds.
   ///
@@ -253,6 +254,26 @@ class AppDatabase extends _$AppDatabase {
         // needs this guard, and the guard is a range rather than a floor so the intent
         // reads as "the versions that actually lack it".
         await m.addColumn(revenueEntries, revenueEntries.businessDateSource);
+      }
+      if (from < 14) {
+        // Phase 4 Slice 11 — supporting evidence for a revenue entry.
+        //
+        // A new table, so no guard beyond the plain floor is needed: unlike the v13
+        // column, this is not added to a table that a later-than-v1 step creates from
+        // the current definition, so there is nothing for an upgrading device to
+        // already have (D-144).
+        //
+        // Nothing is backfilled and nothing could be: no revenue attachment has ever
+        // existed on any device.
+        await m.createTable(revenueAttachments);
+        await customStatement(
+          'CREATE INDEX IF NOT EXISTS ix_revenue_attachments_entry '
+          'ON revenue_attachments (revenue_entry_id)',
+        );
+        await customStatement(
+          'CREATE INDEX IF NOT EXISTS ix_revenue_attachments_due '
+          'ON revenue_attachments (upload_state, next_attempt_at)',
+        );
       }
       if (from < 9) {
         // `expenses.scope_revoked_at` (D-068). Nothing is back-filled: every row that

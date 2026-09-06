@@ -1,10 +1,15 @@
-/// Bills attached to an expense, and what is happening to them.
+/// Evidence attached to a financial document, and what is happening to it.
 ///
-/// The states are kept separate on purpose. An expense that has reached the server is
+/// One strip for both documents. It was written for expenses in Phase 3 and generalised
+/// in Slice 11 by giving it the owner it is attaching to — the picker, the staging
+/// service, the policy and the lifecycle were never expense-specific, and a second copy
+/// for revenue would have been a second set of words for the same eight states.
+///
+/// The states are kept separate on purpose. A record that has reached the server is
 /// **Synced** whatever its photograph is doing, and a photograph that will not upload
-/// says so on its own row. Conflating the two would tell a manager their expense had
+/// says so on its own row. Conflating the two would tell a manager their entry had
 /// failed when it had not — and the correct response to a failed upload is to retry the
-/// upload, never to re-enter the expense.
+/// upload, never to re-enter the figures.
 ///
 /// Permission is asked for only when it is used. Somebody who attaches a PDF from Files
 /// is never asked for the camera.
@@ -16,19 +21,36 @@ import 'package:krishna_mis/app/providers.dart';
 import 'package:krishna_mis/core/design/tokens/app_tokens.dart';
 import 'package:krishna_mis/data/attachments/attachment_source.dart';
 import 'package:krishna_mis/data/attachments/attachment_staging.dart';
-import 'package:krishna_mis/domain/expenses/expense.dart';
+import 'package:krishna_mis/domain/attachments/document_attachment.dart';
 
 class AttachmentStrip extends ConsumerStatefulWidget {
   const AttachmentStrip({
-    required this.expenseId,
+    required this.owner,
+    required this.ownerId,
     required this.attachments,
     required this.onChanged,
+    this.title = 'ATTACHMENTS',
     super.key,
   });
 
-  final String expenseId;
-  final List<ExpenseAttachment> attachments;
-  final ValueChanged<List<ExpenseAttachment>> onChanged;
+  /// Which document this evidence supports. Decides the wording and, downstream, the
+  /// storage prefix and the registration endpoint.
+  final AttachmentOwnerKind owner;
+
+  /// The document's own id, which names the app-private staging directory.
+  final String ownerId;
+
+  final List<DocumentAttachment> attachments;
+  final ValueChanged<List<DocumentAttachment>> onChanged;
+  final String title;
+
+  /// Whether a file already recorded may be dropped from the list.
+  ///
+  /// Always false in V1: there is no attachment removal, for either document (D-072a).
+  /// A file staged in *this* sitting can still be taken back out before the record is
+  /// saved, which is not removal — nothing has been recorded to remove.
+  bool canDiscard(DocumentAttachment attachment) =>
+      attachment.uploadState == AttachmentUploadState.staged;
 
   @override
   ConsumerState<AttachmentStrip> createState() => _AttachmentStripState();
@@ -41,18 +63,18 @@ class _AttachmentStripState extends ConsumerState<AttachmentStrip> {
   @override
   Widget build(BuildContext context) {
     final source = ref.watch(attachmentSourceProvider);
-    final full = widget.attachments.length >= AttachmentPolicy.maxPerExpense;
+    final full = widget.attachments.length >= AttachmentPolicy.maxPerDocument;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
-            Text('ATTACHMENTS', style: AppTypography.overline),
+            Text(widget.title, style: AppTypography.overline),
             const Spacer(),
             Text(
               '${widget.attachments.length} of '
-              '${AttachmentPolicy.maxPerExpense}',
+              '${AttachmentPolicy.maxPerDocument}',
               style: AppTypography.caption,
             ),
           ],
@@ -62,15 +84,21 @@ class _AttachmentStripState extends ConsumerState<AttachmentStrip> {
         for (final attachment in widget.attachments)
           _AttachmentRow(
             attachment: attachment,
-            onRemove: () => widget.onChanged([
-              for (final a in widget.attachments)
-                if (a.id != attachment.id) a,
-            ]),
+            owner: widget.owner,
+            // Only a file staged in this sitting can be taken back out, and doing so is
+            // not removal: nothing has been recorded yet. Evidence already on the record
+            // stays, because V1 ships no destructive attachment removal (D-072a).
+            onRemove: widget.canDiscard(attachment)
+                ? () => widget.onChanged([
+                    for (final a in widget.attachments)
+                      if (a.id != attachment.id) a,
+                  ])
+                : null,
           ),
 
         if (source.available.isEmpty)
           Text(
-            'Attaching a bill is not available on this device yet.',
+            'Attaching a file is not available on this device yet.',
             style: AppTypography.caption,
           )
         else
@@ -120,18 +148,19 @@ class _AttachmentStripState extends ConsumerState<AttachmentStrip> {
           .read(attachmentStagingProvider)
           .stage(
             source: picked.file,
-            expenseId: widget.expenseId,
+            ownerId: widget.ownerId,
             fileName: picked.fileName,
             contentType: picked.contentType,
             alreadyAttached: widget.attachments,
           );
       widget.onChanged([...widget.attachments, staged.toDomain()]);
     } on AttachmentRefused catch (refusal) {
-      setState(() => _refusal = refusal.reason.message);
+      setState(() => _refusal = refusal.reason.messageFor(widget.owner));
     } on Object {
       setState(
         () => _refusal =
-            'That file could not be attached. The expense is unaffected.',
+            'That file could not be attached. The ${widget.owner.noun} is '
+            'unaffected.',
       );
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -140,9 +169,14 @@ class _AttachmentStripState extends ConsumerState<AttachmentStrip> {
 }
 
 class _AttachmentRow extends StatelessWidget {
-  const _AttachmentRow({required this.attachment, this.onRemove});
+  const _AttachmentRow({
+    required this.attachment,
+    required this.owner,
+    this.onRemove,
+  });
 
-  final ExpenseAttachment attachment;
+  final DocumentAttachment attachment;
+  final AttachmentOwnerKind owner;
   final VoidCallback? onRemove;
 
   @override
@@ -180,7 +214,7 @@ class _AttachmentRow extends StatelessWidget {
         Icons.block_outlined,
       ),
     };
-    final label = attachment.uploadState.label;
+    final label = attachment.uploadState.labelFor(owner);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.sm),
@@ -224,7 +258,7 @@ class _AttachmentRow extends StatelessWidget {
           if (onRemove != null)
             IconButton(
               icon: const Icon(Icons.close, size: 16),
-              tooltip: 'Remove',
+              tooltip: 'Take this file back out',
               onPressed: onRemove,
             ),
         ],

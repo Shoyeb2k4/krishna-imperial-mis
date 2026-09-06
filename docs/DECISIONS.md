@@ -4910,3 +4910,230 @@ in an append-only or immutable-once-voided table:
 
 They are evidence, not damage. Keeping them and leaving the constraint honest about them is
 better than rewriting financial history to make a flag read `true`.
+
+---
+
+# Phase 4 Slice 11 — Revenue attachments (2026-09-06)
+
+The governing rule for the slice, as the project lead set it:
+
+> Revenue attachments are supporting evidence for a Revenue document. They are private,
+> offline-capable, actor/scope-safe, retryable, and must never become an alternate
+> financial source of truth.
+
+## D-147 — The attachment lifecycle is shared, not copied; the smallest safe extraction
+**Date:** 2026-09-06 · **Status:** Accepted
+
+**Context.** The brief was explicit: reuse the proven Phase 3 architecture, do not build a
+second attachment subsystem, and extract the *smallest safe* shared abstraction where the
+expense code is unnecessarily expense-specific. The audit found the split cleanly:
+
+| Already document-agnostic, reused untouched | Named for expenses, and only that |
+|---|---|
+| `AttachmentSource`, `AttachmentIntake`, `PickedFile`, `intakesFor`, `attachmentSourceFor`, both platform pickers | `ExpenseAttachment` — a file record with no expense in it |
+| `ImageOptimizer`, `AttachmentTypes`, the hashing helpers | `AttachmentPolicy.maxPerExpense` / `maxTotalBytesPerExpense` — the product's limits, not a per-document rule |
+| The eight-state lifecycle itself | `AttachmentStagingService.stage(expenseId:)` — a directory name |
+| `AttachmentUploadWorker`'s backoff, ordering, recovery and reclamation | its typed Drift queries and its raw SQL |
+
+**Decision.** `domain/attachments/document_attachment.dart` holds
+`AttachmentUploadState`, `AttachmentPolicy` and `DocumentAttachment`, moved unchanged in
+substance. `ExpenseAttachment` becomes a typedef of `DocumentAttachment`, so no expense
+call site changes. `AttachmentOwnerKind { expense, sale }` carries the three strings that
+genuinely differ — the noun a refusal uses, the storage path segment, and which
+registration RPC to call.
+
+`AttachmentUploadWorker` serves both tables through one internal descriptor rather than
+gaining a sibling. **One backoff clock, one definition of `uploaded`, one recovery pass,
+one reclamation policy.** Two workers would have been two of each, agreeing only until
+somebody edited one — which is D-119 for a duplicated `switch` and D-131 for a duplicated
+join, both of which had already drifted when they were found.
+
+**The evidence that the refactor is neutral is the existing suite, not the argument.** All
+73 expense attachment tests pass over the rewritten worker, the rewritten staging service
+and the moved domain, unchanged except for parameter names.
+
+**`waitingForExpense` keeps its name**, deliberately. It means *the parent financial
+document has not been accepted yet*; it is named for the first document that needed it. It
+is the value stored in `upload_state` on every device in the field and is named by two
+SQLite check constraints, so renaming it is a data migration of live expense rows for no
+behavioural gain. D-104's lesson is to **pin** a wire name, not to churn one.
+
+**What was not done.** No broad attachment refactor for tidiness. The bucket keeps its id,
+the enum keeps its values, `AttachmentRejection`'s cases keep their shape, and the pickers
+were not touched at all.
+
+## D-148 — A revenue entry is never partly visible, so its evidence predicate is not the expense one
+**Date:** 2026-09-06 · **Status:** Accepted
+
+**Context.** D-063 makes an expense attachment **complete-document-only**: a shared
+invoice states the whole total on its face, so a manager entitled to a quarter of it does
+not get the image, in a form no policy could redact. The obvious move was to copy
+`may_read_expense_attachments`.
+
+**That would have been cargo cult.** The expense rule exists because an expense *can* be
+partly visible — it has allocation lines across properties, and a scoped projection that
+withholds the header total. A revenue entry has neither: it names exactly one business
+unit and one revenue category on its header (spec §8), and `revenue_tables.dart` already
+declines to reproduce the expense visibility columns for exactly this reason.
+
+**Decision.** `public.may_read_revenue_attachments(uuid)` asks what the revenue projection
+already asks: this organisation, `attachment.view` held anywhere, and `revenue.view` for
+the entry's own business unit. No allocation arithmetic, because there are no lines to be
+outside anybody's scope. It is `security definer` for the reason every predicate in this
+project is — a policy subquery runs with the **caller's** privileges, so reading
+`revenue_entries` directly would answer from rows the caller can already see rather than
+from the truth (D-045, and D-110 §1 where that reached a shipped policy).
+
+One predicate, three consumers: the table policy, the Storage read policy and the Storage
+write policy. The object and its metadata row therefore cannot disagree about who may have
+them — which is the defect 0036 had to fix for expenses, where Storage refused a scoped
+manager the image while the metadata table handed them the row.
+
+**Proven, not asserted.** Against `krishna-mis-dev`: the property's own manager reads both
+halves; a wrong-property manager enumerates neither and cannot register one either; an
+anonymous caller gets nothing; and a **revoked** user — the grant genuinely withdrawn and
+then restored, with the restoration read back — loses both.
+
+## D-149 — One bucket, two path prefixes, two policies
+**Date:** 2026-09-06 · **Status:** Accepted
+
+**Decision.** Revenue evidence lives in the existing private bucket under
+`org/{org}/revenue/{entry}/{attachment}.{ext}`, decided by its own three Storage policies.
+The expense policies are untouched and keep deciding `org/{org}/expenses/…`.
+
+**Why not a second bucket.** It would duplicate the file size limit, the MIME allow-list
+and four policies, and all of them would then have to be kept in step by hand — which this
+project has already learned is the failure mode, not the safeguard.
+
+**Why the bucket id still reads `expense-attachments`.** A bucket id is where bytes
+physically live. Renaming it would strand every bill already uploaded, for the sake of a
+word. The Dart constant is renamed to `financialAttachmentBucket` and says so; the id is a
+historical name and is documented as one.
+
+**The separation is asserted rather than assumed.** `storage_revenue_id` returns null for
+an expense path and `storage_expense_id` returns null for a revenue path, checked at
+deploy time and again from a client. Neither prefix is reachable through the other's rule.
+
+A `delete` policy remains absent for both. Nobody removes evidence through the object API.
+
+## D-150 — Attaching is not editing
+**Date:** 2026-09-06 · **Status:** Accepted
+
+**Decision.** Adding evidence to a recorded sale is **not** a financial mutation and does
+not behave like one. `RevenueRepository.attachLocally` takes no `base_row_version`, queues
+no outbox intent, does not advance the entry's row version, and changes no amount, tax
+figure, business date or transaction number. It is its own control on the detail surface
+rather than a trip through the correction form.
+
+The alternative — routing evidence through `revenue_update` — would have put a financial
+mutation, a concurrency check and a re-resolution of tax behind an act that corrects
+nothing. A person attaching last night's till report has not changed a figure, and making
+the system re-rate the sale to accept a photograph would be inventing a reason for the
+tax to move.
+
+**The consequences are asserted directly.** A test captures a sale's gross, tax, net,
+business date, transaction number, row version, component count and business-date
+provenance before evidence is attached, and compares the whole set after attach, upload,
+failure, retry, reclamation and restart. The same comparison runs against
+`revenue_document` on the real server. The local schema is asserted to carry no
+money-shaped column at all, so the mistake is unavailable rather than merely avoided —
+the same move D-094 made when it removed every monetary field from `RevenueTaxFacts`.
+
+**Ordering is still a rule.** Evidence cannot precede the document it supports: the
+Storage write policy requires the sale to exist canonically, so a file waits in
+`waitingForExpense` until the server issues a `KI-REV` number and the worker promotes it
+(D-073 §2). A queued correction is unaffected either way, because **the attachment belongs
+to the document's identity, not to any one mutation.**
+
+## D-151 — V1 ships no attachment removal, and revenue does not add the concept
+**Date:** 2026-09-06 · **Status:** Accepted
+
+The brief asked for this to be determined rather than assumed, and the determination is:
+**the binding V1 specification does not require attachment removal.** Spec §15 describes
+capture, storage and access control; §28 lists attachments in scope and says nothing about
+removing one; D-072a states plainly that V1 offers no destructive attachment removal at
+all.
+
+`expense_attachments` carries `removed_at`, `removed_by` and `remove_reason` from the
+Phase 3 schema, and **no writer exists anywhere in the product** — which is why
+`expense_attachments_removal_has_reason` was excluded from D-145's five mandatory reasons:
+nothing can raise `reason_required` for it.
+
+**Decision.** `revenue_attachments` carries no removal columns, and the migration asserts
+their absence. Creating a second unwritable constraint because the sibling schema contains
+the concept would be expanding V1 scope on the strength of a column name — and it is
+precisely the shape of the three findings D-142, D-145 and D-146 had to reason about.
+
+If removal is ever approved it arrives as its own decision, with a governance record for
+removing financial evidence, and its mandatory reason uses `app.stated_reason` — the
+canonical all-whitespace rule (D-142). The invariant that finds every
+`reason_required` raiser will require it, so the defect cannot be repeated by omission.
+
+The client half matches: the strip offers to take a file back out only while it is still
+`staged` — that is a draft nobody has recorded, not a removal — and a recorded file has no
+control beside it.
+
+## D-152 — Two acceptance findings, both about what a real server does to an assertion
+**Date:** 2026-09-06 · **Status:** Recorded
+
+Neither is a product defect, and both are worth keeping because both were assertions that
+looked correct and were about the wrong thing.
+
+**1 · The online phase asserted that the product is slow.** It first checked that a freshly
+saved sale's evidence had *not* yet uploaded, to demonstrate the D-073 §2 ordering rule.
+Against `krishna-mis-dev` the whole chain — save, push, number, promote, upload — finishes
+inside the same two-second pump, so the assertion failed on a run in which everything
+worked. It is now about the durable consequence (one row, one object, matching hashes, no
+financial change), and the ordering rule is proven in the **offline** phase, where no
+number can arrive and the upload provably cannot start. Slice 8 records the identical
+lesson for *"no number yet"* (D-119).
+
+**2 · A widget test cannot await real file I/O without saying so.** Staging copies bytes
+into app-private storage, which is genuine `dart:io`. A `testWidgets` body runs inside the
+fake-async zone, where `pumpAndSettle` returns as soon as no frame is scheduled and an
+await on real I/O in the body **never completes at all** — the first presents as an
+assertion about a form that has not been told yet, the second as a hung suite rather than
+a failed one. Both are handled with `tester.runAsync`, in a named helper, with the reason
+written beside it. Recorded because the second failure mode reads like a product hang and
+is not one; the next person to stage a file in a widget test will meet it.
+
+**And the first fix for it was itself a wall-clock race.** The helper began as a fixed
+twelve turns of pump-and-yield, which is 240 milliseconds of real time. It passed the file
+alone and failed intermittently under the full suite — three tests one run, six the next,
+none the third — because a dozen suites sharing a machine do not hand the real event loop
+back on a schedule. A count of turns is not a wait; it is a bet on how busy the machine is,
+and at a boundary that copies bytes it fails in exactly the way D-075 records: a timing
+defect wearing the costume of a product one. The helper now waits for **the staged file to
+appear**, up to a generous deadline, and says so if it does not. Three consecutive full
+host runs, green.
+
+The rule that generalises: **wait for the condition, never for a number of frames.** The
+acceptance suite learned this as `pumpUntil`; the host widget suite needed the same lesson
+the first time it touched real I/O.
+
+## D-153 — A documentation invariant caught a line-ending rewrite
+**Date:** 2026-09-06 · **Status:** Recorded
+
+Appending the Slice 11 sections to the four canonical documents was done with a Python
+rewrite. On Windows a text-mode write turns every newline into a carriage-return pair, so
+all four files — which were LF — came back CRLF in **every** line rather than only in the
+appended sections.
+
+Nothing about the prose changed and no reader would have noticed. What noticed was
+D-137's invariant, which asserts `ARCHITECTURE.md` states in as many words that there is
+no `expense_correct_business_date` — it matches a two-line phrase, and a phrase spanning a
+line ending stops matching when the line ending changes. The suite went from green to one
+failure with a diff nobody would have read as "line endings", and it was right.
+
+Two things are worth keeping from it.
+
+**A whole-file rewrite is a whole-file change**, whatever the intent was. The fix is
+`newline=''` on read *and* byte-mode on write, so the file's existing convention survives
+an append. Applied, and the four files are back to LF, byte-identical to HEAD outside the
+appended sections.
+
+**The invariant earned its keep somewhere nobody designed it to.** It exists to stop a
+documented endpoint being claimed again (D-127, D-137); it caught an encoding change
+instead. A check written against the *substance* of a document rather than its presence is
+worth more than one that merely counts sections — and this is the argument for phrasing
+documentation invariants as sentences the document must contain.

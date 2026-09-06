@@ -16882,6 +16882,1068 @@ class RevenueConfigSnapshotsCompanion
   }
 }
 
+class $RevenueAttachmentsTable extends RevenueAttachments
+    with TableInfo<$RevenueAttachmentsTable, RevenueAttachmentRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $RevenueAttachmentsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _orgIdMeta = const VerificationMeta('orgId');
+  @override
+  late final GeneratedColumn<String> orgId = GeneratedColumn<String>(
+    'org_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _revenueEntryIdMeta = const VerificationMeta(
+    'revenueEntryId',
+  );
+  @override
+  late final GeneratedColumn<String> revenueEntryId = GeneratedColumn<String>(
+    'revenue_entry_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES revenue_entries (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _fileNameMeta = const VerificationMeta(
+    'fileName',
+  );
+  @override
+  late final GeneratedColumn<String> fileName = GeneratedColumn<String>(
+    'file_name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _contentTypeMeta = const VerificationMeta(
+    'contentType',
+  );
+  @override
+  late final GeneratedColumn<String> contentType = GeneratedColumn<String>(
+    'content_type',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _byteSizeMeta = const VerificationMeta(
+    'byteSize',
+  );
+  @override
+  late final GeneratedColumn<int> byteSize = GeneratedColumn<int>(
+    'byte_size',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _contentHashMeta = const VerificationMeta(
+    'contentHash',
+  );
+  @override
+  late final GeneratedColumn<String> contentHash = GeneratedColumn<String>(
+    'content_hash',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _localPathMeta = const VerificationMeta(
+    'localPath',
+  );
+  @override
+  late final GeneratedColumn<String> localPath = GeneratedColumn<String>(
+    'local_path',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _uploadStateMeta = const VerificationMeta(
+    'uploadState',
+  );
+  @override
+  late final GeneratedColumn<String> uploadState = GeneratedColumn<String>(
+    'upload_state',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('staged'),
+  );
+  static const VerificationMeta _storagePathMeta = const VerificationMeta(
+    'storagePath',
+  );
+  @override
+  late final GeneratedColumn<String> storagePath = GeneratedColumn<String>(
+    'storage_path',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _attemptCountMeta = const VerificationMeta(
+    'attemptCount',
+  );
+  @override
+  late final GeneratedColumn<int> attemptCount = GeneratedColumn<int>(
+    'attempt_count',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _nextAttemptAtMeta = const VerificationMeta(
+    'nextAttemptAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> nextAttemptAt =
+      GeneratedColumn<DateTime>(
+        'next_attempt_at',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _lastErrorMeta = const VerificationMeta(
+    'lastError',
+  );
+  @override
+  late final GeneratedColumn<String> lastError = GeneratedColumn<String>(
+    'last_error',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _uploadedAtMeta = const VerificationMeta(
+    'uploadedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> uploadedAt = GeneratedColumn<DateTime>(
+    'uploaded_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _reclaimableAfterMeta = const VerificationMeta(
+    'reclaimableAfter',
+  );
+  @override
+  late final GeneratedColumn<DateTime> reclaimableAfter =
+      GeneratedColumn<DateTime>(
+        'reclaimable_after',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _uploadedByMeta = const VerificationMeta(
+    'uploadedBy',
+  );
+  @override
+  late final GeneratedColumn<String> uploadedBy = GeneratedColumn<String>(
+    'uploaded_by',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    orgId,
+    revenueEntryId,
+    fileName,
+    contentType,
+    byteSize,
+    contentHash,
+    localPath,
+    uploadState,
+    storagePath,
+    attemptCount,
+    nextAttemptAt,
+    lastError,
+    uploadedAt,
+    reclaimableAfter,
+    uploadedBy,
+    createdAt,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'revenue_attachments';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<RevenueAttachmentRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('org_id')) {
+      context.handle(
+        _orgIdMeta,
+        orgId.isAcceptableOrUnknown(data['org_id']!, _orgIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_orgIdMeta);
+    }
+    if (data.containsKey('revenue_entry_id')) {
+      context.handle(
+        _revenueEntryIdMeta,
+        revenueEntryId.isAcceptableOrUnknown(
+          data['revenue_entry_id']!,
+          _revenueEntryIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_revenueEntryIdMeta);
+    }
+    if (data.containsKey('file_name')) {
+      context.handle(
+        _fileNameMeta,
+        fileName.isAcceptableOrUnknown(data['file_name']!, _fileNameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_fileNameMeta);
+    }
+    if (data.containsKey('content_type')) {
+      context.handle(
+        _contentTypeMeta,
+        contentType.isAcceptableOrUnknown(
+          data['content_type']!,
+          _contentTypeMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_contentTypeMeta);
+    }
+    if (data.containsKey('byte_size')) {
+      context.handle(
+        _byteSizeMeta,
+        byteSize.isAcceptableOrUnknown(data['byte_size']!, _byteSizeMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_byteSizeMeta);
+    }
+    if (data.containsKey('content_hash')) {
+      context.handle(
+        _contentHashMeta,
+        contentHash.isAcceptableOrUnknown(
+          data['content_hash']!,
+          _contentHashMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_contentHashMeta);
+    }
+    if (data.containsKey('local_path')) {
+      context.handle(
+        _localPathMeta,
+        localPath.isAcceptableOrUnknown(data['local_path']!, _localPathMeta),
+      );
+    }
+    if (data.containsKey('upload_state')) {
+      context.handle(
+        _uploadStateMeta,
+        uploadState.isAcceptableOrUnknown(
+          data['upload_state']!,
+          _uploadStateMeta,
+        ),
+      );
+    }
+    if (data.containsKey('storage_path')) {
+      context.handle(
+        _storagePathMeta,
+        storagePath.isAcceptableOrUnknown(
+          data['storage_path']!,
+          _storagePathMeta,
+        ),
+      );
+    }
+    if (data.containsKey('attempt_count')) {
+      context.handle(
+        _attemptCountMeta,
+        attemptCount.isAcceptableOrUnknown(
+          data['attempt_count']!,
+          _attemptCountMeta,
+        ),
+      );
+    }
+    if (data.containsKey('next_attempt_at')) {
+      context.handle(
+        _nextAttemptAtMeta,
+        nextAttemptAt.isAcceptableOrUnknown(
+          data['next_attempt_at']!,
+          _nextAttemptAtMeta,
+        ),
+      );
+    }
+    if (data.containsKey('last_error')) {
+      context.handle(
+        _lastErrorMeta,
+        lastError.isAcceptableOrUnknown(data['last_error']!, _lastErrorMeta),
+      );
+    }
+    if (data.containsKey('uploaded_at')) {
+      context.handle(
+        _uploadedAtMeta,
+        uploadedAt.isAcceptableOrUnknown(data['uploaded_at']!, _uploadedAtMeta),
+      );
+    }
+    if (data.containsKey('reclaimable_after')) {
+      context.handle(
+        _reclaimableAfterMeta,
+        reclaimableAfter.isAcceptableOrUnknown(
+          data['reclaimable_after']!,
+          _reclaimableAfterMeta,
+        ),
+      );
+    }
+    if (data.containsKey('uploaded_by')) {
+      context.handle(
+        _uploadedByMeta,
+        uploadedBy.isAcceptableOrUnknown(data['uploaded_by']!, _uploadedByMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_uploadedByMeta);
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  RevenueAttachmentRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return RevenueAttachmentRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      orgId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}org_id'],
+      )!,
+      revenueEntryId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}revenue_entry_id'],
+      )!,
+      fileName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}file_name'],
+      )!,
+      contentType: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}content_type'],
+      )!,
+      byteSize: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}byte_size'],
+      )!,
+      contentHash: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}content_hash'],
+      )!,
+      localPath: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}local_path'],
+      ),
+      uploadState: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}upload_state'],
+      )!,
+      storagePath: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}storage_path'],
+      ),
+      attemptCount: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}attempt_count'],
+      )!,
+      nextAttemptAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}next_attempt_at'],
+      ),
+      lastError: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}last_error'],
+      ),
+      uploadedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}uploaded_at'],
+      ),
+      reclaimableAfter: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}reclaimable_after'],
+      ),
+      uploadedBy: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}uploaded_by'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $RevenueAttachmentsTable createAlias(String alias) {
+    return $RevenueAttachmentsTable(attachedDatabase, alias);
+  }
+}
+
+class RevenueAttachmentRow extends DataClass
+    implements Insertable<RevenueAttachmentRow> {
+  final String id;
+  final String orgId;
+  final String revenueEntryId;
+  final String fileName;
+  final String contentType;
+  final int byteSize;
+
+  /// SHA-256 of the staged bytes, computed before upload and compared afterwards.
+  final String contentHash;
+
+  /// The app-private staging copy. Never a gallery or Downloads path: those can be
+  /// moved, renamed or revoked by the OS between capture and upload.
+  final String? localPath;
+
+  /// One of `AttachmentUploadState`. The lifecycle lives in that enum, not here, and it
+  /// is the same enum the expense pipeline uses — including `waitingForExpense`, which
+  /// means "the parent financial document has not been accepted yet" and keeps its name
+  /// because it is a stored value on every device already in the field.
+  final String uploadState;
+  final String? storagePath;
+  final int attemptCount;
+  final DateTime? nextAttemptAt;
+  final String? lastError;
+  final DateTime? uploadedAt;
+
+  /// When the verified staging copy becomes eligible for reclamation — seven days after
+  /// the server confirmed *and* the hash matched (`AttachmentPolicy.stagingRetention`).
+  final DateTime? reclaimableAfter;
+  final String uploadedBy;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  const RevenueAttachmentRow({
+    required this.id,
+    required this.orgId,
+    required this.revenueEntryId,
+    required this.fileName,
+    required this.contentType,
+    required this.byteSize,
+    required this.contentHash,
+    this.localPath,
+    required this.uploadState,
+    this.storagePath,
+    required this.attemptCount,
+    this.nextAttemptAt,
+    this.lastError,
+    this.uploadedAt,
+    this.reclaimableAfter,
+    required this.uploadedBy,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['org_id'] = Variable<String>(orgId);
+    map['revenue_entry_id'] = Variable<String>(revenueEntryId);
+    map['file_name'] = Variable<String>(fileName);
+    map['content_type'] = Variable<String>(contentType);
+    map['byte_size'] = Variable<int>(byteSize);
+    map['content_hash'] = Variable<String>(contentHash);
+    if (!nullToAbsent || localPath != null) {
+      map['local_path'] = Variable<String>(localPath);
+    }
+    map['upload_state'] = Variable<String>(uploadState);
+    if (!nullToAbsent || storagePath != null) {
+      map['storage_path'] = Variable<String>(storagePath);
+    }
+    map['attempt_count'] = Variable<int>(attemptCount);
+    if (!nullToAbsent || nextAttemptAt != null) {
+      map['next_attempt_at'] = Variable<DateTime>(nextAttemptAt);
+    }
+    if (!nullToAbsent || lastError != null) {
+      map['last_error'] = Variable<String>(lastError);
+    }
+    if (!nullToAbsent || uploadedAt != null) {
+      map['uploaded_at'] = Variable<DateTime>(uploadedAt);
+    }
+    if (!nullToAbsent || reclaimableAfter != null) {
+      map['reclaimable_after'] = Variable<DateTime>(reclaimableAfter);
+    }
+    map['uploaded_by'] = Variable<String>(uploadedBy);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  RevenueAttachmentsCompanion toCompanion(bool nullToAbsent) {
+    return RevenueAttachmentsCompanion(
+      id: Value(id),
+      orgId: Value(orgId),
+      revenueEntryId: Value(revenueEntryId),
+      fileName: Value(fileName),
+      contentType: Value(contentType),
+      byteSize: Value(byteSize),
+      contentHash: Value(contentHash),
+      localPath: localPath == null && nullToAbsent
+          ? const Value.absent()
+          : Value(localPath),
+      uploadState: Value(uploadState),
+      storagePath: storagePath == null && nullToAbsent
+          ? const Value.absent()
+          : Value(storagePath),
+      attemptCount: Value(attemptCount),
+      nextAttemptAt: nextAttemptAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(nextAttemptAt),
+      lastError: lastError == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastError),
+      uploadedAt: uploadedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(uploadedAt),
+      reclaimableAfter: reclaimableAfter == null && nullToAbsent
+          ? const Value.absent()
+          : Value(reclaimableAfter),
+      uploadedBy: Value(uploadedBy),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory RevenueAttachmentRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return RevenueAttachmentRow(
+      id: serializer.fromJson<String>(json['id']),
+      orgId: serializer.fromJson<String>(json['orgId']),
+      revenueEntryId: serializer.fromJson<String>(json['revenueEntryId']),
+      fileName: serializer.fromJson<String>(json['fileName']),
+      contentType: serializer.fromJson<String>(json['contentType']),
+      byteSize: serializer.fromJson<int>(json['byteSize']),
+      contentHash: serializer.fromJson<String>(json['contentHash']),
+      localPath: serializer.fromJson<String?>(json['localPath']),
+      uploadState: serializer.fromJson<String>(json['uploadState']),
+      storagePath: serializer.fromJson<String?>(json['storagePath']),
+      attemptCount: serializer.fromJson<int>(json['attemptCount']),
+      nextAttemptAt: serializer.fromJson<DateTime?>(json['nextAttemptAt']),
+      lastError: serializer.fromJson<String?>(json['lastError']),
+      uploadedAt: serializer.fromJson<DateTime?>(json['uploadedAt']),
+      reclaimableAfter: serializer.fromJson<DateTime?>(
+        json['reclaimableAfter'],
+      ),
+      uploadedBy: serializer.fromJson<String>(json['uploadedBy']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'orgId': serializer.toJson<String>(orgId),
+      'revenueEntryId': serializer.toJson<String>(revenueEntryId),
+      'fileName': serializer.toJson<String>(fileName),
+      'contentType': serializer.toJson<String>(contentType),
+      'byteSize': serializer.toJson<int>(byteSize),
+      'contentHash': serializer.toJson<String>(contentHash),
+      'localPath': serializer.toJson<String?>(localPath),
+      'uploadState': serializer.toJson<String>(uploadState),
+      'storagePath': serializer.toJson<String?>(storagePath),
+      'attemptCount': serializer.toJson<int>(attemptCount),
+      'nextAttemptAt': serializer.toJson<DateTime?>(nextAttemptAt),
+      'lastError': serializer.toJson<String?>(lastError),
+      'uploadedAt': serializer.toJson<DateTime?>(uploadedAt),
+      'reclaimableAfter': serializer.toJson<DateTime?>(reclaimableAfter),
+      'uploadedBy': serializer.toJson<String>(uploadedBy),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  RevenueAttachmentRow copyWith({
+    String? id,
+    String? orgId,
+    String? revenueEntryId,
+    String? fileName,
+    String? contentType,
+    int? byteSize,
+    String? contentHash,
+    Value<String?> localPath = const Value.absent(),
+    String? uploadState,
+    Value<String?> storagePath = const Value.absent(),
+    int? attemptCount,
+    Value<DateTime?> nextAttemptAt = const Value.absent(),
+    Value<String?> lastError = const Value.absent(),
+    Value<DateTime?> uploadedAt = const Value.absent(),
+    Value<DateTime?> reclaimableAfter = const Value.absent(),
+    String? uploadedBy,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  }) => RevenueAttachmentRow(
+    id: id ?? this.id,
+    orgId: orgId ?? this.orgId,
+    revenueEntryId: revenueEntryId ?? this.revenueEntryId,
+    fileName: fileName ?? this.fileName,
+    contentType: contentType ?? this.contentType,
+    byteSize: byteSize ?? this.byteSize,
+    contentHash: contentHash ?? this.contentHash,
+    localPath: localPath.present ? localPath.value : this.localPath,
+    uploadState: uploadState ?? this.uploadState,
+    storagePath: storagePath.present ? storagePath.value : this.storagePath,
+    attemptCount: attemptCount ?? this.attemptCount,
+    nextAttemptAt: nextAttemptAt.present
+        ? nextAttemptAt.value
+        : this.nextAttemptAt,
+    lastError: lastError.present ? lastError.value : this.lastError,
+    uploadedAt: uploadedAt.present ? uploadedAt.value : this.uploadedAt,
+    reclaimableAfter: reclaimableAfter.present
+        ? reclaimableAfter.value
+        : this.reclaimableAfter,
+    uploadedBy: uploadedBy ?? this.uploadedBy,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  RevenueAttachmentRow copyWithCompanion(RevenueAttachmentsCompanion data) {
+    return RevenueAttachmentRow(
+      id: data.id.present ? data.id.value : this.id,
+      orgId: data.orgId.present ? data.orgId.value : this.orgId,
+      revenueEntryId: data.revenueEntryId.present
+          ? data.revenueEntryId.value
+          : this.revenueEntryId,
+      fileName: data.fileName.present ? data.fileName.value : this.fileName,
+      contentType: data.contentType.present
+          ? data.contentType.value
+          : this.contentType,
+      byteSize: data.byteSize.present ? data.byteSize.value : this.byteSize,
+      contentHash: data.contentHash.present
+          ? data.contentHash.value
+          : this.contentHash,
+      localPath: data.localPath.present ? data.localPath.value : this.localPath,
+      uploadState: data.uploadState.present
+          ? data.uploadState.value
+          : this.uploadState,
+      storagePath: data.storagePath.present
+          ? data.storagePath.value
+          : this.storagePath,
+      attemptCount: data.attemptCount.present
+          ? data.attemptCount.value
+          : this.attemptCount,
+      nextAttemptAt: data.nextAttemptAt.present
+          ? data.nextAttemptAt.value
+          : this.nextAttemptAt,
+      lastError: data.lastError.present ? data.lastError.value : this.lastError,
+      uploadedAt: data.uploadedAt.present
+          ? data.uploadedAt.value
+          : this.uploadedAt,
+      reclaimableAfter: data.reclaimableAfter.present
+          ? data.reclaimableAfter.value
+          : this.reclaimableAfter,
+      uploadedBy: data.uploadedBy.present
+          ? data.uploadedBy.value
+          : this.uploadedBy,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('RevenueAttachmentRow(')
+          ..write('id: $id, ')
+          ..write('orgId: $orgId, ')
+          ..write('revenueEntryId: $revenueEntryId, ')
+          ..write('fileName: $fileName, ')
+          ..write('contentType: $contentType, ')
+          ..write('byteSize: $byteSize, ')
+          ..write('contentHash: $contentHash, ')
+          ..write('localPath: $localPath, ')
+          ..write('uploadState: $uploadState, ')
+          ..write('storagePath: $storagePath, ')
+          ..write('attemptCount: $attemptCount, ')
+          ..write('nextAttemptAt: $nextAttemptAt, ')
+          ..write('lastError: $lastError, ')
+          ..write('uploadedAt: $uploadedAt, ')
+          ..write('reclaimableAfter: $reclaimableAfter, ')
+          ..write('uploadedBy: $uploadedBy, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    orgId,
+    revenueEntryId,
+    fileName,
+    contentType,
+    byteSize,
+    contentHash,
+    localPath,
+    uploadState,
+    storagePath,
+    attemptCount,
+    nextAttemptAt,
+    lastError,
+    uploadedAt,
+    reclaimableAfter,
+    uploadedBy,
+    createdAt,
+    updatedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is RevenueAttachmentRow &&
+          other.id == this.id &&
+          other.orgId == this.orgId &&
+          other.revenueEntryId == this.revenueEntryId &&
+          other.fileName == this.fileName &&
+          other.contentType == this.contentType &&
+          other.byteSize == this.byteSize &&
+          other.contentHash == this.contentHash &&
+          other.localPath == this.localPath &&
+          other.uploadState == this.uploadState &&
+          other.storagePath == this.storagePath &&
+          other.attemptCount == this.attemptCount &&
+          other.nextAttemptAt == this.nextAttemptAt &&
+          other.lastError == this.lastError &&
+          other.uploadedAt == this.uploadedAt &&
+          other.reclaimableAfter == this.reclaimableAfter &&
+          other.uploadedBy == this.uploadedBy &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt);
+}
+
+class RevenueAttachmentsCompanion
+    extends UpdateCompanion<RevenueAttachmentRow> {
+  final Value<String> id;
+  final Value<String> orgId;
+  final Value<String> revenueEntryId;
+  final Value<String> fileName;
+  final Value<String> contentType;
+  final Value<int> byteSize;
+  final Value<String> contentHash;
+  final Value<String?> localPath;
+  final Value<String> uploadState;
+  final Value<String?> storagePath;
+  final Value<int> attemptCount;
+  final Value<DateTime?> nextAttemptAt;
+  final Value<String?> lastError;
+  final Value<DateTime?> uploadedAt;
+  final Value<DateTime?> reclaimableAfter;
+  final Value<String> uploadedBy;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
+  final Value<int> rowid;
+  const RevenueAttachmentsCompanion({
+    this.id = const Value.absent(),
+    this.orgId = const Value.absent(),
+    this.revenueEntryId = const Value.absent(),
+    this.fileName = const Value.absent(),
+    this.contentType = const Value.absent(),
+    this.byteSize = const Value.absent(),
+    this.contentHash = const Value.absent(),
+    this.localPath = const Value.absent(),
+    this.uploadState = const Value.absent(),
+    this.storagePath = const Value.absent(),
+    this.attemptCount = const Value.absent(),
+    this.nextAttemptAt = const Value.absent(),
+    this.lastError = const Value.absent(),
+    this.uploadedAt = const Value.absent(),
+    this.reclaimableAfter = const Value.absent(),
+    this.uploadedBy = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  RevenueAttachmentsCompanion.insert({
+    required String id,
+    required String orgId,
+    required String revenueEntryId,
+    required String fileName,
+    required String contentType,
+    required int byteSize,
+    required String contentHash,
+    this.localPath = const Value.absent(),
+    this.uploadState = const Value.absent(),
+    this.storagePath = const Value.absent(),
+    this.attemptCount = const Value.absent(),
+    this.nextAttemptAt = const Value.absent(),
+    this.lastError = const Value.absent(),
+    this.uploadedAt = const Value.absent(),
+    this.reclaimableAfter = const Value.absent(),
+    required String uploadedBy,
+    required DateTime createdAt,
+    required DateTime updatedAt,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       orgId = Value(orgId),
+       revenueEntryId = Value(revenueEntryId),
+       fileName = Value(fileName),
+       contentType = Value(contentType),
+       byteSize = Value(byteSize),
+       contentHash = Value(contentHash),
+       uploadedBy = Value(uploadedBy),
+       createdAt = Value(createdAt),
+       updatedAt = Value(updatedAt);
+  static Insertable<RevenueAttachmentRow> custom({
+    Expression<String>? id,
+    Expression<String>? orgId,
+    Expression<String>? revenueEntryId,
+    Expression<String>? fileName,
+    Expression<String>? contentType,
+    Expression<int>? byteSize,
+    Expression<String>? contentHash,
+    Expression<String>? localPath,
+    Expression<String>? uploadState,
+    Expression<String>? storagePath,
+    Expression<int>? attemptCount,
+    Expression<DateTime>? nextAttemptAt,
+    Expression<String>? lastError,
+    Expression<DateTime>? uploadedAt,
+    Expression<DateTime>? reclaimableAfter,
+    Expression<String>? uploadedBy,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (orgId != null) 'org_id': orgId,
+      if (revenueEntryId != null) 'revenue_entry_id': revenueEntryId,
+      if (fileName != null) 'file_name': fileName,
+      if (contentType != null) 'content_type': contentType,
+      if (byteSize != null) 'byte_size': byteSize,
+      if (contentHash != null) 'content_hash': contentHash,
+      if (localPath != null) 'local_path': localPath,
+      if (uploadState != null) 'upload_state': uploadState,
+      if (storagePath != null) 'storage_path': storagePath,
+      if (attemptCount != null) 'attempt_count': attemptCount,
+      if (nextAttemptAt != null) 'next_attempt_at': nextAttemptAt,
+      if (lastError != null) 'last_error': lastError,
+      if (uploadedAt != null) 'uploaded_at': uploadedAt,
+      if (reclaimableAfter != null) 'reclaimable_after': reclaimableAfter,
+      if (uploadedBy != null) 'uploaded_by': uploadedBy,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  RevenueAttachmentsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? orgId,
+    Value<String>? revenueEntryId,
+    Value<String>? fileName,
+    Value<String>? contentType,
+    Value<int>? byteSize,
+    Value<String>? contentHash,
+    Value<String?>? localPath,
+    Value<String>? uploadState,
+    Value<String?>? storagePath,
+    Value<int>? attemptCount,
+    Value<DateTime?>? nextAttemptAt,
+    Value<String?>? lastError,
+    Value<DateTime?>? uploadedAt,
+    Value<DateTime?>? reclaimableAfter,
+    Value<String>? uploadedBy,
+    Value<DateTime>? createdAt,
+    Value<DateTime>? updatedAt,
+    Value<int>? rowid,
+  }) {
+    return RevenueAttachmentsCompanion(
+      id: id ?? this.id,
+      orgId: orgId ?? this.orgId,
+      revenueEntryId: revenueEntryId ?? this.revenueEntryId,
+      fileName: fileName ?? this.fileName,
+      contentType: contentType ?? this.contentType,
+      byteSize: byteSize ?? this.byteSize,
+      contentHash: contentHash ?? this.contentHash,
+      localPath: localPath ?? this.localPath,
+      uploadState: uploadState ?? this.uploadState,
+      storagePath: storagePath ?? this.storagePath,
+      attemptCount: attemptCount ?? this.attemptCount,
+      nextAttemptAt: nextAttemptAt ?? this.nextAttemptAt,
+      lastError: lastError ?? this.lastError,
+      uploadedAt: uploadedAt ?? this.uploadedAt,
+      reclaimableAfter: reclaimableAfter ?? this.reclaimableAfter,
+      uploadedBy: uploadedBy ?? this.uploadedBy,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (orgId.present) {
+      map['org_id'] = Variable<String>(orgId.value);
+    }
+    if (revenueEntryId.present) {
+      map['revenue_entry_id'] = Variable<String>(revenueEntryId.value);
+    }
+    if (fileName.present) {
+      map['file_name'] = Variable<String>(fileName.value);
+    }
+    if (contentType.present) {
+      map['content_type'] = Variable<String>(contentType.value);
+    }
+    if (byteSize.present) {
+      map['byte_size'] = Variable<int>(byteSize.value);
+    }
+    if (contentHash.present) {
+      map['content_hash'] = Variable<String>(contentHash.value);
+    }
+    if (localPath.present) {
+      map['local_path'] = Variable<String>(localPath.value);
+    }
+    if (uploadState.present) {
+      map['upload_state'] = Variable<String>(uploadState.value);
+    }
+    if (storagePath.present) {
+      map['storage_path'] = Variable<String>(storagePath.value);
+    }
+    if (attemptCount.present) {
+      map['attempt_count'] = Variable<int>(attemptCount.value);
+    }
+    if (nextAttemptAt.present) {
+      map['next_attempt_at'] = Variable<DateTime>(nextAttemptAt.value);
+    }
+    if (lastError.present) {
+      map['last_error'] = Variable<String>(lastError.value);
+    }
+    if (uploadedAt.present) {
+      map['uploaded_at'] = Variable<DateTime>(uploadedAt.value);
+    }
+    if (reclaimableAfter.present) {
+      map['reclaimable_after'] = Variable<DateTime>(reclaimableAfter.value);
+    }
+    if (uploadedBy.present) {
+      map['uploaded_by'] = Variable<String>(uploadedBy.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('RevenueAttachmentsCompanion(')
+          ..write('id: $id, ')
+          ..write('orgId: $orgId, ')
+          ..write('revenueEntryId: $revenueEntryId, ')
+          ..write('fileName: $fileName, ')
+          ..write('contentType: $contentType, ')
+          ..write('byteSize: $byteSize, ')
+          ..write('contentHash: $contentHash, ')
+          ..write('localPath: $localPath, ')
+          ..write('uploadState: $uploadState, ')
+          ..write('storagePath: $storagePath, ')
+          ..write('attemptCount: $attemptCount, ')
+          ..write('nextAttemptAt: $nextAttemptAt, ')
+          ..write('lastError: $lastError, ')
+          ..write('uploadedAt: $uploadedAt, ')
+          ..write('reclaimableAfter: $reclaimableAfter, ')
+          ..write('uploadedBy: $uploadedBy, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -16921,6 +17983,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
       $BusinessUnitTaxStatusesTable(this);
   late final $RevenueConfigSnapshotsTable revenueConfigSnapshots =
       $RevenueConfigSnapshotsTable(this);
+  late final $RevenueAttachmentsTable revenueAttachments =
+      $RevenueAttachmentsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -16948,6 +18012,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     revenueSupplySubtypes,
     businessUnitTaxStatuses,
     revenueConfigSnapshots,
+    revenueAttachments,
   ];
   @override
   StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
@@ -16989,6 +18054,13 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         limitUpdateKind: UpdateKind.delete,
       ),
       result: [TableUpdate('revenue_components', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'revenue_entries',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('revenue_attachments', kind: UpdateKind.delete)],
     ),
   ]);
 }
@@ -25349,6 +26421,30 @@ final class $$RevenueEntriesTableReferences
       manager.$state.copyWith(prefetchedData: cache),
     );
   }
+
+  static MultiTypedResultKey<
+    $RevenueAttachmentsTable,
+    List<RevenueAttachmentRow>
+  >
+  _revenueAttachmentsRefsTable(_$AppDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.revenueAttachments,
+        aliasName: 'revenue_entries__id__revenue_attachments__revenue_entry_id',
+      );
+
+  $$RevenueAttachmentsTableProcessedTableManager get revenueAttachmentsRefs {
+    final manager = $$RevenueAttachmentsTableTableManager(
+      $_db,
+      $_db.revenueAttachments,
+    ).filter((f) => f.revenueEntryId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _revenueAttachmentsRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
 }
 
 class $$RevenueEntriesTableFilterComposer
@@ -25486,6 +26582,31 @@ class $$RevenueEntriesTableFilterComposer
           }) => $$RevenueComponentsTableFilterComposer(
             $db: $db,
             $table: $db.revenueComponents,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> revenueAttachmentsRefs(
+    Expression<bool> Function($$RevenueAttachmentsTableFilterComposer f) f,
+  ) {
+    final $$RevenueAttachmentsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.revenueAttachments,
+      getReferencedColumn: (t) => t.revenueEntryId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$RevenueAttachmentsTableFilterComposer(
+            $db: $db,
+            $table: $db.revenueAttachments,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -25742,6 +26863,32 @@ class $$RevenueEntriesTableAnnotationComposer
         );
     return f(composer);
   }
+
+  Expression<T> revenueAttachmentsRefs<T extends Object>(
+    Expression<T> Function($$RevenueAttachmentsTableAnnotationComposer a) f,
+  ) {
+    final $$RevenueAttachmentsTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.revenueAttachments,
+          getReferencedColumn: (t) => t.revenueEntryId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$RevenueAttachmentsTableAnnotationComposer(
+                $db: $db,
+                $table: $db.revenueAttachments,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
 }
 
 class $$RevenueEntriesTableTableManager
@@ -25757,7 +26904,10 @@ class $$RevenueEntriesTableTableManager
           $$RevenueEntriesTableUpdateCompanionBuilder,
           (RevenueEntryRow, $$RevenueEntriesTableReferences),
           RevenueEntryRow,
-          PrefetchHooks Function({bool revenueComponentsRefs})
+          PrefetchHooks Function({
+            bool revenueComponentsRefs,
+            bool revenueAttachmentsRefs,
+          })
         > {
   $$RevenueEntriesTableTableManager(
     _$AppDatabase db,
@@ -25880,40 +27030,66 @@ class $$RevenueEntriesTableTableManager
                 ),
               )
               .toList(),
-          prefetchHooksCallback: ({revenueComponentsRefs = false}) {
-            return PrefetchHooks(
-              db: db,
-              explicitlyWatchedTables: [
-                if (revenueComponentsRefs) db.revenueComponents,
-              ],
-              addJoins: null,
-              getPrefetchedDataCallback: (items) async {
-                return [
-                  if (revenueComponentsRefs)
-                    await $_getPrefetchedData<
-                      RevenueEntryRow,
-                      $RevenueEntriesTable,
-                      RevenueComponentRow
-                    >(
-                      currentTable: table,
-                      referencedTable: $$RevenueEntriesTableReferences
-                          ._revenueComponentsRefsTable(db),
-                      managerFromTypedResult: (p0) =>
-                          $$RevenueEntriesTableReferences(
-                            db,
-                            table,
-                            p0,
-                          ).revenueComponentsRefs,
-                      referencedItemsForCurrentItem: (item, referencedItems) =>
-                          referencedItems.where(
-                            (e) => e.revenueEntryId == item.id,
-                          ),
-                      typedResults: items,
-                    ),
-                ];
+          prefetchHooksCallback:
+              ({
+                revenueComponentsRefs = false,
+                revenueAttachmentsRefs = false,
+              }) {
+                return PrefetchHooks(
+                  db: db,
+                  explicitlyWatchedTables: [
+                    if (revenueComponentsRefs) db.revenueComponents,
+                    if (revenueAttachmentsRefs) db.revenueAttachments,
+                  ],
+                  addJoins: null,
+                  getPrefetchedDataCallback: (items) async {
+                    return [
+                      if (revenueComponentsRefs)
+                        await $_getPrefetchedData<
+                          RevenueEntryRow,
+                          $RevenueEntriesTable,
+                          RevenueComponentRow
+                        >(
+                          currentTable: table,
+                          referencedTable: $$RevenueEntriesTableReferences
+                              ._revenueComponentsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$RevenueEntriesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).revenueComponentsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.revenueEntryId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                      if (revenueAttachmentsRefs)
+                        await $_getPrefetchedData<
+                          RevenueEntryRow,
+                          $RevenueEntriesTable,
+                          RevenueAttachmentRow
+                        >(
+                          currentTable: table,
+                          referencedTable: $$RevenueEntriesTableReferences
+                              ._revenueAttachmentsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$RevenueEntriesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).revenueAttachmentsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.revenueEntryId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                    ];
+                  },
+                );
               },
-            );
-          },
         ),
       );
 }
@@ -25930,7 +27106,10 @@ typedef $$RevenueEntriesTableProcessedTableManager =
       $$RevenueEntriesTableUpdateCompanionBuilder,
       (RevenueEntryRow, $$RevenueEntriesTableReferences),
       RevenueEntryRow,
-      PrefetchHooks Function({bool revenueComponentsRefs})
+      PrefetchHooks Function({
+        bool revenueComponentsRefs,
+        bool revenueAttachmentsRefs,
+      })
     >;
 typedef $$RevenueComponentsTableCreateCompanionBuilder =
     RevenueComponentsCompanion Function({
@@ -28012,6 +29191,606 @@ typedef $$RevenueConfigSnapshotsTableProcessedTableManager =
       RevenueConfigSnapshot,
       PrefetchHooks Function()
     >;
+typedef $$RevenueAttachmentsTableCreateCompanionBuilder =
+    RevenueAttachmentsCompanion Function({
+      required String id,
+      required String orgId,
+      required String revenueEntryId,
+      required String fileName,
+      required String contentType,
+      required int byteSize,
+      required String contentHash,
+      Value<String?> localPath,
+      Value<String> uploadState,
+      Value<String?> storagePath,
+      Value<int> attemptCount,
+      Value<DateTime?> nextAttemptAt,
+      Value<String?> lastError,
+      Value<DateTime?> uploadedAt,
+      Value<DateTime?> reclaimableAfter,
+      required String uploadedBy,
+      required DateTime createdAt,
+      required DateTime updatedAt,
+      Value<int> rowid,
+    });
+typedef $$RevenueAttachmentsTableUpdateCompanionBuilder =
+    RevenueAttachmentsCompanion Function({
+      Value<String> id,
+      Value<String> orgId,
+      Value<String> revenueEntryId,
+      Value<String> fileName,
+      Value<String> contentType,
+      Value<int> byteSize,
+      Value<String> contentHash,
+      Value<String?> localPath,
+      Value<String> uploadState,
+      Value<String?> storagePath,
+      Value<int> attemptCount,
+      Value<DateTime?> nextAttemptAt,
+      Value<String?> lastError,
+      Value<DateTime?> uploadedAt,
+      Value<DateTime?> reclaimableAfter,
+      Value<String> uploadedBy,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+      Value<int> rowid,
+    });
+
+final class $$RevenueAttachmentsTableReferences
+    extends
+        BaseReferences<
+          _$AppDatabase,
+          $RevenueAttachmentsTable,
+          RevenueAttachmentRow
+        > {
+  $$RevenueAttachmentsTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $RevenueEntriesTable _revenueEntryIdTable(_$AppDatabase db) =>
+      db.revenueEntries.createAlias(
+        'revenue_attachments__revenue_entry_id__revenue_entries__id',
+      );
+
+  $$RevenueEntriesTableProcessedTableManager get revenueEntryId {
+    final $_column = $_itemColumn<String>('revenue_entry_id')!;
+
+    final manager = $$RevenueEntriesTableTableManager(
+      $_db,
+      $_db.revenueEntries,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_revenueEntryIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$RevenueAttachmentsTableFilterComposer
+    extends Composer<_$AppDatabase, $RevenueAttachmentsTable> {
+  $$RevenueAttachmentsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get orgId => $composableBuilder(
+    column: $table.orgId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get fileName => $composableBuilder(
+    column: $table.fileName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get contentType => $composableBuilder(
+    column: $table.contentType,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get byteSize => $composableBuilder(
+    column: $table.byteSize,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get contentHash => $composableBuilder(
+    column: $table.contentHash,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get localPath => $composableBuilder(
+    column: $table.localPath,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get uploadState => $composableBuilder(
+    column: $table.uploadState,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get storagePath => $composableBuilder(
+    column: $table.storagePath,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get attemptCount => $composableBuilder(
+    column: $table.attemptCount,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get nextAttemptAt => $composableBuilder(
+    column: $table.nextAttemptAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get lastError => $composableBuilder(
+    column: $table.lastError,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get uploadedAt => $composableBuilder(
+    column: $table.uploadedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get reclaimableAfter => $composableBuilder(
+    column: $table.reclaimableAfter,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get uploadedBy => $composableBuilder(
+    column: $table.uploadedBy,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$RevenueEntriesTableFilterComposer get revenueEntryId {
+    final $$RevenueEntriesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.revenueEntryId,
+      referencedTable: $db.revenueEntries,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$RevenueEntriesTableFilterComposer(
+            $db: $db,
+            $table: $db.revenueEntries,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$RevenueAttachmentsTableOrderingComposer
+    extends Composer<_$AppDatabase, $RevenueAttachmentsTable> {
+  $$RevenueAttachmentsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get orgId => $composableBuilder(
+    column: $table.orgId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get fileName => $composableBuilder(
+    column: $table.fileName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get contentType => $composableBuilder(
+    column: $table.contentType,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get byteSize => $composableBuilder(
+    column: $table.byteSize,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get contentHash => $composableBuilder(
+    column: $table.contentHash,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get localPath => $composableBuilder(
+    column: $table.localPath,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get uploadState => $composableBuilder(
+    column: $table.uploadState,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get storagePath => $composableBuilder(
+    column: $table.storagePath,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get attemptCount => $composableBuilder(
+    column: $table.attemptCount,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get nextAttemptAt => $composableBuilder(
+    column: $table.nextAttemptAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get lastError => $composableBuilder(
+    column: $table.lastError,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get uploadedAt => $composableBuilder(
+    column: $table.uploadedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get reclaimableAfter => $composableBuilder(
+    column: $table.reclaimableAfter,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get uploadedBy => $composableBuilder(
+    column: $table.uploadedBy,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$RevenueEntriesTableOrderingComposer get revenueEntryId {
+    final $$RevenueEntriesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.revenueEntryId,
+      referencedTable: $db.revenueEntries,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$RevenueEntriesTableOrderingComposer(
+            $db: $db,
+            $table: $db.revenueEntries,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$RevenueAttachmentsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $RevenueAttachmentsTable> {
+  $$RevenueAttachmentsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get orgId =>
+      $composableBuilder(column: $table.orgId, builder: (column) => column);
+
+  GeneratedColumn<String> get fileName =>
+      $composableBuilder(column: $table.fileName, builder: (column) => column);
+
+  GeneratedColumn<String> get contentType => $composableBuilder(
+    column: $table.contentType,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get byteSize =>
+      $composableBuilder(column: $table.byteSize, builder: (column) => column);
+
+  GeneratedColumn<String> get contentHash => $composableBuilder(
+    column: $table.contentHash,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get localPath =>
+      $composableBuilder(column: $table.localPath, builder: (column) => column);
+
+  GeneratedColumn<String> get uploadState => $composableBuilder(
+    column: $table.uploadState,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get storagePath => $composableBuilder(
+    column: $table.storagePath,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get attemptCount => $composableBuilder(
+    column: $table.attemptCount,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get nextAttemptAt => $composableBuilder(
+    column: $table.nextAttemptAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get lastError =>
+      $composableBuilder(column: $table.lastError, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get uploadedAt => $composableBuilder(
+    column: $table.uploadedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get reclaimableAfter => $composableBuilder(
+    column: $table.reclaimableAfter,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get uploadedBy => $composableBuilder(
+    column: $table.uploadedBy,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  $$RevenueEntriesTableAnnotationComposer get revenueEntryId {
+    final $$RevenueEntriesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.revenueEntryId,
+      referencedTable: $db.revenueEntries,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$RevenueEntriesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.revenueEntries,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$RevenueAttachmentsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $RevenueAttachmentsTable,
+          RevenueAttachmentRow,
+          $$RevenueAttachmentsTableFilterComposer,
+          $$RevenueAttachmentsTableOrderingComposer,
+          $$RevenueAttachmentsTableAnnotationComposer,
+          $$RevenueAttachmentsTableCreateCompanionBuilder,
+          $$RevenueAttachmentsTableUpdateCompanionBuilder,
+          (RevenueAttachmentRow, $$RevenueAttachmentsTableReferences),
+          RevenueAttachmentRow,
+          PrefetchHooks Function({bool revenueEntryId})
+        > {
+  $$RevenueAttachmentsTableTableManager(
+    _$AppDatabase db,
+    $RevenueAttachmentsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$RevenueAttachmentsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$RevenueAttachmentsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$RevenueAttachmentsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> orgId = const Value.absent(),
+                Value<String> revenueEntryId = const Value.absent(),
+                Value<String> fileName = const Value.absent(),
+                Value<String> contentType = const Value.absent(),
+                Value<int> byteSize = const Value.absent(),
+                Value<String> contentHash = const Value.absent(),
+                Value<String?> localPath = const Value.absent(),
+                Value<String> uploadState = const Value.absent(),
+                Value<String?> storagePath = const Value.absent(),
+                Value<int> attemptCount = const Value.absent(),
+                Value<DateTime?> nextAttemptAt = const Value.absent(),
+                Value<String?> lastError = const Value.absent(),
+                Value<DateTime?> uploadedAt = const Value.absent(),
+                Value<DateTime?> reclaimableAfter = const Value.absent(),
+                Value<String> uploadedBy = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => RevenueAttachmentsCompanion(
+                id: id,
+                orgId: orgId,
+                revenueEntryId: revenueEntryId,
+                fileName: fileName,
+                contentType: contentType,
+                byteSize: byteSize,
+                contentHash: contentHash,
+                localPath: localPath,
+                uploadState: uploadState,
+                storagePath: storagePath,
+                attemptCount: attemptCount,
+                nextAttemptAt: nextAttemptAt,
+                lastError: lastError,
+                uploadedAt: uploadedAt,
+                reclaimableAfter: reclaimableAfter,
+                uploadedBy: uploadedBy,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String orgId,
+                required String revenueEntryId,
+                required String fileName,
+                required String contentType,
+                required int byteSize,
+                required String contentHash,
+                Value<String?> localPath = const Value.absent(),
+                Value<String> uploadState = const Value.absent(),
+                Value<String?> storagePath = const Value.absent(),
+                Value<int> attemptCount = const Value.absent(),
+                Value<DateTime?> nextAttemptAt = const Value.absent(),
+                Value<String?> lastError = const Value.absent(),
+                Value<DateTime?> uploadedAt = const Value.absent(),
+                Value<DateTime?> reclaimableAfter = const Value.absent(),
+                required String uploadedBy,
+                required DateTime createdAt,
+                required DateTime updatedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => RevenueAttachmentsCompanion.insert(
+                id: id,
+                orgId: orgId,
+                revenueEntryId: revenueEntryId,
+                fileName: fileName,
+                contentType: contentType,
+                byteSize: byteSize,
+                contentHash: contentHash,
+                localPath: localPath,
+                uploadState: uploadState,
+                storagePath: storagePath,
+                attemptCount: attemptCount,
+                nextAttemptAt: nextAttemptAt,
+                lastError: lastError,
+                uploadedAt: uploadedAt,
+                reclaimableAfter: reclaimableAfter,
+                uploadedBy: uploadedBy,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$RevenueAttachmentsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({revenueEntryId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (revenueEntryId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.revenueEntryId,
+                                referencedTable:
+                                    $$RevenueAttachmentsTableReferences
+                                        ._revenueEntryIdTable(db),
+                                referencedColumn:
+                                    $$RevenueAttachmentsTableReferences
+                                        ._revenueEntryIdTable(db)
+                                        .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$RevenueAttachmentsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $RevenueAttachmentsTable,
+      RevenueAttachmentRow,
+      $$RevenueAttachmentsTableFilterComposer,
+      $$RevenueAttachmentsTableOrderingComposer,
+      $$RevenueAttachmentsTableAnnotationComposer,
+      $$RevenueAttachmentsTableCreateCompanionBuilder,
+      $$RevenueAttachmentsTableUpdateCompanionBuilder,
+      (RevenueAttachmentRow, $$RevenueAttachmentsTableReferences),
+      RevenueAttachmentRow,
+      PrefetchHooks Function({bool revenueEntryId})
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -28069,4 +29848,6 @@ class $AppDatabaseManager {
         _db,
         _db.revenueConfigSnapshots,
       );
+  $$RevenueAttachmentsTableTableManager get revenueAttachments =>
+      $$RevenueAttachmentsTableTableManager(_db, _db.revenueAttachments);
 }

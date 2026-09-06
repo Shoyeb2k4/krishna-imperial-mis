@@ -140,13 +140,14 @@ final class ScopePurgeResult {
             '$outboxEntriesPreserved outbox entries preserved)';
 }
 
-/// Removes the app-private staged attachment bytes for one expense.
+/// Removes the app-private staged attachment bytes for one financial document.
 ///
 /// Injected rather than imported so this file keeps no dependency on `dart:io` or on a
 /// platform path resolver, and so a test can watch what would have been deleted without
-/// putting real files anywhere. `AttachmentStaging.discardExpense` is the production
-/// implementation.
-typedef StagingReclaimer = Future<void> Function(String expenseId);
+/// putting real files anywhere. `AttachmentStagingService.discardDocument` is the
+/// production implementation, and it takes an expense id or a revenue entry id
+/// indifferently — both are UUIDs naming a staging sub-directory.
+typedef StagingReclaimer = Future<void> Function(String documentId);
 
 class ScopeCachePurge {
   const ScopeCachePurge(this.db, {this.reclaimStaging});
@@ -296,10 +297,11 @@ class ScopeCachePurge {
   /// entry belongs to exactly one business unit (spec §8), so there is no partially
   /// revoked document to downgrade — the arithmetic that makes a shared expense header
   /// dangerous has no analogue here. An entry is either in a revoked unit or it is not.
-  Future<Set<String>> _purgeRevenue(
+  Future<_RevenuePurge> _purgeRevenue(
     Set<String> units,
     Map<String, int> removed,
   ) async {
+    removed['revenue_attachments'] = 0;
     removed['revenue_components'] = 0;
     removed['revenue_entries'] = 0;
 
@@ -307,7 +309,7 @@ class ScopeCachePurge {
       'SELECT id FROM revenue_entries WHERE business_unit_id IN ${_in(units)}',
       [for (final unit in units) Variable<String>(unit)],
     );
-    if (touched.isEmpty) return const {};
+    if (touched.isEmpty) return const _RevenuePurge.empty();
 
     // Work this device has not delivered. Kept, stamped, and excluded from every
     // canonical read — it exists nowhere else (D-070).
@@ -336,9 +338,18 @@ class ScopeCachePurge {
     }
 
     final purgeable = touched.difference(retained);
-    if (purgeable.isEmpty) return retained;
+    if (purgeable.isEmpty) {
+      return _RevenuePurge(retained: retained, stagingToReclaim: const {});
+    }
 
     final vars = [for (final id in purgeable) Variable<String>(id)];
+    // Evidence goes with the document it supports. A revenue entry is never partly
+    // visible, so unlike a shared expense there is no downgrade to reason about: the
+    // entry is either being removed or it is not, and its attachments follow it.
+    removed['revenue_attachments'] = await _delete2(
+      'DELETE FROM revenue_attachments WHERE revenue_entry_id IN ${_in(purgeable)}',
+      vars,
+    );
     removed['revenue_components'] = await _delete2(
       'DELETE FROM revenue_components WHERE revenue_entry_id IN ${_in(purgeable)}',
       vars,
@@ -347,7 +358,9 @@ class ScopeCachePurge {
       'DELETE FROM revenue_entries WHERE id IN ${_in(purgeable)}',
       [for (final id in purgeable) Variable<String>(id)],
     );
-    return retained;
+    // The bytes are reclaimed after the transaction commits, never inside it: SQLite can
+    // roll a delete back and the filesystem cannot put a JPEG back (D-070 section 3).
+    return _RevenuePurge(retained: retained, stagingToReclaim: purgeable);
   }
 
   Future<int> quarantineAllDocuments() async {
@@ -387,14 +400,14 @@ class ScopeCachePurge {
     // Revenue entries kept because they still carry their actor's unsent work. Counted
     // separately from the expense figure so the result says how many of each survived
     // rather than blurring two different documents into one number.
-    var retainedRevenue = <String>{};
+    var revenue = const _RevenuePurge.empty();
 
     await db.transaction(() async {
       // Financial documents first. They depend on nothing below them, and doing them
       // inside the same transaction is what makes "the revoked unit's figures are gone"
       // a single fact rather than two that could half-happen (D-068).
       financial = await _purgeFinancialDocuments(units, removed);
-      retainedRevenue = await _purgeRevenue(units, removed);
+      revenue = await _purgeRevenue(units, removed);
 
       // Then reference data, bottom-up. Each step deletes only rows reachable from the
       // revoked units, and the order guarantees a parent is never removed before its
@@ -495,9 +508,15 @@ class ScopeCachePurge {
     final reclaimed = <String>{};
     final reclaimer = reclaimStaging;
     if (reclaimer != null) {
-      for (final expenseId in financial.stagingToReclaim) {
-        await reclaimer(expenseId);
-        reclaimed.add(expenseId);
+      // Both document kinds, through the one reclaimer. A staging directory is named by
+      // its document's UUID and nothing about the call knows or needs to know which kind
+      // it was.
+      for (final documentId in {
+        ...financial.stagingToReclaim,
+        ...revenue.stagingToReclaim,
+      }) {
+        await reclaimer(documentId);
+        reclaimed.add(documentId);
       }
     }
 
@@ -525,7 +544,7 @@ class ScopeCachePurge {
       documentsDowngraded: financial.downgraded,
       documentsRetainedForUnsyncedWork: {
         ...financial.retained,
-        ...retainedRevenue,
+        ...revenue.retained,
       },
       stagingReclaimed: reclaimed,
       physicalReclaim: physicalReclaim,
@@ -790,5 +809,25 @@ final class _FinancialPurge {
   final Set<String> retained;
 
   /// Documents whose staged attachment bytes must go once the transaction commits.
+  final Set<String> stagingToReclaim;
+}
+
+/// What the revenue half of one purge decided.
+///
+/// Simpler than [_FinancialPurge] by exactly one field: an entry names a single business
+/// unit (spec section 8), so there is no partially revoked document to downgrade and
+/// therefore no `downgraded` set to carry.
+final class _RevenuePurge {
+  const _RevenuePurge({required this.retained, required this.stagingToReclaim});
+
+  const _RevenuePurge.empty()
+    : retained = const {},
+      stagingToReclaim = const {};
+
+  /// Entries kept because their actor still has unsent work on them (D-070, D-074).
+  /// Their evidence is kept with them: a staged file exists nowhere else.
+  final Set<String> retained;
+
+  /// Entries whose staged attachment bytes must go once the transaction commits.
   final Set<String> stagingToReclaim;
 }

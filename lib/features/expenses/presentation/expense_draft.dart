@@ -163,8 +163,8 @@ enum DraftProblem {
     DraftProblem.paymentIncomplete =>
       'A paid expense needs the date it was paid and how.',
     DraftProblem.attachmentsOverLimit =>
-      'At most ${AttachmentPolicy.maxPerExpense} attachments, up to '
-          '${AttachmentPolicy.maxTotalBytesPerExpense ~/ (1024 * 1024)} MB in '
+      'At most ${AttachmentPolicy.maxPerDocument} attachments, up to '
+          '${AttachmentPolicy.maxTotalBytesPerDocument ~/ (1024 * 1024)} MB in '
           'total.',
     DraftProblem.businessDateCorrectionNotPermitted =>
       'Changing the business date of a recorded expense needs permission you do '
@@ -616,9 +616,9 @@ final class ExpenseDraft {
       problems.add(DraftProblem.paymentIncomplete);
     }
 
-    if (attachments.length > AttachmentPolicy.maxPerExpense ||
+    if (attachments.length > AttachmentPolicy.maxPerDocument ||
         attachments.fold<int>(0, (s, a) => s + a.byteSize) >
-            AttachmentPolicy.maxTotalBytesPerExpense) {
+            AttachmentPolicy.maxTotalBytesPerDocument) {
       problems.add(DraftProblem.attachmentsOverLimit);
     }
 

@@ -27,7 +27,7 @@ import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 import 'package:image/image.dart' as img;
-import 'package:krishna_mis/domain/expenses/expense.dart';
+import 'package:krishna_mis/domain/attachments/document_attachment.dart';
 import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
 
@@ -36,28 +36,35 @@ import 'package:uuid/uuid.dart';
 typedef StagingDirectoryResolver = Future<Directory> Function();
 
 /// Why a file was not accepted. Each one is something to tell the user plainly.
+///
+/// The wording takes the document kind, because "an expense can carry at most 5
+/// attachments" is the wrong sentence to show somebody recording a day's takings. The
+/// numbers are the same for both (spec §15, [AttachmentPolicy]).
 enum AttachmentRejection {
   tooManyAttachments,
   documentTooLarge,
-  expenseWouldExceedTotal,
+  documentWouldExceedTotal,
   unsupportedType,
   unreadableSource;
 
-  String get message => switch (this) {
+  String messageFor(AttachmentOwnerKind owner) => switch (this) {
     AttachmentRejection.tooManyAttachments =>
-      'An expense can carry at most ${AttachmentPolicy.maxPerExpense} '
-          'attachments.',
+      'A${owner == AttachmentOwnerKind.expense ? 'n' : ''} ${owner.noun} can '
+          'carry at most ${AttachmentPolicy.maxPerDocument} attachments.',
     AttachmentRejection.documentTooLarge =>
       'A document may be up to '
           '${AttachmentPolicy.maxDocumentBytes ~/ (1024 * 1024)} MB.',
-    AttachmentRejection.expenseWouldExceedTotal =>
-      'Together the attachments on one expense may be up to '
-          '${AttachmentPolicy.maxTotalBytesPerExpense ~/ (1024 * 1024)} MB.',
+    AttachmentRejection.documentWouldExceedTotal =>
+      'Together the attachments on one ${owner.noun} may be up to '
+          '${AttachmentPolicy.maxTotalBytesPerDocument ~/ (1024 * 1024)} MB.',
     AttachmentRejection.unsupportedType =>
-      'Only images and PDF documents can be attached to an expense.',
+      'Only images and PDF documents can be attached.',
     AttachmentRejection.unreadableSource =>
       'That file could not be read. Try attaching it again.',
   };
+
+  /// The expense wording, which is what the expense surfaces already read.
+  String get message => messageFor(AttachmentOwnerKind.expense);
 }
 
 /// Refused, with a reason worth showing.
@@ -68,7 +75,7 @@ final class AttachmentRefused implements Exception {
   String toString() => 'AttachmentRefused(${reason.name}): ${reason.message}';
 }
 
-/// The content types an expense attachment may have.
+/// The content types a financial document's attachment may have.
 ///
 /// Deliberately a short list. "Whatever the picker returned" is how a 400 MB video ends
 /// up attached to a ₹200 grocery bill.
@@ -171,7 +178,7 @@ final class StagedAttachment {
 
   bool get wasOptimized => byteSize < originalByteSize;
 
-  ExpenseAttachment toDomain() => ExpenseAttachment(
+  DocumentAttachment toDomain() => DocumentAttachment(
     id: id,
     fileName: fileName,
     contentType: contentType,
@@ -193,16 +200,21 @@ class AttachmentStagingService {
 
   /// Copies [source] into app-private storage, optimising it if it is an image.
   ///
-  /// [alreadyAttached] is what the expense already carries, so the per-expense count and
-  /// total are checked against reality rather than against one file at a time.
+  /// [ownerId] is the financial document's own id — an expense or a revenue entry. It
+  /// names the staging sub-directory and nothing else; both are UUID v7 values from one
+  /// namespace, so there is no collision to design around and no branch here that has to
+  /// know which kind it is.
+  ///
+  /// [alreadyAttached] is what the document already carries, so the per-document count
+  /// and total are checked against reality rather than against one file at a time.
   Future<StagedAttachment> stage({
     required File source,
-    required String expenseId,
+    required String ownerId,
     String? fileName,
     String? contentType,
-    List<ExpenseAttachment> alreadyAttached = const [],
+    List<DocumentAttachment> alreadyAttached = const [],
   }) async {
-    if (alreadyAttached.length >= AttachmentPolicy.maxPerExpense) {
+    if (alreadyAttached.length >= AttachmentPolicy.maxPerDocument) {
       throw const AttachmentRefused(AttachmentRejection.tooManyAttachments);
     }
     if (!source.existsSync()) {
@@ -241,15 +253,15 @@ class AttachmentStagingService {
       (sum, a) => sum + a.byteSize,
     );
     if (existingTotal + bytes.length >
-        AttachmentPolicy.maxTotalBytesPerExpense) {
+        AttachmentPolicy.maxTotalBytesPerDocument) {
       throw const AttachmentRefused(
-        AttachmentRejection.expenseWouldExceedTotal,
+        AttachmentRejection.documentWouldExceedTotal,
       );
     }
 
     final id = const Uuid().v4();
     final directory = Directory(
-      p.join((await resolveStagingDirectory()).path, expenseId),
+      p.join((await resolveStagingDirectory()).path, ownerId),
     );
     await directory.create(recursive: true);
 
@@ -273,17 +285,18 @@ class AttachmentStagingService {
 
   /// Deletes the staged copy of an attachment that was never saved.
   ///
-  /// Only ever for an abandoned draft. A staged file belonging to a saved expense is
-  /// reclaimed by [reclaimVerifiedStaging], and only after the server has confirmed it.
+  /// Only ever for an abandoned draft. A staged file belonging to a saved document is
+  /// reclaimed by `AttachmentUploadWorker.reclaimVerifiedStaging`, and only after the
+  /// server has confirmed it.
   Future<void> discard(StagedAttachment attachment) async {
     final file = File(attachment.localPath);
     if (file.existsSync()) await file.delete();
   }
 
-  /// Removes the whole staging directory for an expense that was abandoned.
-  Future<void> discardExpense(String expenseId) async {
+  /// Removes the whole staging directory for a document that was abandoned or purged.
+  Future<void> discardDocument(String ownerId) async {
     final directory = Directory(
-      p.join((await resolveStagingDirectory()).path, expenseId),
+      p.join((await resolveStagingDirectory()).path, ownerId),
     );
     if (directory.existsSync()) await directory.delete(recursive: true);
   }

@@ -582,6 +582,9 @@ void main() {
         'revenue_value_bands',
         'revenue_supply_subtypes',
         'business_unit_tax_statuses',
+        // Slice 11. Its own table rather than a discriminator on `expense_attachments`,
+        // so the foreign key that makes an orphan impossible stays a foreign key.
+        'revenue_attachments',
       };
       const laterPhases = {'approval_requests', 'report_snapshots'};
 

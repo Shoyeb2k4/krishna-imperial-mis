@@ -633,25 +633,38 @@ void main() {
   });
 
   group('the surface does not grow into later slices (§49)', () {
-    uiTest('no attachment control and no reporting on the detail surface', (
+    // Attachments were on this list until Slice 11 built them, and the list is edited
+    // rather than deleted: reporting is still ahead. Removing the attachment half
+    // matters — the original assertion searched for the word "Attach", which the
+    // evidence surface does not use, so leaving it would have gone on passing while
+    // saying nothing. A check that passes for the wrong reason is the shape this project
+    // keeps recording (D-068, D-071, D-077).
+    uiTest('no reporting on the detail surface', (tester) async {
+      await recorded();
+      await pump(tester, const RevenueDetailPage(entryId: 'entry-1'));
+
+      for (final absent in const [
+        'Profit',
+        'Net Sales',
+        'Export',
+        'Operating',
+      ]) {
+        expect(
+          find.textContaining(absent),
+          findsNothing,
+          reason: '$absent belongs to Slice 12 or Phase 5',
+        );
+      }
+    });
+
+    uiTest('evidence is on the detail surface, and it is Slice 11', (
       tester,
     ) async {
       await recorded();
       await pump(tester, const RevenueDetailPage(entryId: 'entry-1'));
 
-      for (final absent in const [
-        'Attach',
-        'Add bill',
-        'Profit',
-        'Net Sales',
-        'Export',
-      ]) {
-        expect(
-          find.textContaining(absent),
-          findsNothing,
-          reason: '$absent belongs to a later slice',
-        );
-      }
+      expect(find.byKey(const Key('revenue-evidence')), findsOneWidget);
+      expect(find.text('EVIDENCE'), findsOneWidget);
     });
   });
 }

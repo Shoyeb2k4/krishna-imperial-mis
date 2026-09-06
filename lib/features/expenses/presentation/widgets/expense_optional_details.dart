@@ -13,7 +13,7 @@ import 'package:krishna_mis/core/design/tokens/app_tokens.dart';
 import 'package:krishna_mis/domain/expenses/expense.dart';
 import 'package:krishna_mis/domain/value_objects/business_date.dart';
 import 'package:krishna_mis/features/expenses/presentation/expense_draft.dart';
-import 'package:krishna_mis/features/expenses/presentation/widgets/attachment_strip.dart';
+import 'package:krishna_mis/features/attachments/presentation/attachment_strip.dart';
 import 'package:krishna_mis/features/expenses/presentation/widgets/vendor_picker.dart';
 
 class ExpenseOptionalDetails extends ConsumerWidget {
@@ -74,7 +74,8 @@ class ExpenseOptionalDetails extends ConsumerWidget {
           ),
           const SizedBox(height: AppSpacing.lg),
           AttachmentStrip(
-            expenseId: draft.id,
+            owner: AttachmentOwnerKind.expense,
+            ownerId: draft.id,
             attachments: draft.attachments,
             onChanged: (attachments) => onChanged(
               (current) => current.copyWith(attachments: attachments),

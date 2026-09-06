@@ -1021,3 +1021,113 @@ KM019 period_imbalance        a period split does not add up to its line
 KM020 record_voided           the document is finished and immutable
 KM021 edit_window_expired     older than the window, and no beyond-window capability
 ```
+
+---
+
+## Phase 4 Slice 11 — evidence for a sale, as built (2026-09-06)
+
+### Server
+
+```sql
+revenue_attachments (
+  id               uuid primary key,          -- client-generated, the identity (D-008)
+  org_id           uuid not null,
+  revenue_entry_id uuid not null references revenue_entries (id) on delete restrict,
+
+  file_name        text   not null,           -- display metadata only
+  content_type     text   not null,
+  byte_size        bigint not null check (byte_size > 0),
+  content_hash     text   not null,           -- SHA-256; "uploaded" means these matched
+  storage_path     text   not null,           -- derived by the server, never accepted
+
+  uploaded_by      uuid not null references profiles (id),
+  uploaded_at      timestamptz not null default now(),
+
+  created_at, updated_at, row_version, change_seq,
+  constraint revenue_attachments_path_unique unique (storage_path)
+)
+```
+
+Column for column the expense table, **minus the removal trio**. `removed_at`,
+`removed_by` and `remove_reason` are deliberately absent and their absence is asserted by
+the migration: V1 ships no attachment removal for either document (D-072a, D-151), and a
+second constraint with no writer is what D-145 had to reason about.
+
+**No financial column exists on it.** No amount, no tax, no period key — an attachment
+supports a document and is never a source of truth about one, and the local schema is
+asserted to carry none either, so the mistake is unavailable rather than avoided.
+
+### The read boundary
+
+```
+public.may_read_revenue_attachments(entry_id)   security definer
+  = attachment.view held anywhere
+  + the entry is in this organisation
+  + revenue.view for the entry's own business_unit_id
+```
+
+One predicate, three consumers: the `revenue_attachments` read policy, and the Storage
+read and write policies for the `revenue/` prefix. The object and its metadata row
+therefore cannot disagree about who may have them — the defect 0036 had to fix for
+expenses.
+
+**It is not `may_read_expense_attachments`.** That one carries D-063's complete-document
+arithmetic because an expense can be partly visible. A revenue entry names one business
+unit on its header and has no allocation lines, so there is nothing to be outside anybody's
+scope, and copying the arithmetic would have been cargo cult (D-148).
+
+`authenticated` holds `SELECT` and no write grant. `public.revenue_attachment_register` is
+the only writer, and the migration asserts that.
+
+### Storage
+
+One private bucket, `expense-attachments` — a historical id for where financial evidence
+physically lives — under two path prefixes decided by two independent policy sets:
+
+```
+org/{org}/expenses/{expense}/{attachment}.{ext}   → storage_expense_id + may_read_expense_attachments
+org/{org}/revenue/{entry}/{attachment}.{ext}      → storage_revenue_id  + may_read_revenue_attachments
+```
+
+The two parsers are asserted mutually exclusive at deploy time. No `delete` policy exists
+for either prefix: nobody removes evidence through the object API.
+
+A user-supplied file name reaches the object path only as its lower-cased extension, so a
+name carrying `../` or a slash cannot become part of the path. The path is **derived** by
+the RPC and compared against the caller's, which is refused `KM010` on disagreement.
+
+### The API surface gains three
+
+```
+revenue_attachment_register     the only writer of the metadata table
+may_read_revenue_attachments    a Storage policy predicate, so it must be reachable (D-045)
+storage_revenue_id              the other half of that predicate
+```
+
+### Local (Drift v14)
+
+`revenue_attachments`, mirroring `expense_attachments` with the parent pointer changed and
+the removal columns absent. Two narrow tables rather than one polymorphic table with an
+`owner_id` and a discriminator: the foreign key that makes an orphan impossible is what a
+cascade and a purge both rely on.
+
+The shared lifecycle is `AttachmentUploadState`, including `waitingForExpense`, which means
+*the parent financial document has not been accepted yet* and keeps its name because it is
+a stored value on every device in the field (D-147).
+
+### Refusals reused, none added
+
+`KM002` out of unit scope · `KM009` immutable field · `KM010` impossible structure ·
+`KM015` unknown entity · `KM020` record voided · `KM022` attachment limit. The limits are
+the product's attachment policy — 5 per document, 10 MB each, 25 MB together — and are the
+same numbers for both documents, because they are not a per-document decision.
+
+### Migration ledger
+
+| Ledger version | Name |
+|---|---|
+| 20260905210226 | `revenue_attachments` |
+| 20260905210332 | `api_surface_invariant_revenue_attachments` |
+
+Both verified byte-for-byte by hash against
+`supabase_migrations.schema_migrations.statements`.

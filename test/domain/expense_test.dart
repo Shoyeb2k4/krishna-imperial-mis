@@ -499,10 +499,10 @@ void main() {
     });
 
     test('the policy figures are the approved ones', () {
-      expect(AttachmentPolicy.maxPerExpense, 5);
+      expect(AttachmentPolicy.maxPerDocument, 5);
       expect(AttachmentPolicy.imageTargetBytes, 2500 * 1024);
       expect(AttachmentPolicy.maxDocumentBytes, 10 * 1024 * 1024);
-      expect(AttachmentPolicy.maxTotalBytesPerExpense, 25 * 1024 * 1024);
+      expect(AttachmentPolicy.maxTotalBytesPerDocument, 25 * 1024 * 1024);
       expect(AttachmentPolicy.stagingRetention, const Duration(days: 7));
     });
 

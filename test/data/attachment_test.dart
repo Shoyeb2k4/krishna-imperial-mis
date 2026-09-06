@@ -32,7 +32,8 @@ class FakeObjectStore implements AttachmentObjectStore {
   @override
   Future<UploadOutcome> upload({
     required String orgId,
-    required String expenseId,
+    required AttachmentOwnerKind owner,
+    required String ownerId,
     required String attachmentId,
     required String fileName,
     required String contentType,
@@ -45,7 +46,8 @@ class FakeObjectStore implements AttachmentObjectStore {
     }
     final path = attachmentStoragePath(
       orgId: orgId,
-      expenseId: expenseId,
+      owner: owner,
+      ownerId: ownerId,
       attachmentId: attachmentId,
       fileName: fileName,
     );
@@ -57,7 +59,7 @@ class FakeObjectStore implements AttachmentObjectStore {
   }
 
   @override
-  Future<String?> hashOf(String storagePath) async {
+  Future<String?> hashOf(AttachmentOwnerKind owner, String storagePath) async {
     final bytes = objects[storagePath];
     return bytes == null ? null : sha256Of(bytes);
   }
@@ -102,7 +104,7 @@ void main() {
   group('staging copies the bytes somewhere durable', () {
     test('the source is copied, not referenced', () async {
       final source = sourceFile('bill.jpg', syntheticPhoto(200));
-      final staged = await service.stage(source: source, expenseId: 'exp-1');
+      final staged = await service.stage(source: source, ownerId: 'exp-1');
 
       expect(staged.localPath, isNot(source.path));
       expect(staged.localPath, contains('staging'));
@@ -125,7 +127,7 @@ void main() {
     test('staged files survive a restart', () async {
       final staged = await service.stage(
         source: sourceFile('bill.jpg', syntheticPhoto(200)),
-        expenseId: 'exp-1',
+        ownerId: 'exp-1',
       );
 
       // A new service instance, as after an app restart, finds the same bytes.
@@ -140,11 +142,11 @@ void main() {
     test('each expense gets its own staging directory', () async {
       final a = await service.stage(
         source: sourceFile('a.jpg', syntheticPhoto(120)),
-        expenseId: 'exp-a',
+        ownerId: 'exp-a',
       );
       final b = await service.stage(
         source: sourceFile('b.jpg', syntheticPhoto(120)),
-        expenseId: 'exp-b',
+        ownerId: 'exp-b',
       );
       expect(a.localPath, contains('exp-a'));
       expect(b.localPath, contains('exp-b'));
@@ -159,7 +161,7 @@ void main() {
       await expectLater(
         service.stage(
           source: sourceFile('bill.jpg', syntheticPhoto(100)),
-          expenseId: 'exp-1',
+          ownerId: 'exp-1',
           alreadyAttached: five,
         ),
         throwsA(
@@ -179,7 +181,7 @@ void main() {
             'invoice.pdf',
             List<int>.filled(11 * 1024 * 1024, 7),
           ),
-          expenseId: 'exp-1',
+          ownerId: 'exp-1',
         ),
         throwsA(
           isA<AttachmentRefused>().having(
@@ -202,14 +204,14 @@ void main() {
             'invoice.pdf',
             List<int>.filled(2 * 1024 * 1024, 7),
           ),
-          expenseId: 'exp-1',
+          ownerId: 'exp-1',
           alreadyAttached: existing,
         ),
         throwsA(
           isA<AttachmentRefused>().having(
             (e) => e.reason,
             'reason',
-            AttachmentRejection.expenseWouldExceedTotal,
+            AttachmentRejection.documentWouldExceedTotal,
           ),
         ),
       );
@@ -219,7 +221,7 @@ void main() {
       await expectLater(
         service.stage(
           source: sourceFile('clip.mp4', List<int>.filled(1024, 1)),
-          expenseId: 'exp-1',
+          ownerId: 'exp-1',
         ),
         throwsA(
           isA<AttachmentRefused>().having(
@@ -244,7 +246,7 @@ void main() {
 
         final staged = await service.stage(
           source: sourceFile('bill.jpg', huge),
-          expenseId: 'exp-1',
+          ownerId: 'exp-1',
         );
 
         expect(
@@ -276,7 +278,7 @@ void main() {
       final small = syntheticPhoto(150);
       final staged = await service.stage(
         source: sourceFile('bill.jpg', small),
-        expenseId: 'exp-1',
+        ownerId: 'exp-1',
       );
       expect(staged.byteSize, small.length);
       expect(staged.wasOptimized, isFalse);
@@ -424,7 +426,7 @@ void main() {
       final expenseId = const Uuid().v4();
       final staged = await service.stage(
         source: sourceFile('bill.jpg', syntheticPhoto(200)),
-        expenseId: expenseId,
+        ownerId: expenseId,
       );
       final expense = expenseWith(
         id: expenseId,
@@ -469,7 +471,7 @@ void main() {
       final expenseId = const Uuid().v4();
       final staged = await service.stage(
         source: sourceFile('bill.jpg', syntheticPhoto(200)),
-        expenseId: expenseId,
+        ownerId: expenseId,
       );
       await expenses.createLocally(
         expenseWith(
@@ -702,7 +704,8 @@ void main() {
     test('follows the approved structure and is stable', () {
       final path = attachmentStoragePath(
         orgId: 'org-1',
-        expenseId: 'exp-1',
+        owner: AttachmentOwnerKind.expense,
+        ownerId: 'exp-1',
         attachmentId: 'att-1',
         fileName: 'bill.JPG',
       );
@@ -713,7 +716,8 @@ void main() {
       expect(
         attachmentStoragePath(
           orgId: 'org-1',
-          expenseId: 'exp-1',
+          owner: AttachmentOwnerKind.expense,
+          ownerId: 'exp-1',
           attachmentId: 'att-1',
           fileName: 'bill.jpg',
         ),

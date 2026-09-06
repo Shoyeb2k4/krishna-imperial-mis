@@ -15,6 +15,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:krishna_mis/app/providers.dart';
 import 'package:krishna_mis/data/repositories/revenue_repository.dart';
 import 'package:krishna_mis/data/repositories/revenue_tax_repository.dart';
+import 'package:krishna_mis/domain/attachments/document_attachment.dart';
 import 'package:krishna_mis/domain/auth/authority.dart';
 import 'package:krishna_mis/domain/auth/session_state.dart';
 import 'package:krishna_mis/domain/revenue/revenue_entry.dart';
@@ -224,6 +225,12 @@ class RevenueEntryController {
       now: DateTime.now().toUtc(),
     );
 
+    // Evidence the operator staged before saving. Written after the financial
+    // transaction rather than inside it, deliberately: an attachment is supporting
+    // material and must never be able to fail a sale that is otherwise correct
+    // (spec section 15, D-073). A refusal here is reported and the sale stands.
+    await _attachStaged(draft, authority.userId, authority.orgId);
+
     // Every surface that shows this sale is a cached read model, so all of them have to
     // be told. Without this a user
     // records a sale, returns to the list, and does not see it — which reads as "my entry
@@ -281,6 +288,8 @@ class RevenueEntryController {
       now: DateTime.now().toUtc(),
     );
 
+    await _attachStaged(draft, authority.userId, authority.orgId);
+
     _invalidateReadModel(draft.id);
     unawaited(_pushThenRefresh());
 
@@ -332,6 +341,78 @@ class RevenueEntryController {
     return null;
   }
 
+  /// Attaches evidence to an existing sale, without touching a single financial figure.
+  ///
+  /// Its own entry point because attaching is not editing: it takes no version, queues no
+  /// outbox intent, and leaves gross, tax, net, the business date and the KI-REV number
+  /// exactly as they were. A person who attaches a till report to a sale they recorded
+  /// last night has not corrected anything, and making them go through the correction
+  /// form would put a financial mutation behind an act that is not one.
+  Future<RevenueRefusal?> attach({
+    required String entryId,
+    required List<DocumentAttachment> staged,
+  }) async {
+    if (staged.isEmpty) return null;
+    final authority = _ref.read(revenueAuthorityProvider);
+    if (authority == null) {
+      return const RevenueRefusal(
+        RevenueRefusalReason.notAuthenticated,
+        'Sign in before attaching a file.',
+      );
+    }
+
+    final refusal = await _ref
+        .read(revenueRepositoryProvider)
+        .attachLocally(
+          entryId: entryId,
+          staged: staged,
+          actorUserId: authority.userId,
+          orgId: authority.orgId,
+          now: DateTime.now().toUtc(),
+        );
+    if (refusal != null) return refusal;
+
+    _invalidateReadModel(entryId);
+    // The sale may already be numbered, in which case the file is uploadable now. The
+    // worker decides that from the parent's own state; this only nudges it, and it never
+    // waits for the network (D-073).
+    unawaited(_uploadEvidence());
+    return null;
+  }
+
+  /// Writes the draft's staged files against the sale that has just been saved.
+  ///
+  /// Returns nothing: the caller has already recorded money, and a refusal about a
+  /// photograph must not turn a successful save into a failed one. It is invalidated onto
+  /// the surface instead, where the file's own state says what happened.
+  Future<void> _attachStaged(
+    RevenueDraft draft,
+    String actorUserId,
+    String orgId,
+  ) async {
+    if (draft.attachments.isEmpty) return;
+    await _ref
+        .read(revenueRepositoryProvider)
+        .attachLocally(
+          entryId: draft.id,
+          staged: draft.attachments,
+          actorUserId: actorUserId,
+          orgId: orgId,
+          now: DateTime.now().toUtc(),
+        );
+  }
+
+  /// Nudges the shared attachment worker. Never awaited by a save.
+  Future<void> _uploadEvidence() async {
+    try {
+      await _ref.read(attachmentUploadWorkerProvider)?.uploadDue();
+    } on Object {
+      // An upload failure is the attachment's own problem, on its own retry clock, and
+      // it is already recorded against the row. Nothing financial depends on it.
+      return;
+    }
+  }
+
   /// Re-reads every surface that shows this document.
   ///
   /// All of them, because invalidating some is how the Windows expense acceptance found
@@ -379,6 +460,11 @@ class RevenueEntryController {
       // already succeeded and a network complaint about it would be misleading.
       return;
     }
+    // The sale may have just been accepted, which is exactly what makes its evidence
+    // eligible: the Storage policy requires the entry to exist canonically, so an upload
+    // before this point is refused for a reason that reads like a permission problem
+    // (D-073 section 2). Uploading happens after the financial record and never blocks it.
+    await _uploadEvidence();
     _ref.invalidate(recentRevenueProvider);
   }
 }

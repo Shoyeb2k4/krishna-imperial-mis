@@ -230,9 +230,16 @@ abstract final class CacheClassification {
     ),
     CachedTable('expenses', CacheOwnership.scopedFinancialHistory),
 
-    // Revenue, on the same policy and for the same reasons (Phase 4 Slice 3). Components
-    // before entries, so no step leaves an orphan. A revenue entry belongs to exactly one
-    // business unit, so unlike an expense allocation the unit is named on the header.
+    // Revenue, on the same policy and for the same reasons (Phase 4 Slice 3). Attachments
+    // and components before entries, so no step leaves an orphan. A revenue entry belongs
+    // to exactly one business unit, so unlike an expense allocation the unit is named on
+    // the header.
+    //
+    // Evidence follows the document it supports. There is no complete/scoped split to
+    // apply here — a revenue entry is never partly visible (spec §8) — so an attachment
+    // goes when its entry goes and is kept when its entry is kept for the actor's own
+    // unsent work (D-070, D-074).
+    CachedTable('revenue_attachments', CacheOwnership.scopedFinancialHistory),
     CachedTable('revenue_components', CacheOwnership.scopedFinancialHistory),
     CachedTable(
       'revenue_entries',

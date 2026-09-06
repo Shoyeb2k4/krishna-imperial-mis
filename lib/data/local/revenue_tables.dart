@@ -405,3 +405,76 @@ class RevenueConfigSnapshots extends Table {
     "CHECK (status <> 'complete' OR length(datasets) > 0)",
   ];
 }
+
+/// Supporting evidence attached to a revenue entry (schema v14, Phase 4 Slice 11).
+///
+/// Deliberately the same shape as `ExpenseAttachments`, column for column, with the
+/// parent pointer changed. The two are not merged into one polymorphic table: a single
+/// `owner_id` with a discriminator would give up the foreign key that makes an orphan
+/// impossible, and a foreign key is precisely what a cascade and a purge rely on. Two
+/// narrow tables with one shared *lifecycle* is the trade this project already made for
+/// expenses and revenue themselves.
+///
+/// **The staging columns have no server counterpart**, because staging is a client
+/// concern: a till report is copied into app-private storage before the sale is even
+/// saved, and the upload happens afterwards, out of band, without the financial record
+/// waiting for it (spec §15).
+///
+/// **Nothing here is a financial figure.** No amount, no tax, no contribution — an
+/// attachment is evidence for a document and never a source of truth about it, and a
+/// test asserts that attaching one moves no money.
+@DataClassName('RevenueAttachmentRow')
+class RevenueAttachments extends Table {
+  TextColumn get id => text()();
+  TextColumn get orgId => text()();
+  TextColumn get revenueEntryId =>
+      text().references(RevenueEntries, #id, onDelete: KeyAction.cascade)();
+
+  TextColumn get fileName => text()();
+  TextColumn get contentType => text()();
+  IntColumn get byteSize => integer()();
+
+  /// SHA-256 of the staged bytes, computed before upload and compared afterwards.
+  TextColumn get contentHash => text()();
+
+  /// The app-private staging copy. Never a gallery or Downloads path: those can be
+  /// moved, renamed or revoked by the OS between capture and upload.
+  TextColumn get localPath => text().nullable()();
+
+  /// One of `AttachmentUploadState`. The lifecycle lives in that enum, not here, and it
+  /// is the same enum the expense pipeline uses — including `waitingForExpense`, which
+  /// means "the parent financial document has not been accepted yet" and keeps its name
+  /// because it is a stored value on every device already in the field.
+  TextColumn get uploadState => text().withDefault(const Constant('staged'))();
+  TextColumn get storagePath => text().nullable()();
+
+  IntColumn get attemptCount => integer().withDefault(const Constant(0))();
+  DateTimeColumn get nextAttemptAt => dateTime().nullable()();
+  TextColumn get lastError => text().nullable()();
+
+  DateTimeColumn get uploadedAt => dateTime().nullable()();
+
+  /// When the verified staging copy becomes eligible for reclamation — seven days after
+  /// the server confirmed *and* the hash matched (`AttachmentPolicy.stagingRetention`).
+  DateTimeColumn get reclaimableAfter => dateTime().nullable()();
+
+  TextColumn get uploadedBy => text()();
+  DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt => dateTime()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {id};
+
+  @override
+  List<String> get customConstraints => [
+    'CHECK (byte_size > 0)',
+    "CHECK (upload_state IN ('staged','waitingForExpense','pendingUpload',"
+        "'uploading','uploaded','stagingReclaimed','retryNeeded','rejected'))",
+    // A terminal refusal carries no retry time. A null there was once read as "due now",
+    // which retried a refusal for ever (D-073 §4).
+    "CHECK (upload_state <> 'rejected' OR next_attempt_at IS NULL)",
+    // Confirmed means the server has it *and* the bytes matched.
+    "CHECK (upload_state <> 'uploaded' OR (storage_path IS NOT NULL "
+        'AND uploaded_at IS NOT NULL))',
+  ];
+}

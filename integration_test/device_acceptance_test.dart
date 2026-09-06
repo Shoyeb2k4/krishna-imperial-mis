@@ -3407,7 +3407,8 @@ void main() {
       final stored = await SupabaseAttachmentStore(Supabase.instance.client)
           .upload(
             orgId: orgId,
-            expenseId: twoDeviceId,
+            owner: AttachmentOwnerKind.expense,
+            ownerId: twoDeviceId,
             attachmentId: twoDeviceAttachmentId,
             fileName: 'two-device-receipt.jpg',
             contentType: 'image/jpeg',
@@ -3455,7 +3456,7 @@ void main() {
           .eq('expense_id', twoDeviceId)
           .single();
       final downloaded = await Supabase.instance.client.storage
-          .from(expenseAttachmentBucket)
+          .from(financialAttachmentBucket)
           .download(metadata['storage_path'] as String);
       expect(
         sha256Of(downloaded),
@@ -3741,7 +3742,8 @@ void main() {
       final again = await SupabaseAttachmentStore(Supabase.instance.client)
           .upload(
             orgId: metadata['uploaded_by'] == null ? '' : attachment.orgId,
-            expenseId: id,
+            owner: AttachmentOwnerKind.expense,
+            ownerId: id,
             attachmentId: attachment.id,
             fileName: attachment.fileName,
             contentType: attachment.contentType,
@@ -3902,7 +3904,8 @@ void main() {
 
       final stored = await store.upload(
         orgId: orgId,
-        expenseId: sharedId,
+        owner: AttachmentOwnerKind.expense,
+        ownerId: sharedId,
         attachmentId: attachmentId,
         fileName: 'shared-invoice.jpg',
         contentType: 'image/jpeg',
@@ -3919,7 +3922,7 @@ void main() {
 
       // The Owner can read it back.
       final ownerCopy = await Supabase.instance.client.storage
-          .from(expenseAttachmentBucket)
+          .from(financialAttachmentBucket)
           .download(path);
       expect(ownerCopy, isNotEmpty);
 
@@ -3929,7 +3932,7 @@ void main() {
 
       await expectLater(
         Supabase.instance.client.storage
-            .from(expenseAttachmentBucket)
+            .from(financialAttachmentBucket)
             .download(path),
         throwsA(anything),
         reason:
@@ -3941,7 +3944,8 @@ void main() {
       final forged = await SupabaseAttachmentStore(Supabase.instance.client)
           .upload(
             orgId: orgId,
-            expenseId: sharedId,
+            owner: AttachmentOwnerKind.expense,
+            ownerId: sharedId,
             attachmentId: const Uuid().v4(),
             fileName: 'forged.jpg',
             contentType: 'image/jpeg',
@@ -7007,6 +7011,415 @@ void main() {
         hasLength(1),
         reason: 'the same intent was re-sent, never a fresh one',
       );
+    });
+  });
+
+  // ── Phase 4 Slice 11 · evidence, on the real client ────────────────────────
+  //
+  // Two phases, on both platforms. What they prove that nothing below them can: that the
+  // production composition root reaches the real picker (asserted by
+  // `attachment_source_wiring_test.dart` from the host, and exercised here through the
+  // shipped screen), and that a sale and its evidence sync in the right order against a
+  // real server with a real worker.
+  //
+  // The picker itself is still injected at the point the OS returns a file — the harness
+  // cannot drive a separate activity — and the manual smoke test D-077 pays for stays in
+  // the release checklist.
+
+  /// Opens the sales entry form the way this shell offers it.
+  ///
+  /// The phone reaches it through the central add action; the workstation through
+  /// Transactions → Sales → Add Sale (D-120). Branching here rather than writing the
+  /// phase twice is what keeps the two runs about the same thing.
+  Future<void> openRevenueEntryForm(WidgetTester tester) async {
+    if (boot.shellKind.name == 'mobile') {
+      await openRevenueEntry(tester);
+      return;
+    }
+    await openRevenueLedger(tester);
+    await revealAndTap(tester, const Key('add-revenue'));
+    await tester.pump(const Duration(milliseconds: 900));
+    await pumpUntil(
+      tester,
+      'the sales entry screen',
+      () => visible('Sales category') || visible('Property'),
+    );
+  }
+
+  /// Opens one sale's detail surface, the way this shell offers it.
+  Future<void> openRevenueDetailForShell(WidgetTester tester, String id) async {
+    if (boot.shellKind.name == 'mobile') {
+      await openRevenueDetail(tester, id);
+    } else {
+      await openWindowsRevenueDetail(tester, id);
+    }
+  }
+
+  /// Attaches a file through the shipped strip, wherever it is on this shell.
+  Future<void> attachThroughTheSurface(WidgetTester tester) async {
+    final intake = boot.shellKind.name == 'mobile'
+        ? AttachmentIntake.gallery
+        : AttachmentIntake.file;
+    await pumpUntil(
+      tester,
+      'the ${intake.name} attachment control',
+      () => find.byKey(Key('attach-${intake.name}')).evaluate().isNotEmpty,
+    );
+    await revealAndTap(tester, Key('attach-${intake.name}'));
+    await tester.pump(const Duration(seconds: 3));
+    expect(
+      find.byKey(const Key('attachment-refusal')),
+      findsNothing,
+      reason: 'staging refused the file',
+    );
+  }
+
+  /// Drives the shared worker until the sale's evidence is confirmed on the server.
+  Future<void> uploadEvidenceUntilConfirmed(
+    WidgetTester tester,
+    String entryId, {
+    Duration timeout = const Duration(seconds: 150),
+  }) async {
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(KrishnaMisApp)),
+    );
+    final deadline = DateTime.now().add(timeout);
+    while (DateTime.now().isBefore(deadline)) {
+      await container.read(attachmentUploadWorkerProvider)?.uploadDue();
+      final files = await RevenueRepository(
+        boot.database,
+      ).attachmentsOf(entryId);
+      if (files.isNotEmpty && files.every((a) => a.uploadState.isOnServer)) {
+        return;
+      }
+      final failed = files.where((a) => a.uploadState.needsAttention).toList();
+      if (failed.isNotEmpty) {
+        final rows = await boot.database
+            .customSelect(
+              "SELECT last_error FROM revenue_attachments "
+              "WHERE upload_state IN ('retryNeeded','rejected')",
+            )
+            .get();
+        fail(
+          'the evidence would not upload: '
+          '${rows.map((r) => r.data['last_error']).join('; ')}',
+        );
+      }
+      await tester.pump(const Duration(seconds: 2));
+    }
+    fail('the evidence was never confirmed on the server');
+  }
+
+  group('revenue-attachment', skip: _phase != 'revenue-attachment', () {
+    testWidgets('a Restaurant sale carries evidence from the form to the bucket', (
+      tester,
+    ) async {
+      final source = _SyntheticAttachmentSource();
+      addTearDown(source.dispose);
+
+      await launch(tester, attachmentSource: source);
+      await signIn(tester, 'giridhar@hki.com');
+      await expectSignedIn(tester, 'giridhar@hki.com');
+
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(KrishnaMisApp)),
+      );
+      await container.read(sessionProvider.notifier).refreshAuthority();
+      await tester.pump(const Duration(seconds: 2));
+
+      // The whole workflow through the shipped screen: property, category, amount,
+      // More details, attach, Save.
+      await openRevenueEntryForm(tester);
+      final unitChip = find.byKey(const Key('revenue-unit-CCR'));
+      if (unitChip.evaluate().isNotEmpty) {
+        await tester.tap(unitChip);
+        await tester.pump(const Duration(milliseconds: 600));
+      }
+      await pumpUntil(
+        tester,
+        'the Restaurant category',
+        () => find
+            .byKey(const Key('revenue-category-RESTAURANT'))
+            .evaluate()
+            .isNotEmpty,
+      );
+      await tester.tap(find.byKey(const Key('revenue-category-RESTAURANT')));
+      await tester.pump(const Duration(milliseconds: 800));
+      await tester.enterText(find.byType(TextField).first, '100000');
+      await tester.pump(const Duration(milliseconds: 400));
+
+      await revealAndTap(tester, const Key('revenue-more-details'));
+      await tester.pump(const Duration(milliseconds: 600));
+      await pumpUntil(
+        tester,
+        'the notes field',
+        () => find.byKey(const Key('revenue-notes')).evaluate().isNotEmpty,
+      );
+      await tester.enterText(
+        find.byKey(const Key('revenue-notes')),
+        '$_acceptanceMarker slice11 evidence',
+      );
+      await tester.pump(const Duration(milliseconds: 400));
+      await attachThroughTheSurface(tester);
+      expect(
+        visible('synthetic-receipt.jpg'),
+        isTrue,
+        reason: 'the operator can see what they attached',
+      );
+
+      final before = await RevenueRepository(boot.database).list();
+      await revealAndTap(tester, const Key('revenue-save'));
+      await tester.pump(const Duration(seconds: 2));
+      final after = await RevenueRepository(boot.database).list();
+      final id = after
+          .firstWhere((row) => !before.any((b) => b.id == row.id))
+          .id;
+
+      // Exactly one file was recorded against the sale.
+      //
+      // What is deliberately *not* asserted here is "it has not uploaded yet". The
+      // controller pushes as soon as the save commits and nudges the worker straight
+      // after, so against a real server on a fast connection the whole chain can finish
+      // inside this pump — and a test that required it to be unfinished would be
+      // asserting that the product is slow. The ordering rule it was reaching for
+      // (D-073 §2) is proven where it can actually be observed: the offline phase, where
+      // no number can arrive and the upload provably cannot start. The same lesson the
+      // Slice 8 report records for "no number yet" (D-119).
+      final staged = await RevenueRepository(boot.database).attachmentsOf(id);
+      expect(staged, hasLength(1));
+
+      await syncRevenueUntilNumbered(tester, id);
+      final numbered = await RevenueRepository(boot.database).load(id);
+      expect(numbered!.txnNumber, startsWith('KI-REV-'));
+      expect(
+        numbered.components.single.tax.paise,
+        476190,
+        reason: '5% extracted from the customer total, exactly as ever',
+      );
+
+      await uploadEvidenceUntilConfirmed(tester, id);
+
+      // One object, one metadata row, and both belong to this sale.
+      final client = Supabase.instance.client;
+      final rows = await client
+          .from('revenue_attachments')
+          .select()
+          .eq('revenue_entry_id', id);
+      expect(rows, hasLength(1));
+      final path = rows.first['storage_path'] as String;
+      expect(path, contains('/revenue/$id/'));
+      final bytes = await client.storage
+          .from(financialAttachmentBucket)
+          .download(path);
+      expect(bytes, isNotEmpty);
+      expect(
+        rows.first['content_hash'],
+        (await RevenueRepository(
+          boot.database,
+        ).attachmentsOf(id)).single.contentHash,
+        reason: 'confirmation is about bytes, not about an HTTP status',
+      );
+
+      // And the sale is untouched by all of it.
+      final finalEntry = await RevenueRepository(boot.database).load(id);
+      expect(finalEntry!.gross.paise, numbered.gross.paise);
+      expect(finalEntry.tax.paise, numbered.tax.paise);
+      expect(finalEntry.net.paise, numbered.net.paise);
+      expect(finalEntry.txnNumber, numbered.txnNumber);
+      expect(finalEntry.rowVersion, numbered.rowVersion);
+
+      // The detail surface shows it, by name and state, with no storage key.
+      await openRevenueDetailForShell(tester, id);
+      expect(visible('EVIDENCE'), isTrue);
+      expect(visible('synthetic-receipt.jpg'), isTrue);
+      expect(
+        visible('org/'),
+        isFalse,
+        reason: 'a path is implementation, not information',
+      );
+    });
+  });
+
+  group('revenue-attachment-offline', skip: _phase != 'revenue-attachment-offline', () {
+    testWidgets('a sale and its evidence recorded offline survive a reconnect', (
+      tester,
+    ) async {
+      final source = _SyntheticAttachmentSource();
+      addTearDown(source.dispose);
+      addTearDown(() => _transport.online = true);
+
+      await launch(tester, attachmentSource: source);
+      await signIn(tester, 'giridhar@hki.com');
+      await expectSignedIn(tester, 'giridhar@hki.com');
+
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(KrishnaMisApp)),
+      );
+      await container.read(sessionProvider.notifier).refreshAuthority();
+      await tester.pump(const Duration(seconds: 2));
+
+      // Off the air. Everything from here is local, and the configuration snapshot
+      // this device already holds is what makes the sale resolvable at all (D-112).
+      _transport.online = false;
+
+      await openRevenueEntryForm(tester);
+      final unitChip = find.byKey(const Key('revenue-unit-CCR'));
+      if (unitChip.evaluate().isNotEmpty) {
+        await tester.tap(unitChip);
+        await tester.pump(const Duration(milliseconds: 600));
+      }
+      await pumpUntil(
+        tester,
+        'the Restaurant category',
+        () => find
+            .byKey(const Key('revenue-category-RESTAURANT'))
+            .evaluate()
+            .isNotEmpty,
+      );
+      await tester.tap(find.byKey(const Key('revenue-category-RESTAURANT')));
+      await tester.pump(const Duration(milliseconds: 800));
+      await tester.enterText(find.byType(TextField).first, '64000');
+      await tester.pump(const Duration(milliseconds: 400));
+
+      await revealAndTap(tester, const Key('revenue-more-details'));
+      await tester.pump(const Duration(milliseconds: 600));
+      await pumpUntil(
+        tester,
+        'the notes field',
+        () => find.byKey(const Key('revenue-notes')).evaluate().isNotEmpty,
+      );
+      await tester.enterText(
+        find.byKey(const Key('revenue-notes')),
+        '$_acceptanceMarker slice11 offline evidence',
+      );
+      await tester.pump(const Duration(milliseconds: 400));
+      await attachThroughTheSurface(tester);
+
+      final before = await RevenueRepository(boot.database).list();
+      await revealAndTap(tester, const Key('revenue-save'));
+      await tester.pump(const Duration(seconds: 2));
+      final after = await RevenueRepository(boot.database).list();
+      final id = after
+          .firstWhere((row) => !before.any((b) => b.id == row.id))
+          .id;
+
+      final offline = await RevenueRepository(boot.database).load(id);
+      expect(
+        offline!.txnNumber,
+        isNull,
+        reason: 'a number is never invented locally (spec §8.4)',
+      );
+      final staged = await RevenueRepository(boot.database).attachmentsOf(id);
+      expect(staged, hasLength(1));
+      final localPath = staged.single.localStagingPath!;
+      expect(
+        File(localPath).existsSync(),
+        isTrue,
+        reason: 'the bytes are in app-private storage, not a content URI',
+      );
+
+      // A push that cannot reach anybody changes nothing durable, and the worker is
+      // driven anyway so its refusal is exercised rather than assumed.
+      await container.read(syncEngineProvider)?.pushOnce();
+      await container.read(attachmentUploadWorkerProvider)?.uploadDue();
+      expect(
+        (await RevenueRepository(boot.database).load(id))!.txnNumber,
+        isNull,
+      );
+
+      // "Restart": the database is closed and reopened, which is what an app kill
+      // looks like from the data's point of view — the same technique the expense
+      // offline phase uses, and for the same reason it does not relaunch the widget
+      // tree afterwards: the running scope still holds providers bound to the database
+      // that has just been closed. Everything from here is driven through the reopened
+      // bootstrap's own components, which is the shipped code either way.
+      await boot.database.close();
+      final reopened = await bootstrap(transport: _transport);
+      final afterRestart = RevenueRepository(reopened.database);
+
+      expect(
+        File(localPath).existsSync(),
+        isTrue,
+        reason: 'the staged bytes outlive the process (§11)',
+      );
+      final survived = await afterRestart.attachmentsOf(id);
+      expect(survived, hasLength(1), reason: 'and so does the record of them');
+      expect(
+        survived.single.id,
+        staged.single.id,
+        reason: 'the attachment identity is stable across a restart (§9)',
+      );
+      expect(
+        (await afterRestart.load(id))!.txnNumber,
+        isNull,
+        reason: 'still unnumbered, because nothing has reached the server',
+      );
+      expect(
+        (await reopened.database.select(reopened.database.syncOutbox).get())
+            .where((o) => o.entityId == id && o.status != 'done'),
+        hasLength(1),
+        reason: 'the queued intent survives too',
+      );
+
+      // Back on the air. The financial record first, then its evidence — the order the
+      // Storage policy requires and the worker enforces.
+      _transport.online = true;
+      final engine = SyncEngine(
+        outbox: reopened.outbox,
+        endpoint: reopened.mutationEndpoint!,
+        reconciler: reopened.mutationReconciler,
+        actorUserId: (await afterRestart.load(id))!.createdBy!,
+      );
+      final uploads = AttachmentUploadWorker(
+        db: reopened.database,
+        store: SupabaseAttachmentStore(Supabase.instance.client),
+      );
+
+      final deadline = DateTime.now().add(const Duration(seconds: 180));
+      while (DateTime.now().isBefore(deadline)) {
+        await engine.pushOnce();
+        await uploads.uploadDue();
+        final entry = await afterRestart.load(id);
+        final files = await afterRestart.attachmentsOf(id);
+        if (entry?.txnNumber != null &&
+            files.isNotEmpty &&
+            files.every((a) => a.uploadState.isOnServer)) {
+          break;
+        }
+        await tester.pump(const Duration(seconds: 2));
+      }
+
+      final settled = await afterRestart.load(id);
+      expect(
+        settled!.txnNumber,
+        startsWith('KI-REV-'),
+        reason: 'one number, issued by the server and never invented locally',
+      );
+      expect(settled.gross.paise, 6400000);
+      expect(settled.tax.paise, 304762);
+      final confirmed = await afterRestart.attachmentsOf(id);
+      expect(confirmed, hasLength(1));
+      expect(confirmed.single.uploadState.isOnServer, isTrue);
+
+      // One of each, on the server.
+      final client = Supabase.instance.client;
+      expect(
+        await client.from('revenue_document').select('id').eq('id', id),
+        hasLength(1),
+        reason: 'one canonical sale',
+      );
+      final files = await client
+          .from('revenue_attachments')
+          .select('id, storage_path')
+          .eq('revenue_entry_id', id);
+      expect(files, hasLength(1), reason: 'one canonical attachment');
+      final path = files.first['storage_path'] as String;
+      final listing = await client.storage
+          .from(financialAttachmentBucket)
+          .list(path: path.substring(0, path.lastIndexOf('/')));
+      expect(listing, hasLength(1), reason: 'one object');
+
+      await reopened.database.close();
     });
   });
 

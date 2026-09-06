@@ -70,6 +70,23 @@ class RevenueGateway extends SupabaseGateway with RpcCalls {
     return rows.cast<Map<String, dynamic>>();
   });
 
+  /// Reads one entry's canonical evidence back.
+  ///
+  /// Straight off `revenue_attachments`, which is behind the parent sale's own authority:
+  /// a caller who may not view the entry gets an empty list, and nothing is filtered
+  /// here. There is no projection in between because there is nothing to withhold — a
+  /// revenue entry is never partly visible, so the metadata row either belongs to a sale
+  /// the caller may see or it does not exist for them.
+  Future<RemoteOutcome<List<Map<String, dynamic>>>> fetchAttachments(
+    String entryId,
+  ) => guard(() async {
+    final rows = await client
+        .from('revenue_attachments')
+        .select()
+        .eq('revenue_entry_id', entryId);
+    return rows.cast<Map<String, dynamic>>();
+  });
+
   /// Reads one entry back through the authorised projection.
   ///
   /// Used only by reconciliation, when an answer arrived without the fields needed to

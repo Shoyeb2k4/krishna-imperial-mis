@@ -22,6 +22,7 @@ import 'dart:convert';
 import 'package:drift/drift.dart';
 import 'package:krishna_mis/data/local/app_database.dart';
 import 'package:krishna_mis/data/repositories/revenue_tax_repository.dart';
+import 'package:krishna_mis/domain/attachments/document_attachment.dart';
 import 'package:krishna_mis/domain/auth/authority.dart';
 import 'package:krishna_mis/domain/auth/capability.dart';
 import 'package:krishna_mis/domain/revenue/revenue_entry.dart';
@@ -104,6 +105,13 @@ enum RevenueRefusalReason {
 
   /// The components do not sum to what the document claims.
   totalsDoNotReconcile,
+
+  /// Attaching this file would take the sale past the approved count or size limit.
+  ///
+  /// The same numbers as an expense, because they are the product's attachment policy
+  /// and not a per-document decision. The server enforces them again where a modified
+  /// client cannot skip them.
+  attachmentLimit,
 }
 
 /// A structured refusal: what stopped it, and what to say.
@@ -1017,6 +1025,7 @@ class RevenueRepository {
     required Map<String, dynamic> header,
     required List<Map<String, dynamic>> components,
     required String orgId,
+    List<Map<String, dynamic>> attachments = const [],
   }) async {
     final id = header['id']! as String;
     if (components.isEmpty) {
@@ -1102,6 +1111,38 @@ class RevenueRepository {
                 ),
                 supplySubtypeId: Value(c['supply_subtype_id'] as String?),
                 premisesStatusCode: Value(c['premises_status_code'] as String?),
+              ),
+            );
+      }
+
+      // Evidence is **merged, never replaced**. Components are the document's own
+      // figures and the server's set is authoritative; attachments are not. A file this
+      // device staged and has not managed to upload yet exists nowhere else, and the
+      // server has no way to know about it - deleting the local rows the way the
+      // components are deleted would destroy exactly the work D-070 exists to keep.
+      //
+      // So a canonical row is written or refreshed, and a local row the server has never
+      // heard of is left alone with its own upload state.
+      for (final a in attachments) {
+        await _db
+            .into(_db.revenueAttachments)
+            .insertOnConflictUpdate(
+              RevenueAttachmentsCompanion.insert(
+                id: a['id']! as String,
+                orgId: orgId,
+                revenueEntryId: id,
+                fileName: '${a['file_name']}',
+                contentType: '${a['content_type']}',
+                byteSize: a['byte_size']! as int,
+                contentHash: '${a['content_hash']}',
+                uploadState: const Value('uploaded'),
+                storagePath: Value(a['storage_path'] as String?),
+                uploadedAt: Value(
+                  DateTime.tryParse('${a['uploaded_at']}')?.toUtc(),
+                ),
+                uploadedBy: '${a['uploaded_by']}',
+                createdAt: DateTime.now().toUtc(),
+                updatedAt: DateTime.now().toUtc(),
               ),
             );
       }
@@ -1451,6 +1492,8 @@ class RevenueRepository {
     )..where((c) => c.revenueEntryId.equals(id))).get();
     if (rows.isEmpty) return null;
 
+    final files = await attachmentsOf(id);
+
     return RevenueEntry(
       id: header.id,
       txnNumber: header.txnNumber,
@@ -1493,7 +1536,143 @@ class RevenueRepository {
             premisesStatusCode: c.premisesStatusCode,
           ),
       ],
+      attachments: files,
     );
+  }
+
+  /// The evidence attached to one sale, oldest first.
+  ///
+  /// Ordered by when it was attached rather than by name, so the list a person sees does
+  /// not reshuffle when a file is renamed on the way in by image optimisation.
+  Future<List<DocumentAttachment>> attachmentsOf(String entryId) async {
+    final rows =
+        await (_db.select(_db.revenueAttachments)
+              ..where((a) => a.revenueEntryId.equals(entryId))
+              ..orderBy([(a) => OrderingTerm.asc(a.createdAt)]))
+            .get();
+    return [
+      for (final a in rows)
+        DocumentAttachment(
+          id: a.id,
+          fileName: a.fileName,
+          contentType: a.contentType,
+          byteSize: a.byteSize,
+          contentHash: a.contentHash,
+          uploadState: AttachmentUploadState.fromName(a.uploadState),
+          storagePath: a.storagePath,
+          localStagingPath: a.localPath,
+        ),
+    ];
+  }
+
+  /// Attaches already-staged evidence to a sale that exists locally.
+  ///
+  /// **This is not a financial mutation and deliberately does not behave like one.** It
+  /// queues no outbox intent, takes no `base_row_version`, does not advance the entry's
+  /// row version, and changes no amount, tax figure, business date or transaction number.
+  /// Evidence travels on the attachment pipeline's own clock (D-073), and a correction
+  /// queued against this sale is unaffected - the attachment belongs to the document's
+  /// identity, not to any one mutation.
+  ///
+  /// The row is written `waitingForExpense` - the shared lifecycle's name for "the parent
+  /// has not been accepted yet" - unless the sale is already numbered and has nothing
+  /// queued, in which case it is ready to upload at once. The worker promotes the former
+  /// when the server issues a KI-REV number, and not before: the Storage write policy
+  /// requires the entry to exist canonically, so an earlier attempt would be refused for
+  /// a reason that reads like a permission problem (D-073 section 2).
+  Future<RevenueRefusal?> attachLocally({
+    required String entryId,
+    required List<DocumentAttachment> staged,
+    required String actorUserId,
+    required String orgId,
+    required DateTime now,
+  }) async {
+    if (staged.isEmpty) return null;
+
+    final header = await (_db.select(
+      _db.revenueEntries,
+    )..where((e) => e.id.equals(entryId))).getSingleOrNull();
+    if (header == null) {
+      throw StateError('revenue $entryId is not in the local ledger');
+    }
+
+    // A voided document keeps the evidence it has and gains none - the rule
+    // `revenue_attachment_register` enforces server-side, said here so the operator is
+    // told at the button rather than after a sync (D-006).
+    if (header.voidedAt != null) {
+      return const RevenueRefusal(
+        RevenueRefusalReason.alreadyVoided,
+        'This sale has been voided. Its existing attachments remain, but nothing '
+        'further can be added.',
+      );
+    }
+
+    final existing = await attachmentsOf(entryId);
+
+    // The caller may hand back the whole collection a form was showing, most of which is
+    // already recorded. Only what is genuinely new is written, and only it counts towards
+    // the limits — otherwise saving an edit twice would refuse a document for exceeding a
+    // count it never reached. Identity is the client-generated attachment id (D-008).
+    final known = {for (final a in existing) a.id};
+    final additions = [
+      for (final file in staged)
+        if (!known.contains(file.id)) file,
+    ];
+    if (additions.isEmpty) return null;
+
+    if (existing.length + additions.length > AttachmentPolicy.maxPerDocument) {
+      return RevenueRefusal(
+        RevenueRefusalReason.attachmentLimit,
+        'A sale can carry at most ${AttachmentPolicy.maxPerDocument} '
+        'attachments.',
+      );
+    }
+    final total =
+        existing.fold<int>(0, (sum, a) => sum + a.byteSize) +
+        additions.fold<int>(0, (sum, a) => sum + a.byteSize);
+    if (total > AttachmentPolicy.maxTotalBytesPerDocument) {
+      return RevenueRefusal(
+        RevenueRefusalReason.attachmentLimit,
+        'Together the attachments on one sale may be up to '
+        '${AttachmentPolicy.maxTotalBytesPerDocument ~/ (1024 * 1024)} MB.',
+      );
+    }
+
+    // The initial state is decided from the parent, not passed in: a sale the server has
+    // already numbered is ready to upload at once, and one that is still queued has to
+    // wait for it.
+    final state = header.txnNumber != null && header.pendingMutationId == null
+        ? AttachmentUploadState.pendingUpload
+        : AttachmentUploadState.waitingForExpense;
+
+    await _db.transaction(() async {
+      for (final file in additions) {
+        await _db
+            .into(_db.revenueAttachments)
+            .insert(
+              RevenueAttachmentsCompanion.insert(
+                id: file.id,
+                orgId: orgId,
+                revenueEntryId: entryId,
+                fileName: file.fileName,
+                contentType: file.contentType,
+                byteSize: file.byteSize,
+                contentHash: file.contentHash,
+                localPath: Value(file.localStagingPath),
+                uploadState: Value(state.name),
+                storagePath: Value(file.storagePath),
+                nextAttemptAt: Value(now),
+                uploadedBy: actorUserId,
+                createdAt: now,
+                updatedAt: now,
+              ),
+              // The attachment id is the client-generated identity, so a repeated write
+              // of the same file is the same row rather than a second one (D-008).
+              mode: InsertMode.insertOrIgnore,
+            );
+      }
+    });
+    return null;
   }
 
   /// Entries kept through a confirmed revocation because this actor still has unsent work

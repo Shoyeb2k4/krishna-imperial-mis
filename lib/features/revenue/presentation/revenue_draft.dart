@@ -27,6 +27,7 @@
 /// it will show two the day two bands are, with no release (D-081).
 library;
 
+import 'package:krishna_mis/domain/attachments/document_attachment.dart';
 import 'package:krishna_mis/domain/auth/authority.dart';
 import 'package:krishna_mis/domain/auth/capability.dart';
 import 'package:krishna_mis/domain/masters/master_graph.dart';
@@ -185,6 +186,7 @@ final class RevenueDraft {
     this.notes,
     this.baseRowVersion,
     this.txnNumber,
+    this.attachments = const [],
   });
 
   /// A blank sale, with the unit preselected when the user holds exactly one.
@@ -226,6 +228,48 @@ final class RevenueDraft {
   /// identity and no correction changes it.
   final String? txnNumber;
 
+  /// Supporting evidence, staged on this device and not yet — or already — recorded.
+  ///
+  /// **It is not part of the sale's financial identity and nothing here treats it as
+  /// such.** No validation reads it, no total is derived from it, and `problems` cannot
+  /// name it: a photograph that will not upload is the attachment's problem, never a
+  /// reason a correct figure may not be saved. On an edit it starts as what the document
+  /// already carries, so the form shows the whole collection rather than only what was
+  /// added in this sitting; writing it back is idempotent on the attachment id.
+  final List<DocumentAttachment> attachments;
+
+  /// The same draft with a different evidence collection. Deliberately its own mutator,
+  /// so nothing that changes money can change evidence by accident, or the reverse.
+  RevenueDraft withAttachments(List<DocumentAttachment> attachments) =>
+      _copy(attachments: attachments);
+
+  /// The one place every field is carried forward.
+  ///
+  /// `baseRowVersion` travels through unchanged and is deliberately not a parameter, for
+  /// the reason its own doc comment gives.
+  RevenueDraft _copy({
+    BusinessDate? businessDate,
+    String? businessUnitId,
+    String? revenueCategoryId,
+    List<RevenueComponentEntry>? components,
+    RevenueEntryKind? entryKind,
+    String? sourceReference,
+    String? notes,
+    List<DocumentAttachment>? attachments,
+  }) => RevenueDraft(
+    id: id,
+    businessDate: businessDate ?? this.businessDate,
+    businessUnitId: businessUnitId ?? this.businessUnitId,
+    revenueCategoryId: revenueCategoryId ?? this.revenueCategoryId,
+    components: components ?? this.components,
+    entryKind: entryKind ?? this.entryKind,
+    sourceReference: sourceReference ?? this.sourceReference,
+    notes: notes ?? this.notes,
+    baseRowVersion: baseRowVersion,
+    txnNumber: txnNumber,
+    attachments: attachments ?? this.attachments,
+  );
+
   bool get isEditing => baseRowVersion != null;
 
   /// The same sale, loaded for correction.
@@ -244,6 +288,7 @@ final class RevenueDraft {
     notes: entry.notes,
     baseRowVersion: entry.rowVersion,
     txnNumber: entry.txnNumber,
+    attachments: entry.attachments,
     components: [
       for (final component in entry.components)
         RevenueComponentEntry(
@@ -304,6 +349,7 @@ final class RevenueDraft {
       notes: notes,
       baseRowVersion: baseRowVersion,
       txnNumber: txnNumber,
+      attachments: attachments,
     );
   }
 
@@ -325,6 +371,7 @@ final class RevenueDraft {
       notes: notes,
       baseRowVersion: baseRowVersion,
       txnNumber: txnNumber,
+      attachments: attachments,
     );
   }
 
@@ -345,6 +392,7 @@ final class RevenueDraft {
     notes: notes,
     baseRowVersion: baseRowVersion,
     txnNumber: txnNumber,
+    attachments: attachments,
   );
 
   RevenueDraft withDetails({
@@ -362,6 +410,7 @@ final class RevenueDraft {
     notes: notes ?? this.notes,
     baseRowVersion: baseRowVersion,
     txnNumber: txnNumber,
+    attachments: attachments,
   );
 
   /// Rebuilds the components to match the configured rules for this category.
@@ -399,6 +448,7 @@ final class RevenueDraft {
         notes: notes,
         baseRowVersion: baseRowVersion,
         txnNumber: txnNumber,
+        attachments: attachments,
       );
     }
 
@@ -444,6 +494,7 @@ final class RevenueDraft {
       notes: notes,
       baseRowVersion: baseRowVersion,
       txnNumber: txnNumber,
+      attachments: attachments,
     );
   }
 

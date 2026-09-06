@@ -26,6 +26,7 @@ import 'package:krishna_mis/domain/tax/tax_rule.dart';
 import 'package:krishna_mis/features/revenue/presentation/revenue_providers.dart';
 import 'package:krishna_mis/features/revenue/presentation/widgets/revenue_actions.dart';
 import 'package:krishna_mis/features/revenue/presentation/widgets/revenue_conflict.dart';
+import 'package:krishna_mis/features/revenue/presentation/widgets/revenue_evidence.dart';
 
 class RevenueDetailPanel extends ConsumerWidget {
   const RevenueDetailPanel({required this.entryId, super.key});
@@ -269,6 +270,11 @@ class _Detail extends StatelessWidget {
           const SizedBox(height: AppSpacing.sm),
           _TotalsCard(entry: entry),
         ],
+
+        // Supporting evidence, after the figures and before the provenance — it explains
+        // the sale, it is not part of it. Attaching one here changes no amount (§25).
+        const SizedBox(height: AppSpacing.lg),
+        RevenueEvidence(entry: entry),
 
         const SizedBox(height: AppSpacing.lg),
         Text('Record', style: AppTypography.overline),
