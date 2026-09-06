@@ -5427,3 +5427,42 @@ down a second time.
 neither when the step is reached, and a view over tables that do not exist fails to create.
 A fresh database gets the view from `onCreate` instead — and the reporting index had to be
 added there too, which the fresh-database test caught by finding it absent.
+
+
+## D-156 (closed) — the revenue native-picker gate, and what a manual gate can be asked to prove
+**Date:** 2026-09-06 · **Status:** Closed — **Android PASS · Windows PASS**, reported by the
+project lead. The entry above is left as it was written, because this log is append-only.
+
+The project lead ran the gate on both platforms and reports both as passing. Slice 11 is
+closed on that ratification, which is his to give: the OS picker is a separate activity no
+harness opens, so the observation could only ever be a person's.
+
+**Two halves, and only one of them leaves a trace.**
+
+The picker itself — a real Android Photo Picker and a real Windows `IFileOpenDialog`
+returning a file into a *revenue* surface — writes nothing to any server. There is nothing
+for this repository to corroborate and nothing to doubt; that is what a manual gate is, and
+D-077 exists because the automated suite was green throughout while the picker did not
+exist.
+
+The **save-and-sync leg** does leave a trace, and `krishna-mis-dev` has none. Checked four
+ways rather than by looking once: all 96 revenue attachment rows are accounted for by
+automated suites (89 `z-report.jpg` from the live suites, 7 `synthetic-receipt.jpg` from the
+device-acceptance phases, which inject at the picker boundary and say so in the file name);
+every registration in the **append-only** audit trail is the same actor in four hour buckets
+matching those runs; the KI-REV sequence has 752 numbers and 752 rows, so nothing was
+created and removed; and the newest revenue entry is the 07:50 automated one.
+
+**This is recorded, not resolved, and it is not a challenge to the result.** The benign
+explanations are the likely ones — a build with no backend configured runs the entire
+surface against the local seed (D-052); a picker checked to the point where the file appears
+on the form is the substance of the gate and needs no save; a device that never reconnected
+keeps the sale local. What must not happen is a canonical document claiming a synchronised
+artefact that the database says is absent, or a later reader mistaking the automated
+`synthetic-receipt.jpg` rows for this line. One question is open for the project lead:
+which build and environment the manual runs used.
+
+**The rule this leaves behind.** A manual gate is a person's observation and is recorded as
+one — attributed, dated, and never restated as though a suite had made it. Where the manual
+act *should* leave a durable trace, the record says whether it did. Both halves of that are
+the same discipline: say who verified what.

@@ -1658,10 +1658,13 @@ is worth running once before the first staging deploy.
 ## Next exact task
 
 **Slice 13 — live and device acceptance: both platforms, real backend, two-device.**
-Slice 12 is complete and committed; Slice 13 has **not** been started, and is not started
-automatically. One line of Slice 11 is still open and is the first thing Slice 13 should
-absorb: the native-picker smoke test for a **sale**, on each platform, which needs a person
-(D-156, `RELEASE_CHECKLIST.md` §L).
+Slices 11 and 12 are both formally closed (`bcf6f19`, `d6f0851`) and the Slice 11 manual
+picker gate is passed (D-156). Slice 13 has **not** been started, and is not started
+automatically.
+
+One question is open and should be answered before Slice 13's acceptance is designed:
+which build and environment the manual picker runs used, since `krishna-mis-dev` holds no
+artefact of them — see **Open questions for the project lead**.
 
 ### Superseded — the Slice 12 entry
 
@@ -1730,6 +1733,26 @@ capability that evaluated to nothing — then correct the documents to describe 
 production does. **That is what was approved, and that is what was built.** The one item
 deliberately left open is whether *revenue* should carry the same date provenance, which is
 a product decision and is asked under **Open questions for the project lead** above.
+
+## Open questions for the project lead
+
+**One, and it blocks nothing.** Which build and environment did the manual revenue
+native-picker runs use?
+
+Both platforms are reported PASS on 2026-09-06 and Slice 11 is closed on that. The picker
+itself leaves no server trace, so there is nothing to corroborate and nothing to doubt. The
+**save-and-sync leg** does leave one, and `krishna-mis-dev` has none: all 96 revenue
+attachment rows are accounted for by automated suites, every registration in the
+append-only audit trail is an automated run, and the KI-REV sequence has 752 numbers and
+752 rows, so nothing was created and removed.
+
+The likely answers are benign — a dev build with no backend configured, or the picker
+checked to the point where the file appears on the form, which is the substance of the
+gate. Knowing which lets the record say so exactly, and stops a later reader taking the
+automated `synthetic-receipt.jpg` rows as evidence of this line (D-156).
+
+If the sync leg *was* meant to be exercised against `krishna-mis-dev`, it is worth one more
+short run, because that is the half a person is uniquely able to prove end to end.
 
 ## Project lead actions required
 
@@ -2407,3 +2430,124 @@ claimed as freshly passing.
 **The Android and Windows device acceptance suites — not rerun.** Slice 12 adds no
 controller, no widget and no screen; the surfaces are untouched and a test asserts they
 stay that way. The reporting query API is covered by the host and live suites.
+
+---
+
+## Phase 4 Slice 11 — formally closed (2026-09-06)
+
+| | |
+|---|---|
+| Implementation | `ba4ffd2` |
+| Corrective — the upload lifecycle after the bytes land | `bcf6f19` |
+| Manual native-picker acceptance | reported by the project lead, 2026-09-06 |
+
+### The manual gate, as reported
+
+**Android Revenue native picker: PASS · Windows Revenue native picker: PASS**, reported by
+the project lead on 2026-09-06 and recorded here as his result. This is the D-077 gate
+applied to a **sale**, and it is a manual gate precisely because no harness opens an OS
+picker: the observation is his, and this record says so rather than implying the suite made
+it.
+
+He states the runs exercised the real Android OS-backed picker, the real native Windows
+file dialog, the shipped revenue attachment composition path, the file returning to the
+revenue form and detail, and the attachment remaining associated after save and
+synchronisation.
+
+### What this repository can and cannot corroborate, stated rather than glossed
+
+Two of those five are machine-checkable from here, and they check out:
+
+| Claim | Status |
+|---|---|
+| the shipped revenue attachment composition path | **Verified** — the revenue entry form and sale detail panel use the shared `AttachmentStrip` over `attachmentSourceProvider`, and are rendered in the widget suite **without** the injected source, asserted not to show *"Attaching a file is not available on this device yet."* (D-156) |
+| production resolves a real picker per platform | **Verified** — `attachment_source_wiring_test.dart`, both shipped platforms |
+| the picker opened and returned a file | **Project lead's observation.** Unverifiable from here by construction — this is what a manual gate is |
+| the file appeared on the revenue form / detail | **Project lead's observation** |
+| the attachment remained associated **after save and synchronisation** | **Reported, not corroborated — see below** |
+
+**`krishna-mis-dev` holds no artefact of a manual run**, and that is stated because the
+record's job is to say what was verified. Checked four ways:
+
+```
+        revenue attachment rows            96  = 89 `z-report.jpg`      (automated live suites)
+                                              +  7 `synthetic-receipt.jpg` (automated device
+                                                   acceptance, which injects at the picker
+                                                   boundary and says so in the file name)
+        revenue attachment registrations   every one in the APPEND-ONLY audit trail is
+                                           `giridhar@hki.com`, in four hour buckets that
+                                           match the automated runs exactly
+        KI-REV numbers issued              752, rows holding one 752, missing 0
+        newest revenue entry               KI-REV-26-27-000546, 07:50 UTC,
+                                           "Device acceptance slice11 offline evidence"
+```
+
+Nothing was created and removed: the number sequence has no gap, and `audit_logs` is
+append-only by trigger.
+
+**This is not a contradiction of the picker result**, which leaves no server trace at all
+and is entirely the project lead's to report. It bears only on the **save-and-sync leg**,
+and the ordinary explanations are benign — a build with no backend configured runs the
+whole surface against the local seed (D-052); a picker checked to the point of the file
+appearing on the form is the gate's substance and needs no save; a device that never
+reconnected keeps the sale local. It is recorded so that nobody later mistakes the
+automated `synthetic-receipt.jpg` rows for the manual run, and it is the one open question
+under **Open questions for the project lead**.
+
+**Slice 11 is closed on the project lead's ratification of the manual gate**, which is his
+to give. The evidence state above is recorded beside it rather than instead of it.
+
+### Cleanup and verification after the manual acceptance
+
+| Required | Result |
+|---|---|
+| Void any manual test revenue through the legitimate workflow | **No-op — there is none.** 0 active revenue entries of any kind; every acceptance sale was already reversed through `revenue_void` by its own suite |
+| Reconcile manual attachment objects through the normal lifecycle | **No-op — nothing stranded.** The reconciliation sweep ran and reported `0 kept, 0 reclaimed, 0 still stranded` |
+| 4 verified revenue tax rules | **4** |
+| 0 test bands / subtypes / premises statuses | **0 / 0 / 0** |
+| 0 closed periods | **0** |
+| 0 active manual acceptance revenue | **0** |
+| 0 stranded Storage objects | **0** |
+| Metadata ↔ object reconciliation exact | **Exact, both directions** — 96 revenue rows ↔ 96 revenue objects, 46 expense rows ↔ 46 expense objects, 0 rows without an object, 0 objects without a row |
+| The three historical whitespace-reason evidence rows | **Untouched** — 1 expense, 1 revenue, 1 period reopen (D-146) |
+
+### The proportionate closure gate
+
+No implementation code changed for this closure, so the gate is the proportionate one:
+
+| Item | Result |
+|---|---|
+| Attachment wiring and revenue attachment suites | **110 tests, all passing** |
+| Storage reconciliation assertion, live | **PASS** — `0 kept, 0 reclaimed, 0 still stranded` |
+| Migration ledger guard (A0 / D-056) | **PASS** — 21 migration-audit tests |
+| Secret scan — tree and git history | **Clean**, controls passing |
+| Clean working tree | **Clean** |
+
+**Slice 11 COMPLETE** — `ba4ffd2` (implementation) · `bcf6f19` (corrective) · manual
+acceptance reported 2026-09-06.
+
+---
+
+## Phase 4 Slice 12 — ratified (2026-09-06)
+
+Implemented and committed at **`d6f0851`**; history is not rewritten or squashed.
+
+Confirmed green after the Slice 11 closure, with nothing changed between them:
+
+| Item | Result |
+|---|---|
+| Revenue contribution suite | **31 tests, all passing** |
+| Attachment, wiring and migration-audit suites | **110 tests, all passing** |
+| Live storage reconciliation | **PASS** |
+| Migration ledger parity | **PASS**, byte-for-byte |
+| Secret scan | **Clean** |
+| Working tree | **Clean** |
+| Baseline | 4 rules, 0 bands, 0 subtypes, 0 statuses, 0 closed periods, 0 active revenue, 0 stranded objects |
+
+**Slice 12 COMPLETE** — `d6f0851`.
+
+### Phase 4 completion
+
+**12 of 14 slices complete.** Slices 1–12 are done; **Slice 13 (live and device
+acceptance) and Slice 14 (closure) are not started**, and Slice 13 is not started
+automatically.

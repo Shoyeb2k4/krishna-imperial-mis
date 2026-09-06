@@ -356,8 +356,18 @@ to a person.
       attachment acceptance (D-077). Keep it manual, keep it per-release, and do not let a
       green suite argue you out of running it.
 
-- [ ] **Manual, once per platform, for a SALE:** the real OS picker returns a file to the
-      revenue surface. **Android PENDING · Windows PENDING.**
+- [x] **Manual, once per platform, for a SALE:** the real OS picker returns a file to the
+      revenue surface. **Android PASS · Windows PASS, 2026-09-06**, reported by the
+      project lead. The observation is his: no harness opens an OS picker, which is the
+      whole reason this line is manual.
+
+      **Recorded with it:** `krishna-mis-dev` holds no artefact of the manual run. Every
+      revenue attachment row and every registration in the append-only audit trail is
+      accounted for by an automated suite, and the KI-REV sequence has no gap. That bears
+      only on the save-and-sync leg, not on the picker, and the ordinary explanations are
+      benign (a build with no backend configured, or a picker checked to the point the
+      file appears on the form). It is noted so nobody later reads the automated
+      `synthetic-receipt.jpg` rows as evidence of this line.
 
       Revenue attachments ship on the shared strip and the shared production source, so
       the *wiring* is asserted from the host — `attachment_source_wiring_test.dart` reads
