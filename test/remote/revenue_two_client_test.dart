@@ -765,54 +765,66 @@ void main() {
 
   // ── Part E · update response loss ────────────────────────────────────────────
   group('E · a correction whose answer never arrives', () {
-    test(
-      'the retry replays: same document, same number, one version step',
-      () async {
-        final created = await recordAndSync(a);
-        final id = created.id;
-        final number = created.txnNumber!;
-        final atA = await loadCanonicalInto(a, id);
-        final before = atA.rowVersion;
+    test('the retry replays: same document, same number, one version step', () async {
+      final created = await recordAndSync(a);
+      final id = created.id;
+      final number = created.txnNumber!;
+      final atA = await loadCanonicalInto(a, id);
+      final before = atA.rowVersion;
 
-        await correct(a, atA, paise: 21000000);
+      await correct(a, atA, paise: 21000000);
 
-        transportA.loseResponseOnceFor = '/rpc/revenue_update';
-        try {
-          await a.engine.pushOnce();
-        } on Object {
-          // Committed on the server; unknown to the client.
-        }
-        expect(transportA.lostResponses, isNotEmpty);
+      transportA.loseResponseOnceFor = '/rpc/revenue_update';
+      try {
+        await a.engine.pushOnce();
+      } on Object {
+        // Committed on the server; unknown to the client.
+      }
+      expect(transportA.lostResponses, isNotEmpty);
 
-        final committed = await canonical(id);
-        expect(committed['gross_amount_minor'], 21000000);
-        final versionAfter = committed['row_version'] as int;
-        expect(versionAfter, greaterThan(before));
+      final committed = await canonical(id);
+      expect(committed['gross_amount_minor'], 21000000);
+      final versionAfter = committed['row_version'] as int;
+      expect(versionAfter, greaterThan(before));
 
-        // Retry the same intent. A fresh mutation id would be a second financial record
-        // for one act, and nothing afterwards could tell the two apart.
-        await a.pushUntilSettled();
+      // Retry the same intent. A fresh mutation id would be a second financial record
+      // for one act, and nothing afterwards could tell the two apart.
+      await a.pushUntilSettled();
 
-        final after = await canonical(id);
-        expect(after['id'], id);
-        expect(after['txn_number'], number);
-        expect(
-          after['row_version'],
-          versionAfter,
-          reason: 'one row-version progression for that mutation',
-        );
-        expect(after['gross_amount_minor'], 21000000);
-        expect(after['tax_amount_minor'], 1000000);
-        expect(after['net_amount_minor'], 20000000);
-        expect(after['component_count'], 1, reason: 'no duplicate components');
+      final after = await canonical(id);
+      expect(after['id'], id);
+      expect(after['txn_number'], number);
+      expect(
+        after['row_version'],
+        versionAfter,
+        reason: 'one row-version progression for that mutation',
+      );
+      expect(after['gross_amount_minor'], 21000000);
+      expect(after['tax_amount_minor'], 1000000);
+      expect(after['net_amount_minor'], 20000000);
+      expect(after['component_count'], 1, reason: 'no duplicate components');
 
-        // The local row reconciled, and the queue resolved.
-        final local = await a.revenue.load(id);
-        expect(local!.rowVersion, versionAfter);
-        expect(local.txnNumber, number);
-        expect(await a.revenue.syncStateOf(id), SyncState.synced);
-      },
-    );
+      // The local row reconciled, and the queue resolved.
+      final local = await a.revenue.load(id);
+      expect(local!.rowVersion, versionAfter);
+      expect(local.txnNumber, number);
+      expect(await a.revenue.syncStateOf(id), SyncState.synced);
+
+      // And the reporting effect is one effect (Slice 12, B12). A contribution is a
+      // projection over the accepted components, so there is nothing for a replay to
+      // insert twice — which is the property, and it is asserted rather than assumed.
+      final contributions =
+          (await a.supabase
+                  .from('revenue_period_contributions')
+                  .select()
+                  .eq('revenue_entry_id', id))
+              .cast<Map<String, dynamic>>();
+      expect(contributions, hasLength(1));
+      expect(contributions.single['gross_minor'], 21000000);
+      expect(contributions.single['tax_minor'], 1000000);
+      expect(contributions.single['net_minor'], 20000000);
+      expect(contributions.single['voided_at'], isNull);
+    });
   });
 
   // ── Part D · create pending, then corrected twice, then restarted ────────────

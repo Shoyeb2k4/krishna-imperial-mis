@@ -1657,6 +1657,14 @@ is worth running once before the first staging deploy.
 
 ## Next exact task
 
+**Slice 13 — live and device acceptance: both platforms, real backend, two-device.**
+Slice 12 is complete and committed; Slice 13 has **not** been started, and is not started
+automatically. One line of Slice 11 is still open and is the first thing Slice 13 should
+absorb: the native-picker smoke test for a **sale**, on each platform, which needs a person
+(D-156, `RELEASE_CHECKLIST.md` §L).
+
+### Superseded — the Slice 12 entry
+
 **Slice 12 — reporting contributions: `revenue_period_contributions` populated (D-087).**
 Slice 11 is done, tested and accepted, and it deliberately built no reporting: a test
 asserts the revenue detail surface names no P&L, Net Sales, Operating Profit or Export.
@@ -2240,3 +2248,162 @@ belongs in its own scope (D-127).
 function parser matched only a bare `$$` body tag, so three new `security definer`
 predicates were invisible to every assertion in that group — including the `search_path`
 one, which is the direction that fails quietly. Widened. D-103, D-134, and now this.
+
+---
+
+## Phase 4 Slice 12 — Revenue reporting contributions: **COMPLETE**
+
+The interface Phase 5 will aggregate, defined and exposed. **No P&L, no dashboard, no
+export, no margin** — a test asserts the repository grew no such method, because a slice
+boundary nothing evaluates is a comment (D-087).
+
+### The design decision, and it came from reading the expense side rather than mirroring it
+
+The brief asked whether the binding schema requires a *physical*
+`revenue_period_contributions` table. It does not, and the reason is in what the two sides
+actually are:
+
+| | |
+|---|---|
+| `expense_period_allocations` | a **table**, because a cross-period split is a decision a person made and exists nowhere else (D-034, D-060) |
+| `expense_period_contributions` | a **view** over it — and this is what `DATABASE_SCHEMA.md` calls the revenue projection *"the mirror of"* |
+| `revenue_period_contributions` | a **view**, because a revenue contribution carries no decision: its period is the entry's stored `pnl_period_key` under a CHECK, its money the component's stored gross/tax/net (D-157) |
+
+**What a stored copy would buy is nothing; what it would cost is a lifecycle.** Every
+hazard the brief lists — a correction moving a period, an edit replacing figures, a void
+removing an effect, a replay applying twice — is a hazard of *maintaining a second copy*.
+Derived, the correction moves the period because the entry moved, and the replay has
+nothing to insert twice. None of it is a rule anybody has to remember, and this project's
+record is that the rules people have to remember stop being applied (D-059, D-068, D-071,
+D-077).
+
+**Two sides, one shape.** The same view exists in Postgres (`security_barrier`, scoped by
+`revenue.view` per unit, base tables ungranted) and in SQLite at local schema **v15**,
+column for column. Neither is writable, and no UI or client can edit a contribution amount
+because there is nothing to edit.
+
+### What contributes, and what merely exists (D-158)
+
+Three exclusions, applied before any filter, in one shared predicate so they cannot be
+present in one query and forgotten in the next:
+
+| | |
+|---|---|
+| `voided_at IS NULL` | a voided sale contributes nothing and stays inspectable (D-006) |
+| `scope_revoked_at IS NULL` | a retained unsent attempt over a lost property is nobody's revenue (D-070, D-074) |
+| `txn_number IS NOT NULL` | **canonical only** — an unaccepted sale is an attempt, not revenue |
+
+**Slice 12 invents no provisional model.** A labelled *"local — including N unsynced"*
+operational figure is a real idea and is what §6.4's freshness vocabulary is for; it is a
+Phase 5 decision nobody has approved, and shipping one here would be a second, softer
+definition of revenue with nobody's name on it.
+
+### The paisa the component grain protects
+
+Two Restaurant days of ₹76,450 and ₹81,200:
+
+```
+        summed at the component   364048 + 386667  = 750715   <- what is reported
+        the rate re-applied       15765000 x 5/105 = 750714   <- one paisa less
+```
+
+The acceptance asserts **both** figures side by side, so the difference is stated rather
+than discovered. Rounding happens once, at the component; aggregates sum stored paise
+(spec §6.5, D-017).
+
+### Verified
+
+| Item | Status | Evidence |
+|---|---|---|
+| `dart format --set-exit-if-changed` | **Tested** | clean, 197 files |
+| `flutter analyze` | **Tested** | **No issues found** |
+| Host suite | **Tested** | **1,185 tests, all passing** (1,154 + 31) |
+| Revenue contributions — figures, periods, exclusions, scope, aggregation | **Tested** | 31 host tests, incl. the v14→v15 migration and the slice-boundary assertion |
+| Positive controls | **Tested** | dropping the canonical-only predicate turns 2 tests RED; dropping the void exclusion turns 1 RED; restored and **read back** (D-142) |
+| Live revenue boundary suite | **Tested** | **81 tests** (61 + 8 attachment closure + 12 Slice 12), 1 deliberately skipped |
+| Live two-client acceptance | **Tested** | 10 tests, incl. a contribution assertion on the §E response-loss replay |
+| Live expense suite | **Tested** | **50 tests**, re-run after the shared attachment change |
+| Migration ledger parity (A0 / D-056) | **Tested** | verified **byte-for-byte by hash** |
+| Migration audit | **Tested** | 21 host tests |
+| Secret scan — tree and git history | **Tested** | clean, controls passing |
+| Baseline / fixtures | **Tested** | 0 open acceptance revenue, 4 live rules, 0 bands/subtypes/statuses, 0 closed periods, 0 stranded storage objects |
+
+### The live matrix, against `krishna-mis-dev`, through the real RPC boundary
+
+| Case | Result |
+|---|---|
+| Restaurant / Nandbhog / Room / Banquet, exact gross, tax and net | **PASS** |
+| Banquet reports treatment `none`, permanently distinct from a configured 0% | **PASS** |
+| Multi-component document: two contributions, reconciling to `revenue_document` | **PASS** |
+| An accepted edit **replaces** the contribution, not appends | **PASS** |
+| A business-date correction across two open periods moves it, and one period holds it | **PASS** — `business_date_source` reads `corrected`, `KI-REV` unchanged, figures unchanged |
+| A void removes the active effect and destroys nothing | **PASS** — the row remains, carrying `voided_at` |
+| Create, correction and void each replayed: one contribution effect | **PASS** |
+| Response-loss replay (`ControllableTransport`, D-132): one contribution | **PASS** — §E |
+| Attaching evidence moves no figure | **PASS** — seven fields compared |
+| A month by property and category, exact paise, consolidated | **PASS** |
+| A wrong-property manager sees no contribution, by RLS | **PASS** |
+| The base tables stay unreadable | **PASS** |
+| An anonymous caller sees nothing | **PASS** |
+| Configuration a sale was not recorded under cannot restate it | **PASS** — and the destructive form of that control (delete every rule) runs in the host suite, where the fixture is disposable rather than the approved baseline |
+
+### Performance
+
+`revenue_entries_reporting_idx (org_id, pnl_period_key, business_unit_id,
+revenue_category_id) where voided_at is null` on the server, and
+`ix_revenue_entries_reporting` locally. Filtering, scoping and the aggregate all happen in
+**SQL**: a month of a property's revenue is one row off the database rather than every
+component folded in Dart, which is what spec §27 asks for and what the expense side does
+not yet do. No materialised aggregate: nothing has been measured that needs one.
+
+### Expense compatibility, demonstrated rather than assumed (B30)
+
+Phase 5 sums one shape per side of the P&L. Both projections are named
+`*_period_contributions`, both are views, and both carry `org_id`, `business_unit_id`, a
+`pnl_period_key` in `YYYY-MM`, integer minor units and `voided_at` with the same meaning —
+the row stays, the aggregate excludes. **No second financial-date or period model is
+required.** Revenue and expenses are deliberately **not** combined into a P&L table here;
+the binding architecture puts that in Phase 5.
+
+### Recorded, and deliberately not built
+
+**There is no revenue pull.** `RevenueGateway` reads one document back for reconciliation
+and nothing else, so a device's local cache holds only what that device recorded. The local
+projection is therefore honest about this device and is **not** a complete reporting cache;
+the server projection is the authoritative one. That is the shipped state after Slice 11
+rather than something this slice changed, and it is stated so Phase 5 plans for it instead
+of discovering that a manager's dashboard is empty on a new installation (D-158).
+
+### Three fixture defects the existing suite caught (D-159)
+
+`downgradeToV10` dropped `revenue_entry_totals` and not the new view, so a v10→v11 test
+failed with `no such table: main.revenue_components` — a fixture that claims to be an older
+schema has to actually be one (D-144, again). A Slice 11 test asserted
+`db.schemaVersion == 14`, hard-coded, written *after* D-144 recorded the identical
+correction twice. And the reporting index was added to the upgrade step and not to
+`onCreate`, so a fresh database lacked it — caught by the fresh-database test.
+
+### Migration ledger
+
+| Ledger version | Name |
+|---|---|
+| 20260906124407 | `revenue_period_contributions` |
+
+Verified **byte-for-byte by hash** against `supabase_migrations.schema_migrations.statements`.
+
+### Local schema
+
+**Drift v15** adds the `revenue_period_contributions` view and
+`ix_revenue_entries_reporting`. No table. The upgrade step carries the D-144 range guard
+`from >= 11 && from < 15`, because `revenue_entries` and `revenue_components` are created at
+v11 and a view over tables that do not exist cannot be created.
+
+### Not rerun, and why
+
+**`phase-a`, `phase-b`, `phase-c`, `multi-scope-a`, `multi-scope-b` — not rerun.** Nothing
+here touches authority caching, grants, scope resolution or purge semantics. They are **not**
+claimed as freshly passing.
+
+**The Android and Windows device acceptance suites — not rerun.** Slice 12 adds no
+controller, no widget and no screen; the surfaces are untouched and a test asserts they
+stay that way. The reporting query API is covered by the host and live suites.

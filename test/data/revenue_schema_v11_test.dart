@@ -102,6 +102,11 @@ Future<void> insertEntry(
 Future<void> downgradeToV10(AppDatabase db) async {
   for (final statement in const [
     'DROP VIEW IF EXISTS revenue_entry_totals',
+    // v15's projection, dropped here for the same reason: SQLite validates every
+    // view when a table is renamed, so a leftover view over tables this downgrade
+    // is about to remove makes the rename below fail. Found by this test rather
+    // than by review, which is what a completed fixture is for (D-144).
+    'DROP VIEW IF EXISTS revenue_period_contributions',
     'DROP TABLE IF EXISTS revenue_components',
     'DROP TABLE IF EXISTS revenue_entries',
     'DROP TABLE IF EXISTS revenue_value_bands',

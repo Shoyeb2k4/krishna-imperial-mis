@@ -2176,3 +2176,110 @@ already be canonical evidence.
 behind; the run now reclaims what nothing names and then asserts there is nothing left, over
 both prefixes. Sixteen stranded objects went on the first execution, and the two sides now
 agree exactly — 79 revenue objects to 79 rows, 46 expense objects to 46 rows.
+
+---
+
+## 26. The revenue reporting interface (2026-09-06)
+
+Phase 4 Slice 12. It defines and exposes what Phase 5 will aggregate, and **builds no
+P&L** — no dashboard, no export, no margin (D-087). A test asserts the repository grew no
+such method, because a slice boundary nothing evaluates is a comment.
+
+### 26.1 Derived, not stored, and the reason is what a contribution *is*
+
+The obvious move was `revenue_period_contributions` as a table, mirroring
+`expense_period_allocations`. Reading the expense side rather than remembering it says
+otherwise, and the distinction is the whole of this slice's design.
+
+```
+        expense_period_allocations   a PHYSICAL TABLE
+          because a cross-period split is a decision a person made (D-034) and
+          exists nowhere else — remove the row and the information is gone
+
+        expense_period_contributions a VIEW over it
+        revenue_period_contributions a VIEW over the components
+          because a revenue contribution carries NO such decision:
+            its period is the entry's stored pnl_period_key, under a CHECK
+            its money  is the component's stored gross, tax and net
+```
+
+`DATABASE_SCHEMA.md` calls the revenue projection *"the mirror of
+`expense_period_contributions`"*, and that projection is a view. The mirror of a view is a
+view.
+
+**What storing it would buy is nothing, and what it would cost is a lifecycle.** Every
+hazard the Slice 12 brief lists is a hazard of *maintaining a second copy*:
+
+| The hazard | With a table | Derived |
+|---|---|---|
+| a business-date correction moves a period | delete the old rows, write new ones, in the same transaction as the mutation, on every path | the entry moved |
+| an edit replaces the figures | replace, never append — and an append is one forgotten `delete` away | the components were replaced |
+| a void removes the effect | flag or delete, and every aggregate must agree which | the entry is voided |
+| a replayed mutation applies twice | contribution idempotency has to be built and kept in step with mutation idempotency | there is nothing to insert twice |
+
+None of those is a rule anybody has to remember. That is the argument, and it is the same
+one D-060 makes in the opposite direction for expenses: put the money in exactly one place.
+
+### 26.2 Component grain, and the paisa it protects
+
+One row per component, never per document (D-087). A two-band Room day is two
+contributions even though the document totals aggregate them; flattening them into one
+blended rate would state a rate that was applied to nothing, and would destroy the only
+structure that makes *"why did room tax change this month?"* answerable.
+
+The grain also protects the arithmetic, and the acceptance states the difference rather
+than assuming it. Two Restaurant days of ₹76,450 and ₹81,200:
+
+```
+        summed at the component   364048 + 386667  = 750715   <- what is reported
+        the rate re-applied       15765000 x 5/105 = 750714   <- one paisa less
+```
+
+Rounding happens once, at the component, and an aggregate sums stored paise (spec §6.5,
+D-017). The two differ by a paisa here and by more over a month, and only the first is the
+sum of figures anybody approved.
+
+### 26.3 Nothing joins to configuration that can still change
+
+Every rate, treatment, basis and band on a contribution is the snapshot the component
+recorded when the server accepted it. The projection reaches no tax table at all, so
+deleting every rule in the organisation leaves historical reporting unchanged — asserted by
+deleting them in the host suite, where the fixture is disposable, and by the structural
+property on the live server, where the four verified rules are the approved baseline and a
+test does not get to archive one to make a point (D-080, D-096, D-122).
+
+`business_date_source` is carried as a **dimension** (D-143). Phase 5 may surface it;
+nothing may compute with it, and two entries that differ only in provenance contribute
+identically.
+
+### 26.4 What contributes, and what merely exists
+
+Three exclusions, applied before any filter, in one shared predicate so they cannot be
+present in one query and forgotten in the next:
+
+| | |
+|---|---|
+| `voided_at IS NULL` | a voided sale contributes nothing and stays inspectable (D-006) |
+| `scope_revoked_at IS NULL` | a retained unsent attempt over a property this user no longer holds is nobody's revenue (D-070, D-074) |
+| `txn_number IS NOT NULL` | **canonical only** — a sale the server has not accepted is an attempt, not revenue |
+
+The third is the one worth stating. A local attempt is a person's intent; putting it in an
+authoritative total would report money the business does not yet have. Phase 5 may add an
+explicitly labelled provisional operational figure, and Slice 12 deliberately does not
+invent one (D-158).
+
+### 26.5 Where reporting can be read, and where it is authoritative
+
+The **server** projection is authoritative and is scoped by `revenue.view` per business
+unit, through a `security_barrier` view, with the base tables ungranted — the boundary
+`revenue_document` already draws (D-062, D-116).
+
+The **local** view answers for what this device holds. That is every sale this device
+recorded, and it is **not** every sale the organisation has: there is no revenue pull, so a
+device cannot report a month it did not record. That is the shipped state after Slice 11
+and it is stated here rather than discovered in Phase 5, which will need one before a
+dashboard can be honest offline.
+
+Filtering, scoping and the aggregate all happen in SQL. A month of a property's revenue is
+one row off the database rather than every component folded in Dart, which is what spec §27
+asks for and what the expense side does not yet do.

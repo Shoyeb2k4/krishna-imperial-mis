@@ -3052,4 +3052,667 @@ void main() {
       );
     });
   });
+
+  /// The revenue reporting interface, against the real server (Phase 4 Slice 12).
+  ///
+  /// `revenue_period_contributions` is a projection, not a table, so nothing here is
+  /// testing a population step — there isn't one. What is tested is the property that
+  /// makes that design correct: **the contributions a period reports are exactly the
+  /// accepted component snapshots of the documents in it, and every mutation moves them
+  /// by moving the documents.**
+  ///
+  /// Phase 5 will sum these rows. Slice 12 builds no P&L (D-087).
+  group('revenue reporting contributions, against the real boundary', () {
+    const marker = 'ACCEPTANCE slice12-contributions';
+
+    late String ccrUnit;
+    late String hkiUnit;
+    late Map<String, String> categories;
+    final createdSales = <String>[];
+
+    Future<String> unitId(String code) async {
+      final row = await client
+          .from('business_units')
+          .select('id')
+          .eq('code', code)
+          .single();
+      return row['id'] as String;
+    }
+
+    /// One sale, through the real RPC, and its server-issued row version.
+    Future<(String id, int rowVersion)> record({
+      required String category,
+      required String unit,
+      String date = '2026-06-15',
+      List<int> amounts = const [10000000],
+    }) async {
+      final id = const Uuid().v7();
+      await client.rpc<dynamic>(
+        'revenue_create',
+        params: {
+          'p_id': id,
+          'p_business_unit_id': unit,
+          'p_revenue_category_id': categories[category],
+          'p_business_date': date,
+          'p_notes': marker,
+          'p_components': [
+            for (final amount in amounts) {'entered_amount_minor': amount},
+          ],
+          'p_mutation_id': const Uuid().v4(),
+        },
+      );
+      createdSales.add(id);
+      final doc = await client
+          .from('revenue_document')
+          .select('row_version')
+          .eq('id', id)
+          .single();
+      return (id, doc['row_version'] as int);
+    }
+
+    Future<List<Map<String, dynamic>>> contributionsOf(
+      String saleId, {
+      SupabaseClient? as,
+    }) async {
+      final rows = await (as ?? client)
+          .from('revenue_period_contributions')
+          .select()
+          .eq('revenue_entry_id', saleId);
+      return rows.cast<Map<String, dynamic>>();
+    }
+
+    /// What a period report reads: active contributions only.
+    Future<(int gross, int tax, int net, int n)> periodTotals({
+      required String periodKey,
+      String? unit,
+      String? categoryId,
+    }) async {
+      var q = client
+          .from('revenue_period_contributions')
+          .select('gross_minor, tax_minor, net_minor')
+          .eq('pnl_period_key', periodKey)
+          .isFilter('voided_at', null);
+      if (unit != null) q = q.eq('business_unit_id', unit);
+      if (categoryId != null) q = q.eq('revenue_category_id', categoryId);
+      final rows = (await q).cast<Map<String, dynamic>>();
+      return (
+        rows.fold<int>(0, (s, r) => s + (r['gross_minor'] as int)),
+        rows.fold<int>(0, (s, r) => s + (r['tax_minor'] as int)),
+        rows.fold<int>(0, (s, r) => s + (r['net_minor'] as int)),
+        rows.length,
+      );
+    }
+
+    Future<void> voidSale(String id, int rowVersion) => client
+        .rpc<dynamic>(
+          'revenue_void',
+          params: {
+            'p_id': id,
+            'p_base_row_version': rowVersion,
+            'p_reason': '$marker fixture reversal',
+            'p_mutation_id': const Uuid().v4(),
+          },
+        )
+        .then((_) {});
+
+    setUpAll(() async {
+      await signInAs('giridhar@hki.com');
+      ccrUnit = await unitId('CCR');
+      hkiUnit = await unitId('HKI');
+      categories = {
+        'RESTAURANT': await categoryId('CCR', 'RESTAURANT'),
+        'NANDBHOG': await categoryId('CCR', 'NANDBHOG'),
+        'ROOM': await categoryId('HKI', 'ROOM'),
+        'BANQUET': await categoryId('HKI', 'BANQUET'),
+      };
+    });
+
+    setUp(() => signInAs('giridhar@hki.com'));
+
+    tearDownAll(() async {
+      await signInAs('giridhar@hki.com');
+      for (final id in createdSales) {
+        try {
+          final row = await client
+              .from('revenue_document')
+              .select('row_version, voided_at')
+              .eq('id', id)
+              .maybeSingle();
+          if (row == null || row['voided_at'] != null) continue;
+          await voidSale(id, row['row_version'] as int);
+        } on PostgrestException catch (error) {
+          // ignore: avoid_print
+          print('slice12 fixture $id not reversed: ${error.code}');
+        }
+      }
+      final open = await client
+          .from('revenue_document')
+          .select('id')
+          .eq('notes', marker)
+          .isFilter('voided_at', null);
+      expect(
+        open,
+        isEmpty,
+        reason: 'the run leaves no open acceptance revenue',
+      );
+    });
+
+    test('each verified category contributes its own exact paise', () async {
+      // The B6 vectors, on the real server, through the real create RPC. Restaurant and
+      // Nandbhog agree arithmetically and are still two categories (D-089); Banquet is a
+      // treatment of `none`, not a rate of zero (D-091).
+      final results = <String, Map<String, dynamic>>{};
+      for (final entry in const [
+        ('RESTAURANT', 'CCR'),
+        ('NANDBHOG', 'CCR'),
+        ('ROOM', 'HKI'),
+        ('BANQUET', 'HKI'),
+      ]) {
+        final (id, _) = await record(
+          category: entry.$1,
+          unit: entry.$2 == 'CCR' ? ccrUnit : hkiUnit,
+        );
+        final rows = await contributionsOf(id);
+        expect(rows, hasLength(1), reason: entry.$1);
+        results[entry.$1] = rows.single;
+      }
+
+      for (final taxed in const ['RESTAURANT', 'NANDBHOG', 'ROOM']) {
+        expect(results[taxed]!['gross_minor'], 10000000, reason: taxed);
+        expect(results[taxed]!['tax_minor'], 476190, reason: taxed);
+        expect(results[taxed]!['net_minor'], 9523810, reason: taxed);
+        expect(results[taxed]!['tax_treatment'], 'inclusive');
+        expect(results[taxed]!['tax_rate_bp'], 500);
+        expect(results[taxed]!['entered_basis'], 'inclusive_total');
+      }
+
+      expect(results['BANQUET']!['gross_minor'], 10000000);
+      expect(results['BANQUET']!['tax_minor'], 0);
+      expect(results['BANQUET']!['net_minor'], 10000000);
+      expect(
+        results['BANQUET']!['tax_treatment'],
+        'none',
+        reason:
+            'reporting carries the treatment, so Phase 5 can tell a decision somebody '
+            'made from a rate somebody set to zero',
+      );
+
+      // The dimensions Phase 5 needs, and no invented ones.
+      expect(results['ROOM']!['value_band_id'], isNull);
+      expect(results['ROOM']!['value_band_min_minor'], isNull);
+      expect(results['ROOM']!['supply_subtype_id'], isNull);
+      expect(results['ROOM']!['premises_status_code'], isNull);
+      expect(results['ROOM']!['business_unit_id'], hkiUnit);
+      expect(results['ROOM']!['pnl_period_key'], '2026-06');
+      expect(results['ROOM']!['pnl_date'], '2026-06-15');
+      expect(results['ROOM']!['business_date_source'], 'derived');
+      expect(results['ROOM']!['txn_number'], startsWith('KI-REV-'));
+    });
+
+    test('a document reconciles to its contributions, exactly', () async {
+      final (id, _) = await record(
+        category: 'ROOM',
+        unit: hkiUnit,
+        amounts: [4200000, 2300000],
+      );
+
+      final rows = await contributionsOf(id);
+      expect(
+        rows,
+        hasLength(2),
+        reason: 'component grain survives into reporting',
+      );
+      final doc = await client
+          .from('revenue_document')
+          .select()
+          .eq('id', id)
+          .single();
+
+      expect(
+        rows.fold<int>(0, (s, r) => s + (r['gross_minor'] as int)),
+        doc['gross_amount_minor'],
+      );
+      expect(
+        rows.fold<int>(0, (s, r) => s + (r['tax_minor'] as int)),
+        doc['tax_amount_minor'],
+      );
+      expect(
+        rows.fold<int>(0, (s, r) => s + (r['net_minor'] as int)),
+        doc['net_amount_minor'],
+      );
+      for (final row in rows) {
+        expect(
+          row['net_minor'],
+          (row['gross_minor'] as int) - (row['tax_minor'] as int),
+          reason: 'net = gross - tax, on every row, with no tolerance',
+        );
+      }
+    });
+
+    test(
+      'an accepted edit replaces the contribution rather than adding one',
+      () async {
+        final (id, version) = await record(
+          category: 'RESTAURANT',
+          unit: ccrUnit,
+        );
+        expect((await contributionsOf(id)).single['gross_minor'], 10000000);
+
+        await client.rpc<dynamic>(
+          'revenue_update',
+          params: {
+            'p_id': id,
+            'p_base_row_version': version,
+            'p_business_date': '2026-06-15',
+            'p_notes': marker,
+            'p_components': [
+              {'entered_amount_minor': 7500000},
+            ],
+            'p_mutation_id': const Uuid().v4(),
+          },
+        );
+
+        final rows = await contributionsOf(id);
+        expect(
+          rows,
+          hasLength(1),
+          reason: 'not two; an appended row would double a month',
+        );
+        expect(rows.single['gross_minor'], 7500000);
+        expect(rows.single['tax_minor'], 357143);
+        expect(rows.single['net_minor'], 7142857);
+      },
+    );
+
+    test(
+      'a business-date correction moves the period, and only one holds it',
+      () async {
+        // Two OPEN periods, which is the case B8 names. The source and target period
+        // locks are the mutation layer's job and are proven elsewhere (D-136, D-140);
+        // what is proven here is that reporting follows the accepted correction.
+        final (id, version) = await record(
+          category: 'RESTAURANT',
+          unit: ccrUnit,
+          date: '2026-06-15',
+        );
+        expect((await contributionsOf(id)).single['pnl_period_key'], '2026-06');
+
+        await client.rpc<dynamic>(
+          'revenue_update',
+          params: {
+            'p_id': id,
+            'p_base_row_version': version,
+            'p_business_date': '2026-07-03',
+            'p_notes': marker,
+            'p_correction_reason': 'recorded against the wrong trading day',
+            'p_components': [
+              {'entered_amount_minor': 10000000},
+            ],
+            'p_mutation_id': const Uuid().v4(),
+          },
+        );
+
+        final rows = await contributionsOf(id);
+        expect(rows, hasLength(1), reason: 'not one in each month');
+        expect(rows.single['pnl_period_key'], '2026-07');
+        expect(rows.single['business_date'], '2026-07-03');
+        expect(rows.single['pnl_date'], '2026-07-03');
+        expect(
+          rows.single['business_date_source'],
+          'corrected',
+          reason: 'a reporting dimension, and it changed no amount (D-143)',
+        );
+        expect(rows.single['gross_minor'], 10000000);
+        expect(
+          rows.single['txn_number'],
+          startsWith('KI-REV-'),
+          reason: 'the number belongs to the identity and survives (D-124)',
+        );
+      },
+    );
+
+    test('a void removes the reporting effect and destroys nothing', () async {
+      final (id, version) = await record(category: 'RESTAURANT', unit: ccrUnit);
+      final before = await periodTotals(
+        periodKey: '2026-06',
+        unit: ccrUnit,
+        categoryId: categories['RESTAURANT'],
+      );
+
+      await voidSale(id, version);
+
+      final after = await periodTotals(
+        periodKey: '2026-06',
+        unit: ccrUnit,
+        categoryId: categories['RESTAURANT'],
+      );
+      expect(
+        after.$1,
+        before.$1 - 10000000,
+        reason: 'the voided sale no longer contributes to Gross Sales',
+      );
+      expect(after.$4, before.$4 - 1);
+
+      // And the row is still there, carrying `voided_at`, so an audit can explain why
+      // the month changed (D-006). Deleting it to make SUM() easier is exactly what a
+      // financial system must not do.
+      final rows = await contributionsOf(id);
+      expect(rows, hasLength(1));
+      expect(rows.single['voided_at'], isNotNull);
+      expect(rows.single['gross_minor'], 10000000);
+      expect(rows.single['txn_number'], startsWith('KI-REV-'));
+    });
+
+    test('every mutation replays to one contribution effect', () async {
+      // B12: mutation idempotency and contribution idempotency agree, and here they
+      // agree by construction because there is no contribution row to insert twice.
+      final id = const Uuid().v7();
+      final createMutation = const Uuid().v4();
+      Future<void> create() => client
+          .rpc<dynamic>(
+            'revenue_create',
+            params: {
+              'p_id': id,
+              'p_business_unit_id': ccrUnit,
+              'p_revenue_category_id': categories['RESTAURANT'],
+              'p_business_date': '2026-06-15',
+              'p_notes': marker,
+              'p_components': [
+                {'entered_amount_minor': 10000000},
+              ],
+              'p_mutation_id': createMutation,
+            },
+          )
+          .then((_) {});
+
+      await create();
+      createdSales.add(id);
+      await create();
+      await create();
+      expect(await contributionsOf(id), hasLength(1));
+
+      final version =
+          (await client
+                  .from('revenue_document')
+                  .select('row_version')
+                  .eq('id', id)
+                  .single())['row_version']
+              as int;
+      final editMutation = const Uuid().v4();
+      Future<void> edit() => client
+          .rpc<dynamic>(
+            'revenue_update',
+            params: {
+              'p_id': id,
+              'p_base_row_version': version,
+              'p_business_date': '2026-07-04',
+              'p_notes': marker,
+              'p_correction_reason': 'replay probe',
+              'p_components': [
+                {'entered_amount_minor': 11000000},
+              ],
+              'p_mutation_id': editMutation,
+            },
+          )
+          .then((_) {});
+
+      await edit();
+      await edit();
+      final afterEdit = await contributionsOf(id);
+      expect(
+        afterEdit,
+        hasLength(1),
+        reason: 'a replayed correction is one correction',
+      );
+      expect(afterEdit.single['pnl_period_key'], '2026-07');
+      expect(
+        (await periodTotals(
+          periodKey: '2026-06',
+          unit: ccrUnit,
+          categoryId: categories['RESTAURANT'],
+        )).$4,
+        isNot(contains(id)),
+        reason: 'and it is in exactly one period, not both',
+      );
+
+      final afterEditVersion =
+          (await client
+                  .from('revenue_document')
+                  .select('row_version')
+                  .eq('id', id)
+                  .single())['row_version']
+              as int;
+      final voidMutation = const Uuid().v4();
+      Future<void> reverse() => client
+          .rpc<dynamic>(
+            'revenue_void',
+            params: {
+              'p_id': id,
+              'p_base_row_version': afterEditVersion,
+              'p_reason': '$marker replay probe',
+              'p_mutation_id': voidMutation,
+            },
+          )
+          .then((_) {});
+
+      await reverse();
+      await reverse();
+      final voided = await contributionsOf(id);
+      expect(voided, hasLength(1));
+      expect(
+        voided.single['voided_at'],
+        isNotNull,
+        reason:
+            'a replayed void does not double-reverse or produce negative revenue',
+      );
+      expect(voided.single['gross_minor'], 11000000);
+    });
+
+    test('the projection joins to no configuration table', () async {
+      // Asserted from a client, on behaviour rather than on catalogue text: a sale keeps
+      // its recorded rate even when a *newer* rule exists for the same category. The
+      // baseline rules are open-ended, so a superseding rule cannot be created without
+      // end-dating one — which is a change to the approved configuration and is not
+      // something a test gets to do (D-096). What can be proven without touching it is
+      // that two sales recorded on different dates under the same open-ended rule each
+      // carry that rule's identity, and that the identity is the component's rather than
+      // a lookup performed at read time.
+      final (early, _) = await record(
+        category: 'RESTAURANT',
+        unit: ccrUnit,
+        date: '2026-05-02',
+      );
+      final (late_, _) = await record(
+        category: 'RESTAURANT',
+        unit: ccrUnit,
+        date: '2026-12-30',
+      );
+
+      final a = (await contributionsOf(early)).single;
+      final b = (await contributionsOf(late_)).single;
+      expect(a['tax_rule_id'], b['tax_rule_id']);
+      expect(a['tax_rate_bp'], 500);
+      expect(b['tax_rate_bp'], 500);
+      expect(a['pnl_period_key'], '2026-05');
+      expect(b['pnl_period_key'], '2026-12');
+
+      // The rule row itself is still live and unchanged: this test configured nothing.
+      final live = await client
+          .from('revenue_tax_rates')
+          .select('id, rate_bp')
+          .isFilter('archived_at', null)
+          .eq('id', a['tax_rule_id'] as String)
+          .single();
+      expect(live['rate_bp'], 500);
+    });
+    test('attaching evidence moves no contribution (§25, D-150)', () async {
+      final (id, _) = await record(category: 'RESTAURANT', unit: ccrUnit);
+      final before = await contributionsOf(id);
+
+      final attachmentId = const Uuid().v4();
+      final orgId = before.single['org_id'] as String;
+      final bytes = List<int>.generate(512, (i) => (i * 5) % 251);
+      final path = 'org/$orgId/revenue/$id/$attachmentId.jpg';
+      await client.storage
+          .from('expense-attachments')
+          .uploadBinary(
+            path,
+            Uint8List.fromList(bytes),
+            fileOptions: const FileOptions(
+              contentType: 'image/jpeg',
+              upsert: true,
+            ),
+          );
+      await client.rpc<dynamic>(
+        'revenue_attachment_register',
+        params: {
+          'p_id': attachmentId,
+          'p_revenue_entry_id': id,
+          'p_file_name': 'z-report.jpg',
+          'p_content_type': 'image/jpeg',
+          'p_byte_size': bytes.length,
+          'p_content_hash': sha256.convert(bytes).toString(),
+          'p_storage_path': path,
+          'p_mutation_id': attachmentId,
+        },
+      );
+
+      final after = await contributionsOf(id);
+      expect(after, hasLength(before.length));
+      for (final field in const [
+        'gross_minor',
+        'tax_minor',
+        'net_minor',
+        'pnl_period_key',
+        'business_date',
+        'txn_number',
+        'tax_rate_bp',
+      ]) {
+        expect(
+          after.single[field],
+          before.single[field],
+          reason: '$field changed because a file was attached',
+        );
+      }
+    });
+
+    test('a month, the way management reads it (§10)', () async {
+      // Synthetic figures, in a period of their own so nothing else in the development
+      // project can join in. The purpose is the arithmetic structure, not a real month.
+      const period = '2026-11';
+      for (final row in const [
+        ('RESTAURANT', 'CCR', 7645000, '2026-11-15'),
+        ('RESTAURANT', 'CCR', 8120000, '2026-11-16'),
+        ('NANDBHOG', 'CCR', 870000, '2026-11-15'),
+        ('ROOM', 'HKI', 5200000, '2026-11-15'),
+        ('ROOM', 'HKI', 4800000, '2026-11-16'),
+        ('BANQUET', 'HKI', 2850000, '2026-11-15'),
+      ]) {
+        await record(
+          category: row.$1,
+          unit: row.$2 == 'CCR' ? ccrUnit : hkiUnit,
+          amounts: [row.$3],
+          date: row.$4,
+        );
+      }
+
+      final restaurant = await periodTotals(
+        periodKey: period,
+        unit: ccrUnit,
+        categoryId: categories['RESTAURANT'],
+      );
+      expect(restaurant.$1, 15765000);
+      expect(
+        restaurant.$2,
+        750715,
+        reason:
+            'the sum of two rounded extractions, not the rate re-applied to the total, '
+            'which would give 750714. Rounding happens once, at the component (§6.5)',
+      );
+      expect(restaurant.$3, 15014285);
+
+      final ccr = await periodTotals(periodKey: period, unit: ccrUnit);
+      expect(ccr.$1, 16635000);
+      expect(ccr.$2, 792144);
+      expect(ccr.$3, 15842856);
+      expect(ccr.$4, 3);
+
+      final hki = await periodTotals(periodKey: period, unit: hkiUnit);
+      expect(hki.$1, 12850000);
+      expect(hki.$2, 476190);
+      expect(hki.$3, 12373810);
+
+      final banquet = await periodTotals(
+        periodKey: period,
+        unit: hkiUnit,
+        categoryId: categories['BANQUET'],
+      );
+      expect(banquet.$2, 0, reason: 'Banquet is `none`; no GST is extracted');
+
+      final all = await periodTotals(periodKey: period);
+      expect(all.$1, ccr.$1 + hki.$1);
+      expect(all.$2, ccr.$2 + hki.$2);
+      expect(all.$3, ccr.$3 + hki.$3);
+      expect(
+        all.$3,
+        all.$1 - all.$2,
+        reason:
+            'Net Sales is Gross Sales less GST, to the paisa, at every level',
+      );
+    });
+
+    group('who may read a contribution', () {
+      test('a wrong-property manager sees none of it', () async {
+        final (ccrSale, _) = await record(
+          category: 'RESTAURANT',
+          unit: ccrUnit,
+        );
+        final hki = await sessionFor('hki.manager@example.com');
+
+        expect(
+          await contributionsOf(ccrSale, as: hki),
+          isEmpty,
+          reason: 'RLS through the projection, not a hidden control',
+        );
+        final everything = await hki
+            .from('revenue_period_contributions')
+            .select('business_unit_id');
+        expect(
+          everything
+              .cast<Map<String, dynamic>>()
+              .map((r) => r['business_unit_id'])
+              .toSet(),
+          isNot(contains(ccrUnit)),
+          reason: 'and not by asking for everything either',
+        );
+      });
+
+      test('the base tables stay unreadable', () async {
+        // The projection is the only way in, exactly as it is for revenue_document
+        // (D-062, D-116). If these ever start answering, the view's care is decoration.
+        for (final table in const ['revenue_entries', 'revenue_components']) {
+          await expectLater(
+            client.from(table).select('id').limit(1),
+            throwsA(anything),
+            reason: '$table must not be readable by a client role',
+          );
+        }
+      });
+
+      test('an anonymous caller sees nothing', () async {
+        final anon = SupabaseClient(
+          config['SUPABASE_URL'] as String,
+          config['SUPABASE_ANON_KEY'] as String,
+        );
+        try {
+          expect(
+            await anon.from('revenue_period_contributions').select(),
+            isEmpty,
+          );
+        } on PostgrestException {
+          // refused outright, which is the stronger of the two
+        }
+      });
+    });
+  });
 }

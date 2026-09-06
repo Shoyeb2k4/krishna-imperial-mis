@@ -84,10 +84,19 @@ class AppDatabase extends _$AppDatabase {
   ///       Revenue header totals are **not stored**. `revenue_entry_totals` derives them
   ///       from the components, so there is no second copy to drift (D-078).
   ///
+  /// v15 — the revenue reporting interface (Phase 4 Slice 12): the
+  ///       `revenue_period_contributions` view and the index a period report reads
+  ///       through. **No table**: a revenue contribution carries no decision that is not
+  ///       already stored on the entry and its components, so storing one would be a
+  ///       second writable copy of facts that exist, with a maintenance lifecycle whose
+  ///       every hazard — a correction moving a period, an edit replacing figures, a void
+  ///       removing an effect, a replay applying twice — is a hazard of maintaining it
+  ///       (D-157).
+  ///
   /// Financial tables raise this number as they land, each with a migration step and a
   /// migration test (docs/RELEASE_CHECKLIST.md §C).
   @override
-  int get schemaVersion => 14;
+  int get schemaVersion => 15;
 
   /// Timestamps are stored as ISO-8601 **UTC text**, not as unix seconds.
   ///
@@ -112,6 +121,7 @@ class AppDatabase extends _$AppDatabase {
       // helper survives only for the historical upgrade paths below, which run against
       // schemas that predate conditional rules and then drop it at v11.
       await _createRevenueEntryTotalsView();
+      await _createRevenuePeriodContributionsView();
       await _createRevenueIndexes();
       await _createImmutableBandTrigger();
     },
@@ -275,6 +285,27 @@ class AppDatabase extends _$AppDatabase {
           'ON revenue_attachments (upload_state, next_attempt_at)',
         );
       }
+      if (from >= 11 && from < 15) {
+        // Phase 4 Slice 12 — the revenue reporting interface (D-087, D-157).
+        //
+        // A view and an index, and deliberately nothing else. Everything a contribution
+        // reports is already stored: its money on the component, its period on the entry
+        // as `pnl_period_key`, under a server CHECK that ties that key to the business
+        // date. A table here would be a second copy of those facts, and the only thing it
+        // could add is the obligation to keep them in step through a correction, an edit,
+        // a void and a replay.
+        //
+        // **`from >= 11` is the D-144 guard.** `revenue_entries` and `revenue_components`
+        // are created at v11, so a device coming from v10 or earlier has neither when this
+        // step is reached and the view would reference tables that do not exist yet. A
+        // fresh database gets the view from `onCreate` instead.
+        await _createRevenuePeriodContributionsView();
+        await customStatement(
+          'CREATE INDEX IF NOT EXISTS ix_revenue_entries_reporting '
+          'ON revenue_entries (org_id, pnl_period_key, business_unit_id, '
+          'revenue_category_id) WHERE voided_at IS NULL',
+        );
+      }
       if (from < 9) {
         // `expenses.scope_revoked_at` (D-068). Nothing is back-filled: every row that
         // exists at upgrade time is one this user could browse, and the column means
@@ -328,6 +359,55 @@ class AppDatabase extends _$AppDatabase {
     ' GROUP BY e.id',
   );
 
+  /// The revenue reporting interface (D-087, D-157): one row per accepted component.
+  ///
+  /// The local half of `public.revenue_period_contributions`, column for column, so a
+  /// report written against one runs against the other. Raw SQL for the same reason the
+  /// totals view is — the shape is a plain projection, and keeping it out of code
+  /// generation keeps the migration legible.
+  ///
+  /// **A view rather than a table, on both sides.** Nothing here is a fact that is not
+  /// already stored: the money is the component's own snapshot and the period is the
+  /// entry's own `pnl_period_key`. A stored copy would have to be maintained through
+  /// every correction, edit, void and replayed mutation, and each of those is a way for
+  /// two copies of one figure to disagree.
+  ///
+  /// It carries `voided_at` and does **not** filter on it, exactly as
+  /// `expense_period_contributions` does: a voided sale's contributions stay inspectable
+  /// for audit and are excluded by every aggregate (D-006). `scope_revoked_at` is carried
+  /// for the same reason — a retained, unsent attempt over a property this user no longer
+  /// holds is nobody's revenue (D-070).
+  Future<void> _createRevenuePeriodContributionsView() => customStatement(
+    'CREATE VIEW IF NOT EXISTS revenue_period_contributions AS '
+    'SELECT c.id                       AS id, '
+    '       c.org_id                   AS org_id, '
+    '       c.revenue_entry_id         AS revenue_entry_id, '
+    '       e.business_unit_id         AS business_unit_id, '
+    '       e.revenue_category_id      AS revenue_category_id, '
+    '       c.supply_subtype_id        AS supply_subtype_id, '
+    '       c.value_band_id            AS value_band_id, '
+    '       c.value_band_floor_minor   AS value_band_min_minor, '
+    '       c.value_band_ceiling_minor AS value_band_max_minor, '
+    '       c.premises_status_code     AS premises_status_code, '
+    '       e.business_date            AS business_date, '
+    '       e.business_date            AS pnl_date, '
+    '       e.pnl_period_key           AS pnl_period_key, '
+    '       c.gross_amount_minor       AS gross_minor, '
+    '       c.tax_amount_minor         AS tax_minor, '
+    '       c.net_amount_minor         AS net_minor, '
+    '       c.tax_rule_id              AS tax_rule_id, '
+    '       c.tax_rate_basis_points    AS tax_rate_bp, '
+    '       c.tax_treatment            AS tax_treatment, '
+    '       c.entered_basis            AS entered_basis, '
+    '       e.entry_kind               AS entry_kind, '
+    '       e.txn_number               AS txn_number, '
+    '       e.business_date_source     AS business_date_source, '
+    '       e.voided_at                AS voided_at, '
+    '       e.scope_revoked_at         AS scope_revoked_at '
+    '  FROM revenue_components c '
+    '  JOIN revenue_entries e ON e.id = c.revenue_entry_id',
+  );
+
   /// Refuses an in-place change to what a value band *means*.
   ///
   /// A band's tariff boundaries are write-once (D-100). Editing them would retroactively
@@ -361,6 +441,11 @@ class AppDatabase extends _$AppDatabase {
       // Period reporting and the period-lock check.
       'CREATE INDEX IF NOT EXISTS ix_revenue_entries_period '
           'ON revenue_entries (org_id, pnl_period_key)',
+      // What a period report actually reads: a month, then a property, then a
+      // category, and never a voided row (Slice 12).
+      'CREATE INDEX IF NOT EXISTS ix_revenue_entries_reporting '
+          'ON revenue_entries (org_id, pnl_period_key, business_unit_id, '
+          'revenue_category_id) WHERE voided_at IS NULL',
       // The duplicate-day prompt: is there already an active entry for this
       // unit/category/date? Deliberately **not unique** (spec §8.2).
       'CREATE INDEX IF NOT EXISTS ix_revenue_entries_day '

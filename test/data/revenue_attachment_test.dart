@@ -1032,23 +1032,23 @@ void main() {
   });
 
   group('the v13 to v14 migration', () {
-    test(
-      'a fresh database is born with the table and its constraints',
-      () async {
-        expect(db.schemaVersion, 14);
-        final table = await db
-            .customSelect(
-              "SELECT sql FROM sqlite_master WHERE name = 'revenue_attachments'",
-            )
-            .getSingle();
-        final sql = table.read<String>('sql');
-        expect(sql, contains('REFERENCES revenue_entries'));
-        expect(
-          sql,
-          contains("upload_state <> 'rejected' OR next_attempt_at IS NULL"),
-        );
-      },
-    );
+    test('a fresh database is born with the table and its constraints', () async {
+      // Not a hard-coded number: the subject is "the current schema creates this
+      // table", not "the schema is 14". D-144 records the same correction for two
+      // other tests, and this one was written after it.
+      expect(db.schemaVersion, greaterThanOrEqualTo(14));
+      final table = await db
+          .customSelect(
+            "SELECT sql FROM sqlite_master WHERE name = 'revenue_attachments'",
+          )
+          .getSingle();
+      final sql = table.read<String>('sql');
+      expect(sql, contains('REFERENCES revenue_entries'));
+      expect(
+        sql,
+        contains("upload_state <> 'rejected' OR next_attempt_at IS NULL"),
+      );
+    });
 
     test('an attachment cannot outlive the sale it explains', () async {
       await create(draft(id: 'm1'));

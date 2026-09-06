@@ -637,21 +637,50 @@ business_unit_tax_status (
 the timelines start empty, both applications show *"No rule configured"*, and an
 unresolvable or ambiguous rule refuses the save (D-084).
 
-**The reporting projection (D-087).** One row per component, so tax buckets survive into
-reporting rather than being flattened:
+**The reporting projection (D-087). BUILT — Phase 4 Slice 12.** One row per component, so
+tax buckets survive into reporting rather than being flattened:
 
 ```sql
--- PLANNED, NOT BUILT
-revenue_period_contributions (
-  org_id, business_unit_id, revenue_category_id,
-  supply_subtype_id, value_band_min_minor, value_band_max_minor,
-  pnl_period_key,
-  gross_minor, tax_minor, net_minor
-)
+-- public.revenue_period_contributions — a security_barrier VIEW, not a table (D-157)
+create view public.revenue_period_contributions with (security_barrier = true) as
+select c.id, c.org_id, c.revenue_entry_id,
+       e.business_unit_id, e.revenue_category_id,
+       c.supply_subtype_id, c.value_band_id,
+       c.value_band_floor_minor   as value_band_min_minor,
+       c.value_band_ceiling_minor as value_band_max_minor,
+       c.premises_status_code,
+       e.business_date, e.business_date as pnl_date, e.pnl_period_key,
+       c.gross_amount_minor as gross_minor,
+       c.tax_amount_minor   as tax_minor,
+       c.net_amount_minor   as net_minor,
+       c.tax_rule_id, c.tax_rate_bp, c.tax_treatment, c.entered_basis,
+       e.entry_kind, e.txn_number, e.business_date_source, e.voided_at
+  from public.revenue_components c
+  join public.revenue_entries e on e.id = c.revenue_entry_id
+ where e.org_id = public.current_org_id()
+   and public.has_capability('revenue.view', e.business_unit_id);
 ```
 
-The mirror of `expense_period_contributions` (D-060). Phase 4 populates it; **Phase 5
-consumes it**, and Phase 4 builds no P&L.
+**The mirror of `expense_period_contributions` (D-060) — which is itself a view.** The
+*physical* table on the expense side is `expense_period_allocations`, and it exists because
+a cross-period split is a decision a person made that exists nowhere else (D-034): remove
+it and the information is gone.
+
+**A revenue contribution carries no such decision.** Its period is the entry's own stored
+`pnl_period_key`, under a CHECK that ties it to the business date; its money is the
+component's own stored gross, tax and net. Every field is already canonical somewhere, so
+storing a copy would add nothing but the obligation to maintain it — and each of the four
+mutations is a way for two copies to disagree. Derived instead, a correction moves the
+period because the entry moved, a void removes the effect because the entry is voided, an
+edit replaces the figures because the components were replaced, and a replayed mutation has
+nothing extra to be idempotent about (D-157).
+
+The same view exists in SQLite at local schema **v15**, column for column, so a report
+written against one runs against the other. Neither is writable.
+
+`voided_at` is carried and **not** filtered: the row stays inspectable for audit and every
+aggregate excludes it, exactly as the expense projection does (D-006). Phase 4 defines and
+exposes this interface; **Phase 5 consumes it**, and Phase 4 builds no P&L.
 
 **Server boundary, following Phase 2/3 exactly.** `authenticated` gets no `SELECT` on
 `revenue_entries`; reads go through a `revenue_document` projection. Writes go through

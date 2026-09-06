@@ -25,6 +25,7 @@ import 'package:krishna_mis/data/repositories/revenue_tax_repository.dart';
 import 'package:krishna_mis/domain/attachments/document_attachment.dart';
 import 'package:krishna_mis/domain/auth/authority.dart';
 import 'package:krishna_mis/domain/auth/capability.dart';
+import 'package:krishna_mis/domain/revenue/revenue_contribution.dart';
 import 'package:krishna_mis/domain/revenue/revenue_entry.dart';
 import 'package:krishna_mis/domain/revenue/revenue_tax_resolution.dart';
 import 'package:krishna_mis/domain/sync/pending_mutation.dart';
@@ -1711,6 +1712,182 @@ class RevenueRepository {
     }
     return OutboxStatus.fromName(outboxStatus).userVisibleState;
   }
+
+  // ── Reporting contributions (Phase 4 Slice 12, D-087, D-157) ───────────────
+  //
+  // The local half of the reporting interface. It reads `revenue_period_contributions`
+  // and nothing else, so a caller cannot accidentally add entry-level figures to
+  // component-level ones and count the same money twice — the reason D-060 gave the
+  // expense side one named projection to sum.
+  //
+  // **Everything is decided in SQL.** Filtering, scoping and the aggregate itself, so a
+  // month of a property's revenue is one row off the database rather than every component
+  // folded in Dart (spec §27). The expense side folds; that is the older pattern and this
+  // is the one Phase 5 will need at scale.
+  //
+  // Three predicates are not filters and are applied before any of them:
+  //
+  //   * `voided_at IS NULL`      — a voided sale contributes nothing (D-006)
+  //   * `scope_revoked_at IS NULL` — a retained unsent attempt over a property this user
+  //                                 no longer holds is nobody's revenue (D-070)
+  //   * `txn_number IS NOT NULL` — **canonical only.** A sale the server has not accepted
+  //                                is an attempt, not revenue, and putting it in an
+  //                                authoritative total would report money the business
+  //                                does not yet have. Phase 5 may add an explicitly
+  //                                labelled provisional figure; Slice 12 does not invent
+  //                                one (D-158).
+
+  /// Every contribution this device holds for [query], newest business date first.
+  Future<List<RevenueContribution>> contributions(
+    RevenueContributionQuery query,
+  ) async {
+    final (where, variables) = _contributionPredicate(query);
+    final rows = await _db
+        .customSelect(
+          'SELECT * FROM revenue_period_contributions WHERE $where '
+          'ORDER BY business_date DESC, revenue_entry_id DESC, id DESC',
+          variables: variables,
+        )
+        .get();
+    return [for (final row in rows) _contributionOf(row)];
+  }
+
+  /// Summed paise for [query]. One row off the database, exact, no folding.
+  Future<RevenueTotals> contributionTotals(
+    RevenueContributionQuery query,
+  ) async {
+    final (where, variables) = _contributionPredicate(query);
+    final row = await _db
+        .customSelect(
+          'SELECT COALESCE(SUM(gross_minor), 0) AS g, '
+          '       COALESCE(SUM(tax_minor), 0)   AS t, '
+          '       COALESCE(SUM(net_minor), 0)   AS n, '
+          '       COUNT(*)                      AS c '
+          '  FROM revenue_period_contributions WHERE $where',
+          variables: variables,
+        )
+        .getSingle();
+    return RevenueTotals(
+      gross: Money.fromPaise(row.read<int>('g')),
+      tax: Money.fromPaise(row.read<int>('t')),
+      net: Money.fromPaise(row.read<int>('n')),
+      contributions: row.read<int>('c'),
+    );
+  }
+
+  /// The same, grouped by property and revenue category — the grain spec §10's target
+  /// report shape needs: revenue lines by category, then Gross Sales, less GST, Net Sales.
+  ///
+  /// Restaurant and Nandbhog come back as two rows even though they currently share a
+  /// treatment, because they are two categories and a report that merged them would be
+  /// answering a question nobody asked (D-089).
+  Future<List<RevenueCategoryTotals>> contributionTotalsByCategory(
+    RevenueContributionQuery query,
+  ) async {
+    final (where, variables) = _contributionPredicate(query);
+    final rows = await _db
+        .customSelect(
+          'SELECT business_unit_id AS u, revenue_category_id AS r, '
+          '       COALESCE(SUM(gross_minor), 0) AS g, '
+          '       COALESCE(SUM(tax_minor), 0)   AS t, '
+          '       COALESCE(SUM(net_minor), 0)   AS n, '
+          '       COUNT(*)                      AS c '
+          '  FROM revenue_period_contributions WHERE $where '
+          ' GROUP BY business_unit_id, revenue_category_id '
+          ' ORDER BY business_unit_id, revenue_category_id',
+          variables: variables,
+        )
+        .get();
+    return [
+      for (final row in rows)
+        RevenueCategoryTotals(
+          businessUnitId: row.read<String>('u'),
+          revenueCategoryId: row.read<String>('r'),
+          totals: RevenueTotals(
+            gross: Money.fromPaise(row.read<int>('g')),
+            tax: Money.fromPaise(row.read<int>('t')),
+            net: Money.fromPaise(row.read<int>('n')),
+            contributions: row.read<int>('c'),
+          ),
+        ),
+    ];
+  }
+
+  /// The predicate every reporting read shares, so the three exclusions above cannot be
+  /// present in one query and forgotten in the next.
+  (String, List<Variable<Object>>) _contributionPredicate(
+    RevenueContributionQuery query,
+  ) {
+    final clauses = <String>[
+      'voided_at IS NULL',
+      'scope_revoked_at IS NULL',
+      'txn_number IS NOT NULL',
+    ];
+    final variables = <Variable<Object>>[];
+
+    // Authority first, and never removable by a filter (D-121). An unscoped grant is
+    // `null` by construction (D-025) and restricts nothing.
+    final scope = query.businessUnitIds;
+    if (scope != null) {
+      if (scope.isEmpty) return ('0 = 1', const []);
+      clauses.add(
+        'business_unit_id IN (${List.filled(scope.length, '?').join(', ')})',
+      );
+      variables.addAll(scope.map(Variable<String>.new));
+    }
+
+    if (query.periodKey != null) {
+      clauses.add('pnl_period_key = ?');
+      variables.add(Variable<String>(query.periodKey!));
+    }
+    // Ranges are over the **business date**, never the capture instant: a sale rung up at
+    // 02:00 belongs to the previous trading day (D-067).
+    if (query.from != null) {
+      clauses.add('business_date >= ?');
+      variables.add(Variable<String>(query.from!.iso));
+    }
+    if (query.to != null) {
+      clauses.add('business_date <= ?');
+      variables.add(Variable<String>(query.to!.iso));
+    }
+    if (query.businessUnitId != null) {
+      clauses.add('business_unit_id = ?');
+      variables.add(Variable<String>(query.businessUnitId!));
+    }
+    if (query.revenueCategoryId != null) {
+      clauses.add('revenue_category_id = ?');
+      variables.add(Variable<String>(query.revenueCategoryId!));
+    }
+    return (clauses.join(' AND '), variables);
+  }
+
+  RevenueContribution _contributionOf(QueryRow row) => RevenueContribution(
+    componentId: row.read<String>('id'),
+    revenueEntryId: row.read<String>('revenue_entry_id'),
+    orgId: row.read<String>('org_id'),
+    businessUnitId: row.read<String>('business_unit_id'),
+    revenueCategoryId: row.read<String>('revenue_category_id'),
+    businessDate: _date(row.read<String>('business_date')),
+    pnlPeriodKey: row.read<String>('pnl_period_key'),
+    gross: Money.fromPaise(row.read<int>('gross_minor')),
+    tax: Money.fromPaise(row.read<int>('tax_minor')),
+    net: Money.fromPaise(row.read<int>('net_minor')),
+    taxRuleId: row.read<String>('tax_rule_id'),
+    taxRateBasisPoints: row.read<int>('tax_rate_bp'),
+    taxTreatment: TaxTreatment.fromName(row.read<String>('tax_treatment')),
+    enteredBasis: EnteredBasis.fromName(row.read<String>('entered_basis')),
+    entryKind: RevenueEntryKind.fromName(row.read<String>('entry_kind')),
+    businessDateSource: BusinessDateSource.fromWire(
+      row.read<String>('business_date_source'),
+    ),
+    supplySubtypeId: row.read<String?>('supply_subtype_id'),
+    valueBandId: row.read<String?>('value_band_id'),
+    valueBandMinMinor: row.read<int?>('value_band_min_minor'),
+    valueBandMaxMinor: row.read<int?>('value_band_max_minor'),
+    premisesStatusCode: row.read<String?>('premises_status_code'),
+    txnNumber: row.read<String?>('txn_number'),
+    voidedAt: row.read<DateTime?>('voided_at'),
+  );
 
   static BusinessDate _date(String iso) {
     final parts = iso.split('-').map(int.parse).toList();

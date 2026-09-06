@@ -163,6 +163,25 @@ same defect had been latent on the expense side since D-073a (D-154).
 
 Verified byte-for-byte against `supabase_migrations.schema_migrations.statements` (D-056).
 
+## Phase 4 Slice 12 - the revenue reporting interface
+
+| Ledger version | Ledger name | Committed file |
+|---|---|---|
+| 20260906124407 | `revenue_period_contributions` | `20260906124407_revenue_period_contributions.sql` |
+
+A `security_barrier` **view**, not a table, and the migration asserts that it is not
+a table (D-157). Everything a contribution reports is already stored: its money on
+the component and its period on the entry, under the CHECK that ties `pnl_period_key`
+to the business date. A stored copy would add nothing except the obligation to keep
+two copies in step through a correction, an edit, a void and a replay - and each of
+those is a way for a month to be counted twice or not at all.
+
+It carries `voided_at` and does not filter on it, exactly as
+`expense_period_contributions` does: the row stays for audit and every aggregate
+excludes it (D-006).
+
+Verified byte-for-byte against `supabase_migrations.schema_migrations.statements` (D-056).
+
 ## The full applied ledger, in order
 
 ```
@@ -236,4 +255,5 @@ Verified byte-for-byte against `supabase_migrations.schema_migrations.statements
 20260905210332 api_surface_invariant_revenue_attachments
 20260906121007 attachment_upload_lifecycle
 20260906121034 api_surface_invariant_attachment_lifecycle
+20260906124407 revenue_period_contributions
 ```

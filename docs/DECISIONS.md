@@ -5304,3 +5304,126 @@ as **PENDING**, and **Phase 4 Slice 11 is therefore not formally closed** on tha
 Running the expense gate does not discharge it. The strip is shared, but what the gate
 proves is that a person can attach evidence to a *sale* on a real device, and no automated
 result substitutes for it.
+
+
+---
+
+# Phase 4 Slice 12 — the revenue reporting interface (2026-09-06)
+
+## D-157 — A revenue contribution is derived, because it carries no decision of its own
+**Date:** 2026-09-06 · **Status:** Accepted
+
+**The question the brief put:** does the binding schema require a *physical*
+`revenue_period_contributions` table, and if a view would do, would deriving it reduce
+drift?
+
+**What the audit of the expense side found.** `expense_period_contributions` — the thing
+`DATABASE_SCHEMA.md` calls the revenue projection *"the mirror of"* — **is a view**. The
+physical table underneath it is `expense_period_allocations`, and it exists for a reason
+that does not transfer:
+
+> A cross-period split is a **decision a person made** (D-034, D-060). ₹60,000 apportioned
+> ₹30,000 to May and ₹30,000 to June exists nowhere else — take the rows away and the
+> information is gone.
+
+A revenue contribution carries no such decision. Its period is the entry's own stored
+`pnl_period_key`, under a server CHECK tying it to the business date; its money is the
+component's own stored gross, tax and net; its rate, treatment, basis and band are the
+component's snapshot. **Every field is already canonical somewhere.**
+
+**Decision.** `revenue_period_contributions` is a `security_barrier` **view** in Postgres
+and a view in SQLite, column for column, and the migration asserts that it is not a table.
+The components remain the accepted financial facts; the contribution is reporting
+attribution derived from them. Nothing may write a contribution amount, because there is
+nothing to write.
+
+**What that buys, stated as the four hazards it removes rather than as elegance.** Every
+lifecycle question the brief raises is a question about *maintaining a second copy*:
+
+| | With a stored table | Derived |
+|---|---|---|
+| a business-date correction moves a period | delete and rewrite, in the mutation's own transaction, on every path that can move a date | the entry moved |
+| an edit replaces the figures | replace and never append — one forgotten `delete` doubles a month | the components were replaced |
+| a void removes the effect | flag or delete, and every aggregate must agree which | the entry is voided |
+| a replayed mutation | contribution idempotency, built and kept in step with mutation idempotency | there is nothing to insert twice |
+
+None of those is a rule anybody has to remember, and this project's own record is that the
+ones people have to remember are the ones that stop being applied (D-059, D-068, D-071,
+D-077).
+
+**Component grain is kept** (D-087). A two-band Room day is two contributions even though
+the document totals aggregate them, so tax buckets survive into reporting instead of being
+flattened at the door.
+
+**And the grain protects the arithmetic.** Two Restaurant days of ₹76,450 and ₹81,200
+contribute `364048 + 386667 = 750715` paise of tax. Re-applying 5/105 to the ₹1,57,650
+total gives `750714`. The acceptance asserts both figures side by side so the difference is
+stated rather than discovered — rounding happens once, at the component, and an aggregate
+sums stored paise (spec §6.5, D-017).
+
+**Alternatives rejected.** A stored table *plus* a maintaining trigger — the trigger would
+have to fire on both parents, would run inside every financial mutation, and would be a
+second definition of what a period means. And a stored table written by the RPCs, which is
+what expenses do and is right there because there the rows are the only copy.
+
+**Consequence for Phase 5.** It sums one shape per side of the P&L, both named
+`*_period_contributions`, both views, both carrying `org_id`, `business_unit_id`, a
+`pnl_period_key` in `YYYY-MM`, integer minor units and `voided_at`. No second financial-date
+or period model is required, which is what B30 asked to be demonstrated rather than assumed.
+
+## D-158 — A sale the server has not accepted is not revenue
+**Date:** 2026-09-06 · **Status:** Accepted
+
+Three exclusions are applied before any filter, in one shared predicate so they cannot be
+present in one query and forgotten in the next: `voided_at IS NULL` (D-006),
+`scope_revoked_at IS NULL` (D-070, D-074), and **`txn_number IS NOT NULL`**.
+
+The third is the one that needed deciding. A locally recorded sale that has not yet been
+accepted is the operator's **intent**; so is a correction sitting in a conflict, and so is
+a rejected attempt. Counting any of them in an authoritative total would report money the
+business does not yet have, and would make a figure move when nothing financial had
+happened — a device coming back online would appear to change last month.
+
+**Decision.** Canonical reporting contributions derive from canonical accepted revenue
+only. A device's own unaccepted work is visible in the ledger, with its sync state, which is
+where an operator's attempt belongs.
+
+**And Slice 12 does not invent a provisional model.** A labelled *"local — including N
+unsynced entries"* operational figure is a real product idea and is exactly what
+`ARCHITECTURE.md` §6.4's freshness vocabulary is for — but it is a Phase 5 reporting
+decision that has not been approved, and inventing one here would ship a second, softer
+definition of revenue with nobody's name on it.
+
+**Recorded with it, because Phase 5 will meet it first: there is no revenue pull.**
+`RevenueGateway` reads one document back for reconciliation and nothing else, so the local
+cache holds only what this device recorded. The local projection is therefore honest about
+this device and is **not** a complete reporting cache; the server projection is the
+authoritative one. That is the shipped state after Slice 11 rather than something this
+slice changed, and it is stated here so Phase 5 plans for it instead of discovering that a
+manager's dashboard is empty on a new installation.
+
+## D-159 — Two fixtures completed, and a hard-coded schema version, all found by running
+**Date:** 2026-09-06 · **Status:** Recorded
+
+Three small things, all of a kind this log has recorded before, and all caught by the
+existing suite rather than by review.
+
+**A downgrade fixture that stopped being a downgrade.** `downgradeToV10` builds a v10
+database by removing what v11 added. It dropped `revenue_entry_totals` and not the new v15
+view, so a leftover view referenced tables the downgrade had just removed — and SQLite
+validates every view when a table is renamed, which the fixture does. The v10→v11 test
+failed with `no such table: main.revenue_components` in a test that has nothing to do with
+reporting. **A fixture that claims to be an older schema has to actually be one**, and that
+is the same lesson as the v9 attachment fixture two phases ago (D-144).
+
+**A hard-coded schema version, again.** `expect(db.schemaVersion, 14)` in the Slice 11
+migration test — written *after* D-144 recorded the identical correction for two other
+tests. Its subject is "the current schema creates this table", not "the schema is 14", so it
+now reads a lower bound. The lesson does not seem to generalise on its own, so it is written
+down a second time.
+
+**And the v15 step needs the D-144 range guard**, `from >= 11 && from < 15`, because
+`revenue_entries` and `revenue_components` are created at v11: a device coming from v10 has
+neither when the step is reached, and a view over tables that do not exist fails to create.
+A fresh database gets the view from `onCreate` instead — and the reporting index had to be
+added there too, which the fresh-database test caught by finding it absent.
