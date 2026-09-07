@@ -274,4 +274,7 @@ Verified byte-for-byte against `supabase_migrations.schema_migrations.statements
 20260906121034 api_surface_invariant_attachment_lifecycle
 20260906124407 revenue_period_contributions
 20260907021741 clients_hold_no_write_privilege_at_all
+20260907030228 expense_view_own_means_own
+20260907030255 api_surface_invariant_expense_view_own
+20260907030443 attachment_metadata_policy_restored_and_guarded
 ```
