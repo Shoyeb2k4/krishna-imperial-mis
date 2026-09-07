@@ -5937,3 +5937,64 @@ scoped reporting surface already exists; only the client never asks.
 
 **Consequence for Phase 5:** the reporting-sync slice carries **two** pulls, and the
 acceptance in that slice proves remote propagation for expenses as well as for revenue.
+
+## D-174 — A `create or replace` is built from what the object is now, not from the migration that first created it
+**Date:** 2026-09-07 · **Status:** Accepted — a regression **I introduced** in the D-169
+migration and caught one probe later
+
+**What happened.** `expense_view_own_means_own` had to restate `expense_attachments_read`,
+because the D-169 document predicate is `AND`-ed into every expense read path. I rebuilt
+that policy from `20260829090300_expense_rls.sql` — the migration that first *created* it —
+rather than from `20260830130000_attachment_metadata_uses_definer_predicate.sql`, which is
+the migration that last *replaced* it, in the D-073a corrective.
+
+The older body inlines the question:
+
+```sql
+        exists (select 1 from public.expenses e
+                 where e.id = expense_id and not exists (...))
+```
+
+An RLS policy expression is evaluated with the **querying user's** privileges, and no
+client role holds `SELECT` on `public.expenses` — deliberately, since D-062. So the table
+stopped being readable by anybody at all:
+
+```
+        select count(*) from public.expense_attachments
+          -> 42501: permission denied for table expenses
+```
+
+Owner included. Fail-closed rather than a leak, and still a defect: D-063's read authority
+became unavailable to exactly the users it exists to serve, and it would have presented as
+"attachments have vanished" with nothing in the application able to explain it.
+
+**How it was found, which is the part worth keeping.** Not by review — the SQL says what
+its author meant, and I had read it twice. It was found by *widening the green probe*: the
+E1 verification query was extended to count `expense_attachments` alongside the three
+surfaces it was really about, and that extra column raised `42501`. A probe asserting only
+what the change was supposed to affect would have reported success.
+
+**Decision.** Two things, and the second is the durable one.
+
+1. The policy is restored to the definer-predicate form, which now inherits the D-169
+   correction through `may_read_expense_attachments` rather than restating it.
+2. **A general invariant**: no RLS policy on a financial relation may read a financial base
+   table inline. Every such question goes through a `security definer` predicate. Stated
+   over the catalogue with a regex on the policy expressions, so it holds for policies
+   nobody has written yet.
+
+**Why this is its own decision rather than a line in D-169.** D-045 established the rule
+when every table returned 403 because policies called `app.current_org_id()`. D-109
+established it again when band and subtype reads called a helper in `app`. Each recorded the
+lesson and neither turned it into a check that would catch the *next* shape of it — and the
+next shape was not a predicate written against the wrong schema, but a **correct predicate
+restored from a superseded version of itself.** That is a genuinely new route to the same
+failure, and the rule it yields is narrower and more useful than "be careful with schemas":
+
+> A `create or replace` has to be built from what the object **is**, not from the file that
+> happens to define it first. The repository holds both, and only one of them is true.
+
+**Consequences.** Three migrations for one corrective rather than two, and the applied files
+are not rewritten to look like something that never ran (A0, D-056). The Owner reads 46
+attachment rows again; a `view.own` holder reads only those on documents they recorded,
+which is D-169 working through the restored predicate rather than around it.
