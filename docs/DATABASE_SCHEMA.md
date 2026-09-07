@@ -1387,8 +1387,93 @@ writes `business_date_source = 'corrected'` and emits its own audit action. Both
 
 ### Local mirror
 
-Drift **v15**. `revenue_entries`, `revenue_components`, `revenue_attachments`, the three
+Drift **v15** — the version that completed it; the schema is at **v17** since Slice 4
+added the reporting cache (§13). `revenue_entries`, `revenue_components`,
+`revenue_attachments`, the three
 reference caches (`revenue_value_bands`, `revenue_supply_subtypes`,
 `business_unit_tax_statuses`), `revenue_config_snapshots`, the `revenue_entry_totals` and
 `revenue_period_contributions` views, and `ix_revenue_entries_reporting`. Header totals and
 contributions are derived on this side too; neither view is writable.
+
+---
+
+## 13. The canonical reporting cache — local schema v17 (Phase 5 Slice 4)
+
+Three **local** tables. Nothing is added to Postgres by this slice: the two contribution
+projections gained `change_seq` in `20260907121017` and are otherwise unchanged, and there
+is no reporting RPC, no new relation and no new grant (D-177).
+
+These tables are a **different authority class** from the transaction tables beside them
+(D-171). Every row is a canonical accepted figure the server returned; nothing local
+authors one, nothing local edits one, and a host test over `lib/` asserts that the
+synchroniser is the only writer.
+
+```
+reporting_revenue_contributions     one accepted revenue component, as reporting received it
+  PK (owner_user_id, contribution_id)
+  owner_user_id      whose cache this is — never null, never inferred (D-074)
+  org_id
+  contribution_id    the component's own id on the server; what makes a re-pull idempotent
+  revenue_entry_id   the DOCUMENT — the delta unit (D-178)
+  business_unit_id · revenue_category_id
+  pnl_date · pnl_period_key            stored, never re-derived (D-019, D-067)
+  gross_minor · tax_minor · net_minor  integer paise, never recomputed (D-080)
+  tax_treatment · tax_rate_basis_points · entered_basis
+  value_band_id? · supply_subtype_id?  the conditional identities, where the rule used them
+  financial_year     the FY of pnl_date, so a marker and a row match without parsing a date
+  document_generation                  the effective generation this row synchronised at
+  synced_at
+
+reporting_expense_contributions     one accepted expense period contribution
+  PK (owner_user_id, contribution_id)
+  expense_id         the DOCUMENT — the delta unit
+  allocation_id · business_unit_id · department_id · section_id · category_id · vendor_id?
+  pnl_date · pnl_period_key · amount_minor    gross cost incl. GST, no ITC (D-018)
+  financial_year · document_generation · synced_at
+
+reporting_coverage_markers          proof that a scope's dataset was completely synchronised
+  PK (owner_user_id, business_unit_id, dataset, financial_year)
+  dataset            CHECK IN ('revenue', 'expense')
+  generation         the authoritative generation this scope is complete to
+  server_confirmed_at?   the server's own time, carried as evidence for Slice 6
+  on_demand          fetched outside normal retention, so pruning can tell the two apart
+  updated_at
+```
+
+**Six indexes, every one leading with `owner_user_id`** — two per contribution table for
+the period and date reads, and one per table on the document, which is what the
+year-bounded delete uses.
+
+### What is deliberately absent
+
+No notes, no attachments, no editable payload, no outbox state, no row version, no mutation
+id. This is reporting data, not transaction replication: a device that has synchronised a
+colleague's sale can **report** it and cannot open it — the distinction Slice 4 exists to
+draw.
+
+There is also **no money-shaped column a client could author**: the amounts arrive from the
+projections and the synchroniser is the only writer, so "cache rows must not accept
+client-authored financial amounts" is structural rather than remembered.
+
+### Ownership and the purge
+
+`CacheClassification` gains `CacheOwnership.canonicalReportingCache`, its own kind rather
+than `businessUnitScoped`, because the two differ on the question a reader actually asks:
+*is this financial data?* A cached department is not, and losing it costs a pull. These are
+a property's takings and costs.
+
+A confirmed revocation purges all three tables for the revoked property, **unconditionally**
+— unlike `scopedFinancialHistory` there is no unsent work to retain, because nothing here
+is anybody's attempt. The **marker is deleted first**: a coverage claim standing over rows
+about to be removed would tell the reporting engine a property is complete while its
+figures disappear underneath.
+
+### The migration
+
+The `from < 17` step creates the three tables and their indexes and does nothing else. They
+arrive **empty and uncertified**: a migration synchronises nothing, and a device that
+upgrades reports `notDownloaded` until it has actually asked the server. Certifying a year
+because a schema step ran is exactly the false claim the marker exists to prevent (D-108).
+
+The step is written *before* the `from < 16` step in source order and both still run — the
+ordering hazard D-144 records, pinned by a v15 fixture rather than argued.

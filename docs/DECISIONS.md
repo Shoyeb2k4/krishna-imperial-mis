@@ -6178,3 +6178,161 @@ catalogue with **no exemption list**, at deploy time and again in the host suite
 naming the two tables that happened to be wrong would pass for ever and catch nothing — and
 the next table to carry the column would arrive exactly as these two did (D-068, D-071,
 D-077). The host regression turns red on three tests when the corrective is removed.
+
+---
+
+# Phase 5 Slice 4 — the canonical reporting cache and its delta (2026-09-07)
+
+D-171, D-172 and D-173 set this slice up: a dedicated reporting authority class, a
+generation that had to be proven before a delta could be designed, and a gap that turned
+out to be on **both** engines rather than revenue's alone. These four record what building
+it decided.
+
+## D-178 — The delta unit is a document, and the delta carries no period filter
+**Date:** 2026-09-07 · **Status:** Accepted
+
+**The design that looks obvious and is wrong.** *"Fetch the contributions that changed
+inside the year I am refreshing."* It is the query anybody writes first, it is efficient,
+and it silently keeps a wrong figure for ever:
+
+```
+        a sale is corrected from 30 June to 1 July
+
+        a June-filtered delta   returns NOTHING for it — there is no June row any more
+        the cache               keeps its June figure
+        the figure              is wrong, stable, and reconciles against itself
+```
+
+The same shape covers a re-apportioned shared bill (a property loses a line entirely) and
+a void (the document contributes nothing anywhere). In each case the correct new state is
+*absence*, and a filtered query cannot deliver an absence.
+
+**Decision.** The delta asks for **every** contribution the caller may see whose document
+generation is above the watermark, in **any** period, and the **document** is the unit of
+replacement. For each retained financial year, a changed document has its cached rows for
+that year deleted and its current ones inserted. June loses the rows, July gains them, and
+nothing in the client has to know that a correction happened.
+
+**Replacement is bounded by the financial year**, so refreshing one year cannot delete
+another year's rows for a document that contributes to both — which a cross-period
+allocation legitimately does (D-034). That bound is also what makes retention safe:
+refreshing FY2026 never touches FY2027.
+
+**Cost, stated rather than glossed.** An initial pull fetches every contribution the reader
+may see, and a later one fetches every changed document rather than every changed row in a
+period. At this write volume — a handful of operators, a few thousand contributions a year
+— that is a few thousand rows once and a handful thereafter. If it ever stops being, the
+answer is a server-side delta RPC that returns absences explicitly, not a period filter.
+
+**Controls, each seen to fail.** Disabling document replacement turns four tests red;
+removing the year bound from the delete turns one red (the two-year document); storing
+voided rows turns one red. Each was restored and read back (D-142).
+
+## D-179 — A void is visible to the delta only because the projection carries it
+**Date:** 2026-09-07 · **Status:** Accepted — recorded because the two rules turn out to be
+the same rule
+
+Both contribution projections **carry** `voided_at` rather than filtering it, so that a
+voided document stays inspectable while every aggregate excludes it (D-006, D-158). That
+was decided for audit.
+
+It is also the only reason a reporting delta can learn about a void at all. A projection
+that filtered voided rows would make a voided document simply **disappear** from every
+delta, and its cached contributions would stay on a device's books permanently — the one
+hazard document-grain replacement cannot cover on its own, because there would be no row
+naming the document to replace.
+
+**Decision.** The synchroniser drops voided rows **on the way in**, after counting their
+document. The cache therefore holds the active reporting effect and nothing else, which is
+what makes the canonical-only predicate unnecessary here rather than merely remembered —
+the rule Slice 1 found applied on one engine and forgotten on the other (D-168).
+
+Asserted against the real server, not inferred from the migration: a voided sale's rows
+come back from `revenue_period_contributions` carrying `voided_at`, and the cached figure
+falls by exactly the sale.
+
+## D-180 — The watermark is the lowest scope's, never the highest
+**Date:** 2026-09-07 · **Status:** Accepted
+
+A run covers several properties and, at a year boundary, two financial years. Each has its
+own marker, so the delta needs one number from many.
+
+**Decision.** `since = min(marker.generation)` across every requested (unit, year), taking
+**zero** for any scope that has no marker, and then less the safety overlap, clamped at
+zero.
+
+**Why the minimum is not a preference.** Taking the highest would ask the server for
+changes since a point a newly granted property never reached. Every document written below
+it would be missed — and missed **permanently**, because the run would then certify that
+property complete to the higher generation, so no later delta would ever ask for the
+documents it skipped. A gap that writes its own alibi.
+
+The scenario is ordinary: a manager gains Hotel Krishna after months of holding only
+Crystal Canopy. Hotel Krishna's existing sales carry generations far below Crystal Canopy's
+watermark.
+
+**And the overlap hides it.** With the two generations a few hundred apart the safety
+overlap covers the gap and a maximum-watermark implementation passes. The regression
+therefore places them **5,000** apart and models RLS in the fake gateway, so the first sync
+provably cannot have cached Hotel Krishna by accident. Written that way after the first
+version of the control passed against the deliberate defect — the fifth time this project
+has had to find a control by expecting red and getting green (D-071, D-074, D-094, D-139).
+
+**The complement.** Every unit in a run is certified to the **same** generation, including
+one that had no changed document. One run is one authoritative boundary; a quiet property
+certified lower than a busy one would drift permanently behind and re-read the same delta
+for ever.
+
+## D-181 — Two adapters behind one port, and production's choice is asserted
+**Date:** 2026-09-07 · **Status:** Accepted
+
+`LocalReportingSource` now has two implementations, and they answer different questions:
+
+| | |
+|---|---|
+| `CachedReportingSource` | the synchronised cache — what the server says the hotel earned and spent |
+| `DriftReportingSource` | this device's own contribution projections — what *this installation* recorded |
+
+**Wiring the wrong one produces no error and no empty state.** It produces a correct sum of
+the wrong set of rows, on a manager's second phone, indefinitely. That is a worse failure
+mode than D-077's, where two real devices at least *said* attaching was unavailable.
+
+**Decision.** Production resolves the cache, and the wiring is asserted rather than
+intended: `bootstrap` builds the gateway beside every other one, `main()` overrides the
+provider, the acceptance harness covers it, and a host test reads what
+`localReportingSourceProvider` actually returns. D-134's guard refused the change until the
+harness matched `main()`, which is that guard earning its place a second time.
+
+The source takes its owner as a **constructor field** rather than a call argument, the
+shape `SyncEngine.actorUserId` already has: there is no signature by which a caller reads
+somebody else's figures by forgetting to say whose they are (D-050, D-074). Before sign-in
+it names the anonymous principal, who owns no cache rows by construction — so a screen that
+forgets to check the session gets nothing rather than the previous user's P&L.
+
+**Recorded and not fixed here:** coverage is one value per property, so a scope missing only
+its expense side refuses as `bothSidesUnavailable` rather than naming the absent half. The
+rule D-163 states is satisfied — it refuses — and the finer message belongs to Slice 5,
+which owns what a manager is actually told.
+
+## D-182 — Three files were in the wrong place, and the guard said so
+**Date:** 2026-09-07 · **Status:** Recorded
+
+Slice 3's assertion that *no management formula lives in an engine* (spec §21.2) refused
+three new files in `lib/data/reporting/`. Each refusal was correct, and each was fixed by
+**moving the file** rather than widening the check — which is the D-103 anti-pattern this
+project has now recorded three times:
+
+| File | What the guard saw | Where it belongs |
+|---|---|---|
+| the reporting cache | `Money.fromPaise(` | it sums in SQL and wraps the result, which is what a repository does — `lib/data/repositories/` |
+| the synchroniser | `rate_bp` | it copies a rate across the wire without computing with it, which is transport — `lib/data/sync/` |
+| `financialYearsCovering` | `FinancialYear(` | period math, so `domain/finance` (spec §21.1), where the engine, the coverage oracle and retention read one answer |
+
+The third is the one worth keeping. *"Which financial years does this range touch"* had been
+written in the data-layer adapter that needed it first; a range spanning 20 March to 10
+April is **two** years, and coverage, retention and the delta must not be able to disagree
+about that. A guard written against a property rather than a naming convention found a real
+design error while looking for arithmetic.
+
+`lib/data/reporting/` now holds the engine and its two sources, and nothing in it touches
+paise, a rate or a date derivation.

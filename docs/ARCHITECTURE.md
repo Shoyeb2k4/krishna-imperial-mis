@@ -2683,3 +2683,181 @@ fixture, so no index is *measurably* required and the schema stays at **v16**; c
 index on a measured non-problem would be speculative. It is recorded because an index
 nothing can use is the same family as a rule nothing evaluates, and Slice 8 owns
 performance hardening.
+
+---
+
+## 30. The canonical reporting cache and its delta (2026-09-07)
+
+Phase 5 Slice 4. §29 built an engine that reads canonical facts and **refuses** rather than
+reporting a figure it cannot stand behind. This is what gives it something to stand behind:
+a synchronised cache of server-owned financial facts, and the delta that fills it.
+
+It closes D-173. Before it, **neither** engine had a reporting pull, so a device could
+report only what it had itself recorded — and the failure had no symptom. A manager's
+second phone, a fresh installation, or a property whose sales somebody else enters all
+produce the same thing: a query that returns rows, sums them exactly, and reports a number
+that is not the hotel's.
+
+### 30.1 A different authority class, in its own storage (D-171)
+
+```
+        revenue_entries / expenses          reporting_*_contributions
+        ──────────────────────────          ──────────────────────────
+        this actor's work, in every         canonical accepted figures the
+        state work can be in: pending,      SERVER returned, belonging to a
+        rejected, conflicted, voided,       synchronisation generation
+        quarantined, never sent
+        editable; carries a row version     read-only; no row version, no
+        and an outbox intent                mutation id, no notes, no payload
+```
+
+Separate tables, because mixing them would make every reporting query re-derive which rows
+are canonical, on tables where the answer varies per row and per user — the arrangement
+that produced the E2 defect Slice 1 had to correct (D-168). Kept apart, the reporting query
+has **nothing to filter**: every row is canonical by construction, because only the
+synchroniser writes one, and a host test scans `lib/` to keep it that way.
+
+**Every row is owned by a user.** A back-office workstation is shared, so "the cached P&L
+for Crystal Canopy" is a fact about *a person's* authority at a moment, not about the
+installation. Every primary key and every index leads with `owner_user_id`, which makes
+User B reading User A's figures structurally unavailable rather than something a query must
+remember (D-074).
+
+**A confirmed revocation removes it outright.** Unlike a financial document there is no
+exception to make: nothing here is anybody's unsent attempt, and the server hands it all
+back when authority returns. The marker is deleted **first** — a coverage claim standing
+over rows that are about to go would tell the engine a property is complete while its
+figures are removed underneath.
+
+### 30.2 Completeness is a marker, never a row count
+
+An empty cache and a fully synchronised year with no trade are identical in the data.
+Collapsing them is how a device tells a manager the hotel earned nothing (D-106's lesson,
+one layer up), so the claim is a separate record, written **last, inside the same
+transaction** as the rows it certifies (D-108).
+
+Keyed per **user x business unit x dataset x financial year** — the smallest thing that can
+honestly be complete on its own:
+
+| | |
+|---|---|
+| per user | a shared workstation (D-074) |
+| per business unit | authority is granted a property at a time |
+| per dataset | revenue may synchronise while expenses fail, and a P&L needs both (D-163) |
+| per financial year | retention is current + previous FY, and a range crossing 1 April needs both sides |
+
+Coverage is therefore a **conjunction**, and every term is load-bearing: a range is covered
+only when both datasets are certified for every financial year it touches, for this owner
+and this property.
+
+### 30.3 The delta asks for changed documents, never for a period
+
+The obvious query is *"changed rows inside the year I am refreshing"*, and it is wrong in a
+way that never surfaces as an error.
+
+```
+        a sale is corrected from 30 June to 1 July
+
+        a June-filtered delta   returns NOTHING for it — there is no June row any more
+        the cache               keeps its June figure, for ever
+        the figure              is wrong, stable, and reconciles against itself
+```
+
+So the delta asks for **every** contribution the caller may see whose document generation
+is above the watermark, in any period, and the **document** is the unit of replacement: for
+each retained year, a changed document has its cached rows for that year deleted and its
+current ones inserted. June loses the rows and July gains them without anything knowing a
+correction happened.
+
+Replacement is **bounded by the year**, so refreshing one year cannot delete another's rows
+for a document that contributes to both (§15).
+
+### 30.4 A void arrives as a row and is dropped on the way in
+
+Both projections **carry** `voided_at` rather than filtering it: a voided document stays
+inspectable and every aggregate excludes it (D-006). That is precisely what makes a void
+visible to a delta — the row comes back, its document is replaced, and the voided rows are
+not stored. Active effect zero, with nothing to remember.
+
+Had the projections filtered voided rows, a voided document would simply vanish from the
+delta and its stale contributions would stay cached for ever. The rule that keeps evidence
+inspectable is the same rule that makes the cache correctable.
+
+### 30.5 The watermark is the lowest, and the overlap is a mitigation
+
+```
+        since = min(marker.generation) over every requested (unit, year),
+                taking 0 for any scope with no marker
+        ask   = max(0, since - safetyOverlap)
+```
+
+**The minimum, not the maximum.** A property granted today has never been certified, so
+taking the highest watermark would ask the server for changes since a point that property
+never reached — and every document written below it would be missed: a gap no later run can
+notice, because the marker would say they had arrived.
+
+The overlap addresses the commit-visibility hazard §5.2 already records — a sequence value
+is allocated at write and becomes visible at commit, so a naive `> max(seen)` can step over
+a transaction that committed late. Re-reading below the watermark is free of consequence
+because replacement is keyed on document identity: the same document delivered twice lands
+in exactly the same state. **It is a mitigation, not a fix**, and the documented upgrade is
+still a snapshot cursor.
+
+Because the overlap masks a wrong watermark until the two generations are further apart
+than the overlap itself, the regression that pins the minimum places them 5,000 apart.
+
+### 30.6 Failure is per dataset, and a failed run changes nothing
+
+Revenue may land while expenses do not. Each writes its own marker, so a P&L over a
+half-synchronised scope **refuses** rather than presenting takings as though they were
+profit (D-163). A run that fails writes nothing and withdraws nothing: unknown is not
+revoked (D-048 §1), and a network failure is not evidence about a property's books.
+
+Every unit in a run is certified to the **same** generation, including one that had no
+changed document — one run is one authoritative boundary, and a quiet property certified
+lower than a busy one would drift permanently behind and re-read the same delta for ever.
+
+### 30.7 Retention
+
+Current and previous financial year, plus whatever was fetched **on demand** (D8). Pruning
+is a separate object from synchronising, because it is a different decision taken on a
+different clock: folding it into a run would mean a device that synchronises on 1 April
+silently loses the year it was reporting five minutes earlier, in the call that was meant to
+refresh it. An on-demand year survives the sweep — somebody deliberately fetched it, and
+deleting it under them would make the older-range workflow useless in the one case it exists
+for.
+
+Outside retention the honest answer is `notDownloaded`, never a confident zero over an empty
+table.
+
+### 30.8 Production reads the cache, and that is asserted
+
+Two adapters sit behind `LocalReportingSource`, and wiring the wrong one produces no error
+and no empty state — just a correct sum of the wrong rows:
+
+| | |
+|---|---|
+| `CachedReportingSource` | the synchronised cache. **What production resolves.** |
+| `DriftReportingSource` | this device's own contribution projections |
+
+`bootstrap` builds the gateway beside every other one, `main()` overrides the provider, the
+acceptance harness covers it — D-134's guard refused the change until it did — and a host
+test reads what production actually returns. That is the D-077 shape, applied before the
+surface exists rather than after two real devices have shipped without it.
+
+### 30.9 What the guard caught, and why three files moved
+
+The Slice 3 assertion that *no management formula lives in an engine* refused three new
+files. It was right in every case, and each was fixed by moving the file rather than
+widening the check — which is the D-103 anti-pattern:
+
+* the **cache** sums in SQL and wraps the result in `Money`, which is what a repository
+  does, so it lives with the repositories;
+* the **synchroniser** copies a rate across the wire without computing with it, which is
+  transport, so it lives with the sync engine;
+* *"which financial years does this range touch"* is **period math**, so it lives in
+  `domain/finance` where the engine, the coverage oracle and retention all read one answer
+  (spec §21.1).
+
+`lib/data/reporting/` now holds the engine and its two sources, and nothing in it touches
+paise, a rate, or a date derivation.

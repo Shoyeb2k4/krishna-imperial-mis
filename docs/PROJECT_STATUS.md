@@ -5,9 +5,11 @@ Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
-Last updated: **2026-09-07** — **PHASE 5 — P&L / MIS REPORTING: STARTED.** Phase 4 closed
-at `96fc4ed`; the project lead's Phase 5 decisions are ratified and recorded as
-**D-163 … D-173**, and Slice 1 of twelve is under way. The Phase 5 record is at the **end of
+Last updated: **2026-09-07** — **PHASE 5 — P&L / MIS REPORTING: SLICES 1–4 COMPLETE.**
+Phase 4 closed at `96fc4ed`; the project lead's Phase 5 decisions are ratified and recorded
+as **D-163 … D-173**, and four slices of twelve are closed — source parity, the canonical
+calculation specification, `LocalReportingEngine`, and the canonical reporting cache with
+its cross-device delta. **Slice 5 is not started.** The Phase 5 record is at the **end of
 this file** and is authoritative for it; the Phase 4 closure sits immediately above it and
 remains authoritative for Phase 4, **except** that its handoff contract's revenue-only
 statement of the pull gap is corrected by D-173 — the gap is **both engines**. Everything
@@ -1821,6 +1823,15 @@ rebuilding and scanning artefacts that will be rebuilt again after the picker te
 
 ## Database migration status
 
+**Local Drift schema v17.** v17 adds the canonical reporting cache —
+`reporting_revenue_contributions`, `reporting_expense_contributions` and
+`reporting_coverage_markers`, every key and index leading with `owner_user_id` (D-171,
+D-074). They arrive **empty and uncertified**: a migration synchronises nothing, and a
+device that upgrades reports `notDownloaded` until it has asked the server (D-108). Full
+shape in `DATABASE_SCHEMA.md` §13. v16 adds the `expense_period_contributions` view and its
+index; v15 adds `revenue_period_contributions` and `ix_revenue_entries_reporting`; v14 adds
+`revenue_attachments`; v13 adds `revenue_entries.business_date_source`.
+
 **Local Drift schema v12.** v12 adds `revenue_config_snapshots` — per user, per business
 unit, naming the datasets proven present, the server generation and the server-confirmed
 time (D-108) — and **deletes** the superseded global `revenue.configuration.synced_at`
@@ -3225,7 +3236,7 @@ are not merged because they could be implemented quickly.
 | 1 | Source parity and the canonical-only correction (E1–E4) | **COMPLETE** |
 | 2 | `domain/finance` — the canonical calculation specification | **COMPLETE** |
 | 3 | `LocalReportingEngine` | **COMPLETE** |
-| 4 | Canonical reporting cache + synchronisation completeness (D-171, D-172, D-173) | not started |
+| 4 | Canonical reporting cache + synchronisation completeness (D-171, D-172, D-173) | **COMPLETE** |
 | 5 | Server reporting boundary + `RemoteReportingEngine` parity | not started |
 | 6 | Freshness, as-of and closed periods | not started |
 | 7 | The reporting capability model (D-163, D-164) | not started |
@@ -3688,3 +3699,168 @@ API-surface audit. Not touched here: a pure reporting-engine commit is not where
 cleanup belongs (D-127).
 
 **`reports.view`** still has no evaluator and D-139's exemption entry stands. Slice 7's.
+
+---
+
+## Phase 5 Slice 4 — canonical reporting cache and cross-device synchronisation: **COMPLETE**
+
+The gap D-173 recorded is closed. Before this slice **neither** engine had a reporting
+pull, so a device could report only what it had itself recorded — and the failure had no
+symptom: a manager's second phone, a fresh installation, or a property whose sales somebody
+else enters all produce a query that returns rows, sums them exactly, and reports a number
+that is not the hotel's.
+
+Decisions D-178 … D-182. `ARCHITECTURE.md` §30. `DATABASE_SCHEMA.md` §13. Local schema
+**v17**. No Postgres migration: the projections gained `change_seq` in the approved
+`20260907121017`, and nothing else on the server changed.
+
+### What shipped
+
+| | |
+|---|---|
+| Local schema **v17** | `reporting_revenue_contributions`, `reporting_expense_contributions`, `reporting_coverage_markers` — server-owned, read-only, every key and index leading with `owner_user_id` |
+| Transport | `ReportingGateway` over the two contribution projections. No RPC, no new relation, no new grant |
+| Engine | `ReportingSync` — document-grain delta, year-bounded replacement, marker written last inside the same transaction |
+| Retention | `ReportingRetention` — current + previous FY, plus whatever was fetched on demand |
+| Read path | `CachedReportingSource` + `MarkerCoverage`, wired into production and asserted |
+| Purge | the reporting cache goes with a revoked property, marker first |
+
+### The three decisions that carry the slice
+
+**The delta asks for changed documents, never for a period (D-178).** A sale corrected from
+30 June to 1 July leaves **no June row at all**, so a June-filtered delta returns nothing
+for it and the stale June figure sits in the cache for ever — wrong, stable, and reconciling
+against itself. The document is therefore the unit of replacement, bounded by the financial
+year so a two-year document does not lose one of its years.
+
+**A void is visible only because the projection carries it (D-179).** Both projections carry
+`voided_at` rather than filtering it, decided for audit — and that is the only reason a
+delta can learn about a void, because a filtered projection would make a voided document
+vanish with nothing left to name it. The synchroniser drops voided rows on the way in, so
+the cache holds the active effect and no reporting query needs the canonical-only predicate
+Slice 1 found applied on one engine and forgotten on the other (D-168).
+
+**The watermark is the lowest scope's, never the highest (D-180).** Taking the highest would
+ask for changes since a point a newly granted property never reached, miss every document
+below it, and then certify that property complete — a gap that writes its own alibi. The
+safety overlap *hides* this until the generations are further apart than the overlap, so the
+regression places them 5,000 apart and models RLS so the first sync provably cannot have
+cached the second property by accident.
+
+### Verified — host
+
+| Item | Status | Evidence |
+|---|---|---|
+| `dart format --set-exit-if-changed` | **Tested** | clean, 217 files |
+| `flutter analyze` | **Tested** | **No issues found** |
+| Host suite | **Tested** | **1,366 tests, all passing** |
+| v17 schema and migration | **Tested** | 10 tests: fresh database, v16→v17 on an accumulated device, v15 through both steps in order, the closed dataset vocabulary, two people holding one contribution independently |
+| One writer for the cache | **Tested** | a scan over `lib/` — the rule that makes the canonical predicate unnecessary rather than remembered |
+| Synchronisation | **Tested** | 24 tests over a real SQLite database, the real cache and the real synchroniser |
+| Revocation of the reporting cache | **Tested** | 3 tests, marker deleted first, a failed refresh purging nothing |
+| Production wiring | **Tested** | 5 tests reading what `localReportingSourceProvider` actually returns |
+| Composition-root parity (D-134) | **Tested** | the guard **refused the change** until the acceptance harness matched `main()` |
+
+### Positive controls, each seen to fail and each restored and read back (D-142)
+
+| Control | Result |
+|---|---|
+| Document replacement disabled | **RED** — 4 tests: the correction, the business-date move, the void, the re-apportioned bill |
+| The delete not bounded by the financial year | **RED** — the two-year document loses its other year |
+| Voided rows stored rather than dropped | **RED** — the void test |
+| The watermark takes the highest rather than the lowest | **RED** — the newly granted property |
+| `_purgeReportingCache` removed from the purge | **RED** — 2 of the 3 revocation tests |
+
+The fourth needed two attempts. Written first with the generations a hundred apart it
+**passed** against the deliberate defect, because the safety overlap covered the gap — the
+fifth time this project has had to find a control by expecting red and getting green
+(D-071, D-074, D-094, D-139).
+
+### Verified — live, against `krishna-mis-dev`
+
+**13 of 13 passing**, through the real projections, the real gateway, the real cache and
+the real synchroniser. Four facts about Postgres that nothing local can establish:
+
+| Case | Result |
+|---|---|
+| `change_seq` advances on a revenue correction | **PASS** — the property the D-172 corrective added, exercised |
+| A void comes back carrying `voided_at` rather than vanishing | **PASS** |
+| Cached paise equal the server's own aggregate, both sides, both properties | **PASS** — exact integers, no tolerance |
+| Banquet keeps treatment `none` and rate 0, distinct from a configured zero | **PASS** |
+| A device that recorded nothing reports the sale another device recorded | **PASS** — D-173, closed |
+| A correction reaches the second device and changes the figure exactly once | **PASS** |
+| A business-date correction moves the money out of November and into December | **PASS** |
+| A void removes the effect on every device, and the row is not stored | **PASS** |
+| A shared bill attributed to both properties, then re-apportioned wholly to one | **PASS** — no residue on the other |
+| Offline after a successful sync: the P&L is produced with the transport gone | **PASS** — §33 |
+| A Crystal Canopy manager caches nothing of Hotel Krishna, **and does cache Crystal Canopy** | **PASS** — the control that separates "scoping works" from "the query is broken" (D-116) |
+| An anonymous caller reads no contribution | **PASS** |
+| The base tables stay unreadable | **PASS** |
+
+### Fixture state after the run
+
+Reversed through `revenue_void` and `expense_void` with a stated reason naming the run —
+never by deleting a row (D-006, D-066).
+
+| | |
+|---|---|
+| Documents created by this slice | 26 revenue, 6 expense |
+| Still open | **0 / 0** |
+| Live tax rules | **4** — the verified baseline, untouched |
+| Value bands / supply subtypes / premises statuses | **0 / 0 / 0** |
+| Closed periods | **0** |
+| Open revenue of any kind | **0** |
+
+The sweep runs **before** the fixtures as well as after them, keyed on the marker in the
+notes, because a suite that depends on its own teardown having succeeded can pass exactly
+once (D-071, D-076). The first run proved it: it failed partway on fixture defects of its
+own and left sales open, and the sweep reversed them.
+
+**61 open expenses exist on the project and are not this slice's.** All predate this
+session (newest 2026-09-03) and are left untouched.
+
+### Four defects in the live suite itself, all found by running it
+
+None is a product defect; each is an assertion or a call about the wrong thing. It read
+`revenue_entries`, which no client role may SELECT — the projection is the only way in
+(D-062, D-162). It called `expense_update` and `expense_void` with `p_expense_id` where
+both take `p_id`. And it matched `PnlResult` where the outcome is `PnlComputed`.
+
+### Three files moved, because the Slice 3 guard was right (D-182)
+
+The assertion that *no management formula lives in an engine* refused three new files, and
+each was fixed by moving the file rather than widening the check — the D-103 anti-pattern.
+The cache is a repository and lives with them; the synchroniser is transport and lives with
+the sync engine; and *"which financial years does this range touch"* is period math and now
+lives in `domain/finance`, where the engine, the coverage oracle and retention read one
+answer. A guard written against a property rather than a naming convention found a real
+design error while looking for arithmetic.
+
+### Recorded, and deliberately not done here
+
+**Coverage is one value per property**, so a scope missing only its expense side refuses as
+`bothSidesUnavailable` rather than naming the absent half. The rule D-163 states is
+satisfied — it refuses — and the finer message belongs to **Slice 5**, which owns what a
+manager is told.
+
+**`public.expense_sees_whole_org()`** — on the reviewed API surface, called by nothing.
+Still carried to **Slice 7**, untouched.
+
+**`reports.view`** still has no evaluator and D-139's exemption entry stands. Slice 7's.
+
+**No device or two-client UI acceptance.** There is no reporting surface yet — Slices 8 and
+9 own those — so the cross-device evidence above is two independent local databases
+synchronising against the real server through the real production classes, which is the
+whole of what exists to exercise. It is reported as that rather than as a device phase.
+
+### Commits
+
+| | |
+|---|---|
+| `6680bf8` | `app.stamp_change_seq()` and the revenue generation corrective (D-177), approved |
+| `69e1936` | the projections carry the document generation, approved |
+| `1bd0d16` | local v17 reporting cache, classification and purge |
+| `93aeb34` | transport, synchroniser, retention and the production wiring |
+| `f20a37f` | live cross-device acceptance |
+
+**Slice 5 is not started**, and is not started automatically.
