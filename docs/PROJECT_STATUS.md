@@ -5,10 +5,12 @@ Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
-Last updated: **2026-09-06** — **Phase 4 Slice 11 (revenue attachments) is complete**,
-built on the Phase 3 attachment architecture rather than beside it: one shared lifecycle,
-one upload worker, one private bucket under two path prefixes, and evidence that provably
-moves no financial figure (D-147 … D-152). **Slice 12 is not started.**
+Last updated: **2026-09-07** — **PHASE 4 — REVENUE ENGINE: COMPLETE.** All fourteen
+slices are closed, the four verified tax rules are the live baseline, and the reporting
+interface Phase 5 will aggregate is defined and populated. The closure record, the Phase 5
+handoff contract and the final verification are at the **end of this file**; the sections
+between here and there are the running history of how it was built, kept in the order it
+happened. **Phase 5 is not started.**
 
 > A new session should be able to read this file and know exactly where work stopped.
 > This file — not chat history — is the checkpoint.
@@ -16,6 +18,12 @@ moves no financial figure (D-147 … D-152). **Slice 12 is not started.**
 ---
 
 ## Current phase
+
+**Phase 4 — Revenue Engine: COMPLETE (2026-09-07).** See *PHASE 4 — REVENUE ENGINE:
+COMPLETE* at the end of this file, which is the authoritative closure record. Everything
+below this line up to that section is the running history of Phases 2 to 4 in the order it
+was written, and **a statement in it describes the moment it was made, not today** — where
+it disagrees with the closure record, the closure record wins.
 
 **Phase 2 — Masters & Permissions: COMPLETE**, plus one acceptance addendum accepted
 afterwards (D-058, D-059) that closed the single gap the completion report recorded as
@@ -1657,9 +1665,10 @@ is worth running once before the first staging deploy.
 
 ## Next exact task
 
-**Slice 14 — closure: docs, totals, clean artefacts, the full gate.**
-Slices 1–13 are complete. Slice 14 has **not** been started, and is not started
-automatically.
+**Phase 5 — Ledger & Reporting Engine.** Phase 4 is complete and closed; Phase 5 has
+**not** been started, and is not started automatically. Read the Phase 5 handoff contract
+in *PHASE 4 — REVENUE ENGINE: COMPLETE* below before planning it — in particular that
+there is no revenue pull, which a dashboard that must be correct offline will need.
 
 ### Superseded — the Slice 13 entry
 
@@ -2739,3 +2748,404 @@ test asserts the reporting layer still names no P&L, Net Sales, Operating Profit
 
 **No product gap was found.** Everything the acceptance exercised exists; what it found was
 one defect and one dishonest assertion.
+
+---
+
+# PHASE 4 — REVENUE ENGINE: COMPLETE
+
+Closed 2026-09-07. Slices 1–14. Master Spec **v1.2**.
+
+Phase 4 built the revenue half of the MIS: a document-with-components model, conditional
+tax resolution over five bounded dimensions, offline creation with a freshness gate,
+correction and void under governed capability, evidence, and the reporting interface Phase 5
+will aggregate. **It builds no P&L**, by design (D-087).
+
+## 1 · The final domain, as shipped
+
+| | |
+|---|---|
+| Business units | Crystal Canopy Rooftop · Hotel Krishna Imperial |
+| Revenue categories | CCR: **Restaurant**, **Nandbhog** · HKI: **Room**, **Banquet** |
+| Other Income | **not in V1** (spec §28/§29) |
+| Model | Revenue Entry → 1..n Revenue Components → contributions **derived** from accepted components |
+| Header totals | not stored, on either side — derived by `revenue_document` and `revenue_entry_totals` |
+
+### The verified configuration, read from `krishna-mis-dev` at closure
+
+| Unit | Category | Rate | Treatment | Basis | Effective from | Discriminators |
+|---|---|---|---|---|---|---|
+| CCR | Restaurant | 500 bp | `inclusive` | `inclusive_total` | 2026-04-01 | all null |
+| CCR | Nandbhog | 500 bp | `inclusive` | `inclusive_total` | 2026-04-01 | all null |
+| HKI | Room | 500 bp | `inclusive` | `inclusive_total` | 2026-04-01 | all null — **no Room band configured** |
+| HKI | Banquet | 0 bp | **`none`** | `inclusive_total` | 2026-04-01 | all null |
+
+**Four independent rule rows with four distinct ids.** Restaurant and Nandbhog reference
+nothing of each other (D-089). **Banquet's treatment is `none`, which is not a configured
+0%** — one is a decision somebody made, the other a rate somebody set, and reporting carries
+the treatment so Phase 5 can tell them apart (D-091).
+
+**0 value bands · 0 supply subtypes · 0 premises statuses.**
+
+## 2 · Financial semantics
+
+Integer paise only; no binary floating point touches a stored or computed amount. Tax is
+extracted **half-up, once, at the component**, and stored; aggregates sum stored paise and
+never re-apply a rate to a total.
+
+```
+        Restaurant, ₹1,00,000 billed to the customer, inclusive 5%
+
+        entered_amount    10000000 paise   (the customer total, entered_basis inclusive_total)
+        tax   = round_half_up(10000000 × 500 ÷ 10500)  =   476190
+        gross = entered                                 = 10000000
+        net   = gross − tax                             =  9523810      ₹95,238.10
+
+        Banquet, ₹40,343, treatment `none`
+        tax = 0 · gross = net = 4034300
+```
+
+**And the paisa the component grain protects.** Two Restaurant days of ₹76,450 and ₹81,200:
+
+```
+        summed at the component   364048 + 386667  = 750715   ← what is reported
+        the rate re-applied       15765000 × 5/105 = 750714   ← one paisa less
+```
+
+Both figures are asserted side by side in the suite, so the difference is stated rather than
+discovered. `net = gross − tax` is a database CHECK on every component, and no historical
+figure is ever re-rated: every rate, treatment, basis and band on a contribution is the
+snapshot the component recorded when the server accepted it.
+
+## 3 · Business date and period
+
+`business_date` is derived under the property's IANA timezone and cut-off — currently
+**05:00** local, configurable per unit — never the raw device clock and never the database
+session's calendar date (D-019, D-067). It is **persisted**, and `pnl_period_key` is tied to
+it by a CHECK. Reporting reads the stored date; no document implies the device calendar
+decides anything financial.
+
+A correction requires `transaction.correct.business_date`, a non-whitespace reason, and
+**both the source and the target period open**. It writes `business_date_source =
+'corrected'` — revenue has exactly two values, `derived` and `corrected`, because no revenue
+surface offers a trading day at entry (D-143). A closed period rejects every create, edit,
+void and correction affecting it; only the Owner reopens, with a stated reason, audited.
+
+## 4 · Correction and concurrency
+
+`revenue_update` is the one contract. **There is no `revenue_correct_business_date` and no
+fourth revenue RPC** — the phantom endpoints three documents once named are gone from the
+documents as well as absent from the server (D-127, D-137).
+
+`KI-REV` is stable across every correction. `base_row_version` on update and void; a stale
+version is a **Conflict** a person resolves — no auto-merge, no silent rebase, no silent
+repricing. The server re-resolves the tax and **compares** the client's declared figures,
+refusing `KM030` on disagreement rather than replacing them (D-114). Redelivery of the same
+`mutation_id` replays; a lost response recovers by redelivering the same intent. A voided
+document accepts no edit.
+
+## 5 · Void
+
+Capability only, a **mandatory reason that is refused when it is whitespace of any kind**,
+an open period, a matching row version. The document, its number, its components and their
+snapshots all remain; the active reporting contribution goes; attachments are retained as
+evidence; replay is idempotent.
+
+The whitespace rule is one rule for all five mandatory financial reasons — expense void,
+revenue void, both business-date corrections, and period reopen — stated in spec §14.1 as a
+requirement. **The mechanism is deliberately not in the spec**: `app.stated_reason` is an
+implementation detail recorded in `ARCHITECTURE.md` and the decision log, and a sixth act
+carrying a mandatory reason joins the rule rather than inventing its own (D-142, D-145).
+
+## 6 · Offline
+
+New revenue may be created offline only when **all** of these hold: the local authority
+permits it, a complete authoritative configuration snapshot exists for that user and unit,
+D-112 freshness permits, exactly one rule resolves per component, and every required
+conditional fact is present. Otherwise the save is **refused and nothing is queued** —
+unlike an expense, whose correctness does not depend on configuration the device may lack
+(D-086, D-113).
+
+**D-112, final values:** a snapshot may support new offline creation for **24 hours** from
+its server-confirmed timestamp, **inclusive at the boundary**; past that, new offline
+revenue is refused. A device clock reading **more than five minutes earlier** than that
+confirmation reports `clockUnreliable` rather than `expired`, because "your clock is wrong"
+sends somebody to fix a different thing (D-117).
+
+**Existing pending work survives expiry.** An attempt created while fresh and still queued
+at thirty hours is submitted unchanged, carrying its own snapshot; the server decides.
+**D-112 is not a general master-data TTL** and must not be restated as one.
+
+## 7 · Reference configuration
+
+Completeness is recorded **per user, per business unit**, naming the datasets proven
+present, the server generation and the server-confirmed time (D-108). The snapshot is
+categories + tax rules + value bands + supply subtypes + premises statuses — all of them or
+none, because the resolver consults all of them.
+
+**Zero rows in an optional dataset is a valid synchronised answer** — the verified baseline
+has exactly that — and stays distinguishable from never having asked. Completeness is never
+inferred from a row count, and `configurationUnavailable` is decided *before* the cache is
+queried (D-106).
+
+## 8 · The Room conditional architecture
+
+Dimensions: category · effective/business date · value band · supply subtype · premises tax
+status. **Zero matches refuses, exactly one resolves, more than one is refused** — no
+specificity ranking, and a null discriminator is a wildcard that *collides* with a specific
+rule rather than losing to it (D-079, D-094).
+
+**An amount never chooses a band.** `RevenueTaxFacts` carries no monetary field at all, so
+the mistake is unavailable rather than discouraged. A band's boundaries are write-once;
+supersession creates a **new band identity** pointing back at the old one (D-100).
+
+**The live Room baseline remains generic, with no band configured.**
+
+## 9 · Attachments
+
+Shared with expenses — one lifecycle, one worker, one backoff clock, one private bucket
+under two path prefixes decided by two policies (D-147, D-149). Offline staging with a
+stable client-generated identity; ordered upload that cannot precede its parent's
+acceptance; idempotent registration; response-loss recovery; **canonical evidence cannot be
+overwritten**; **no upload to a voided parent**, refused at the object write *and* at
+registration; bytes a terminal refusal strands are reclaimed by their uploader, and an
+object a metadata row names cannot be touched (D-154, D-155).
+
+Attaching is **not editing**: no `base_row_version`, no outbox intent, no row-version
+advance, and no amount, tax figure, date or number changes. D-070 and D-074 apply to
+evidence exactly as to the document. **V1 ships no attachment removal for either kind**, and
+`revenue_attachments` carries no removal columns at all.
+
+**The two acceptance claims are kept apart, and must stay apart:**
+
+| | |
+|---|---|
+| **A · the OS picker itself** | manual, per platform, on real devices — **Android PASS · Windows PASS**, reported by the project lead 2026-09-06. No harness opens an OS picker |
+| **B · the backend lifecycle** | automated, through the real configured app against `krishna-mis-dev` — staging, ordering, upload, registration, retry, restart, security |
+
+Neither is the other, and the record does not collapse them (D-077, D-156).
+
+## 10 · Reporting contributions
+
+`revenue_period_contributions` is a **derived view** on both sides — a
+`security_barrier` view in Postgres, a view in SQLite — and never a second writable
+financial truth source. **Canonical truth is the revenue components plus the parent
+document's state.**
+
+One row per component, carrying business unit, revenue category, business date, `pnl_date`,
+`pnl_period_key`, gross/tax/net in paise, and the rule snapshot. A correction moves the
+period because the entry moved; a void removes the effect because the entry is voided; an
+edit replaces the figures because the components were replaced; a replay has nothing to
+insert twice. Pending, rejected and conflicted attempts are excluded — an unaccepted sale is
+an attempt, not revenue (D-157, D-158).
+
+## 11 · Security and authority
+
+RLS on every table in `public`, default-deny. **No client role holds INSERT, UPDATE, DELETE
+or TRUNCATE on anything in `public`** — restated over all four privileges at closure, after
+the audit found TRUNCATE surviving a three-word revoke on four financial tables (D-162).
+`authenticated` holds no `SELECT` on `expenses`, `revenue_entries` or `revenue_components`;
+the projections are the only way in.
+
+Every `SECURITY DEFINER` function pins its `search_path`; nothing in `public` is callable by
+`anon`; nothing in `app` is callable by any client role; no RLS policy references the `app`
+schema. Permission is decided before existence is revealed. Authority is capability plus
+business-unit scope — **no role name appears in financial logic**. D-070 confirmed
+revocation and D-074 user-switch isolation are proven on both platforms against an
+accumulated database, and the distinction between canonical scoped history and retained
+actor-owned work holds.
+
+Storage: private bucket, no signed-URL issuer and none required, read authority from the
+parent document, **write authority strictly narrower than read** (a voided parent is
+readable and accepts nothing), and metadata ↔ object reconciliation exact.
+
+## 12 · D-146 — the fresh-branch gate, NOT run
+
+**A full migration-chain replay against a genuinely provisioned fresh Supabase branch has
+not been run, and is not claimed.** It needs a separately provisioned paid resource and one
+was not created unilaterally.
+
+**Recorded as a mandatory staging-provisioning gate before the first staging deployment.**
+At that gate, require: the full chain from zero; the reason constraints **validate** on
+clean history; every API function exists exactly once; RLS and Storage policies install;
+bucket policies install; the baseline configuration applies; and no development-only
+historical evidence contaminates staging.
+
+**This does not block Phase 4 code closure.** What is proven meanwhile: ledger parity
+byte-for-byte, repository provenance, the throwaway-schema constraint replay, the local
+fresh-schema and upgrade tests, and both API-surface invariants.
+
+## 13 · D-161 — synthetic versus live acceptance evidence
+
+Preserved exactly, because the distinction is the evidence:
+
+* **Generic live Room baseline** — accepted end to end against `krishna-mis-dev`.
+* **Multi-band semantics** — proven **synthetically** at host level, with two bands at
+  different rates. A live Room band would require end-dating the approved baseline rule
+  (D-093, D-096), and `revenue_tax_rule_end_date` offers no path back.
+* **Configuration-change / KM030 semantics** — proven with governed synthetic fixtures and,
+  on the real server, through declared figures that disagree with the configured rate. The
+  variant where the rule itself moves underneath the client is **not** run live.
+
+**No document claims that live production-like Room tariff band acceptance passed against
+the approved baseline**, because it did not.
+
+## 14 · Development historical evidence rows
+
+Three rows in `krishna-mis-dev` carry a whitespace-only mandatory reason. Each was created
+deliberately to prove a defect before it was fixed, and each lives in a table that correctly
+refuses to be rewritten (D-006):
+
+| Table | Row |
+|---|---|
+| `expenses` | the void probe |
+| `revenue_entries` | the void probe |
+| `period_lock_events` | the reopen probe |
+
+They are **not damage and are not to be modified or deleted.** The corresponding CHECK
+constraints are `NOT VALID` **on this database only**: the migration installs each one and
+then counts the rows that would violate it, so a clean environment validates fully and
+`krishna-mis-dev` stays unvalidated and says why (D-146). **Future writes are protected
+either way** — the constraint is enforced on every new row, and the boundary refuses a
+whitespace reason before the constraint is ever reached.
+
+## 15 · Material Phase 4 defects found and fixed
+
+Every one passed review, a clean analyze and a green suite before it was found.
+
+| | Defect | Found by |
+|---|---|---|
+| A0, D-102 | migration ledger provenance gap — seven ledger versions, two committed files; then two migrations applied and never committed | making the ledger mechanical |
+| A1 | a legacy write path could create a rule with no `input_basis`, which the resolver then refused for ever | probing the boundary |
+| A2 | premises status was **not deterministic** — two open-ended rows both applicable on one date | probing the boundary |
+| D-093 | the shipped exclusion constraint **forbade the approved Room feature** | auditing the tree before writing Phase 4 code |
+| D-100 | value-band boundaries were editable in place, retroactively redefining what every rule referencing them applied to | auditing Slice 3 before mirroring it |
+| D-101 | four `app` functions left executable by client roles; the read projection unusable by every authorised user | the deploy invariants |
+| D-104 | `EnteredBasis` written and read through Dart's `.name` while both schemas store `inclusive_total` — every rule would have thrown on read | the first test to cross the boundary |
+| D-115 | **`revenue_create` had never successfully created an entry** — an ambiguous column in its own `on conflict` target | the first test to call it rather than the boundary around it |
+| D-116 | three revenue read rules required `revenue.view.all`, **a capability no role holds** | the same |
+| D-130 | a conflict was **unresolvable through the shipped path** — a re-applied correction carried the version it had already been refused on | the two-client acceptance |
+| D-131 | the detail panel and the ledger derived one fact two ways; the panel reported `Synced` for a sale in conflict | the Windows acceptance |
+| D-136 … D-139 | an expense could be moved **out of a closed month**; `transaction.correct.business_date` was granted and evaluated by nothing; a corrected date was not marked corrected | auditing the correction path |
+| D-142, D-145 | a single tab satisfied every mandatory financial reason — two documents voided and a closed period reopened with nothing on the record | probing all five acts |
+| D-154, D-155 | Storage accepted bytes for a voided parent the register RPC would refuse, stranding objects for ever; registered evidence could be overwritten | auditing the eight orphan objects instead of labelling them |
+| D-160 | the Windows ledger showed a **stale sync state indefinitely**, hidden since Slice 10 by an assertion reading a different surface | the Slice 13 acceptance |
+| D-162 | **TRUNCATE** survived a three-word revoke on four financial base tables | the Slice 14 closure audit |
+
+The pattern worth carrying forward: **most of these were found by asking what a rule
+actually evaluates to, not by reading it.** D-068, D-071, D-077, D-103, D-134, D-139, D-160
+and D-162 are all one family — a check that passed for a reason other than the one it
+stated.
+
+## 16 · Open defects at closure
+
+**None.** No known revenue correctness defect and no known revenue security defect remains.
+
+Not defects, and not counted as such: the D-146 staging-provisioning gate, the D-161
+synthetic/live evidence distinction, and the undefined Phase 6–8 scope. These are follow-up
+and governance items.
+
+## 17 · Release artefact status
+
+| | |
+|---|---|
+| Android | `build/app/outputs/flutter-apk/app-dev-debug.apk` — dev flavour, application id `in.krishnaimperial.mis.dev`, `config/dev.json` only, debug-key signed |
+| Windows | `build/windows/x64/runner/Release/` — `krishna_mis.exe` with its plugin DLLs and `data/app.so` |
+
+Both rebuilt **without acceptance identity defines** and scanned clean, with the production
+attachment adapters and the revenue surfaces verified present in the compiled payloads.
+
+**These are development acceptance artefacts. They are not production releases.** Phase 9
+owns production signing, the Android AAB and Play distribution, the Windows installer, the
+production endpoint and configuration, and production release hardening.
+
+## 18 · Domain note
+
+`hotelkrishnaimperial.in` exists and may later serve branded support and deployment
+endpoints — privacy and support pages, Windows downloads, app and deep-link metadata, or
+branded production backend routing where supported. **No Phase 4 architecture depends on
+it**, and none should: this belongs to the later deployment roadmap, not to revenue
+financial logic.
+
+## 19 · Phase 5 handoff contract
+
+**Phase 5 may treat these as stable.**
+
+*Revenue* — the canonical accepted revenue components, and `revenue_period_contributions`
+with exact `business_unit_id`, `revenue_category_id`, `pnl_period_key`, `gross_minor`,
+`tax_minor` and `net_minor` in integer paise, one row per component, plus `voided_at`.
+
+*Expenses* — the existing `expense_period_contributions` architecture, unchanged.
+
+Both projections share one vocabulary: `org_id`, `business_unit_id`, a `pnl_period_key` in
+`YYYY-MM`, integer minor units, and `voided_at` with the same meaning — the row stays, the
+aggregate excludes. **No second financial-date or period model is required.**
+
+**Phase 5 must not:** re-run tax rules; infer GST from revenue totals; include pending,
+rejected or conflicted attempts; reinterpret the business date; or mutate closed history.
+
+**And one thing Phase 5 will need that Phase 4 did not build:** there is **no revenue
+pull**. A device's local cache holds only what that device recorded, so the local projection
+is honest about this device and is not a complete reporting cache; the server projection is
+the authoritative one. A dashboard that must be correct offline on a fresh installation
+needs a pull first (D-158).
+
+### The aggregation, conceptually
+
+```
+        Crystal Canopy Rooftop, one period
+          Restaurant gross + Nandbhog gross   = Total Sales
+          Restaurant tax   + Nandbhog tax     = GST
+          Restaurant net   + Nandbhog net     = Net Sales
+
+        Hotel Krishna Imperial, the same over Room + Banquet
+
+        Net Sales − canonical Expense contributions = Operating Profit
+```
+
+Summed from stored paise, never by re-applying a rate to a total. **Phase 4 implements none
+of this**, and no calculation screen exists.
+
+## 20 · Roadmap after Phase 4
+
+| Phase | Status |
+|---|---|
+| 4 — Revenue Engine | **COMPLETE** |
+| 5 — Ledger & Reporting Engine (P&L / MIS reporting) | next; named in spec §34, not yet planned in slices |
+| 6 — Dashboard & Analytics | **named in spec §34 only. To be formally planned** |
+| 7 — Export & Printing | **named in spec §34 only. To be formally planned** |
+| 8 — Production Hardening | **named in spec §34 only. To be formally planned** |
+| 9 — Distribution | responsibilities already documented (signing, AAB, installer, production configuration) |
+
+Phases 6–8 have headline names and **no recorded scope or slice plan**. Nothing here invents
+one. A roadmap-planning session may follow this closure.
+
+## 21 · Closure verification
+
+| Item | Result |
+|---|---|
+| `dart format --set-exit-if-changed` | clean, 197 files |
+| `flutter analyze` | **No issues found** |
+| Host suite | **1,192 tests, all passing** |
+| Live revenue boundary suite | **81**, 1 deliberately skipped |
+| Live expense suite | **50** |
+| Live two-client acceptance | **10** |
+| Live backend phase chain | 6 phases |
+| Android device phases (Slice 13, current code) | **12** |
+| Windows device phases (Slice 13, current code) | **10** |
+| Migration audit and schema parity | **38** host tests |
+| Secret scan — tree, git history, built artefacts | clean, controls passing |
+| Applied migrations / committed files | **72 / 65**, every version accounted for (A0) |
+| Working tree | clean |
+
+**Freshly rerun for this slice:** the full host suite, the migration and API-surface guards,
+the live revenue and live expense suites (after the D-162 revoke, to prove no read path
+broke), and the secret scan over tree, history and rebuilt artefacts. The Android and
+Windows device phases were run at Slice 13 on this same code; Slice 14 changed no
+application code, so they are reported with their Slice 13 provenance rather than re-claimed.
+
+### Final baseline on `krishna-mis-dev`
+
+4 live rules · 0 bands · 0 subtypes · 0 premises statuses · 0 closed periods · 0 active
+revenue · 0 active acceptance expenses · 0 stranded objects · metadata ↔ storage exact
+(132/132 revenue, 46/46 expense) · 5 authority grants restored · the three historical
+whitespace evidence rows untouched.

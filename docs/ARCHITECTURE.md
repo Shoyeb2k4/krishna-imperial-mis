@@ -5,10 +5,11 @@ Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
-Status: **Sections 1–12 proposed (Phase 0, revised); sections 13–16, 18–23 and 24 describe what is
-built and verified; section 17 is the approved Phase 4 plan.** Sections 6, 5.3 and 8 carry the project lead's mandated corrections.
+Status: **Sections 1–12 proposed (Phase 0, revised); sections 13–16 and 18–26 describe what
+is built and verified; section 17 is the Phase 4 *plan*, since built — read §18–§26 for what
+shipped.** Sections 6, 5.3 and 8 carry the project lead's mandated corrections.
 Implementation status is tracked in `PROJECT_STATUS.md`.
-Last updated: 2026-09-06
+Last updated: 2026-09-07 — Phase 4 closed
 
 ---
 
@@ -1004,15 +1005,18 @@ reported as pending rather than passed.
 
 ---
 
-## 17. Revenue Engine — approved plan, not built (2026-08-31)
+## 17. Revenue Engine — the approved plan, since built (2026-08-31)
 
-**Status: planning baseline only.** No Phase 4 code, migration, table, RPC, widget,
-provider, test or dependency exists. This section records the architecture the project lead
-approved so it survives the conversation that produced it, and so the next session starts
-from the design rather than re-deriving it. Decisions D-078 … D-087.
+**Status: this is the planning baseline, and it is now history.** When it was written no
+Phase 4 code, migration, table, RPC, widget, provider, test or dependency existed, and the
+phase was blocked on verified revenue tax and billing configuration. Both statements were
+true then and neither is true now: the configuration arrived on 2026-09-01 and **Phase 4 is
+complete** (2026-09-07).
 
-Phase 4 is **blocked on verified revenue tax and billing configuration** — see
-`PROJECT_STATUS.md`.
+It is kept because the design it records is what the engine was built to, and because the
+places where the build diverged from it are the most useful thing on the page. **For what
+shipped, read §18 to §26**, which are as-built and win wherever the two disagree.
+Decisions D-078 … D-087.
 
 ### 17.1 The shape, and why it is not a flat header
 

@@ -394,11 +394,17 @@ to a person.
       acceptance ran against a picker that did not exist. Do not report this line from a
       wiring assertion, and do not report it from the expense run.
 
-## M. Revenue write gate (planned — Phase 4, not built)
+## M. Revenue write gate
 
-**Nothing in this section is implemented.** It is recorded with the approved Phase 4
-architecture (D-078 … D-087) so the gate exists before the code does, rather than being
-written afterwards to describe whatever was built.
+**Corrected 2026-09-07.** This section used to open *"nothing in this section is
+implemented"*, and it was written deliberately ahead of the code so the gate would exist
+before there was anything to describe. **Phase 4 is complete**: every item below is
+implemented and was exercised in the Slice 13 acceptance on both platforms against
+`krishna-mis-dev`.
+
+It stays a **release** gate rather than becoming a record of what passed once — that is
+what `PROJECT_STATUS.md` is for. The boxes are unticked because a checklist is run per
+release, not per phase.
 
 ### M.1 Tax resolution
 
