@@ -5566,3 +5566,64 @@ What is *not* run live is the variant where the rule itself moved underneath the
 **Neither is a gap in the product.** Both are proven; what differs is where. Stating that
 plainly is the point, because a report that said "multi-band acceptance: PASS" without this
 paragraph would be describing a live proof that did not happen.
+
+
+## D-162 — There are four write privileges, and the revoke named three
+**Date:** 2026-09-07 · **Status:** Accepted — a security defect found by the Phase 4
+closure audit, in the Phase 3 boundary
+
+**The finding.** Asking the live catalogue what a client may actually do — rather than
+reading the migrations that were supposed to have closed it — returned 24 write grants:
+
+```
+        expenses, expense_allocations,                   TRUNCATE
+        expense_period_allocations, expense_attachments  to authenticated
+
+        expense_document, expense_period_contributions,  INSERT, UPDATE,
+        revenue_document, revenue_component_detail,      DELETE, TRUNCATE
+        revenue_period_contributions                     to authenticated
+```
+
+`20260829090300_expense_rls.sql` wrote `revoke insert, update, delete … from
+authenticated`. **There are four write privileges.** Supabase grants ALL on public tables
+to `authenticated` by template, so `TRUNCATE` survived the revoke on four tables holding
+financial history — and **TRUNCATE does not consult row level security at all.**
+
+**The revenue side was clean**, because Slice 11 used
+`revoke all on table … from public, anon, authenticated`. The correct idiom was already in
+the repository; Phase 3 used the enumerating form and lost a privilege inside it.
+
+**And the guard enumerated the same three words.** The host invariant searched the
+migrations for `grant (insert|update|delete)` and never asked what a client was left
+*holding*. It could not have caught this. That is D-139 exactly — a check written against
+the shape somebody expected the defect to take, rather than against the property that
+matters.
+
+**Reachability, stated honestly.** PostgREST issues SELECT, INSERT, UPDATE and DELETE; it
+has no way to express TRUNCATE, and no client holds a SQL connection. So nothing shipped
+could reach it. **That is not the standard this project uses** — D-044 refused exactly this
+reasoning when nineteen RPCs were reachable by `anon` and every one happened to fail closed:
+*happens to be unreachable* is a different claim from *cannot be granted*.
+
+**Decision.** Everything is revoked from both client roles on the nine relations, and
+exactly the reads the product performs are granted back. `public.expenses` gets nothing
+back, because the header total on a shared bill is the other property's share and the
+projection is the only way in (D-062). The invariant is restated over **all four
+privileges** and over the whole `public` schema rather than over a list somebody must
+remember to extend — at deploy time, and in the host suite.
+
+A second deploy-time assertion checks that the eight projections are still readable and
+that `public.expenses` still is not, so a migration that closes the boundary by breaking
+the application fails instead of shipping. The live revenue and expense suites were re-run
+afterwards: 81 and 50, green.
+
+**The five projections** carried the whole default `GRANT ALL`. Those grants are inert — a
+view over a join is not auto-updatable, and TRUNCATE on a view is meaningless — and they
+are revoked anyway. A privilege nobody can use is still a privilege nobody reviewed.
+
+**Recorded about the writing of it, because it is the same lesson one level up.** The first
+attempt to append this entry was made through a shell heredoc, and every backticked span in
+it was silently executed as a command substitution and replaced with nothing — a decision
+record about an over-broad grant, written by a mechanism that quietly deleted a third of its
+own evidence. Caught by reading the file back rather than trusting that the write succeeded,
+which is D-142's rule: *a restore is not restored until it has been read back.*

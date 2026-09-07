@@ -71,7 +71,9 @@ Every box must be genuinely verified, not assumed. Anything unverified is report
       (`git log -p` scanned; APK/exe inspected for keys)
 - [ ] Only the publishable/anon key ships in clients; service-role key never leaves the server
 - [ ] RLS enabled on every table; deny tests pass
-- [ ] Storage buckets private; signed URLs scoped and expiring
+- [ ] Storage buckets private, and read through Storage own authenticated download under
+      the parent document authority. **No signed-URL issuer exists** and none is required
+      (D-151); an earlier wording here named one
 - [ ] Local database encryption active on both platforms; key in OS secure storage
       (Android Keystore-backed; Windows **user-scope DPAPI**, verified per D-036 —
       re-verify after any `flutter_secure_storage` upgrade, because the package ships a
@@ -181,7 +183,9 @@ development. A staging or production release repeats every line.
       service-role JWT and a connection string at start-up; confirm the build starts
 - [ ] No service-role key, database password, JWT signing secret or connection string
       exists on the build machine's project configuration
-- [ ] Storage buckets private; signed URLs scoped and expiring
+- [ ] Storage buckets private, and read through Storage own authenticated download under
+      the parent document authority. **No signed-URL issuer exists** and none is required
+      (D-151); an earlier wording here named one
 
 ### K.2 Migrations
 

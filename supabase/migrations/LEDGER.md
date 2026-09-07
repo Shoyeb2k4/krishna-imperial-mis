@@ -182,6 +182,23 @@ excludes it (D-006).
 
 Verified byte-for-byte against `supabase_migrations.schema_migrations.statements` (D-056).
 
+## Phase 4 closure corrective - the fourth write privilege
+
+| Ledger version | Ledger name | Committed file |
+|---|---|---|
+| 20260907021741 | `clients_hold_no_write_privilege_at_all` | `20260907021741_clients_hold_no_write_privilege_at_all.sql` |
+
+The Phase 3 RLS migration revoked `insert, update, delete` and left **TRUNCATE**
+standing on four financial base tables, because Supabase grants ALL to `authenticated`
+by template - and TRUNCATE does not consult row level security. Not reachable through
+PostgREST, which has no way to say it, but a privilege nobody reviewed on four tables
+that hold financial history. The five projections carried the whole default GRANT ALL
+as well. Everything is revoked and exactly the reads the product performs are granted
+back, with the invariant restated over all four privileges and over the whole schema
+rather than over a list (D-162).
+
+Verified byte-for-byte against `supabase_migrations.schema_migrations.statements` (D-056).
+
 ## The full applied ledger, in order
 
 ```
@@ -256,4 +273,5 @@ Verified byte-for-byte against `supabase_migrations.schema_migrations.statements
 20260906121007 attachment_upload_lifecycle
 20260906121034 api_surface_invariant_attachment_lifecycle
 20260906124407 revenue_period_contributions
+20260907021741 clients_hold_no_write_privilege_at_all
 ```

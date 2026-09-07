@@ -398,7 +398,11 @@ Fonts are bundled assets, not network-loaded, so the apps render identically off
 - All financial writes flow through `SECURITY DEFINER` RPCs that re-check capability,
   unit scope, period state, edit window and row version server-side. Direct table writes
   from clients are not granted for financial tables.
-- Storage buckets are private; access is via signed URLs scoped to the org and expiring.
+- Storage buckets are private. **Corrected 2026-09-07:** this line used to say access is
+  "via signed URLs scoped to the org and expiring". No signed-URL issuer was ever built,
+  for either document kind: reading an object back is Storage own authenticated download,
+  decided by the bucket policy against the parent document authority (D-063, D-148,
+  D-151). The private-bucket requirement is unchanged; the mechanism named was not.
 - Client capability checks shape the UI only. The backend assumes the client is hostile.
 - No secrets in the repository; CI secrets are separate from production signing material.
 

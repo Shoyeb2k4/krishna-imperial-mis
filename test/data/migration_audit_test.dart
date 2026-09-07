@@ -772,19 +772,24 @@ void main() {
     );
 
     test('clients hold no write grant on any table', () {
+      // **Four privileges, not three.** Phase 3 revoked insert, update and delete and
+      // left TRUNCATE standing on four financial base tables, because Supabase grants
+      // ALL to  by template - and TRUNCATE does not consult RLS at all.
+      // This guard enumerated the same three words, so it could not see what the
+      // revoke had missed. Found by asking the live catalogue instead (D-162).
       final rls = _migrations()
           .firstWhere((m) => m.name.endsWith('_rls.sql'))
           .sql;
       expect(rls, contains('revoke all on public.%I from anon, authenticated'));
       expect(
-        RegExp(r'grant (insert|update|delete)').hasMatch(rls),
+        RegExp(r'grant (insert|update|delete|truncate)').hasMatch(rls),
         isFalse,
         reason: 'every mutation must travel through a SECURITY DEFINER RPC',
       );
       for (final m in _migrations()) {
         expect(
           RegExp(
-            r'grant (insert|update|delete)[^;]*to (anon|authenticated)',
+            r'grant (insert|update|delete|truncate)[^;]*to (anon|authenticated)',
           ).hasMatch(m.sql),
           isFalse,
           reason: '${m.name} grants a client direct write access',

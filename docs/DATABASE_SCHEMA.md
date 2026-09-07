@@ -5,12 +5,29 @@ Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
-Status: **Proposed — Phase 0 revised.** No migration has been written or applied.
-Last updated: 2026-08-30
+Status: **Part proposal, part as-built.** Corrected at Phase 4 closure, 2026-09-07.
+Last updated: 2026-09-07
 
-This is the normalised proposal for review before implementation. Table and column names
-may still change; the *shape* is what matters. Postgres is the system of record; the local
-Drift/SQLite schema mirrors it with the same names, plus local-only sync columns.
+**How to read this document.** It began as a Phase 0 proposal and has grown as-built
+sections beneath it. That mixture is deliberate — the proposal is the record of what was
+originally designed, and the difference between the two is often the most useful thing on
+the page — but it means **the later section wins** wherever the two disagree:
+
+| Concern | Authoritative section |
+|---|---|
+| Expenses | *Phase 3 — the expense engine, as built* |
+| Revenue, tax resolution, contributions | *Phase 4 — the Revenue Engine, as built* |
+| Revenue attachments | *Phase 4 Slice 11 — evidence for a sale, as built* |
+| Everything else | the numbered Phase 0/2 sections above |
+
+The header used to say *"No migration has been written or applied."* That was true when it
+was written; **71 migrations are applied to `krishna-mis-dev` and every one is accounted
+for by a committed file** (`supabase/migrations/LEDGER.md`, D-056, A0). Corrected here
+rather than left, because a status line nobody re-reads is how a document starts describing
+a system that no longer exists.
+
+Postgres is the system of record; the local Drift/SQLite schema mirrors it with the same
+names, plus local-only sync columns.
 
 Revision 1.1 adds: accrual date model, date-effective tax configuration, per-unit
 business-day cut-off, multi-entry revenue, mandatory unit scoping for non-Owner roles, and
@@ -197,6 +214,21 @@ Masters are **archived**, never deleted. `ON DELETE RESTRICT` on every referenci
 key makes orphaned history impossible.
 
 ## 4. Tax configuration — date-effective, per category
+
+> **Superseded in its shape by v1.2, and corrected here at Phase 4 closure (2026-09-07).**
+> What follows is the Phase 2 model: two resolution dimensions (category and date), a table
+> without the four conditional columns, and an exclusion constraint that D-093 found would
+> **refuse the approved Room feature** and which was therefore replaced. It is retained as
+> the record of what Phase 2 built; it is **not** the shipped shape.
+>
+> The shipped shape adds `input_basis`, `value_band_id`, `supply_subtype_id` and
+> `premises_status_code`; resolves over **five** bounded dimensions, zero-or-exactly-one,
+> refusing ambiguity rather than ranking it (D-079, D-094); and snapshots the resolved rule
+> onto the **component**, not onto the entry. See *Phase 4 — the Revenue Engine, as built*
+> at the end of this document, which is authoritative.
+>
+> Corrected because §4 read as current and no longer was — the same class of finding as the
+> phantom `expense_correct_business_date` (D-127, D-137).
 
 Spec §8.1. **No rate is ever hard-coded in application code.**
 
@@ -421,7 +453,10 @@ the expense it belongs to, and `rejected` because a terminal refusal must never 
 >
 > The sketch is retained rather than deleted because this document's Phase 0 sections are
 > the record of what was originally proposed, and the difference between the two is
-> instructive. **Neither is implemented**: no revenue table exists in `krishna-mis-dev`.
+> instructive. **Corrected 2026-09-07:** this line used to end "neither is implemented: no
+> revenue table exists in `krishna-mis-dev`", which was true when it was written and is
+> not now. The document-plus-components model is built, shipped and accepted across
+> Slices 2-13; the sketch below is the superseded one.
 
 ```sql
 -- Phase 0 sketch. Superseded by §6.1. Not built.
@@ -478,7 +513,7 @@ create index on revenue_entries (org_id, business_unit_id, revenue_category_id, 
   where status = 'active';
 ```
 
-### 6.1 The approved Phase 4 model — planned, not built
+### 6.1 The approved Phase 4 model — the planning baseline, since built
 
 > **Correction, 2026-09-05 — `business_date_source` was in this plan and was not built.**
 > The column appears in the approved shape below *and* in the Phase 0 sketch above it, and
@@ -1160,3 +1195,146 @@ same numbers for both documents, because they are not a per-document decision.
 
 Both verified byte-for-byte by hash against
 `supabase_migrations.schema_migrations.statements`.
+
+---
+
+## Phase 4 — the Revenue Engine, as built (2026-09-07)
+
+**Authoritative for revenue.** Where §4, §6 or §6.1 disagree with this section, this section
+is what ships. Those sections are retained as the record of what was proposed.
+
+### The canonical model
+
+```
+Revenue Entry  (one business unit, one revenue category, one business date)
+  └── Revenue Component  (1..n)   the accepted financial facts
+        entered amount + basis  ->  gross · tax · net
+        the tax rule actually resolved, snapshotted onto the component
+        the conditional facts that selected it
+
+Revenue Period Contributions     a DERIVED view over accepted components
+                                 never a second writable financial truth source
+```
+
+A routine day is **one** component. A day that genuinely carries two treatments is two.
+Header totals are **not stored** on either side: Postgres derives them in
+`revenue_document`, SQLite in `revenue_entry_totals`, so there is no second copy to drift
+(D-078).
+
+### `revenue_tax_rates`, as shipped
+
+The Phase 2 shape in §4 plus the four v1.2 columns, and **without** the exclusion constraint
+that section shows:
+
+```sql
+revenue_tax_rates (
+  id, org_id, business_unit_id, revenue_category_id,
+  rate_bp int not null check (rate_bp between 0 and 10000),
+  treatment text not null check (treatment in ('inclusive','exclusive','none')),
+  input_basis text not null check (input_basis in ('inclusive_total','pre_tax')),  -- A1
+  effective_from date not null, effective_to date null,
+  value_band_id        uuid null,   -- the four conditional discriminators;
+  supply_subtype_id    uuid null,   -- a NULL means "this rule does not depend
+  premises_status_code text null,   -- on that dimension", i.e. it matches every value
+  note, archived_at, created_by, created_at, updated_at, row_version, change_seq
+)
+```
+
+**The `EXCLUDE USING gist` constraint in §4 is gone.** D-093 found it would refuse two live
+Room bands — which is by construction two rules for one category over the same dates, and
+therefore the approved feature. It is replaced by a collision function comparing **tariff
+ranges rather than band ids**, a validating trigger, and a transaction-level advisory lock
+keyed on `(org, category)` so two concurrent writers cannot commit an ambiguous pair
+(D-095). `=` treats two NULLs as non-conflicting, which is the opposite of what a wildcard
+means, so one exclusion constraint could never have expressed the doctrine.
+
+### Resolution — five bounded dimensions, zero-or-exactly-one
+
+| Dimension | Where the fact comes from |
+|---|---|
+| revenue category | the entry |
+| effective date | the entry's **business date** (D-067) |
+| value band | **selected** by the operator on the component, never derived from its amount (D-094) |
+| supply subtype | chosen on the component where a category invoices more than one kind of supply |
+| premises tax status | configured per business unit, date-effective, never inferred |
+
+Zero matches refuses. Exactly one resolves. **More than one is a configuration defect and
+is refused** — there is no specificity ranking, and a wildcard *collides* with a specific
+rule rather than losing to it. A missing rule is never a zero rate, and *"no rule
+configured"* stays permanently distinct from a configured `0%` and from a treatment of
+`none`.
+
+**Not a general expression language.** A sixth dimension is a migration and a recorded
+decision.
+
+### `revenue_entries` and `revenue_components`, as shipped
+
+```sql
+revenue_entries (
+  id, org_id, txn_number, financial_year,          -- KI-REV-…, server-issued on acceptance
+  business_unit_id, revenue_category_id,
+  business_date date not null,
+  pnl_period_key text not null
+      check (pnl_period_key = to_char(business_date, 'YYYY-MM')),
+  business_date_source text not null
+      check (business_date_source in ('derived','corrected')),   -- D-143, server-owned
+  captured_at, entry_kind, source_reference, notes,
+  created_by, created_at, updated_by, updated_at,
+  voided_at, voided_by, void_reason, row_version, change_seq
+)
+
+revenue_components (
+  id, org_id, revenue_entry_id,
+  entered_amount_minor, entered_basis,             -- what the operator typed, and as what
+  gross_amount_minor, tax_amount_minor, net_amount_minor
+      check (net_amount_minor = gross_amount_minor - tax_amount_minor),
+  tax_rule_id, tax_rate_bp, tax_treatment,         -- the snapshot
+  value_band_id, value_band_label,
+  value_band_floor_minor, value_band_ceiling_minor,
+  supply_subtype_id, supply_subtype_label, premises_status_code,
+  created_at
+)
+```
+
+**There is no `business_date_source` value `manual` for revenue** — no revenue surface
+offers a trading day at entry, so the value would have no producer. Expenses have all three.
+
+### `revenue_period_contributions` — derived, not stored
+
+A `security_barrier` **view**, one row per component, scoped by `revenue.view` per business
+unit, with the base tables ungranted. The full definition and the reasoning are in §6.1's
+successor above and in `ARCHITECTURE.md` §26; what matters here is why it is not a table:
+
+> `expense_period_allocations` is a table because a cross-period split is a **decision a
+> person made** that exists nowhere else (D-034). A revenue contribution carries no such
+> decision — its period is the entry's stored `pnl_period_key` under a CHECK, its money the
+> component's stored gross, tax and net. Storing a copy would add nothing but the
+> obligation to maintain it through every correction, edit, void and replay (D-157).
+
+Three exclusions are applied before any filter: `voided_at IS NULL`,
+`scope_revoked_at IS NULL`, and **`txn_number IS NOT NULL`** — an unaccepted sale is an
+attempt, not revenue (D-158).
+
+### The write boundary
+
+`authenticated` holds **no `SELECT`** on `revenue_entries` or `revenue_components`, and no
+write grant on either. Every financial write goes through a reviewed `SECURITY DEFINER`
+RPC — and there are exactly three:
+
+```
+        revenue_create      revenue_update      revenue_void
+```
+
+There is **no** `revenue_correct_business_date` and no fourth endpoint. A business-date
+correction is an ordinary `revenue_update` that the server detects by comparing dates,
+which then requires `transaction.correct.business_date`, requires a non-blank reason,
+writes `business_date_source = 'corrected'` and emits its own audit action. Both the
+**source** and the **target** period must be open.
+
+### Local mirror
+
+Drift **v15**. `revenue_entries`, `revenue_components`, `revenue_attachments`, the three
+reference caches (`revenue_value_bands`, `revenue_supply_subtypes`,
+`business_unit_tax_statuses`), `revenue_config_snapshots`, the `revenue_entry_totals` and
+`revenue_period_contributions` views, and `ix_revenue_entries_reporting`. Header totals and
+contributions are derived on this side too; neither view is writable.
