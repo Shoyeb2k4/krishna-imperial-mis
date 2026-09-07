@@ -5627,3 +5627,313 @@ it was silently executed as a command substitution and replaced with nothing —
 record about an over-broad grant, written by a mechanism that quietly deleted a third of its
 own evidence. Caught by reading the file back rather than trusting that the write succeeded,
 which is D-142's rule: *a restore is not restored until it has been read back.*
+
+---
+
+# Phase 5 — P&L / MIS Reporting: the project lead's ratified decisions (2026-09-07)
+
+The Phase 5 planning audit put eight product questions and two architecture corrections to
+the project lead. All ten came back decided. They are recorded here **before** Slice 1
+begins, so no later slice has to stop and ask again.
+
+Recorded with them are the two findings the audit proved against `krishna-mis-dev` and the
+shipped test suite — the `expense.view.own` predicate (E1) and the canonical-only asymmetry
+between the two engines (E2) — because the decisions that close them are D-169 and D-168.
+
+## D-163 — A P&L refuses rather than renders half
+**Date:** 2026-09-07 · **Status:** Accepted (project-lead decision, D1)
+
+**Context.** A P&L is Net Sales minus Expenses. Both sides are scoped independently:
+revenue by `revenue.view`, expenses by `expense_visible_units()`. Nothing stopped the two
+from disagreeing, and the audit found a principal for whom they do — a Data Entry user
+holds expense visibility and **no** `revenue.view` at all.
+
+Rendering that would produce Expenses against a revenue side of zero: **a large negative
+Operating Profit that is not a restriction but a lie**, and one a manager has no way to
+detect from the figure. The same hazard runs the other way for a principal with revenue and
+no expenses, where the profit is overstated by the whole cost base.
+
+**Decision.** A report **refuses**. It must never render Revenue without the complete
+authorised Expense side, nor Expenses without the complete authorised Revenue side, and it
+must never substitute an inaccessible side with zero. The refusal is **structured** — a
+typed report-access refusal naming which side could not be established — in the shape
+`RevenueRefusal` already uses (D-113), so the surface can say something a person can act on
+rather than *"Cannot load report"*.
+
+**Alternatives rejected:** rendering the accessible side alone with a caption (the figure is
+still wrong, and a caption is not a guard); showing zero for the inaccessible side (the
+failure mode this decision exists to forbid).
+
+**Consequences.** The refusal is part of the report contract rather than a presentation
+concern, so it belongs in the result type and is decided server-side as well as locally
+(D-037). It shapes the reporting RPC's signature, which is why it had to be settled before
+the boundary was written rather than after.
+
+## D-164 — The capability intersection a P&L requires
+**Date:** 2026-09-07 · **Status:** Accepted (project-lead decision, D2)
+
+**Decision.** A **business-unit P&L** requires, for that unit, the intersection of:
+
+```
+        reports.view   AND   revenue.view   AND   expense.view.all
+```
+
+A **consolidated organisation P&L** requires the corresponding **unscoped** authority for
+all three.
+
+**`expense.view.own` does not qualify for a P&L**, and the reason is arithmetic rather than
+policy: it cannot establish a complete expense denominator. A profit computed from the
+subset of costs one person happened to enter is not that property's profit, and it would
+look exactly like one.
+
+**Role names appear nowhere in this.** Owner, Manager and Accountant behaviour is a
+consequence of the capabilities their bundles hold, evaluated per business unit (D-025,
+§13.1). Nothing in the reporting path may branch on a role code.
+
+**Consequences.** `reports.view` finally acquires an evaluator, which removes it from
+D-139's exemption list — deliberately, in the migration that owns the reporting boundary,
+not as a side effect. `reports.export` and `reports.print` stay exempt until Phase 7.
+Enforcement is server-side in the projection predicates and the reporting RPC; the client's
+copy shapes the interface and is not the boundary.
+
+## D-165 — The reporting week is Monday to Sunday, on the business date
+**Date:** 2026-09-07 · **Status:** Accepted (project-lead decision, D3)
+
+**Context.** Spec §10 names *This Week* and *Last Week* among the periods reporting must
+derive. **No definition of a week existed anywhere in the repository** — not in the spec,
+not in `BusinessDate`, not in any migration. The audit refused to guess one.
+
+**Decision.** A reporting week runs **Monday through Sunday**, and its boundaries are
+**canonical business dates** (D-019, D-067) — never UTC timestamps and never the device
+calendar. A sale rung up at 01:00 on a Monday belongs to the previous week, because its
+business date does.
+
+**Consequences.** The week lives in the period vocabulary in `domain/finance` alongside the
+month and the financial year, and is derived from `BusinessDate` rather than from
+`DateTime.weekday` over an instant. Boundary tests at Sunday 23:59, Monday 00:01 and across
+the 05:00 cut-off are mandatory, in the shape migration 0033 established for the edit
+window.
+
+## D-166 — Phase 5 includes read-only transaction drill-down
+**Date:** 2026-09-07 · **Status:** Accepted (project-lead decision, D4)
+
+**Decision.** Spec §11's traceability requirement is Phase 5 scope in full:
+
+```
+        P&L → category / hierarchy breakdown → underlying canonical transactions
+            → the existing transaction detail surface
+```
+
+**Reports are read-only.** Drill-down navigates to the transaction surfaces that already
+exist; it does not reimplement editing, correction or void inside reporting. A second write
+path to a financial document is the cost this project has paid twice (D-072a, D-124), and
+reporting is not going to be the third.
+
+Charts, trends, period-over-period deltas and analytics navigation remain **Phase 6**.
+
+**Consequences.** Slice 10 owns it. The document fetch reuses `ExpensePull.pullOne` and
+`RevenueGateway.fetchComponents` on demand for the one document a manager opened, rather
+than widening the reporting cache to carry document detail it does not need (D-171).
+
+## D-167 — There is no provisional P&L in V1
+**Date:** 2026-09-07 · **Status:** Accepted (project-lead decision, D5) — settles what
+D-158 deferred
+
+**Decision.** Canonical P&L contains **only server-accepted financial facts**. Pending,
+rejected, conflicted and quarantined work stays visible in the transaction workflows, where
+an operator can act on it, and contributes **zero** to management P&L.
+
+**No second profit vocabulary is created.** D-158 recorded that a labelled *"local —
+including N unsynced"* operational figure is a real idea and deliberately did not invent
+one; the answer is that V1 does not have one. A softer definition of revenue with nobody's
+name on it is worse than an honest refusal, and the freshness vocabulary (spec §21.4)
+already tells a manager whether they are looking at everything.
+
+## D-168 — Canonical P&L excludes pending expense attempts
+**Date:** 2026-09-07 · **Status:** Accepted (project-lead decision, D6) — closes finding E2
+
+**The defect, proven by the shipped suite rather than by reading it.** The two engines
+disagreed about what counts as revenue and what counts as a cost:
+
+```
+        revenue_contribution_test    "a conflicted or rejected attempt contributes nothing"
+        expense_repository_test:328  save(simpleExpense())  -> createLocally ONLY,
+                                     never synced, txn_number NULL
+                                     contributionTotal('2026-06') == Rs 200
+```
+
+`RevenueRepository._contributionPredicate` applies three exclusions — voided, scope-revoked
+and **canonical-only** (`txn_number IS NOT NULL`). `ExpenseRepository.contributionTotal`
+applies the first two and not the third.
+
+**Combined into a P&L, that understates Operating Profit systematically and silently**: it
+subtracts costs the server has never accepted while refusing to add the sales beside them.
+Nothing would have failed; the figure would simply have been wrong in one direction.
+
+**Decision.** The correction is approved even though it changes figures the shipped code
+reports today. One canonical reporting semantic for both engines: an amount contributes only
+if it is **server-accepted, not voided, authorised for reporting, and not locally
+scope-revoked or quarantined.** Everything else contributes zero.
+
+**Canonical acceptance is read from the authoritative document state**, never inferred from
+sync UI text. `txn_number` is the marker on both engines: it is issued by the server on
+acceptance and by nothing else, it is `NULL` on every locally created document (a check
+constraint ties it to `financial_year`), and no client can invent one (D-008, D-085).
+
+## D-169 — `expense.view.own` means the expenses that user created
+**Date:** 2026-09-07 · **Status:** Accepted (project-lead decision, D7) — closes finding E1
+
+**The defect, proven against `krishna-mis-dev`.** The capability is described in the
+catalogue as *"View expenses this user created"*. `expense_visible_units()` returns the
+units where the caller holds `expense.view.all` **or** `expense.view.own`, and **no read
+path anywhere applies a `created_by` predicate** — verified by exhaustive search of every
+policy, view and function in `public` and `app`.
+
+Read as the one Data Entry identity on the development project, holding `expense.view.own`
+on Crystal Canopy and nothing else:
+
+```
+        expense_document               787 rows visible,  724 created by other people
+        expense_period_contributions   865 rows visible,  802 created by other people
+        expense_allocations            787 rows visible,  724 created by other people
+```
+
+Including every expense the Owner and both managers had recorded. The capability that reads
+*"expenses this user created"* was, in practice, *"every expense in your unit"*.
+
+**Decision.** It means what it says: **expenses created by that user, within otherwise
+authorised scope.** `expense.view.all` behaviour is unchanged, and the fix may only narrow —
+no read that is refused today becomes permitted by it.
+
+**The shape of the fix, and why the unit set could not simply be edited.** Ownership is a
+property of a *document*; `expense_visible_units()` answers a question about *units*, and a
+set of unit ids cannot express "mine". The two questions are therefore separated:
+
+| | |
+|---|---|
+| `expense_visible_units()` | **unchanged** — whose *lines* may I see, per unit |
+| `public.may_read_expense(id)` | **new** — may I see this *document* at all |
+
+and the document predicate is `AND`-ed into every read path, because
+`expense_allocations_read` is line-level and would otherwise still hand a `view.own` holder
+another person's allocation rows.
+
+**Every consumer was enumerated before the predicate moved**, as the brief required —
+the two child-table policies, the `expenses` policy, four expressions inside
+`expense_document`, `expense_period_contributions`, `expense_attachments_read`,
+`may_read_expense_attachments` and, through it, `may_attach_to_expense` and the Storage
+policies.
+
+**One behavioural consequence, stated rather than discovered later:** a Data Entry user can
+now attach evidence only to documents they created. Attaching to a manager's expense was
+never a designed workflow, and it followed from the defect rather than from a decision.
+
+**Recorded and deliberately not changed:** `public.expense_sees_whole_org()` is on the
+reviewed API surface, granted to `authenticated`, and is **called by nothing** — no policy,
+no view, no function, no client code. A fifth instance of the family D-068, D-071, D-077,
+D-103 and D-116 record. It is outside this slice's four approved findings and removing it
+changes the reviewed surface, so it is reported rather than removed in passing (D-127).
+
+## D-170 — Reporting retention is the current and previous financial year, and "not
+downloaded" is not zero
+**Date:** 2026-09-07 · **Status:** Accepted (project-lead decision, D8)
+
+**Decision.** The canonical offline reporting cache retains the **current financial year and
+the previous one**, for the caller's authorised scope. Older ranges are fetched on demand.
+
+**An older range that has never been downloaded, on a device that is offline, returns an
+explicit unavailable state.** It does not return zero, and it does not present itself as a
+current report. Those are three different answers and only one of them is true.
+
+There is **no reporting TTL**. A report stays useful as *"As of 6 Sep, 7:15 pm"*; age is
+disclosed, not enforced. D-112 is not reused — it governs new offline revenue *creation* and
+is a tax-correctness gate, which is a different concept from whether a figure may be read.
+
+**Consequences.** The retention window bounds the reporting delta pull and the local
+database's ceiling (spec §9, §27). *Unavailable* joins the freshness vocabulary as a state
+in its own right, distinct from spec §21.4's three, because those describe how current a
+figure is and this one says there is no figure.
+
+## D-171 — The reporting cache is its own authority class, not rows in the transaction tables
+**Date:** 2026-09-07 · **Status:** Accepted (project-lead architecture correction A)
+
+**Context.** The audit recommended pulling canonical contributions into the local read
+model. The obvious implementation — inserting remote documents into the existing local
+`expenses` / `revenue_entries` tables — is wrong, and the project lead stopped it before it
+was built.
+
+**Decision.** Server-owned accepted contribution facts live in a **dedicated canonical
+reporting cache**, separate from the transactional tables.
+
+**Why the tables cannot be shared.** They hold a different authority class. A local
+transaction row can be pending, rejected, conflicted, quarantined or locally created and
+never sent — states that belong to *this actor on this device* and that D-070, D-074 and
+D-158 all reason about. A reporting row is a **server-owned canonical fact** with no actor
+and no local state at all. Mixing them would mean every reporting query re-deriving which
+rows are canonical, on tables where the answer varies per row and per user — which is
+exactly the arrangement that produced E2.
+
+The cache must support authority scope, the D-070 confirmed-revocation purge, D-074
+user-switch isolation, restart, offline reads, correction **replacement**, void propagation
+and bounded retention (D-170). It is classified explicitly under `CacheClassification` and
+never lands in a generic bucket.
+
+**It is not a second writable financial truth source.** Nothing but the reporting pull
+writes it, no client edits it, and the canonical server contributions remain authoritative.
+
+## D-172 — A delta watermark is proven, not assumed
+**Date:** 2026-09-07 · **Status:** Accepted (project-lead architecture correction B) —
+**the proof is owed by the reporting-sync slice, not by Slice 1**
+
+**Context.** The audit proposed a document-grain delta keyed on `expenses.change_seq` and
+`revenue_entries.change_seq`, reasoning that a correction or void bumps the parent. That
+reasoning is plausible and was not tested.
+
+**Decision.** It must be **proven behaviourally before the pull is implemented**, on both
+engines. Take a canonical document whose reporting contribution can legitimately change
+through an allocation or accounting-period mutation, and observe `change_seq` on the parent,
+on `expense_allocations` and on `expense_period_allocations`, before and after.
+
+* If every reporting-relevant child mutation reliably advances the parent, that invariant is
+  documented **and permanently tested**, because an invariant nothing evaluates is a comment
+  (D-068, D-071, D-077).
+* If it does not, a parent-only watermark is **invalid** and must be replaced by an
+  authoritative effective generation — the maximum relevant parent/child generation, or a
+  server-side reporting-delta boundary that names every document whose contribution set
+  changed.
+
+**The required property, stated once so it can be tested:** every reporting-relevant
+canonical mutation produces a generation a scoped delta pull can observe **exactly once, or
+idempotently more than once, but never miss.**
+
+Revenue receives the analogous proof even though its mutation model is believed to bump the
+parent — "believed" is the word that makes the proof necessary. Note that
+`revenue_components` carries no `change_seq`, `row_version` or `updated_at` at all, so the
+revenue delta has no child generation available to fall back on.
+
+## D-173 — The remote-reporting gap is both engines, not revenue alone
+**Date:** 2026-09-07 · **Status:** Accepted — a Phase 5 planning correction to the Phase 4
+handoff. **Phase 4 history is not rewritten.**
+
+The Phase 4 closure's handoff contract records, correctly, that there is no revenue pull.
+It records it as a revenue-only fact. It is not.
+
+**Expenses have no reporting synchronisation either.** `ExpensePull.pullOne(expenseId)`
+fetches one document by id and its only production caller is the Review-latest path in
+`edit_launcher.dart`. That is a conflict-resolution mechanism, not a reporting one.
+
+Proven exhaustively rather than inferred: the only writers of local `revenue_entries` are
+`createLocally` and `applyServerDocument` (whose sole production caller is the revenue
+conflict sheet, on a document this device already holds); no `RevenuePull` exists;
+`RevenueGateway` exposes no list or range query; and `ReferenceSync` writes only master and
+tax-configuration tables. The clinching evidence is in the suite itself — the live two-client
+test must hand-`INSERT` an entry and its components into the second device's SQLite with raw
+SQL before it can call `applyServerDocument`, because no shipped code path would ever put
+them there.
+
+**The server side is not the gap.** Both contribution projections are `SELECT`-granted to
+`authenticated` and reachable over PostgREST, with the base tables ungranted. The authorised,
+scoped reporting surface already exists; only the client never asks.
+
+**Consequence for Phase 5:** the reporting-sync slice carries **two** pulls, and the
+acceptance in that slice proves remote propagation for expenses as well as for revenue.

@@ -5,12 +5,13 @@ Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
-Last updated: **2026-09-07** — **PHASE 4 — REVENUE ENGINE: COMPLETE.** All fourteen
-slices are closed, the four verified tax rules are the live baseline, and the reporting
-interface Phase 5 will aggregate is defined and populated. The closure record, the Phase 5
-handoff contract and the final verification are at the **end of this file**; the sections
-between here and there are the running history of how it was built, kept in the order it
-happened. **Phase 5 is not started.**
+Last updated: **2026-09-07** — **PHASE 5 — P&L / MIS REPORTING: STARTED.** Phase 4 closed
+at `96fc4ed`; the project lead's Phase 5 decisions are ratified and recorded as
+**D-163 … D-173**, and Slice 1 of twelve is under way. The Phase 5 record is at the **end of
+this file** and is authoritative for it; the Phase 4 closure sits immediately above it and
+remains authoritative for Phase 4, **except** that its handoff contract's revenue-only
+statement of the pull gap is corrected by D-173 — the gap is **both engines**. Everything
+before those two sections is running history, kept in the order it happened.
 
 > A new session should be able to read this file and know exactly where work stopped.
 > This file — not chat history — is the checkpoint.
@@ -1665,10 +1666,11 @@ is worth running once before the first staging deploy.
 
 ## Next exact task
 
-**Phase 5 — Ledger & Reporting Engine.** Phase 4 is complete and closed; Phase 5 has
-**not** been started, and is not started automatically. Read the Phase 5 handoff contract
-in *PHASE 4 — REVENUE ENGINE: COMPLETE* below before planning it — in particular that
-there is no revenue pull, which a dashboard that must be correct offline will need.
+**Phase 5 — P&L / MIS Reporting, Slice 1.** Superseded as a planning note: Phase 5 is
+started, its decisions are ratified (D-163 … D-173) and its twelve-slice plan is recorded in
+*PHASE 5 — P&L / MIS REPORTING* at the end of this file, which is where the current state
+lives. Note that the handoff contract's *"no revenue pull"* is corrected by D-173: there is
+no **expense** reporting pull either.
 
 ### Superseded — the Slice 13 entry
 
@@ -3149,3 +3151,97 @@ application code, so they are reported with their Slice 13 provenance rather tha
 revenue · 0 active acceptance expenses · 0 stranded objects · metadata ↔ storage exact
 (132/132 revenue, 46/46 expense) · 5 authority grants restored · the three historical
 whitespace evidence rows untouched.
+
+---
+
+# PHASE 5 — P&L / MIS REPORTING: STARTED (2026-09-07)
+
+Phase 4 closed at `96fc4ed`. Phase 5 turns the two accepted transaction engines into
+management P&L. It was planned by an audit of the shipped code and the live
+`krishna-mis-dev` schema, not from the roadmap headline, and the project lead ratified the
+result. **Phase 5 builds no dashboard, no charts, no PDF and no Excel** — those are Phases
+6 and 7.
+
+## The ratified decisions
+
+Recorded in full as **D-163 … D-173**. In brief:
+
+| | |
+|---|---|
+| **D-163** | A P&L **refuses** rather than rendering one side against a zero it cannot see |
+| **D-164** | Unit P&L needs `reports.view` ∩ `revenue.view` ∩ `expense.view.all`; consolidated needs all three unscoped. `expense.view.own` does not qualify |
+| **D-165** | A reporting week is **Monday–Sunday** on the **business date** |
+| **D-166** | Phase 5 includes **read-only** transaction drill-down; charts stay Phase 6 |
+| **D-167** | **No provisional P&L** in V1 — canonical accepted facts only |
+| **D-168** | Pending expense attempts contribute **zero** (closes finding E2) |
+| **D-169** | `expense.view.own` means **own** (closes finding E1) |
+| **D-170** | Retention is current + previous FY; *not downloaded* is **not** zero |
+| **D-171** | The reporting cache is its **own authority class**, not rows in the transaction tables |
+| **D-172** | A delta watermark is **proven**, not assumed — on both engines |
+| **D-173** | The remote-reporting gap is **both engines** |
+
+**Offline P&L was not put to the project lead as a decision**, because it is not one:
+`CLAUDE.md`'s hard constraints and spec §21.2 / §21.4 already require that reporting is
+never gated on the network and that every figure carries a freshness state.
+
+## Handoff correction — the pull gap is both engines (D-173)
+
+**Phase 4's history is not rewritten.** This is a Phase 5 planning correction to the
+handoff contract recorded in *PHASE 4 — REVENUE ENGINE: COMPLETE* §19.
+
+That contract states, correctly, that there is no revenue pull — and states it as a
+revenue-only fact. **Expenses have no reporting synchronisation either.**
+`ExpensePull.pullOne(expenseId)` fetches one document by id, and its only production caller
+is the Review-latest path in `edit_launcher.dart`. That is conflict resolution, not
+reporting.
+
+So a device can report only the transactions **it recorded itself**, on both engines. The
+server side is not the gap: both contribution projections are `SELECT`-granted to
+`authenticated` and reachable, with the base tables ungranted. Slice 4 therefore carries
+**two** pulls and proves remote propagation for expenses as well as revenue.
+
+## The reporting architecture, as approved
+
+```
+        canonical contribution synchronisation      (the grain a P&L sums)
+      + scoped delta snapshot                       (one watermark, proven — D-172)
+      + a DEDICATED canonical reporting cache       (its own authority class — D-171)
+      + LocalReportingEngine   (default on every screen, works offline)
+      + RemoteReportingEngine  (parity-proven, build-failing — D-020, spec §21.3)
+```
+
+All derived arithmetic — Net Sales, Operating Profit, margin — lives once in
+`lib/domain/finance/`, which **does not yet exist** and is Slice 2's first act. Engines
+return summed paise and perform no business arithmetic (spec §21.2).
+
+## The approved slice plan
+
+Twelve slices, sequenced so financial correctness and remote completeness are proven before
+any surface exists. **One slice at a time**, each with its own acceptance evidence; slices
+are not merged because they could be implemented quickly.
+
+| # | Slice | State |
+|---|---|---|
+| 1 | Source parity and the canonical-only correction (E1–E4) | **in progress** |
+| 2 | `domain/finance` — the canonical calculation specification | not started |
+| 3 | `LocalReportingEngine` | not started |
+| 4 | Canonical reporting cache + synchronisation completeness (D-171, D-172, D-173) | not started |
+| 5 | Server reporting boundary + `RemoteReportingEngine` parity | not started |
+| 6 | Freshness, as-of and closed periods | not started |
+| 7 | The reporting capability model (D-163, D-164) | not started |
+| 8 | Windows P&L surface | not started |
+| 9 | Android P&L surface | not started |
+| 10 | Breakdowns + read-only transaction drill-down (D-166) | not started |
+| 11 | Full live / device / two-client acceptance | not started |
+| 12 | Closure | not started |
+
+## The four findings Slice 1 owns
+
+Found by the planning audit, proven against `krishna-mis-dev` and the shipped test suite:
+
+| | |
+|---|---|
+| **E1** | `expense.view.own` grants unit-wide expense visibility — no read path applies a `created_by` predicate (D-169) |
+| **E2** | The expense reporting total counts **pending, never-accepted** documents while revenue's excludes them (D-168) |
+| **E3** | The shipped expense reporting aggregate folds financial rows in Dart; revenue aggregates in SQL |
+| **E4** | `DATABASE_SCHEMA.md` §11 names `v_expense_period_lines` and `v_revenue_lines` as *"THE reporting surface"* — **neither exists**, and the documented SQL references columns that do not exist |
