@@ -277,4 +277,5 @@ Verified byte-for-byte against `supabase_migrations.schema_migrations.statements
 20260907030228 expense_view_own_means_own
 20260907030255 api_surface_invariant_expense_view_own
 20260907030443 attachment_metadata_policy_restored_and_guarded
+20260907115757 revenue_change_seq_advances_on_update
 ```

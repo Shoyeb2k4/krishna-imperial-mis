@@ -6078,3 +6078,103 @@ unavailable rather than discouraged, which is the move D-094 made for `RevenueTa
 sync state, because the canonical-only predicate belongs to the repository in SQL and a
 second copy here would be a second place to forget it (D-168). No freshness, which is
 Slice 6's and is composable rather than hardwired.
+
+## D-177 — A revenue row's reporting generation never moved, and the effective document generation is now defined
+**Date:** 2026-09-07 · **Status:** Accepted — the D-172 proof, and the corrective it forced.
+**A production defect**, latent since Phase 4.
+
+D-172 required the delta watermark to be **proven before the reporting pull was written**,
+on both engines, rather than assumed. It was, and the two engines gave opposite answers.
+
+### Revenue — case B. The parent generation is frozen after INSERT.
+
+`change_seq` is the project's one observable mutation generation: a single sequence,
+`app.global_change_seq`, stamped onto every synced row so a client can ask *"what changed
+since?"* (`ARCHITECTURE.md` §5.2). Seventeen tables in `public` carry the column and stamp
+it on UPDATE through `app.touch_row`. **Two carried it and stamped nothing** —
+`revenue_entries` and `revenue_attachments`, both added in Phase 4.
+
+The column's `default nextval(...)` fires on INSERT, so the value was present, plausible,
+and never moved again. Proven through the real RPCs, one transaction each:
+
+```
+        after create           change_seq 12945   row_version 1   2026-06-15   voided false
+        after amount edit      change_seq 12945   row_version 2   2026-06-15   voided false
+        after date correction  change_seq 12945   row_version 3   2026-07-10   voided false
+        after void             change_seq 12945   row_version 4   2026-07-10   voided TRUE
+```
+
+An edit, a correction that moved the entry **from June to July**, and a void: all four
+mutations invisible to any `change_seq > watermark` delta. A device synchronising reports
+that way would have taken the sale once and then never heard about it again — keeping a
+June figure that had moved to July, and keeping a voided sale on the books for ever.
+
+**`row_version` advanced throughout, and that is what hid it.** `revenue_update` and
+`revenue_void` bump the concurrency token by hand, so every conflict test, every stale-write
+refusal and the whole Slice 10 acceptance behaved correctly. The one property nobody
+exercised was the one a reporting pull needs.
+
+### Expense — case A. Sound, and audited the same way.
+
+```
+        step                     parent   allocations   period allocations   row_version
+        create                    13003         13000                13002             2
+        amount correction         13004         13006                13008             3
+        accrual move              13009         13011                13013             4
+        void                      13014         13011                13013             5
+```
+
+Every reporting-relevant mutation advances `expenses.change_seq` — including the accrual
+movement, where **no header field changed** and only the contribution's period moved
+(13004 → 13009), and the void (13009 → 13014). `expense_update` always writes the header,
+and `app.touch_row` is attached to all three tables.
+
+**But a child can carry a higher generation than its own parent** (13004 < 13006 < 13008),
+because the header is written before the lines are replaced. So the parent's `change_seq`
+*understates* when the document last changed.
+
+### The effective document generation, defined
+
+```
+        Revenue:  revenue_entries.change_seq
+                  — components carry no generation at all, and only `revenue_create` and
+                    `revenue_update` write them, both of which write the entry. Valid only
+                    with the corrective below.
+
+        Expense:  greatest(expenses.change_seq,
+                           max(expense_allocations.change_seq),
+                           max(expense_period_allocations.change_seq))
+```
+
+Taking the parent alone on the expense side would still *detect* every change — it always
+advances — but it would report a generation lower than the document's true one. Using the
+maximum keeps the watermark honest, and under-advancing is safe in the other direction
+because document replacement is idempotent.
+
+**No component `change_seq` was added to revenue.** It would have been symmetrical and
+unnecessary: components change only inside a parent mutation, which now stamps the parent.
+Adding a column because the other engine has one is how a schema grows fields nobody reads.
+
+### The corrective, and why not `app.touch_row`
+
+`app.stamp_change_seq()` advances the generation and touches nothing else — no
+`row_version`, no `updated_at`, no behaviour any client can observe. `touch_row` was
+rejected because it *also* does `row_version := old.row_version + 1`, which the revenue RPCs
+already do: attaching it would double-increment the concurrency token, and every client
+holding a version would be refused `KM003` on its next correction. The narrowest fix that
+makes the delta observable is the one that changes nothing else.
+
+`revenue_attachments` is fixed in the same migration. It is outside the reporting path today
+(attaching is not editing — D-150), and a column whose value is meaningless is a trap for
+whoever first tries to synchronise them.
+
+**Green, through the same RPC sequence:** `13017 → 13018 → 13019 → 13020`, one generation
+per mutation, with `row_version` still `1 → 2 → 3 → 4`.
+
+### The invariant is a search, not a list
+
+Every table in `public` carrying `change_seq` must advance it on UPDATE, asserted over the
+catalogue with **no exemption list**, at deploy time and again in the host suite. A check
+naming the two tables that happened to be wrong would pass for ever and catch nothing — and
+the next table to carry the column would arrive exactly as these two did (D-068, D-071,
+D-077). The host regression turns red on three tests when the corrective is removed.
