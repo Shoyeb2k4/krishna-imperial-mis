@@ -299,7 +299,7 @@ void main() {
     test('only the reporting cache writes these tables', () async {
       const permitted = [
         // The one writer.
-        'lib/data/reporting/reporting_cache.dart',
+        'lib/data/repositories/reporting_cache.dart',
         // Declarations and schema wiring: they name the tables and write no row.
         'lib/data/local/reporting_tables.dart',
         'lib/data/local/app_database.dart',

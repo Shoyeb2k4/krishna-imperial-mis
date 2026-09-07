@@ -28,6 +28,12 @@ import 'package:krishna_mis/domain/auth/authorizer.dart';
 import 'package:krishna_mis/app/session/session_controller.dart';
 import 'package:krishna_mis/domain/auth/capability.dart';
 import 'package:krishna_mis/domain/auth/session_state.dart';
+import 'package:krishna_mis/data/remote/reporting_gateway.dart';
+import 'package:krishna_mis/data/reporting/cached_reporting_source.dart';
+import 'package:krishna_mis/data/reporting/local_reporting_engine.dart';
+import 'package:krishna_mis/data/repositories/reporting_cache.dart';
+import 'package:krishna_mis/data/sync/reporting_sync.dart';
+import 'package:krishna_mis/domain/finance/reporting_source.dart';
 import 'package:krishna_mis/domain/masters/master_graph.dart';
 import 'package:krishna_mis/domain/masters/master_usage.dart';
 import 'package:krishna_mis/domain/period/period_state.dart';
@@ -237,4 +243,64 @@ final masterUsageProvider = FutureProvider.family<MasterUsage, String>(
 final vendorUsageProvider = FutureProvider.family<MasterUsage, String>(
   (ref, vendorId) =>
       ref.watch(masterUsageReaderProvider).usageForVendor(vendorId),
+);
+
+// ── Reporting (Phase 5) ─────────────────────────────────────────────────────
+
+/// The canonical reporting cache: server-owned figures, synchronised for reporting.
+final reportingCacheProvider = Provider<ReportingCache>(
+  (ref) => ReportingCache(ref.watch(databaseProvider)),
+);
+
+/// Reads the two contribution projections for the reporting delta.
+///
+/// Null when no backend is configured, like every other remote capability here.
+/// Overridden in `main()` from the same Supabase client the sync worker uses, and a test
+/// asserts that — because D-077 is what happens when a null default is left standing and
+/// every test supplies its own replacement.
+final reportingGatewayProvider = Provider<ReportingGateway?>((ref) => null);
+
+/// Fills the cache. Null offline, and **rebuilt on every session change**, because a
+/// synchroniser holding the previous user's id would write this person's figures into
+/// that person's cache (D-074).
+final reportingSyncProvider = Provider<ReportingSync?>((ref) {
+  final gateway = ref.watch(reportingGatewayProvider);
+  final session = ref.watch(sessionProvider);
+  if (gateway == null || session is! SessionReady) return null;
+  return ReportingSync(
+    cache: ref.watch(reportingCacheProvider),
+    gateway: gateway,
+    ownerUserId: session.authority.userId,
+    orgId: session.authority.orgId,
+  );
+});
+
+/// What a reporting screen reads.
+///
+/// The **cache**, never this device's own ledger. Both engines lack a reporting pull
+/// (D-173), so the local projections hold only what this installation recorded — a set
+/// that sums exactly and is not the hotel's. `DriftReportingSource` remains the adapter
+/// over those projections and is deliberately not wired here.
+///
+/// A `FutureProvider` because coverage is loaded once per report rather than queried per
+/// property per year, and it depends on the session: a user switch must not leave the
+/// previous person's markers standing behind this person's figures (D-072a §3, D-074).
+final localReportingSourceProvider = FutureProvider<LocalReportingSource>((
+  ref,
+) async {
+  final session = ref.watch(sessionProvider);
+  final cache = ref.watch(reportingCacheProvider);
+  final owner = session.principal.userId;
+  return CachedReportingSource(
+    cache: cache,
+    ownerUserId: owner,
+    coverage: await MarkerCoverage.load(cache, owner),
+  );
+});
+
+/// The P&L engine over the canonical cache.
+final localReportingEngineProvider = FutureProvider<LocalReportingEngine>(
+  (ref) async => LocalReportingEngine(
+    await ref.watch(localReportingSourceProvider.future),
+  ),
 );

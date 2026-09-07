@@ -25,6 +25,7 @@ import 'package:krishna_mis/data/remote/authority_gateway.dart';
 import 'package:krishna_mis/data/remote/master_gateway.dart';
 import 'package:krishna_mis/data/remote/vendor_tax_period_gateways.dart';
 import 'package:krishna_mis/data/remote/expense_gateway.dart';
+import 'package:krishna_mis/data/remote/reporting_gateway.dart';
 import 'package:krishna_mis/data/remote/revenue_gateway.dart';
 import 'package:krishna_mis/data/repositories/expense_repository.dart';
 import 'package:krishna_mis/data/repositories/revenue_repository.dart';
@@ -70,6 +71,7 @@ class BootstrapResult {
     required this.mutationReconciler,
     required this.expensePull,
     required this.revenueGateway,
+    required this.reportingGateway,
     required this.attachmentUploads,
   });
 
@@ -102,6 +104,16 @@ class BootstrapResult {
   /// The revenue half of the remote boundary, shared by the sync worker and the
   /// conflict path so both talk to one client rather than two.
   final RevenueGateway? revenueGateway;
+
+  /// Reads the two contribution projections for the reporting delta (Phase 5 Slice 4).
+  ///
+  /// Null with no backend, in which case reporting has nothing to synchronise and every
+  /// scope honestly reports `notDownloaded` rather than a confident zero.
+  ///
+  /// Constructed here, beside every other gateway, for the reason the comment by the
+  /// reconcilers gives: a production path that "will be wired later" is a production path
+  /// that is not (D-077).
+  final ReportingGateway? reportingGateway;
 
   /// Uploads bills, out of band from the financial records they belong to (D-073).
   ///
@@ -170,6 +182,7 @@ Future<BootstrapResult> bootstrap({http.Client? transport}) async {
   MutationReconciler? mutationReconciler;
   ExpensePull? expensePull;
   RevenueGateway? gatewayForRevenue;
+  ReportingGateway? gatewayForReporting;
   AttachmentUploadWorker? attachmentUploads;
   if (config.hasBackend) {
     await Supabase.initialize(
@@ -187,6 +200,7 @@ Future<BootstrapResult> bootstrap({http.Client? transport}) async {
     final expenseGateway = ExpenseGateway(client);
     final revenueGateway = RevenueGateway(client);
     gatewayForRevenue = revenueGateway;
+    gatewayForReporting = ReportingGateway(client);
     mutationEndpoint = RoutingMutationEndpoint(
       masters: MasterMutationEndpoint(
         masters: masterGateway,
@@ -246,6 +260,7 @@ Future<BootstrapResult> bootstrap({http.Client? transport}) async {
     mutationReconciler: mutationReconciler,
     expensePull: expensePull,
     revenueGateway: gatewayForRevenue,
+    reportingGateway: gatewayForReporting,
     attachmentUploads: attachmentUploads,
     recoveredInFlightEntries: recovered,
     session: session,

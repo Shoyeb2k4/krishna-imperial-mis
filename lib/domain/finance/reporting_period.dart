@@ -189,6 +189,21 @@ final class CustomRangePeriod extends ReportingPeriod {
       : ReportRangeResolved(ReportRange._(from, to));
 }
 
+/// Every financial year an inclusive range touches, in order.
+///
+/// Period math, so it lives here with the rest of it rather than in whichever adapter
+/// needed it first — a range spanning 20 March to 10 April is **two** years, and the
+/// engine, the coverage oracle and the synchroniser must not be able to disagree about
+/// that. Retention, coverage and the delta are all keyed on the answer (§15, D8).
+List<FinancialYear> financialYearsCovering(ReportRange range) {
+  final first = FinancialYear.of(range.from);
+  final last = FinancialYear.of(range.to);
+  return [
+    for (var year = first.openingYear; year <= last.openingYear; year++)
+      FinancialYear(year),
+  ];
+}
+
 /// ISO weekday of a business date: Monday is 1, Sunday is 7.
 ///
 /// `DateTime.utc` is used here as a **calendar**, not as an instant. A [BusinessDate] is

@@ -469,6 +469,7 @@ void main() {
           // arriving again — which is why the wiring test now compares this list
           // against `main()`'s rather than trusting either.
           revenueGatewayProvider.overrideWithValue(boot.revenueGateway),
+          reportingGatewayProvider.overrideWithValue(boot.reportingGateway),
           attachmentUploadWorkerProvider.overrideWithValue(
             boot.attachmentUploads,
           ),

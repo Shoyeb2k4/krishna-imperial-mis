@@ -23,6 +23,7 @@ Future<void> main() async {
           mutationReconcilerProvider.overrideWithValue(boot.mutationReconciler),
           expensePullProvider.overrideWithValue(boot.expensePull),
           revenueGatewayProvider.overrideWithValue(boot.revenueGateway),
+          reportingGatewayProvider.overrideWithValue(boot.reportingGateway),
           attachmentUploadWorkerProvider.overrideWithValue(
             boot.attachmentUploads,
           ),
