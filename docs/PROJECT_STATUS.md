@@ -3223,7 +3223,7 @@ are not merged because they could be implemented quickly.
 | # | Slice | State |
 |---|---|---|
 | 1 | Source parity and the canonical-only correction (E1–E4) | **COMPLETE** |
-| 2 | `domain/finance` — the canonical calculation specification | not started |
+| 2 | `domain/finance` — the canonical calculation specification | **COMPLETE** |
 | 3 | `LocalReportingEngine` | not started |
 | 4 | Canonical reporting cache + synchronisation completeness (D-171, D-172, D-173) | not started |
 | 5 | Server reporting boundary + `RemoteReportingEngine` parity | not started |
@@ -3450,3 +3450,115 @@ reported rather than removed in passing (D-127).
 
 **`reports.view` still has no evaluator**, and D-139's exemption entry stands. That is
 Slice 7's, deliberately, and D-163 / D-164 are recorded so it needs no further approval.
+
+---
+
+## Phase 5 Slice 2 — `domain/finance`, the canonical calculation specification: **COMPLETE**
+
+Pure Dart. **No Drift migration, no Supabase migration, no RPC, no pull, no screen** — and
+a test asserts the directory imports none of those things. Decisions D-175 and D-176.
+
+The directory `CLAUDE.md` and spec §21.1 have mandated since Phase 0 now exists. It did
+not before this slice, which is why the Phase 5 audit listed creating it as Slice 2's
+first act.
+
+### What was created
+
+| File | |
+|---|---|
+| `lib/domain/finance/pnl.dart` | the calculator, the result, the breakdown lines, and the unavailable-vs-zero types |
+| `lib/domain/finance/reporting_period.dart` | the five period kinds, normalised to one inclusive `ReportRange` |
+| `lib/domain/finance/operating_margin.dart` | the exact ratio, and `MarginNotApplicable` |
+| `test/support/pnl_reference.dart` | the independent oracle §6.3 requires — **not shipped** |
+
+### What was reused rather than rebuilt
+
+`Money` (integer paise, D-002), `BusinessDate` (D-019, D-067), **`FinancialYear`** from
+`domain/expenses/expense_number.dart`, `TaxTreatment`, and — as the calculator's input —
+`RevenueTotals` and `ExpenseTotals`, which are already the primitive summed-paise shapes
+both repositories return. No parallel money type, no second FY algorithm, no new
+transaction model (D-176).
+
+### The identities, and the control that keeps them honest
+
+```
+        Gross Sales      = Σ accepted revenue gross       summed, never Net + GST
+        GST              = Σ accepted revenue tax
+        Net Sales        = Σ accepted revenue net
+        Gross Sales      = GST + Net Sales                exactly, asserted
+        Expenses         = Σ accepted expense contributions
+        Operating Profit = Net Sales − Expenses           may be negative
+```
+
+**Nothing is re-rated, and it cannot be:** the calculator is handed `tax` and is never
+handed a rate. Two accepted Restaurant days sum to **750715** paise, where re-applying
+5/105 to the aggregate 15765000 would give **750714**. The test asserts the first and
+computes the second beside it.
+
+### The worked controls, exact
+
+| | Gross | GST | Net |
+|---|---|---|---|
+| Restaurant | 10000000 | 476190 | 9523810 |
+| Nandbhog | 870000 | 41429 | 828571 |
+| **Crystal Canopy Rooftop** | **10870000** | **517619** | **10352381** |
+| Room | 5200000 | 247619 | 4952381 |
+| Banquet (`none`) | 4034300 | 0 | 4034300 |
+| **Hotel Krishna Imperial** | **9234300** | **247619** | **8986681** |
+| **Consolidated** | **20104300** | **765238** | **19339062** |
+
+With CCR expenses of 4500000, Operating Profit is **5852381**. Every figure reconciles, and
+the independent oracle agrees on all of them.
+
+**Banquet's `none` is carried as a treatment**, never as a configured 0%. The arithmetic
+cannot tell them apart and does not need to; the breakdown must, because one is a decision
+somebody made about a supply and the other a rate somebody set (D-091, D-122).
+
+### Three things that are not each other
+
+| | |
+|---|---|
+| **zero** | real trade that netted nothing. `SideAvailable` carrying zeroes; computes normally |
+| **negative** | expenses exceeded net sales. Reported as it is, never clamped |
+| **unavailable** | nobody knows. A sealed `SideUnavailable` variant, and the report is **refused** (D-163) |
+
+Both sides of `Pnl.compute` are required and non-nullable, and the refusal is an exhaustive
+switch over both at once — the compiler, not a reviewer, answers every combination.
+
+### Periods
+
+One inclusive `ReportRange` for all five kinds, so the engines get one boundary contract.
+`ReportRange` has no public constructor: a reversed custom range is **rejected**, not
+swapped, and the invalid case cannot be built and left unchecked. Same-day is valid.
+
+**Monday to Sunday, on the business date (D-165)** — proven with a real
+`BusinessDate.fromInstant` in `Asia/Kolkata`: 19:30 UTC on Sunday 21 June is 01:00 IST on
+Monday 22 June, carries a business date of Sunday, and lands in the week that is closing.
+
+**`FinancialYear` reused**, with both boundaries asserted: 31 March 2027 is FY 26-27 and
+1 April 2027 is FY 27-28.
+
+### Verified
+
+| Item | Status | Evidence |
+|---|---|---|
+| `dart format --set-exit-if-changed` | **Tested** | clean |
+| `flutter analyze` | **Tested** | **No issues found** |
+| Host suite | **Tested** | **1,276 tests, all passing** (1,206 + 70) |
+| — P&L arithmetic, controls, consolidation, margin, refusals, matrix | **Tested** | 37 |
+| — period normalisation, week, month, FY, ranges | **Tested** | 24 |
+| — purity, no-`double`, oracle independence | **Tested** | 9 |
+| Purity guard **positive control** | **Tested** | a `double` and a `/` added to the margin; the guard turned RED, then restored and **read back** (D-142) |
+| Secret scan — tree and git history | **Tested** | clean, controls passing |
+| Working tree | **Tested** | clean |
+| Drift migrations added | **None** — local schema stays at v16 |
+| Supabase migrations added | **None** — ledger unchanged at 20260907030443 |
+
+### Carried forward, deliberately
+
+**`public.expense_sees_whole_org()`** is on the reviewed API surface, granted to
+`authenticated`, and called by nothing. Untouched in Slice 2 — a pure-finance commit is not
+where dead-API cleanup belongs — and **carried to Slice 7**, which owns the reporting
+capability model and the API-surface audit.
+
+**`reports.view` still has no evaluator** and D-139's exemption entry stands. Slice 7's.

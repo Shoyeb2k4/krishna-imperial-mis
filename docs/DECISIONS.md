@@ -5998,3 +5998,83 @@ failure, and the rule it yields is narrower and more useful than "be careful wit
 are not rewritten to look like something that never ran (A0, D-056). The Owner reads 46
 attachment rows again; a `view.own` holder reads only those on documents they recorded,
 which is D-169 working through the restored predicate rather than around it.
+
+## D-175 — The margin is an exact ratio, and its precision belongs to whoever prints it
+**Date:** 2026-09-07 · **Status:** Accepted — Phase 5 Slice 2
+
+**Context.** Spec §10 defines the margin as `Operating Profit ÷ Net Sales × 100`. That is
+the only division in the entire financial model, and it forces two questions the spec does
+not answer: what type carries it, and to how many decimal places.
+
+**Decision, on the type.** It is carried as the **exact rational it is** — numerator and
+denominator, both in paise, both untouched — and never as a `double`. A margin is a
+presentation figure, and the argument for making it a float is that it is only ever
+displayed. That argument fails the first time somebody adds two of them, or averages them
+across properties: the result is then a financial figure that is wrong in the last place
+with nothing in the audit trail to explain it. `MarginRatio` therefore holds
+`operatingProfitPaise` and `netSalesPaise`, and nothing has been divided yet, so nothing
+has been lost yet.
+
+**Decision, on the precision.** It is **not chosen here**, because the binding spec does
+not settle it and a calculation layer that quietly picks two decimal places has made a
+presentation decision that every export then inherits.
+`MarginRatio.percentageScaled(int scale)` defers it: the caller states the precision it is
+about to print, and gets an exact integer at that scale. `scale: 2` on the worked Crystal
+Canopy control gives `5653`, which is 56.53%.
+
+**Rounding is half away from zero**, not half up. Half-up is the tax rule (D-017) and it is
+right there, because a tax amount is a magnitude. A margin is **signed**, and half-up on a
+signed value rounds −12.5 toward zero and +12.5 away from it, so a loss and a profit of the
+same size would not be reported symmetrically. Stated and tested in both directions rather
+than left to whichever way `~/` happens to truncate.
+
+**Zero net sales is a separate case in the type, not a value.** `MarginNotApplicable` is a
+variant of the sealed `OperatingMargin`, so a caller cannot print a number that does not
+exist — spec §10 requires "not applicable" and forbids `0%`, `NaN` and `Infinity`. A
+break-even month and a month with no trade are different facts and a report that showed
+`0%` for both would be lying about one of them.
+
+**Consequence.** A structural guard asserts that no file under `lib/domain/finance` names
+`double`, calls `toDouble`, contains a floating-point literal, or uses `/` — which in Dart
+returns a double even between two integers, and is therefore the accident this forbids.
+Integer division is `~/`. The guard was proven to fail before it was trusted.
+
+## D-176 — The finance domain consumes the engines' own totals, and a missing side is a
+type, not a zero
+**Date:** 2026-09-07 · **Status:** Accepted — Phase 5 Slice 2
+
+Two shaping choices for `domain/finance`, both about what the calculator is allowed to be
+handed.
+
+**It reuses `RevenueTotals` and `ExpenseTotals` rather than defining its own input.** Those
+are already the primitive summed-paise shapes the two repositories return — gross, tax, net
+and a contribution count on one side; amount and a count on the other — and they are pure
+domain with no storage in them. Inventing `PnlRevenueInput` beside them would have created
+a second vocabulary for the same figures and a mapping layer whose only job is to be kept
+in step. The contribution counts come along for free and are worth having: a total of zero
+over no rows and a total of zero over forty rows are different facts, and a report that
+cannot tell them apart will eventually present the first as the second.
+
+**A side that could not be established is a different variant, not a nullable field.**
+D-163 requires a P&L to refuse rather than substitute an inaccessible side with zero. A
+nullable parameter defaulted to zero is exactly the shape that makes that mistake easy —
+one forgotten null check and the report shows Expenses against a revenue side the reader
+may not see, which is a large loss that never happened and looks precisely like a real one.
+
+So `ReportingSide<T>` is sealed, with `SideAvailable<T>` carrying the facts and
+`SideUnavailable<T>` carrying a reason. Both sides of `Pnl.compute` are **required and
+non-nullable**: there is no argument a caller can omit, and the refusal is decided by an
+exhaustive `switch` over both sides at once, so the compiler rather than a reviewer
+guarantees every combination is answered. **An actual zero is `SideAvailable` carrying
+zeroes and computes normally** — it is a real answer and stays one.
+
+The reasons are an enum, not sentences: `notAuthorised` and `notDownloaded` (D-170). A
+user-facing string compiled into the finance domain is one that cannot be reworded or given
+the context the screen has, and this layer has no business owning the wording.
+
+**What the calculator is deliberately not given.** No tax rate, so it *cannot* re-rate an
+aggregate — the mistake that costs a paisa a day and cannot be found afterwards is
+unavailable rather than discouraged, which is the move D-094 made for `RevenueTaxFacts`. No
+sync state, because the canonical-only predicate belongs to the repository in SQL and a
+second copy here would be a second place to forget it (D-168). No freshness, which is
+Slice 6's and is composable rather than hardwired.

@@ -9,7 +9,7 @@ Status: **Sections 1–12 proposed (Phase 0, revised); sections 13–16 and 18�
 is built and verified; section 17 is the Phase 4 *plan*, since built — read §18–§26 for what
 shipped.** Sections 6, 5.3 and 8 carry the project lead's mandated corrections.
 Implementation status is tracked in `PROJECT_STATUS.md`.
-Last updated: 2026-09-07 — Phase 5 Slice 1 (section 27); Phase 4 closed
+Last updated: 2026-09-07 — Phase 5 Slices 1-2 (sections 27-28); Phase 4 closed
 
 ---
 
@@ -2417,3 +2417,140 @@ which is Slice 2. No engine, no cache, no pull, no surface. And no change to
 `public.expense_sees_whole_org()`, which is on the reviewed API surface and is called by
 nothing — a fifth instance of the family D-068, D-071, D-077, D-103 and D-116 record,
 reported rather than removed inside a slice that did not scope it (D-127).
+
+---
+
+## 28. `domain/finance` — the canonical calculation specification (2026-09-07)
+
+Phase 5 Slice 2 creates the directory `CLAUDE.md` and spec §21.1 have mandated since Phase
+0 and which did not exist: *"all derived financial arithmetic lives once, in
+`domain/finance/`"*. Section 6 states the principle; this states what was built to it.
+
+**It is pure Dart and nothing else.** No Drift, no Supabase, no Riverpod, no Flutter, no
+`dart:io`, and no import of `data/`, `features/` or `app/` — asserted over the whole
+directory by `finance_purity_test.dart` rather than reviewed per file, because the property
+has to hold for the files nobody has written yet.
+
+### 28.1 The division of labour
+
+```
+        LocalReportingEngine  ─┐
+                               ├─ primitive summed paise ──► domain/finance ──► PnlResult
+        RemoteReportingEngine ─┘
+```
+
+An engine selects and sums canonical rows. **Neither engine computes Net Sales, Operating
+Profit or margin.** That is the whole of §6.2 made concrete: the divergence surface between
+two physical execution environments shrinks from "the P&L" to "did you sum the right rows",
+which is small enough for a parity test to pin down completely (D-020).
+
+### 28.2 The identities
+
+```
+        Gross Sales      = Σ accepted revenue gross      summed, never Net + GST
+        GST              = Σ accepted revenue tax
+        Net Sales        = Σ accepted revenue net
+        Gross Sales      = GST + Net Sales               exactly, asserted, no tolerance
+
+        Expenses         = Σ accepted expense contributions
+                           gross cost including GST, no input credit (spec §6.1, D-018)
+
+        Operating Profit = Net Sales − Expenses          may be negative, never clamped
+```
+
+The three revenue figures are three **independent sums** of stored component snapshots.
+Deriving one from the other two would make a rounding difference invisible, and it is the
+independence that makes `reconciles` a real check rather than a tautology.
+
+**Nothing is re-rated.** The calculator is handed `tax` and is never handed a rate, so it
+has no way to reproduce the classic error. The control is the project's own: two accepted
+Restaurant days sum to `750715` paise of tax, where re-applying 5/105 to the aggregate
+`15765000` would give `750714`. The test asserts the first, computes the second beside it,
+and asserts they differ.
+
+### 28.3 Consolidation
+
+Per-property results add into an organisation result by exact sums — gross, GST, net and
+expenses — and the consolidated Operating Profit follows from the consolidated net and
+expenses. `Σ per-unit == consolidated` holds for every primitive, and is tested for
+associativity and order-independence.
+
+**Percentages are never averaged.** The consolidated margin comes from the consolidated
+ratio. Averaging two properties' margins would weight a small property equally with a large
+one and produce a figure that is neither property's and not the organisation's.
+
+Consolidating an empty set throws rather than returning zeroes: a report over no permitted
+property is a refusal, not a result. Consolidating results over different ranges throws
+too, because presenting one period as another is the failure that would follow.
+
+### 28.4 Zero, negative, and unavailable — three different things
+
+| | |
+|---|---|
+| **zero** | real trade that netted nothing, or a month with no entries. `SideAvailable` carrying zeroes. Computes normally |
+| **negative** | expenses exceeded net sales. Reported as it is; this is a management P&L, not a counter that only goes up |
+| **unavailable** | nobody knows. A `SideUnavailable` variant, and the report is **refused** (D-163, D-176) |
+
+Both sides of `Pnl.compute` are required and non-nullable, and the refusal is decided by an
+exhaustive switch over both at once, so the compiler guarantees every combination is
+answered.
+
+### 28.5 Margin
+
+An exact rational, never a `double`, with the display precision deferred to the caller that
+is about to print it, and `MarginNotApplicable` as a separate variant when net sales are
+zero (spec §10). Rounding is half **away from zero** rather than half up, because a margin
+is signed and the two directions must round symmetrically. Full reasoning in D-175.
+
+### 28.6 Report periods, normalised once
+
+Every period a manager can pick — a single trading day, a week, a month, a financial year,
+a custom range — resolves to one inclusive `ReportRange` of P&L dates. One boundary
+contract, so the local and remote engines need one query shape rather than five that agree
+until somebody edits one.
+
+**These are report-selection semantics, not a second accounting-period model.** Which
+period an amount *belongs* to is already computed once at write time and stored as
+`pnl_date` / `pnl_period_key` (spec §5.2, D-016). A range selects over those stored dates
+and reinterprets nothing — so an expense's reporting month is its contribution's accrual
+date, never its business date and never its payment date.
+
+**The week is Monday to Sunday, on the business date (D-165).** Spec §10 named the week and
+nothing in the repository defined it. A sale rung up at 01:00 on a Monday carries a business
+date of Sunday under the property's 05:00 cut-off and belongs to the week that is closing —
+proven with a real `BusinessDate.fromInstant` in `Asia/Kolkata`, not asserted in prose.
+Weekday is computed with `DateTime.utc` used as a **calendar**, never as an instant; naming
+UTC is what stops the host machine's zone from shifting the day.
+
+**The financial year is the project's own.** `FinancialYear` is imported from
+`domain/expenses/expense_number.dart`, where it has lived since Phase 3, rather than
+restated — the same type the `KI-EXP` and `KI-REV` sequences use, agreeing with
+`app.financial_year_of` and `app.revenue_financial_year` on the server. A second FY
+algorithm written for reports would be a second answer to *"which year is this"* (§15 of
+the Slice 2 brief).
+
+**A reversed custom range is rejected, never silently swapped.** Guessing which end was
+meant is how a report quietly covers a different period from the one on screen.
+`ReportRange` has no public constructor, so the invalid case cannot be built and then left
+unchecked; same-day start and end is valid and covers one day.
+
+### 28.7 The reference oracle
+
+§6.3 requires the parity suite to have something independent to assert against before a
+second engine exists. `test/support/pnl_reference.dart` is it: two `for` loops over plain
+`int`s, using no `Money`, no `BusinessDate` and no domain type, so a defect in a shared
+primitive cannot hide by being present on both sides of the comparison.
+
+It **does not call the production calculator**, and a guard asserts it never will — an
+oracle that delegates proves a function equals itself. It does not ship, and a second guard
+asserts nothing in `lib/` references it. The one thing it deliberately shares with
+production is the input grain: it folds individual contributions where `Pnl.compute`
+receives sums an engine produced, so between them they check both the summing and the
+deriving.
+
+### 28.8 What Slice 2 deliberately did not build
+
+No reporting engine, no repository method, no query, no cache, no pull, no screen, no
+export. No Drift migration and no Supabase migration — the slice adds no schema of any
+kind. Freshness and as-of are Slice 6's and are composable with `PnlResult` rather than
+hardwired into it.
