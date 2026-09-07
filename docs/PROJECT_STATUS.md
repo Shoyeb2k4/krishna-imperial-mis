@@ -3222,7 +3222,7 @@ are not merged because they could be implemented quickly.
 
 | # | Slice | State |
 |---|---|---|
-| 1 | Source parity and the canonical-only correction (E1–E4) | **in progress** |
+| 1 | Source parity and the canonical-only correction (E1–E4) | **COMPLETE** |
 | 2 | `domain/finance` — the canonical calculation specification | not started |
 | 3 | `LocalReportingEngine` | not started |
 | 4 | Canonical reporting cache + synchronisation completeness (D-171, D-172, D-173) | not started |
@@ -3245,3 +3245,208 @@ Found by the planning audit, proven against `krishna-mis-dev` and the shipped te
 | **E2** | The expense reporting total counts **pending, never-accepted** documents while revenue's excludes them (D-168) |
 | **E3** | The shipped expense reporting aggregate folds financial rows in Dart; revenue aggregates in SQL |
 | **E4** | `DATABASE_SCHEMA.md` §11 names `v_expense_period_lines` and `v_revenue_lines` as *"THE reporting surface"* — **neither exists**, and the documented SQL references columns that do not exist |
+
+---
+
+## Phase 5 Slice 1 — source parity and the canonical-only correction: **COMPLETE**
+
+Four findings from the planning audit, each proven red before it was fixed. Slice 1 builds
+**no P&L, no engine, no cache, no pull and no surface** — those are Slices 2 to 5, and
+nothing here anticipates them.
+
+Decisions: D-168 (canonical-only), D-169 (`expense.view.own`), and D-174, which this slice
+introduced and caught.
+
+### E1 · `expense.view.own` granted the property, not the author
+
+The catalogue describes it as *"View expenses this user created"*. No read path anywhere
+applied a `created_by` predicate — verified by exhaustive search of every policy, view and
+function in `public` and `app`. Read as the development Data Entry identity, which holds
+`expense.view.own` on Crystal Canopy and nothing else:
+
+| Surface | RED | GREEN |
+|---|---|---|
+| `expense_document` | 787 rows, **724 other people's** | **63**, 0 |
+| `expense_period_contributions` | 865 rows, **802 other people's** | **63**, 0 |
+| `expense_allocations` | 787 rows, **724 other people's** | **63**, 0 |
+
+It included every expense the Owner and both managers had recorded.
+
+**Ownership is a property of a document, and a set of unit ids cannot express "mine".** So
+`expense_visible_units()` is unchanged and keeps answering *whose lines*, and a new
+`public.may_read_expense(uuid)` answers *whether this document at all*. The document
+predicate is `AND`-ed into every expense read path — it has to be every one, because
+`expense_allocations_read` is line-level and would otherwise go on handing a `view.own`
+holder another author's rows through the child table.
+
+**Every consumer was enumerated before the shared predicate moved**, as the brief required:
+the two child-table read policies, the `expenses` policy, four expressions inside
+`expense_document`, `expense_period_contributions`, `expense_attachments_read`,
+`may_read_expense_attachments`, and through it `may_attach_to_expense` and the three
+Storage policies. A deploy-time invariant now enumerates those paths **from the catalogue**
+rather than from a list, so the next read path added cannot escape it.
+
+**It can only narrow.** For a pure `view.all` holder the own-branch is unreachable and the
+predicate reduces to exactly the old one.
+
+### The live authorization matrix
+
+Through the real PostgREST client, as a permanent test rather than a probe:
+
+| Identity | Documents | Foreign-document probe |
+|---|---|---|
+| Owner — unscoped `view.all` | 787 | visible |
+| CCR manager — `view.all` CCR | 787 | visible |
+| HKI manager — `view.all` HKI | 121 | visible |
+| Accountant — `view.all` CCR | 787 | visible |
+| **Data Entry — `view.own` CCR** | **63, none another author's** | **invisible** |
+
+Non-enumeration is asserted in both directions: the colleague's document is absent from a
+listing **and** unreachable by naming its id, which matters because seeded ids are
+derivable (D-040, D-046). The child tables and the reporting projection are asserted to
+agree with the document projection, so an aggregate cannot total rows whose documents the
+reader cannot open.
+
+**One behavioural consequence, stated rather than discovered later:** a Data Entry user can
+now attach evidence only to documents they recorded. Attaching to a manager's expense was
+never a designed workflow; it followed from the defect.
+
+### D-174 · the regression the E1 migration introduced, and the guard for it
+
+`expense_view_own_means_own` rebuilt `expense_attachments_read` from the migration that
+first **created** it rather than the one that last **replaced** it, reinstating an inline
+read of `public.expenses` inside a policy expression. A policy runs with the querying
+user's privileges and no client role may read that table, so `expense_attachments` became
+unreadable by **everybody, the Owner included**:
+
+```
+        select count(*) from public.expense_attachments
+          -> 42501: permission denied for table expenses
+```
+
+Fail-closed rather than a leak, and still a defect. Found by widening the probe rather than
+by review, fixed in its own migration, and now guarded generally: no RLS policy on a
+financial relation may read a financial base table inline. Owner reads 46 attachment rows
+again; Data Entry reads 0, which is correct — it recorded none.
+
+### E2 · the two engines disagreed about what counts
+
+`RevenueRepository` applied three exclusions — voided, scope-revoked and **canonical-only**.
+`ExpenseRepository` applied the first two. Combined into a P&L that subtracts costs the
+server has never accepted from sales it has: **Operating Profit understated, silently,
+always in the same direction.**
+
+Proven by the shipped suite rather than by reading it. `expense_repository_test:328` called
+`save()` → `createLocally` alone, never synced, `txn_number` NULL, and asserted a figure.
+
+Exact before and after, from the fixtures that turned red:
+
+| Fixture | Before | After |
+|---|---|---|
+| simple expense, one period | ₹2,000 | **₹0** |
+| shared + cross-period, per unit | ₹12,500 | **₹0** |
+| odd amount split three ways | ₹1,000.01 | **₹0** |
+| June salary paid 5 July | ₹80,000 | **₹0** |
+
+Six existing assertions failed on the figures — the change the project lead ratified. Each
+fixture now records what the reporting rule is about: an **accepted** expense.
+
+**The canonical reporting predicate, one rule on both engines:**
+
+```
+        contributes  ⟺  txn_number IS NOT NULL      -- server-accepted
+                    AND  voided_at IS NULL           -- D-006
+                    AND  scope_revoked_at IS NULL    -- D-070, D-074
+```
+
+Canonical acceptance is read from the authoritative document state, never inferred from
+sync UI text. `txn_number` is issued by the server on acceptance and by nothing else, tied
+to `financial_year` by a check constraint, and no client can invent one (D-008, D-085).
+
+**Positive control, seen to fail:** with the canonical clause removed from the shared
+predicate, 3 of the new tests turn red. Restored and read back (D-142).
+
+### E3 · reporting aggregates in SQL, over a named projection
+
+The shipped expense reporting path folded financial rows in Dart and took only a period
+key. It now reads `expense_period_contributions` — a named projection on both sides — and
+aggregates in SQL: `contributions`, `contributionTotals` and `contributionTotalsByCategory`
+over **one shared predicate**, mirroring revenue exactly.
+
+The range filters `pnl_date`, never the business date: a June salary paid on 5 July is a
+June cost, and filtering the operational date would put it in July (D-016, spec §5.3).
+
+**Local schema v16** adds the projection and `ix_expense_contributions_reporting`. No
+version floor, and that is a claim rather than an oversight — the expense tables arrive at
+v7 and `scope_revoked_at` at v9, and the v9 step runs before this one in source order. A
+test holds that ordering, because a step that only ever ran against a fresh database would
+not notice it being reordered (D-144).
+
+### E4 · a documented reporting surface that never existed
+
+`DATABASE_SCHEMA.md` §11 named `v_expense_period_lines` and `v_revenue_lines` and called
+the first *"THE expense reporting surface"*. **Neither has ever existed** — not on
+`krishna-mis-dev`, not in any migration, not in `lib/` — and the SQL sketched for the first
+referenced `expense_allocation_id` (the real column is `allocation_id`) and
+`a.status = 'active'` on a table with no status column, so it could not have run. §11 now
+documents the two projections that are real, the vocabulary they share, where they
+legitimately differ, and what is still missing.
+
+### Three fixture defects the existing suite caught
+
+Three hand-built migration fixtures stamped `user_version` 9, 12 and 14 while omitting the
+expense tables every real database of those versions carries — they arrive at v7. Harmless
+until a later step read them, and then it failed in three files at once. Completed rather
+than worked around, with the DDL in one place: the third time (D-073a, D-159, this). One
+more hard-coded schema version was replaced with a lower bound, for the same reason, also
+the third time.
+
+### Verified
+
+| Item | Status | Evidence |
+|---|---|---|
+| `dart format --set-exit-if-changed` | **Tested** | clean, 197 files |
+| `flutter analyze` | **Tested** | **No issues found** |
+| Host suite | **Tested** | **1,206 tests, all passing** (1,192 + 14) |
+| Canonical-only reporting, both engines | **Tested** | 9 host tests + a control that turns 3 red |
+| Local v15 → v16 migration and fresh schema | **Tested** | 5 host tests |
+| Migration audit and backend schema parity | **Tested** | 38 host tests |
+| Live expense suite against `krishna-mis-dev` | **Tested** | **56 tests** (50 + 6 new) |
+| Live D-169 authorization matrix | **Tested** | 5 identities, through the real client |
+| Migration ledger parity (A0 / D-056) | **Tested** | three versions verified **byte-for-byte by hash** |
+| API-surface and PUBLIC-execute invariants | **Tested** | restated in full; `may_read_expense` named |
+| Secret scan — tree and git history | **Tested** | clean, controls passing |
+| Live fixtures reversed | **Tested** | 0 open of 2 created |
+
+### Migration ledger
+
+| Ledger version | Name |
+|---|---|
+| 20260907030228 | `expense_view_own_means_own` |
+| 20260907030255 | `api_surface_invariant_expense_view_own` |
+| 20260907030443 | `attachment_metadata_policy_restored_and_guarded` |
+
+All three verified byte-for-byte by hash against
+`supabase_migrations.schema_migrations.statements`.
+
+### Not rerun, and why
+
+**The Android and Windows device acceptance suites — not rerun.** No controller, widget or
+screen changed. The four acceptance call sites that used the old reporting API were
+migrated and compile, and each asserts a figure only after `syncAndAwaitNumber`, so the
+documents they read are canonical. They are **not** claimed as freshly passing; Slice 11
+owns device acceptance.
+
+**`phase-a` … `multi-scope-b` — not rerun.** Nothing here touches authority caching,
+grants, scope resolution or purge semantics.
+
+### Recorded, and deliberately not changed
+
+**`public.expense_sees_whole_org()` is on the reviewed API surface, granted to
+`authenticated`, and called by nothing** — no policy, no view, no function, no client code.
+A fifth instance of the family D-068, D-071, D-077, D-103 and D-116 record. Removing it
+changes the reviewed surface and it is outside this slice's four approved findings, so it is
+reported rather than removed in passing (D-127).
+
+**`reports.view` still has no evaluator**, and D-139's exemption entry stands. That is
+Slice 7's, deliberately, and D-163 / D-164 are recorded so it needs no further approval.

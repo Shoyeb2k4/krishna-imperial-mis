@@ -9,7 +9,7 @@ Status: **Sections 1–12 proposed (Phase 0, revised); sections 13–16 and 18�
 is built and verified; section 17 is the Phase 4 *plan*, since built — read §18–§26 for what
 shipped.** Sections 6, 5.3 and 8 carry the project lead's mandated corrections.
 Implementation status is tracked in `PROJECT_STATUS.md`.
-Last updated: 2026-09-07 — Phase 4 closed
+Last updated: 2026-09-07 — Phase 5 Slice 1 (section 27); Phase 4 closed
 
 ---
 
@@ -2291,3 +2291,129 @@ dashboard can be honest offline.
 Filtering, scoping and the aggregate all happen in SQL. A month of a property's revenue is
 one row off the database rather than every component folded in Dart, which is what spec §27
 asks for and what the expense side does not yet do.
+
+---
+
+## 27. One reporting vocabulary, and who may read it (2026-09-07)
+
+Phase 5 Slice 1. It builds **no P&L**, no engine, no surface and no pull — those are
+Slices 2 to 5. What it does is make the two accepted transaction engines answer the same
+question the same way, because a P&L that sums two shapes which merely resemble each other
+is a P&L that is wrong in a direction nobody notices.
+
+Four findings from the Phase 5 planning audit, all proven before they were fixed.
+
+### 27.1 `expense.view.own` meant the property, not the author (E1, D-169)
+
+The catalogue says *"View expenses this user created"*. `expense_visible_units()` returns
+the units where the caller holds `expense.view.all` **or** `expense.view.own`, and no read
+path anywhere applied a `created_by` predicate. Read as the development Data Entry
+identity, which holds `expense.view.own` on Crystal Canopy and nothing else:
+
+```
+        RED                              GREEN
+        expense_document               787 rows, 724 others   ->  63, 0
+        expense_period_contributions   865 rows, 802 others   ->  63, 0
+        expense_allocations            787 rows, 724 others   ->  63, 0
+```
+
+**Ownership is a property of a document, and a set of unit ids cannot express "mine".** So
+the question was split rather than the unit set edited:
+
+```
+        expense_visible_units()      unchanged — whose LINES may I see, per unit
+        public.may_read_expense(id)  new      — may I see this DOCUMENT at all
+```
+
+and the document predicate is `AND`-ed into **every** expense read path. It has to be every
+one: `expense_allocations_read` is line-level, so leaving it alone would go on handing a
+`view.own` holder another author's rows through the child table. A deploy-time invariant
+enumerates the paths from the catalogue and refuses the migration if one does not consult
+it — a list of the paths I remembered touching is exactly what the next one would escape.
+
+It can only narrow. For a pure `view.all` holder the own-branch is unreachable and the
+predicate reduces to the old one, which the live matrix confirms: Owner 787, CCR manager
+787, HKI manager 121, Accountant 787, all unchanged, with the foreign-document probe
+invisible only to Data Entry.
+
+One behavioural consequence, stated rather than discovered later: a Data Entry user can now
+attach evidence only to documents they recorded, because `may_attach_to_expense` is built on
+the read predicate. Attaching to a manager's expense was never a designed workflow; it
+followed from the defect.
+
+### 27.2 The regression that fix introduced, and the guard for it (D-174)
+
+`expense_view_own_means_own` rebuilt `expense_attachments_read` from the migration that
+first **created** it rather than the one that last **replaced** it, reinstating an inline
+`select ... from public.expenses` inside a policy expression. A policy runs with the
+querying user's privileges and no client role may read that table, so
+`expense_attachments` became unreadable by everybody, the Owner included — fail-closed
+rather than a leak, and still a defect, because D-063's read authority stopped reaching the
+users it exists to serve.
+
+This is D-045 and D-109 by a new route: not a predicate written against the wrong schema,
+but a correct predicate restored from a superseded version of itself. **A
+`create or replace` has to be built from what the object is now.** The guard is now general
+and catalogue-wide: no RLS policy on a financial relation may read a financial base table
+inline.
+
+### 27.3 The two engines disagreed about what counts (E2, D-168)
+
+`RevenueRepository` applied three exclusions — voided, scope-revoked, and **canonical-only**
+(`txn_number IS NOT NULL`). `ExpenseRepository` applied the first two.
+
+Combined into a P&L that subtracts costs the server has never accepted from sales it has:
+
+```
+        Net Sales        canonical revenue only
+      - Expenses         canonical costs + this device's unsent attempts
+      = Operating Profit understated, silently, always in the same direction
+```
+
+Proven by the shipped suite rather than by reading it — an existing test saved an expense
+with `createLocally` alone and asserted it contributed ₹200.
+
+There is now **one canonical reporting semantic** on both engines: an amount contributes
+only if it is server-accepted, not voided, not scope-revoked. `txn_number` is the marker on
+both sides, issued by the server on acceptance and by nothing else, tied to
+`financial_year` by a check constraint, and impossible for a client to invent (D-008,
+D-085). Pending, rejected, conflicted and quarantined work contributes zero and stays
+visible in the transaction surfaces (D-167).
+
+### 27.4 Reporting aggregates in SQL, over a named projection (E3)
+
+The expense reporting path read three tables through a hand-built join and folded the rows
+in Dart, taking only a period key. Revenue already read a named view and aggregated in SQL.
+Two shapes for one question is how 27.3 came to be true on one side and not the other.
+
+Local schema **v16** adds `expense_period_contributions`, the local half of the server view
+column for column, plus the two columns that only mean something on a device: `txn_number`
+and `scope_revoked_at`. The repository now offers `contributions`, `contributionTotals` and
+`contributionTotalsByCategory` over **one shared predicate**, mirroring revenue exactly, so
+the three exclusions cannot be present in one query and forgotten in the next.
+
+The range filters `pnl_date`, never the business date: a June salary paid on 5 July is a
+June cost, and a report that filtered the operational date would put it in July (D-016,
+spec §5.3).
+
+The v16 step carries **no version floor**, and that is a claim rather than an oversight: the
+expense tables arrive at v7 and `expenses.scope_revoked_at` at v9, and the v9 step runs
+before this one in source order. A test holds that ordering, because a step that only ever
+ran against a fresh database would not notice it being reordered (D-144).
+
+### 27.5 A documented surface that never existed (E4)
+
+`DATABASE_SCHEMA.md` §11 named `v_expense_period_lines` and `v_revenue_lines` and called the
+first *"THE expense reporting surface"*. Neither has ever existed anywhere, and the SQL
+sketched for the first referenced a column and a predicate that do not exist, so it could
+not have run. §11 now documents the two projections that are real, what they share, where
+they legitimately differ, and what is still missing.
+
+### 27.6 What Slice 1 deliberately did not do
+
+No `reports.view` evaluator — that is Slice 7, and D-139's exemption entry stays until the
+migration that owns the reporting boundary removes it deliberately. No `domain/finance`,
+which is Slice 2. No engine, no cache, no pull, no surface. And no change to
+`public.expense_sees_whole_org()`, which is on the reviewed API surface and is called by
+nothing — a fifth instance of the family D-068, D-071, D-077, D-103 and D-116 record,
+reported rather than removed inside a slice that did not scope it (D-127).
