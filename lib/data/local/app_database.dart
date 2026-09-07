@@ -6,6 +6,7 @@ library;
 
 import 'package:drift/drift.dart';
 import 'package:krishna_mis/data/local/expense_tables.dart';
+import 'package:krishna_mis/data/local/reporting_tables.dart';
 import 'package:krishna_mis/data/local/revenue_tables.dart';
 import 'package:krishna_mis/data/local/master_tables.dart';
 import 'package:krishna_mis/data/local/seed/master_seed.dart';
@@ -38,6 +39,9 @@ part 'app_database.g.dart';
     BusinessUnitTaxStatuses,
     RevenueConfigSnapshots,
     RevenueAttachments,
+    ReportingRevenueContributions,
+    ReportingExpenseContributions,
+    ReportingCoverageMarkers,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -96,7 +100,7 @@ class AppDatabase extends _$AppDatabase {
   /// Financial tables raise this number as they land, each with a migration step and a
   /// migration test (docs/RELEASE_CHECKLIST.md §C).
   @override
-  int get schemaVersion => 16;
+  int get schemaVersion => 17;
 
   /// Timestamps are stored as ISO-8601 **UTC text**, not as unix seconds.
   ///
@@ -125,6 +129,7 @@ class AppDatabase extends _$AppDatabase {
       await _createExpensePeriodContributionsView();
       await _createRevenueIndexes();
       await _createExpenseReportingIndex();
+      await _createReportingCacheIndexes();
       await _createImmutableBandTrigger();
     },
     onUpgrade: (m, from, to) async {
@@ -313,6 +318,18 @@ class AppDatabase extends _$AppDatabase {
         // exists at upgrade time is one this user could browse, and the column means
         // "kept through a revocation", which has not happened to any of them.
         await m.addColumn(expenses, expenses.scopeRevokedAt);
+      }
+      if (from < 17) {
+        // Phase 5 Slice 4 — the canonical reporting cache (D-171).
+        //
+        // Three new tables and nothing else touched. They start **empty**: a migration
+        // synchronises nothing, and a device that upgrades has no reporting coverage until
+        // it asks the server for some. Certifying a year complete because a schema step
+        // ran would be the exact false claim the marker exists to prevent (D-108).
+        await m.createTable(reportingRevenueContributions);
+        await m.createTable(reportingExpenseContributions);
+        await m.createTable(reportingCoverageMarkers);
+        await _createReportingCacheIndexes();
       }
       if (from < 16) {
         // Phase 5 Slice 1 — the expense reporting projection and the index a period
@@ -504,6 +521,35 @@ class AppDatabase extends _$AppDatabase {
     'CREATE INDEX IF NOT EXISTS ix_expense_contributions_reporting '
     'ON expense_period_allocations (org_id, pnl_period_key, business_unit_id)',
   );
+
+  /// What a cache-backed report reads: an owner's rows for a property in a period.
+  ///
+  /// The owner leads every index because every reporting read is scoped to one person
+  /// (D-074) — an index that led with the business unit would be scanning other people's
+  /// cached figures to find this one's.
+  Future<void> _createReportingCacheIndexes() async {
+    for (final statement in const [
+      'CREATE INDEX IF NOT EXISTS ix_reporting_revenue_period '
+          'ON reporting_revenue_contributions '
+          '(owner_user_id, business_unit_id, pnl_period_key)',
+      'CREATE INDEX IF NOT EXISTS ix_reporting_revenue_date '
+          'ON reporting_revenue_contributions '
+          '(owner_user_id, business_unit_id, pnl_date)',
+      // The delta replaces a document's whole contribution set, so it deletes by document.
+      'CREATE INDEX IF NOT EXISTS ix_reporting_revenue_document '
+          'ON reporting_revenue_contributions (owner_user_id, revenue_entry_id)',
+      'CREATE INDEX IF NOT EXISTS ix_reporting_expense_period '
+          'ON reporting_expense_contributions '
+          '(owner_user_id, business_unit_id, pnl_period_key)',
+      'CREATE INDEX IF NOT EXISTS ix_reporting_expense_date '
+          'ON reporting_expense_contributions '
+          '(owner_user_id, business_unit_id, pnl_date)',
+      'CREATE INDEX IF NOT EXISTS ix_reporting_expense_document '
+          'ON reporting_expense_contributions (owner_user_id, expense_id)',
+    ]) {
+      await customStatement(statement);
+    }
+  }
 
   Future<void> _createRevenueIndexes() async {
     for (final statement in const [

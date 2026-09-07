@@ -17944,6 +17944,2730 @@ class RevenueAttachmentsCompanion
   }
 }
 
+class $ReportingRevenueContributionsTable extends ReportingRevenueContributions
+    with TableInfo<$ReportingRevenueContributionsTable, ReportingRevenueRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ReportingRevenueContributionsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _ownerUserIdMeta = const VerificationMeta(
+    'ownerUserId',
+  );
+  @override
+  late final GeneratedColumn<String> ownerUserId = GeneratedColumn<String>(
+    'owner_user_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _orgIdMeta = const VerificationMeta('orgId');
+  @override
+  late final GeneratedColumn<String> orgId = GeneratedColumn<String>(
+    'org_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _contributionIdMeta = const VerificationMeta(
+    'contributionId',
+  );
+  @override
+  late final GeneratedColumn<String> contributionId = GeneratedColumn<String>(
+    'contribution_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _revenueEntryIdMeta = const VerificationMeta(
+    'revenueEntryId',
+  );
+  @override
+  late final GeneratedColumn<String> revenueEntryId = GeneratedColumn<String>(
+    'revenue_entry_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _businessUnitIdMeta = const VerificationMeta(
+    'businessUnitId',
+  );
+  @override
+  late final GeneratedColumn<String> businessUnitId = GeneratedColumn<String>(
+    'business_unit_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _revenueCategoryIdMeta = const VerificationMeta(
+    'revenueCategoryId',
+  );
+  @override
+  late final GeneratedColumn<String> revenueCategoryId =
+      GeneratedColumn<String>(
+        'revenue_category_id',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: true,
+      );
+  static const VerificationMeta _pnlDateMeta = const VerificationMeta(
+    'pnlDate',
+  );
+  @override
+  late final GeneratedColumn<String> pnlDate = GeneratedColumn<String>(
+    'pnl_date',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _pnlPeriodKeyMeta = const VerificationMeta(
+    'pnlPeriodKey',
+  );
+  @override
+  late final GeneratedColumn<String> pnlPeriodKey = GeneratedColumn<String>(
+    'pnl_period_key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _grossMinorMeta = const VerificationMeta(
+    'grossMinor',
+  );
+  @override
+  late final GeneratedColumn<int> grossMinor = GeneratedColumn<int>(
+    'gross_minor',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _taxMinorMeta = const VerificationMeta(
+    'taxMinor',
+  );
+  @override
+  late final GeneratedColumn<int> taxMinor = GeneratedColumn<int>(
+    'tax_minor',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _netMinorMeta = const VerificationMeta(
+    'netMinor',
+  );
+  @override
+  late final GeneratedColumn<int> netMinor = GeneratedColumn<int>(
+    'net_minor',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _taxTreatmentMeta = const VerificationMeta(
+    'taxTreatment',
+  );
+  @override
+  late final GeneratedColumn<String> taxTreatment = GeneratedColumn<String>(
+    'tax_treatment',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _taxRateBasisPointsMeta =
+      const VerificationMeta('taxRateBasisPoints');
+  @override
+  late final GeneratedColumn<int> taxRateBasisPoints = GeneratedColumn<int>(
+    'tax_rate_basis_points',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _enteredBasisMeta = const VerificationMeta(
+    'enteredBasis',
+  );
+  @override
+  late final GeneratedColumn<String> enteredBasis = GeneratedColumn<String>(
+    'entered_basis',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _valueBandIdMeta = const VerificationMeta(
+    'valueBandId',
+  );
+  @override
+  late final GeneratedColumn<String> valueBandId = GeneratedColumn<String>(
+    'value_band_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _supplySubtypeIdMeta = const VerificationMeta(
+    'supplySubtypeId',
+  );
+  @override
+  late final GeneratedColumn<String> supplySubtypeId = GeneratedColumn<String>(
+    'supply_subtype_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _financialYearMeta = const VerificationMeta(
+    'financialYear',
+  );
+  @override
+  late final GeneratedColumn<int> financialYear = GeneratedColumn<int>(
+    'financial_year',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _documentGenerationMeta =
+      const VerificationMeta('documentGeneration');
+  @override
+  late final GeneratedColumn<int> documentGeneration = GeneratedColumn<int>(
+    'document_generation',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _syncedAtMeta = const VerificationMeta(
+    'syncedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> syncedAt = GeneratedColumn<DateTime>(
+    'synced_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    ownerUserId,
+    orgId,
+    contributionId,
+    revenueEntryId,
+    businessUnitId,
+    revenueCategoryId,
+    pnlDate,
+    pnlPeriodKey,
+    grossMinor,
+    taxMinor,
+    netMinor,
+    taxTreatment,
+    taxRateBasisPoints,
+    enteredBasis,
+    valueBandId,
+    supplySubtypeId,
+    financialYear,
+    documentGeneration,
+    syncedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'reporting_revenue_contributions';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ReportingRevenueRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('owner_user_id')) {
+      context.handle(
+        _ownerUserIdMeta,
+        ownerUserId.isAcceptableOrUnknown(
+          data['owner_user_id']!,
+          _ownerUserIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_ownerUserIdMeta);
+    }
+    if (data.containsKey('org_id')) {
+      context.handle(
+        _orgIdMeta,
+        orgId.isAcceptableOrUnknown(data['org_id']!, _orgIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_orgIdMeta);
+    }
+    if (data.containsKey('contribution_id')) {
+      context.handle(
+        _contributionIdMeta,
+        contributionId.isAcceptableOrUnknown(
+          data['contribution_id']!,
+          _contributionIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_contributionIdMeta);
+    }
+    if (data.containsKey('revenue_entry_id')) {
+      context.handle(
+        _revenueEntryIdMeta,
+        revenueEntryId.isAcceptableOrUnknown(
+          data['revenue_entry_id']!,
+          _revenueEntryIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_revenueEntryIdMeta);
+    }
+    if (data.containsKey('business_unit_id')) {
+      context.handle(
+        _businessUnitIdMeta,
+        businessUnitId.isAcceptableOrUnknown(
+          data['business_unit_id']!,
+          _businessUnitIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_businessUnitIdMeta);
+    }
+    if (data.containsKey('revenue_category_id')) {
+      context.handle(
+        _revenueCategoryIdMeta,
+        revenueCategoryId.isAcceptableOrUnknown(
+          data['revenue_category_id']!,
+          _revenueCategoryIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_revenueCategoryIdMeta);
+    }
+    if (data.containsKey('pnl_date')) {
+      context.handle(
+        _pnlDateMeta,
+        pnlDate.isAcceptableOrUnknown(data['pnl_date']!, _pnlDateMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_pnlDateMeta);
+    }
+    if (data.containsKey('pnl_period_key')) {
+      context.handle(
+        _pnlPeriodKeyMeta,
+        pnlPeriodKey.isAcceptableOrUnknown(
+          data['pnl_period_key']!,
+          _pnlPeriodKeyMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_pnlPeriodKeyMeta);
+    }
+    if (data.containsKey('gross_minor')) {
+      context.handle(
+        _grossMinorMeta,
+        grossMinor.isAcceptableOrUnknown(data['gross_minor']!, _grossMinorMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_grossMinorMeta);
+    }
+    if (data.containsKey('tax_minor')) {
+      context.handle(
+        _taxMinorMeta,
+        taxMinor.isAcceptableOrUnknown(data['tax_minor']!, _taxMinorMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_taxMinorMeta);
+    }
+    if (data.containsKey('net_minor')) {
+      context.handle(
+        _netMinorMeta,
+        netMinor.isAcceptableOrUnknown(data['net_minor']!, _netMinorMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_netMinorMeta);
+    }
+    if (data.containsKey('tax_treatment')) {
+      context.handle(
+        _taxTreatmentMeta,
+        taxTreatment.isAcceptableOrUnknown(
+          data['tax_treatment']!,
+          _taxTreatmentMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_taxTreatmentMeta);
+    }
+    if (data.containsKey('tax_rate_basis_points')) {
+      context.handle(
+        _taxRateBasisPointsMeta,
+        taxRateBasisPoints.isAcceptableOrUnknown(
+          data['tax_rate_basis_points']!,
+          _taxRateBasisPointsMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_taxRateBasisPointsMeta);
+    }
+    if (data.containsKey('entered_basis')) {
+      context.handle(
+        _enteredBasisMeta,
+        enteredBasis.isAcceptableOrUnknown(
+          data['entered_basis']!,
+          _enteredBasisMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_enteredBasisMeta);
+    }
+    if (data.containsKey('value_band_id')) {
+      context.handle(
+        _valueBandIdMeta,
+        valueBandId.isAcceptableOrUnknown(
+          data['value_band_id']!,
+          _valueBandIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('supply_subtype_id')) {
+      context.handle(
+        _supplySubtypeIdMeta,
+        supplySubtypeId.isAcceptableOrUnknown(
+          data['supply_subtype_id']!,
+          _supplySubtypeIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('financial_year')) {
+      context.handle(
+        _financialYearMeta,
+        financialYear.isAcceptableOrUnknown(
+          data['financial_year']!,
+          _financialYearMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_financialYearMeta);
+    }
+    if (data.containsKey('document_generation')) {
+      context.handle(
+        _documentGenerationMeta,
+        documentGeneration.isAcceptableOrUnknown(
+          data['document_generation']!,
+          _documentGenerationMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_documentGenerationMeta);
+    }
+    if (data.containsKey('synced_at')) {
+      context.handle(
+        _syncedAtMeta,
+        syncedAt.isAcceptableOrUnknown(data['synced_at']!, _syncedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_syncedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {ownerUserId, contributionId};
+  @override
+  ReportingRevenueRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ReportingRevenueRow(
+      ownerUserId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}owner_user_id'],
+      )!,
+      orgId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}org_id'],
+      )!,
+      contributionId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}contribution_id'],
+      )!,
+      revenueEntryId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}revenue_entry_id'],
+      )!,
+      businessUnitId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}business_unit_id'],
+      )!,
+      revenueCategoryId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}revenue_category_id'],
+      )!,
+      pnlDate: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}pnl_date'],
+      )!,
+      pnlPeriodKey: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}pnl_period_key'],
+      )!,
+      grossMinor: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}gross_minor'],
+      )!,
+      taxMinor: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}tax_minor'],
+      )!,
+      netMinor: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}net_minor'],
+      )!,
+      taxTreatment: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}tax_treatment'],
+      )!,
+      taxRateBasisPoints: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}tax_rate_basis_points'],
+      )!,
+      enteredBasis: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}entered_basis'],
+      )!,
+      valueBandId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}value_band_id'],
+      ),
+      supplySubtypeId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}supply_subtype_id'],
+      ),
+      financialYear: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}financial_year'],
+      )!,
+      documentGeneration: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}document_generation'],
+      )!,
+      syncedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}synced_at'],
+      )!,
+    );
+  }
+
+  @override
+  $ReportingRevenueContributionsTable createAlias(String alias) {
+    return $ReportingRevenueContributionsTable(attachedDatabase, alias);
+  }
+}
+
+class ReportingRevenueRow extends DataClass
+    implements Insertable<ReportingRevenueRow> {
+  /// Whose cache this is. Never null, never inferred (D-074).
+  final String ownerUserId;
+  final String orgId;
+
+  /// The source contribution's own identity on the server — the component id. Stable, and
+  /// what makes an overlapping re-pull idempotent rather than duplicating (§19).
+  final String contributionId;
+
+  /// The document the contribution belongs to. The **delta unit**: a changed document has
+  /// its whole contribution set replaced, never appended to (§14).
+  final String revenueEntryId;
+  final String businessUnitId;
+  final String revenueCategoryId;
+
+  /// The stored accrual date and its `YYYY-MM` key, exactly as the server holds them.
+  /// Nothing is re-derived here — a business date is decided once, under the property's
+  /// timezone and cut-off, and persisted (D-019, D-067).
+  final String pnlDate;
+  final String pnlPeriodKey;
+
+  /// The accepted figures. Integer paise, and never recomputed: a report of a June sale
+  /// must be unchanged by a rate configured in December (D-080).
+  final int grossMinor;
+  final int taxMinor;
+  final int netMinor;
+
+  /// Treatment travels because `none` and a configured `0%` both give ₹0 of tax and are
+  /// not the same fact (D-091, D-122). The rate and basis travel with it so a breakdown
+  /// can explain the figure without joining anything.
+  final String taxTreatment;
+  final int taxRateBasisPoints;
+  final String enteredBasis;
+
+  /// The conditional identities, where the rule used them. Kept because a Room band is a
+  /// reporting dimension (D-087); the bounds are not, and are not stored.
+  final String? valueBandId;
+  final String? supplySubtypeId;
+
+  /// The financial year this contribution's P&L date falls in, stored so a coverage
+  /// marker and a cache row can be matched without parsing a date in SQL.
+  final int financialYear;
+
+  /// The effective document generation this row was synchronised at (D-177). Used to
+  /// recognise a re-delivered document and to keep the watermark honest.
+  final int documentGeneration;
+  final DateTime syncedAt;
+  const ReportingRevenueRow({
+    required this.ownerUserId,
+    required this.orgId,
+    required this.contributionId,
+    required this.revenueEntryId,
+    required this.businessUnitId,
+    required this.revenueCategoryId,
+    required this.pnlDate,
+    required this.pnlPeriodKey,
+    required this.grossMinor,
+    required this.taxMinor,
+    required this.netMinor,
+    required this.taxTreatment,
+    required this.taxRateBasisPoints,
+    required this.enteredBasis,
+    this.valueBandId,
+    this.supplySubtypeId,
+    required this.financialYear,
+    required this.documentGeneration,
+    required this.syncedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['owner_user_id'] = Variable<String>(ownerUserId);
+    map['org_id'] = Variable<String>(orgId);
+    map['contribution_id'] = Variable<String>(contributionId);
+    map['revenue_entry_id'] = Variable<String>(revenueEntryId);
+    map['business_unit_id'] = Variable<String>(businessUnitId);
+    map['revenue_category_id'] = Variable<String>(revenueCategoryId);
+    map['pnl_date'] = Variable<String>(pnlDate);
+    map['pnl_period_key'] = Variable<String>(pnlPeriodKey);
+    map['gross_minor'] = Variable<int>(grossMinor);
+    map['tax_minor'] = Variable<int>(taxMinor);
+    map['net_minor'] = Variable<int>(netMinor);
+    map['tax_treatment'] = Variable<String>(taxTreatment);
+    map['tax_rate_basis_points'] = Variable<int>(taxRateBasisPoints);
+    map['entered_basis'] = Variable<String>(enteredBasis);
+    if (!nullToAbsent || valueBandId != null) {
+      map['value_band_id'] = Variable<String>(valueBandId);
+    }
+    if (!nullToAbsent || supplySubtypeId != null) {
+      map['supply_subtype_id'] = Variable<String>(supplySubtypeId);
+    }
+    map['financial_year'] = Variable<int>(financialYear);
+    map['document_generation'] = Variable<int>(documentGeneration);
+    map['synced_at'] = Variable<DateTime>(syncedAt);
+    return map;
+  }
+
+  ReportingRevenueContributionsCompanion toCompanion(bool nullToAbsent) {
+    return ReportingRevenueContributionsCompanion(
+      ownerUserId: Value(ownerUserId),
+      orgId: Value(orgId),
+      contributionId: Value(contributionId),
+      revenueEntryId: Value(revenueEntryId),
+      businessUnitId: Value(businessUnitId),
+      revenueCategoryId: Value(revenueCategoryId),
+      pnlDate: Value(pnlDate),
+      pnlPeriodKey: Value(pnlPeriodKey),
+      grossMinor: Value(grossMinor),
+      taxMinor: Value(taxMinor),
+      netMinor: Value(netMinor),
+      taxTreatment: Value(taxTreatment),
+      taxRateBasisPoints: Value(taxRateBasisPoints),
+      enteredBasis: Value(enteredBasis),
+      valueBandId: valueBandId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(valueBandId),
+      supplySubtypeId: supplySubtypeId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(supplySubtypeId),
+      financialYear: Value(financialYear),
+      documentGeneration: Value(documentGeneration),
+      syncedAt: Value(syncedAt),
+    );
+  }
+
+  factory ReportingRevenueRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ReportingRevenueRow(
+      ownerUserId: serializer.fromJson<String>(json['ownerUserId']),
+      orgId: serializer.fromJson<String>(json['orgId']),
+      contributionId: serializer.fromJson<String>(json['contributionId']),
+      revenueEntryId: serializer.fromJson<String>(json['revenueEntryId']),
+      businessUnitId: serializer.fromJson<String>(json['businessUnitId']),
+      revenueCategoryId: serializer.fromJson<String>(json['revenueCategoryId']),
+      pnlDate: serializer.fromJson<String>(json['pnlDate']),
+      pnlPeriodKey: serializer.fromJson<String>(json['pnlPeriodKey']),
+      grossMinor: serializer.fromJson<int>(json['grossMinor']),
+      taxMinor: serializer.fromJson<int>(json['taxMinor']),
+      netMinor: serializer.fromJson<int>(json['netMinor']),
+      taxTreatment: serializer.fromJson<String>(json['taxTreatment']),
+      taxRateBasisPoints: serializer.fromJson<int>(json['taxRateBasisPoints']),
+      enteredBasis: serializer.fromJson<String>(json['enteredBasis']),
+      valueBandId: serializer.fromJson<String?>(json['valueBandId']),
+      supplySubtypeId: serializer.fromJson<String?>(json['supplySubtypeId']),
+      financialYear: serializer.fromJson<int>(json['financialYear']),
+      documentGeneration: serializer.fromJson<int>(json['documentGeneration']),
+      syncedAt: serializer.fromJson<DateTime>(json['syncedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'ownerUserId': serializer.toJson<String>(ownerUserId),
+      'orgId': serializer.toJson<String>(orgId),
+      'contributionId': serializer.toJson<String>(contributionId),
+      'revenueEntryId': serializer.toJson<String>(revenueEntryId),
+      'businessUnitId': serializer.toJson<String>(businessUnitId),
+      'revenueCategoryId': serializer.toJson<String>(revenueCategoryId),
+      'pnlDate': serializer.toJson<String>(pnlDate),
+      'pnlPeriodKey': serializer.toJson<String>(pnlPeriodKey),
+      'grossMinor': serializer.toJson<int>(grossMinor),
+      'taxMinor': serializer.toJson<int>(taxMinor),
+      'netMinor': serializer.toJson<int>(netMinor),
+      'taxTreatment': serializer.toJson<String>(taxTreatment),
+      'taxRateBasisPoints': serializer.toJson<int>(taxRateBasisPoints),
+      'enteredBasis': serializer.toJson<String>(enteredBasis),
+      'valueBandId': serializer.toJson<String?>(valueBandId),
+      'supplySubtypeId': serializer.toJson<String?>(supplySubtypeId),
+      'financialYear': serializer.toJson<int>(financialYear),
+      'documentGeneration': serializer.toJson<int>(documentGeneration),
+      'syncedAt': serializer.toJson<DateTime>(syncedAt),
+    };
+  }
+
+  ReportingRevenueRow copyWith({
+    String? ownerUserId,
+    String? orgId,
+    String? contributionId,
+    String? revenueEntryId,
+    String? businessUnitId,
+    String? revenueCategoryId,
+    String? pnlDate,
+    String? pnlPeriodKey,
+    int? grossMinor,
+    int? taxMinor,
+    int? netMinor,
+    String? taxTreatment,
+    int? taxRateBasisPoints,
+    String? enteredBasis,
+    Value<String?> valueBandId = const Value.absent(),
+    Value<String?> supplySubtypeId = const Value.absent(),
+    int? financialYear,
+    int? documentGeneration,
+    DateTime? syncedAt,
+  }) => ReportingRevenueRow(
+    ownerUserId: ownerUserId ?? this.ownerUserId,
+    orgId: orgId ?? this.orgId,
+    contributionId: contributionId ?? this.contributionId,
+    revenueEntryId: revenueEntryId ?? this.revenueEntryId,
+    businessUnitId: businessUnitId ?? this.businessUnitId,
+    revenueCategoryId: revenueCategoryId ?? this.revenueCategoryId,
+    pnlDate: pnlDate ?? this.pnlDate,
+    pnlPeriodKey: pnlPeriodKey ?? this.pnlPeriodKey,
+    grossMinor: grossMinor ?? this.grossMinor,
+    taxMinor: taxMinor ?? this.taxMinor,
+    netMinor: netMinor ?? this.netMinor,
+    taxTreatment: taxTreatment ?? this.taxTreatment,
+    taxRateBasisPoints: taxRateBasisPoints ?? this.taxRateBasisPoints,
+    enteredBasis: enteredBasis ?? this.enteredBasis,
+    valueBandId: valueBandId.present ? valueBandId.value : this.valueBandId,
+    supplySubtypeId: supplySubtypeId.present
+        ? supplySubtypeId.value
+        : this.supplySubtypeId,
+    financialYear: financialYear ?? this.financialYear,
+    documentGeneration: documentGeneration ?? this.documentGeneration,
+    syncedAt: syncedAt ?? this.syncedAt,
+  );
+  ReportingRevenueRow copyWithCompanion(
+    ReportingRevenueContributionsCompanion data,
+  ) {
+    return ReportingRevenueRow(
+      ownerUserId: data.ownerUserId.present
+          ? data.ownerUserId.value
+          : this.ownerUserId,
+      orgId: data.orgId.present ? data.orgId.value : this.orgId,
+      contributionId: data.contributionId.present
+          ? data.contributionId.value
+          : this.contributionId,
+      revenueEntryId: data.revenueEntryId.present
+          ? data.revenueEntryId.value
+          : this.revenueEntryId,
+      businessUnitId: data.businessUnitId.present
+          ? data.businessUnitId.value
+          : this.businessUnitId,
+      revenueCategoryId: data.revenueCategoryId.present
+          ? data.revenueCategoryId.value
+          : this.revenueCategoryId,
+      pnlDate: data.pnlDate.present ? data.pnlDate.value : this.pnlDate,
+      pnlPeriodKey: data.pnlPeriodKey.present
+          ? data.pnlPeriodKey.value
+          : this.pnlPeriodKey,
+      grossMinor: data.grossMinor.present
+          ? data.grossMinor.value
+          : this.grossMinor,
+      taxMinor: data.taxMinor.present ? data.taxMinor.value : this.taxMinor,
+      netMinor: data.netMinor.present ? data.netMinor.value : this.netMinor,
+      taxTreatment: data.taxTreatment.present
+          ? data.taxTreatment.value
+          : this.taxTreatment,
+      taxRateBasisPoints: data.taxRateBasisPoints.present
+          ? data.taxRateBasisPoints.value
+          : this.taxRateBasisPoints,
+      enteredBasis: data.enteredBasis.present
+          ? data.enteredBasis.value
+          : this.enteredBasis,
+      valueBandId: data.valueBandId.present
+          ? data.valueBandId.value
+          : this.valueBandId,
+      supplySubtypeId: data.supplySubtypeId.present
+          ? data.supplySubtypeId.value
+          : this.supplySubtypeId,
+      financialYear: data.financialYear.present
+          ? data.financialYear.value
+          : this.financialYear,
+      documentGeneration: data.documentGeneration.present
+          ? data.documentGeneration.value
+          : this.documentGeneration,
+      syncedAt: data.syncedAt.present ? data.syncedAt.value : this.syncedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ReportingRevenueRow(')
+          ..write('ownerUserId: $ownerUserId, ')
+          ..write('orgId: $orgId, ')
+          ..write('contributionId: $contributionId, ')
+          ..write('revenueEntryId: $revenueEntryId, ')
+          ..write('businessUnitId: $businessUnitId, ')
+          ..write('revenueCategoryId: $revenueCategoryId, ')
+          ..write('pnlDate: $pnlDate, ')
+          ..write('pnlPeriodKey: $pnlPeriodKey, ')
+          ..write('grossMinor: $grossMinor, ')
+          ..write('taxMinor: $taxMinor, ')
+          ..write('netMinor: $netMinor, ')
+          ..write('taxTreatment: $taxTreatment, ')
+          ..write('taxRateBasisPoints: $taxRateBasisPoints, ')
+          ..write('enteredBasis: $enteredBasis, ')
+          ..write('valueBandId: $valueBandId, ')
+          ..write('supplySubtypeId: $supplySubtypeId, ')
+          ..write('financialYear: $financialYear, ')
+          ..write('documentGeneration: $documentGeneration, ')
+          ..write('syncedAt: $syncedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    ownerUserId,
+    orgId,
+    contributionId,
+    revenueEntryId,
+    businessUnitId,
+    revenueCategoryId,
+    pnlDate,
+    pnlPeriodKey,
+    grossMinor,
+    taxMinor,
+    netMinor,
+    taxTreatment,
+    taxRateBasisPoints,
+    enteredBasis,
+    valueBandId,
+    supplySubtypeId,
+    financialYear,
+    documentGeneration,
+    syncedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ReportingRevenueRow &&
+          other.ownerUserId == this.ownerUserId &&
+          other.orgId == this.orgId &&
+          other.contributionId == this.contributionId &&
+          other.revenueEntryId == this.revenueEntryId &&
+          other.businessUnitId == this.businessUnitId &&
+          other.revenueCategoryId == this.revenueCategoryId &&
+          other.pnlDate == this.pnlDate &&
+          other.pnlPeriodKey == this.pnlPeriodKey &&
+          other.grossMinor == this.grossMinor &&
+          other.taxMinor == this.taxMinor &&
+          other.netMinor == this.netMinor &&
+          other.taxTreatment == this.taxTreatment &&
+          other.taxRateBasisPoints == this.taxRateBasisPoints &&
+          other.enteredBasis == this.enteredBasis &&
+          other.valueBandId == this.valueBandId &&
+          other.supplySubtypeId == this.supplySubtypeId &&
+          other.financialYear == this.financialYear &&
+          other.documentGeneration == this.documentGeneration &&
+          other.syncedAt == this.syncedAt);
+}
+
+class ReportingRevenueContributionsCompanion
+    extends UpdateCompanion<ReportingRevenueRow> {
+  final Value<String> ownerUserId;
+  final Value<String> orgId;
+  final Value<String> contributionId;
+  final Value<String> revenueEntryId;
+  final Value<String> businessUnitId;
+  final Value<String> revenueCategoryId;
+  final Value<String> pnlDate;
+  final Value<String> pnlPeriodKey;
+  final Value<int> grossMinor;
+  final Value<int> taxMinor;
+  final Value<int> netMinor;
+  final Value<String> taxTreatment;
+  final Value<int> taxRateBasisPoints;
+  final Value<String> enteredBasis;
+  final Value<String?> valueBandId;
+  final Value<String?> supplySubtypeId;
+  final Value<int> financialYear;
+  final Value<int> documentGeneration;
+  final Value<DateTime> syncedAt;
+  final Value<int> rowid;
+  const ReportingRevenueContributionsCompanion({
+    this.ownerUserId = const Value.absent(),
+    this.orgId = const Value.absent(),
+    this.contributionId = const Value.absent(),
+    this.revenueEntryId = const Value.absent(),
+    this.businessUnitId = const Value.absent(),
+    this.revenueCategoryId = const Value.absent(),
+    this.pnlDate = const Value.absent(),
+    this.pnlPeriodKey = const Value.absent(),
+    this.grossMinor = const Value.absent(),
+    this.taxMinor = const Value.absent(),
+    this.netMinor = const Value.absent(),
+    this.taxTreatment = const Value.absent(),
+    this.taxRateBasisPoints = const Value.absent(),
+    this.enteredBasis = const Value.absent(),
+    this.valueBandId = const Value.absent(),
+    this.supplySubtypeId = const Value.absent(),
+    this.financialYear = const Value.absent(),
+    this.documentGeneration = const Value.absent(),
+    this.syncedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  ReportingRevenueContributionsCompanion.insert({
+    required String ownerUserId,
+    required String orgId,
+    required String contributionId,
+    required String revenueEntryId,
+    required String businessUnitId,
+    required String revenueCategoryId,
+    required String pnlDate,
+    required String pnlPeriodKey,
+    required int grossMinor,
+    required int taxMinor,
+    required int netMinor,
+    required String taxTreatment,
+    required int taxRateBasisPoints,
+    required String enteredBasis,
+    this.valueBandId = const Value.absent(),
+    this.supplySubtypeId = const Value.absent(),
+    required int financialYear,
+    required int documentGeneration,
+    required DateTime syncedAt,
+    this.rowid = const Value.absent(),
+  }) : ownerUserId = Value(ownerUserId),
+       orgId = Value(orgId),
+       contributionId = Value(contributionId),
+       revenueEntryId = Value(revenueEntryId),
+       businessUnitId = Value(businessUnitId),
+       revenueCategoryId = Value(revenueCategoryId),
+       pnlDate = Value(pnlDate),
+       pnlPeriodKey = Value(pnlPeriodKey),
+       grossMinor = Value(grossMinor),
+       taxMinor = Value(taxMinor),
+       netMinor = Value(netMinor),
+       taxTreatment = Value(taxTreatment),
+       taxRateBasisPoints = Value(taxRateBasisPoints),
+       enteredBasis = Value(enteredBasis),
+       financialYear = Value(financialYear),
+       documentGeneration = Value(documentGeneration),
+       syncedAt = Value(syncedAt);
+  static Insertable<ReportingRevenueRow> custom({
+    Expression<String>? ownerUserId,
+    Expression<String>? orgId,
+    Expression<String>? contributionId,
+    Expression<String>? revenueEntryId,
+    Expression<String>? businessUnitId,
+    Expression<String>? revenueCategoryId,
+    Expression<String>? pnlDate,
+    Expression<String>? pnlPeriodKey,
+    Expression<int>? grossMinor,
+    Expression<int>? taxMinor,
+    Expression<int>? netMinor,
+    Expression<String>? taxTreatment,
+    Expression<int>? taxRateBasisPoints,
+    Expression<String>? enteredBasis,
+    Expression<String>? valueBandId,
+    Expression<String>? supplySubtypeId,
+    Expression<int>? financialYear,
+    Expression<int>? documentGeneration,
+    Expression<DateTime>? syncedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (ownerUserId != null) 'owner_user_id': ownerUserId,
+      if (orgId != null) 'org_id': orgId,
+      if (contributionId != null) 'contribution_id': contributionId,
+      if (revenueEntryId != null) 'revenue_entry_id': revenueEntryId,
+      if (businessUnitId != null) 'business_unit_id': businessUnitId,
+      if (revenueCategoryId != null) 'revenue_category_id': revenueCategoryId,
+      if (pnlDate != null) 'pnl_date': pnlDate,
+      if (pnlPeriodKey != null) 'pnl_period_key': pnlPeriodKey,
+      if (grossMinor != null) 'gross_minor': grossMinor,
+      if (taxMinor != null) 'tax_minor': taxMinor,
+      if (netMinor != null) 'net_minor': netMinor,
+      if (taxTreatment != null) 'tax_treatment': taxTreatment,
+      if (taxRateBasisPoints != null)
+        'tax_rate_basis_points': taxRateBasisPoints,
+      if (enteredBasis != null) 'entered_basis': enteredBasis,
+      if (valueBandId != null) 'value_band_id': valueBandId,
+      if (supplySubtypeId != null) 'supply_subtype_id': supplySubtypeId,
+      if (financialYear != null) 'financial_year': financialYear,
+      if (documentGeneration != null) 'document_generation': documentGeneration,
+      if (syncedAt != null) 'synced_at': syncedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  ReportingRevenueContributionsCompanion copyWith({
+    Value<String>? ownerUserId,
+    Value<String>? orgId,
+    Value<String>? contributionId,
+    Value<String>? revenueEntryId,
+    Value<String>? businessUnitId,
+    Value<String>? revenueCategoryId,
+    Value<String>? pnlDate,
+    Value<String>? pnlPeriodKey,
+    Value<int>? grossMinor,
+    Value<int>? taxMinor,
+    Value<int>? netMinor,
+    Value<String>? taxTreatment,
+    Value<int>? taxRateBasisPoints,
+    Value<String>? enteredBasis,
+    Value<String?>? valueBandId,
+    Value<String?>? supplySubtypeId,
+    Value<int>? financialYear,
+    Value<int>? documentGeneration,
+    Value<DateTime>? syncedAt,
+    Value<int>? rowid,
+  }) {
+    return ReportingRevenueContributionsCompanion(
+      ownerUserId: ownerUserId ?? this.ownerUserId,
+      orgId: orgId ?? this.orgId,
+      contributionId: contributionId ?? this.contributionId,
+      revenueEntryId: revenueEntryId ?? this.revenueEntryId,
+      businessUnitId: businessUnitId ?? this.businessUnitId,
+      revenueCategoryId: revenueCategoryId ?? this.revenueCategoryId,
+      pnlDate: pnlDate ?? this.pnlDate,
+      pnlPeriodKey: pnlPeriodKey ?? this.pnlPeriodKey,
+      grossMinor: grossMinor ?? this.grossMinor,
+      taxMinor: taxMinor ?? this.taxMinor,
+      netMinor: netMinor ?? this.netMinor,
+      taxTreatment: taxTreatment ?? this.taxTreatment,
+      taxRateBasisPoints: taxRateBasisPoints ?? this.taxRateBasisPoints,
+      enteredBasis: enteredBasis ?? this.enteredBasis,
+      valueBandId: valueBandId ?? this.valueBandId,
+      supplySubtypeId: supplySubtypeId ?? this.supplySubtypeId,
+      financialYear: financialYear ?? this.financialYear,
+      documentGeneration: documentGeneration ?? this.documentGeneration,
+      syncedAt: syncedAt ?? this.syncedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (ownerUserId.present) {
+      map['owner_user_id'] = Variable<String>(ownerUserId.value);
+    }
+    if (orgId.present) {
+      map['org_id'] = Variable<String>(orgId.value);
+    }
+    if (contributionId.present) {
+      map['contribution_id'] = Variable<String>(contributionId.value);
+    }
+    if (revenueEntryId.present) {
+      map['revenue_entry_id'] = Variable<String>(revenueEntryId.value);
+    }
+    if (businessUnitId.present) {
+      map['business_unit_id'] = Variable<String>(businessUnitId.value);
+    }
+    if (revenueCategoryId.present) {
+      map['revenue_category_id'] = Variable<String>(revenueCategoryId.value);
+    }
+    if (pnlDate.present) {
+      map['pnl_date'] = Variable<String>(pnlDate.value);
+    }
+    if (pnlPeriodKey.present) {
+      map['pnl_period_key'] = Variable<String>(pnlPeriodKey.value);
+    }
+    if (grossMinor.present) {
+      map['gross_minor'] = Variable<int>(grossMinor.value);
+    }
+    if (taxMinor.present) {
+      map['tax_minor'] = Variable<int>(taxMinor.value);
+    }
+    if (netMinor.present) {
+      map['net_minor'] = Variable<int>(netMinor.value);
+    }
+    if (taxTreatment.present) {
+      map['tax_treatment'] = Variable<String>(taxTreatment.value);
+    }
+    if (taxRateBasisPoints.present) {
+      map['tax_rate_basis_points'] = Variable<int>(taxRateBasisPoints.value);
+    }
+    if (enteredBasis.present) {
+      map['entered_basis'] = Variable<String>(enteredBasis.value);
+    }
+    if (valueBandId.present) {
+      map['value_band_id'] = Variable<String>(valueBandId.value);
+    }
+    if (supplySubtypeId.present) {
+      map['supply_subtype_id'] = Variable<String>(supplySubtypeId.value);
+    }
+    if (financialYear.present) {
+      map['financial_year'] = Variable<int>(financialYear.value);
+    }
+    if (documentGeneration.present) {
+      map['document_generation'] = Variable<int>(documentGeneration.value);
+    }
+    if (syncedAt.present) {
+      map['synced_at'] = Variable<DateTime>(syncedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ReportingRevenueContributionsCompanion(')
+          ..write('ownerUserId: $ownerUserId, ')
+          ..write('orgId: $orgId, ')
+          ..write('contributionId: $contributionId, ')
+          ..write('revenueEntryId: $revenueEntryId, ')
+          ..write('businessUnitId: $businessUnitId, ')
+          ..write('revenueCategoryId: $revenueCategoryId, ')
+          ..write('pnlDate: $pnlDate, ')
+          ..write('pnlPeriodKey: $pnlPeriodKey, ')
+          ..write('grossMinor: $grossMinor, ')
+          ..write('taxMinor: $taxMinor, ')
+          ..write('netMinor: $netMinor, ')
+          ..write('taxTreatment: $taxTreatment, ')
+          ..write('taxRateBasisPoints: $taxRateBasisPoints, ')
+          ..write('enteredBasis: $enteredBasis, ')
+          ..write('valueBandId: $valueBandId, ')
+          ..write('supplySubtypeId: $supplySubtypeId, ')
+          ..write('financialYear: $financialYear, ')
+          ..write('documentGeneration: $documentGeneration, ')
+          ..write('syncedAt: $syncedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $ReportingExpenseContributionsTable extends ReportingExpenseContributions
+    with TableInfo<$ReportingExpenseContributionsTable, ReportingExpenseRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ReportingExpenseContributionsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _ownerUserIdMeta = const VerificationMeta(
+    'ownerUserId',
+  );
+  @override
+  late final GeneratedColumn<String> ownerUserId = GeneratedColumn<String>(
+    'owner_user_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _orgIdMeta = const VerificationMeta('orgId');
+  @override
+  late final GeneratedColumn<String> orgId = GeneratedColumn<String>(
+    'org_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _contributionIdMeta = const VerificationMeta(
+    'contributionId',
+  );
+  @override
+  late final GeneratedColumn<String> contributionId = GeneratedColumn<String>(
+    'contribution_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _expenseIdMeta = const VerificationMeta(
+    'expenseId',
+  );
+  @override
+  late final GeneratedColumn<String> expenseId = GeneratedColumn<String>(
+    'expense_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _allocationIdMeta = const VerificationMeta(
+    'allocationId',
+  );
+  @override
+  late final GeneratedColumn<String> allocationId = GeneratedColumn<String>(
+    'allocation_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _businessUnitIdMeta = const VerificationMeta(
+    'businessUnitId',
+  );
+  @override
+  late final GeneratedColumn<String> businessUnitId = GeneratedColumn<String>(
+    'business_unit_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _departmentIdMeta = const VerificationMeta(
+    'departmentId',
+  );
+  @override
+  late final GeneratedColumn<String> departmentId = GeneratedColumn<String>(
+    'department_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _sectionIdMeta = const VerificationMeta(
+    'sectionId',
+  );
+  @override
+  late final GeneratedColumn<String> sectionId = GeneratedColumn<String>(
+    'section_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _categoryIdMeta = const VerificationMeta(
+    'categoryId',
+  );
+  @override
+  late final GeneratedColumn<String> categoryId = GeneratedColumn<String>(
+    'category_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _vendorIdMeta = const VerificationMeta(
+    'vendorId',
+  );
+  @override
+  late final GeneratedColumn<String> vendorId = GeneratedColumn<String>(
+    'vendor_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _pnlDateMeta = const VerificationMeta(
+    'pnlDate',
+  );
+  @override
+  late final GeneratedColumn<String> pnlDate = GeneratedColumn<String>(
+    'pnl_date',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _pnlPeriodKeyMeta = const VerificationMeta(
+    'pnlPeriodKey',
+  );
+  @override
+  late final GeneratedColumn<String> pnlPeriodKey = GeneratedColumn<String>(
+    'pnl_period_key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _amountMinorMeta = const VerificationMeta(
+    'amountMinor',
+  );
+  @override
+  late final GeneratedColumn<int> amountMinor = GeneratedColumn<int>(
+    'amount_minor',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _financialYearMeta = const VerificationMeta(
+    'financialYear',
+  );
+  @override
+  late final GeneratedColumn<int> financialYear = GeneratedColumn<int>(
+    'financial_year',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _documentGenerationMeta =
+      const VerificationMeta('documentGeneration');
+  @override
+  late final GeneratedColumn<int> documentGeneration = GeneratedColumn<int>(
+    'document_generation',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _syncedAtMeta = const VerificationMeta(
+    'syncedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> syncedAt = GeneratedColumn<DateTime>(
+    'synced_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    ownerUserId,
+    orgId,
+    contributionId,
+    expenseId,
+    allocationId,
+    businessUnitId,
+    departmentId,
+    sectionId,
+    categoryId,
+    vendorId,
+    pnlDate,
+    pnlPeriodKey,
+    amountMinor,
+    financialYear,
+    documentGeneration,
+    syncedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'reporting_expense_contributions';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ReportingExpenseRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('owner_user_id')) {
+      context.handle(
+        _ownerUserIdMeta,
+        ownerUserId.isAcceptableOrUnknown(
+          data['owner_user_id']!,
+          _ownerUserIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_ownerUserIdMeta);
+    }
+    if (data.containsKey('org_id')) {
+      context.handle(
+        _orgIdMeta,
+        orgId.isAcceptableOrUnknown(data['org_id']!, _orgIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_orgIdMeta);
+    }
+    if (data.containsKey('contribution_id')) {
+      context.handle(
+        _contributionIdMeta,
+        contributionId.isAcceptableOrUnknown(
+          data['contribution_id']!,
+          _contributionIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_contributionIdMeta);
+    }
+    if (data.containsKey('expense_id')) {
+      context.handle(
+        _expenseIdMeta,
+        expenseId.isAcceptableOrUnknown(data['expense_id']!, _expenseIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_expenseIdMeta);
+    }
+    if (data.containsKey('allocation_id')) {
+      context.handle(
+        _allocationIdMeta,
+        allocationId.isAcceptableOrUnknown(
+          data['allocation_id']!,
+          _allocationIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_allocationIdMeta);
+    }
+    if (data.containsKey('business_unit_id')) {
+      context.handle(
+        _businessUnitIdMeta,
+        businessUnitId.isAcceptableOrUnknown(
+          data['business_unit_id']!,
+          _businessUnitIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_businessUnitIdMeta);
+    }
+    if (data.containsKey('department_id')) {
+      context.handle(
+        _departmentIdMeta,
+        departmentId.isAcceptableOrUnknown(
+          data['department_id']!,
+          _departmentIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_departmentIdMeta);
+    }
+    if (data.containsKey('section_id')) {
+      context.handle(
+        _sectionIdMeta,
+        sectionId.isAcceptableOrUnknown(data['section_id']!, _sectionIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_sectionIdMeta);
+    }
+    if (data.containsKey('category_id')) {
+      context.handle(
+        _categoryIdMeta,
+        categoryId.isAcceptableOrUnknown(data['category_id']!, _categoryIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_categoryIdMeta);
+    }
+    if (data.containsKey('vendor_id')) {
+      context.handle(
+        _vendorIdMeta,
+        vendorId.isAcceptableOrUnknown(data['vendor_id']!, _vendorIdMeta),
+      );
+    }
+    if (data.containsKey('pnl_date')) {
+      context.handle(
+        _pnlDateMeta,
+        pnlDate.isAcceptableOrUnknown(data['pnl_date']!, _pnlDateMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_pnlDateMeta);
+    }
+    if (data.containsKey('pnl_period_key')) {
+      context.handle(
+        _pnlPeriodKeyMeta,
+        pnlPeriodKey.isAcceptableOrUnknown(
+          data['pnl_period_key']!,
+          _pnlPeriodKeyMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_pnlPeriodKeyMeta);
+    }
+    if (data.containsKey('amount_minor')) {
+      context.handle(
+        _amountMinorMeta,
+        amountMinor.isAcceptableOrUnknown(
+          data['amount_minor']!,
+          _amountMinorMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_amountMinorMeta);
+    }
+    if (data.containsKey('financial_year')) {
+      context.handle(
+        _financialYearMeta,
+        financialYear.isAcceptableOrUnknown(
+          data['financial_year']!,
+          _financialYearMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_financialYearMeta);
+    }
+    if (data.containsKey('document_generation')) {
+      context.handle(
+        _documentGenerationMeta,
+        documentGeneration.isAcceptableOrUnknown(
+          data['document_generation']!,
+          _documentGenerationMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_documentGenerationMeta);
+    }
+    if (data.containsKey('synced_at')) {
+      context.handle(
+        _syncedAtMeta,
+        syncedAt.isAcceptableOrUnknown(data['synced_at']!, _syncedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_syncedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {ownerUserId, contributionId};
+  @override
+  ReportingExpenseRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ReportingExpenseRow(
+      ownerUserId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}owner_user_id'],
+      )!,
+      orgId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}org_id'],
+      )!,
+      contributionId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}contribution_id'],
+      )!,
+      expenseId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}expense_id'],
+      )!,
+      allocationId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}allocation_id'],
+      )!,
+      businessUnitId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}business_unit_id'],
+      )!,
+      departmentId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}department_id'],
+      )!,
+      sectionId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}section_id'],
+      )!,
+      categoryId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}category_id'],
+      )!,
+      vendorId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}vendor_id'],
+      ),
+      pnlDate: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}pnl_date'],
+      )!,
+      pnlPeriodKey: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}pnl_period_key'],
+      )!,
+      amountMinor: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}amount_minor'],
+      )!,
+      financialYear: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}financial_year'],
+      )!,
+      documentGeneration: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}document_generation'],
+      )!,
+      syncedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}synced_at'],
+      )!,
+    );
+  }
+
+  @override
+  $ReportingExpenseContributionsTable createAlias(String alias) {
+    return $ReportingExpenseContributionsTable(attachedDatabase, alias);
+  }
+}
+
+class ReportingExpenseRow extends DataClass
+    implements Insertable<ReportingExpenseRow> {
+  final String ownerUserId;
+  final String orgId;
+
+  /// The period-allocation row's own id on the server.
+  final String contributionId;
+
+  /// The delta unit.
+  final String expenseId;
+
+  /// The allocation line, kept because a document's contributions are grouped by line and
+  /// a correction replaces lines wholesale.
+  final String allocationId;
+  final String businessUnitId;
+  final String departmentId;
+  final String sectionId;
+  final String categoryId;
+  final String? vendorId;
+
+  /// The accrual attribution the server decided. Never reinterpreted here: a June salary
+  /// paid on 5 July is a June cost, and payment date is a different report (D-016).
+  final String pnlDate;
+  final String pnlPeriodKey;
+
+  /// Gross cost including GST — there is no input credit in V1 (spec §6.1, D-018).
+  final int amountMinor;
+  final int financialYear;
+  final int documentGeneration;
+  final DateTime syncedAt;
+  const ReportingExpenseRow({
+    required this.ownerUserId,
+    required this.orgId,
+    required this.contributionId,
+    required this.expenseId,
+    required this.allocationId,
+    required this.businessUnitId,
+    required this.departmentId,
+    required this.sectionId,
+    required this.categoryId,
+    this.vendorId,
+    required this.pnlDate,
+    required this.pnlPeriodKey,
+    required this.amountMinor,
+    required this.financialYear,
+    required this.documentGeneration,
+    required this.syncedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['owner_user_id'] = Variable<String>(ownerUserId);
+    map['org_id'] = Variable<String>(orgId);
+    map['contribution_id'] = Variable<String>(contributionId);
+    map['expense_id'] = Variable<String>(expenseId);
+    map['allocation_id'] = Variable<String>(allocationId);
+    map['business_unit_id'] = Variable<String>(businessUnitId);
+    map['department_id'] = Variable<String>(departmentId);
+    map['section_id'] = Variable<String>(sectionId);
+    map['category_id'] = Variable<String>(categoryId);
+    if (!nullToAbsent || vendorId != null) {
+      map['vendor_id'] = Variable<String>(vendorId);
+    }
+    map['pnl_date'] = Variable<String>(pnlDate);
+    map['pnl_period_key'] = Variable<String>(pnlPeriodKey);
+    map['amount_minor'] = Variable<int>(amountMinor);
+    map['financial_year'] = Variable<int>(financialYear);
+    map['document_generation'] = Variable<int>(documentGeneration);
+    map['synced_at'] = Variable<DateTime>(syncedAt);
+    return map;
+  }
+
+  ReportingExpenseContributionsCompanion toCompanion(bool nullToAbsent) {
+    return ReportingExpenseContributionsCompanion(
+      ownerUserId: Value(ownerUserId),
+      orgId: Value(orgId),
+      contributionId: Value(contributionId),
+      expenseId: Value(expenseId),
+      allocationId: Value(allocationId),
+      businessUnitId: Value(businessUnitId),
+      departmentId: Value(departmentId),
+      sectionId: Value(sectionId),
+      categoryId: Value(categoryId),
+      vendorId: vendorId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(vendorId),
+      pnlDate: Value(pnlDate),
+      pnlPeriodKey: Value(pnlPeriodKey),
+      amountMinor: Value(amountMinor),
+      financialYear: Value(financialYear),
+      documentGeneration: Value(documentGeneration),
+      syncedAt: Value(syncedAt),
+    );
+  }
+
+  factory ReportingExpenseRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ReportingExpenseRow(
+      ownerUserId: serializer.fromJson<String>(json['ownerUserId']),
+      orgId: serializer.fromJson<String>(json['orgId']),
+      contributionId: serializer.fromJson<String>(json['contributionId']),
+      expenseId: serializer.fromJson<String>(json['expenseId']),
+      allocationId: serializer.fromJson<String>(json['allocationId']),
+      businessUnitId: serializer.fromJson<String>(json['businessUnitId']),
+      departmentId: serializer.fromJson<String>(json['departmentId']),
+      sectionId: serializer.fromJson<String>(json['sectionId']),
+      categoryId: serializer.fromJson<String>(json['categoryId']),
+      vendorId: serializer.fromJson<String?>(json['vendorId']),
+      pnlDate: serializer.fromJson<String>(json['pnlDate']),
+      pnlPeriodKey: serializer.fromJson<String>(json['pnlPeriodKey']),
+      amountMinor: serializer.fromJson<int>(json['amountMinor']),
+      financialYear: serializer.fromJson<int>(json['financialYear']),
+      documentGeneration: serializer.fromJson<int>(json['documentGeneration']),
+      syncedAt: serializer.fromJson<DateTime>(json['syncedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'ownerUserId': serializer.toJson<String>(ownerUserId),
+      'orgId': serializer.toJson<String>(orgId),
+      'contributionId': serializer.toJson<String>(contributionId),
+      'expenseId': serializer.toJson<String>(expenseId),
+      'allocationId': serializer.toJson<String>(allocationId),
+      'businessUnitId': serializer.toJson<String>(businessUnitId),
+      'departmentId': serializer.toJson<String>(departmentId),
+      'sectionId': serializer.toJson<String>(sectionId),
+      'categoryId': serializer.toJson<String>(categoryId),
+      'vendorId': serializer.toJson<String?>(vendorId),
+      'pnlDate': serializer.toJson<String>(pnlDate),
+      'pnlPeriodKey': serializer.toJson<String>(pnlPeriodKey),
+      'amountMinor': serializer.toJson<int>(amountMinor),
+      'financialYear': serializer.toJson<int>(financialYear),
+      'documentGeneration': serializer.toJson<int>(documentGeneration),
+      'syncedAt': serializer.toJson<DateTime>(syncedAt),
+    };
+  }
+
+  ReportingExpenseRow copyWith({
+    String? ownerUserId,
+    String? orgId,
+    String? contributionId,
+    String? expenseId,
+    String? allocationId,
+    String? businessUnitId,
+    String? departmentId,
+    String? sectionId,
+    String? categoryId,
+    Value<String?> vendorId = const Value.absent(),
+    String? pnlDate,
+    String? pnlPeriodKey,
+    int? amountMinor,
+    int? financialYear,
+    int? documentGeneration,
+    DateTime? syncedAt,
+  }) => ReportingExpenseRow(
+    ownerUserId: ownerUserId ?? this.ownerUserId,
+    orgId: orgId ?? this.orgId,
+    contributionId: contributionId ?? this.contributionId,
+    expenseId: expenseId ?? this.expenseId,
+    allocationId: allocationId ?? this.allocationId,
+    businessUnitId: businessUnitId ?? this.businessUnitId,
+    departmentId: departmentId ?? this.departmentId,
+    sectionId: sectionId ?? this.sectionId,
+    categoryId: categoryId ?? this.categoryId,
+    vendorId: vendorId.present ? vendorId.value : this.vendorId,
+    pnlDate: pnlDate ?? this.pnlDate,
+    pnlPeriodKey: pnlPeriodKey ?? this.pnlPeriodKey,
+    amountMinor: amountMinor ?? this.amountMinor,
+    financialYear: financialYear ?? this.financialYear,
+    documentGeneration: documentGeneration ?? this.documentGeneration,
+    syncedAt: syncedAt ?? this.syncedAt,
+  );
+  ReportingExpenseRow copyWithCompanion(
+    ReportingExpenseContributionsCompanion data,
+  ) {
+    return ReportingExpenseRow(
+      ownerUserId: data.ownerUserId.present
+          ? data.ownerUserId.value
+          : this.ownerUserId,
+      orgId: data.orgId.present ? data.orgId.value : this.orgId,
+      contributionId: data.contributionId.present
+          ? data.contributionId.value
+          : this.contributionId,
+      expenseId: data.expenseId.present ? data.expenseId.value : this.expenseId,
+      allocationId: data.allocationId.present
+          ? data.allocationId.value
+          : this.allocationId,
+      businessUnitId: data.businessUnitId.present
+          ? data.businessUnitId.value
+          : this.businessUnitId,
+      departmentId: data.departmentId.present
+          ? data.departmentId.value
+          : this.departmentId,
+      sectionId: data.sectionId.present ? data.sectionId.value : this.sectionId,
+      categoryId: data.categoryId.present
+          ? data.categoryId.value
+          : this.categoryId,
+      vendorId: data.vendorId.present ? data.vendorId.value : this.vendorId,
+      pnlDate: data.pnlDate.present ? data.pnlDate.value : this.pnlDate,
+      pnlPeriodKey: data.pnlPeriodKey.present
+          ? data.pnlPeriodKey.value
+          : this.pnlPeriodKey,
+      amountMinor: data.amountMinor.present
+          ? data.amountMinor.value
+          : this.amountMinor,
+      financialYear: data.financialYear.present
+          ? data.financialYear.value
+          : this.financialYear,
+      documentGeneration: data.documentGeneration.present
+          ? data.documentGeneration.value
+          : this.documentGeneration,
+      syncedAt: data.syncedAt.present ? data.syncedAt.value : this.syncedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ReportingExpenseRow(')
+          ..write('ownerUserId: $ownerUserId, ')
+          ..write('orgId: $orgId, ')
+          ..write('contributionId: $contributionId, ')
+          ..write('expenseId: $expenseId, ')
+          ..write('allocationId: $allocationId, ')
+          ..write('businessUnitId: $businessUnitId, ')
+          ..write('departmentId: $departmentId, ')
+          ..write('sectionId: $sectionId, ')
+          ..write('categoryId: $categoryId, ')
+          ..write('vendorId: $vendorId, ')
+          ..write('pnlDate: $pnlDate, ')
+          ..write('pnlPeriodKey: $pnlPeriodKey, ')
+          ..write('amountMinor: $amountMinor, ')
+          ..write('financialYear: $financialYear, ')
+          ..write('documentGeneration: $documentGeneration, ')
+          ..write('syncedAt: $syncedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    ownerUserId,
+    orgId,
+    contributionId,
+    expenseId,
+    allocationId,
+    businessUnitId,
+    departmentId,
+    sectionId,
+    categoryId,
+    vendorId,
+    pnlDate,
+    pnlPeriodKey,
+    amountMinor,
+    financialYear,
+    documentGeneration,
+    syncedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ReportingExpenseRow &&
+          other.ownerUserId == this.ownerUserId &&
+          other.orgId == this.orgId &&
+          other.contributionId == this.contributionId &&
+          other.expenseId == this.expenseId &&
+          other.allocationId == this.allocationId &&
+          other.businessUnitId == this.businessUnitId &&
+          other.departmentId == this.departmentId &&
+          other.sectionId == this.sectionId &&
+          other.categoryId == this.categoryId &&
+          other.vendorId == this.vendorId &&
+          other.pnlDate == this.pnlDate &&
+          other.pnlPeriodKey == this.pnlPeriodKey &&
+          other.amountMinor == this.amountMinor &&
+          other.financialYear == this.financialYear &&
+          other.documentGeneration == this.documentGeneration &&
+          other.syncedAt == this.syncedAt);
+}
+
+class ReportingExpenseContributionsCompanion
+    extends UpdateCompanion<ReportingExpenseRow> {
+  final Value<String> ownerUserId;
+  final Value<String> orgId;
+  final Value<String> contributionId;
+  final Value<String> expenseId;
+  final Value<String> allocationId;
+  final Value<String> businessUnitId;
+  final Value<String> departmentId;
+  final Value<String> sectionId;
+  final Value<String> categoryId;
+  final Value<String?> vendorId;
+  final Value<String> pnlDate;
+  final Value<String> pnlPeriodKey;
+  final Value<int> amountMinor;
+  final Value<int> financialYear;
+  final Value<int> documentGeneration;
+  final Value<DateTime> syncedAt;
+  final Value<int> rowid;
+  const ReportingExpenseContributionsCompanion({
+    this.ownerUserId = const Value.absent(),
+    this.orgId = const Value.absent(),
+    this.contributionId = const Value.absent(),
+    this.expenseId = const Value.absent(),
+    this.allocationId = const Value.absent(),
+    this.businessUnitId = const Value.absent(),
+    this.departmentId = const Value.absent(),
+    this.sectionId = const Value.absent(),
+    this.categoryId = const Value.absent(),
+    this.vendorId = const Value.absent(),
+    this.pnlDate = const Value.absent(),
+    this.pnlPeriodKey = const Value.absent(),
+    this.amountMinor = const Value.absent(),
+    this.financialYear = const Value.absent(),
+    this.documentGeneration = const Value.absent(),
+    this.syncedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  ReportingExpenseContributionsCompanion.insert({
+    required String ownerUserId,
+    required String orgId,
+    required String contributionId,
+    required String expenseId,
+    required String allocationId,
+    required String businessUnitId,
+    required String departmentId,
+    required String sectionId,
+    required String categoryId,
+    this.vendorId = const Value.absent(),
+    required String pnlDate,
+    required String pnlPeriodKey,
+    required int amountMinor,
+    required int financialYear,
+    required int documentGeneration,
+    required DateTime syncedAt,
+    this.rowid = const Value.absent(),
+  }) : ownerUserId = Value(ownerUserId),
+       orgId = Value(orgId),
+       contributionId = Value(contributionId),
+       expenseId = Value(expenseId),
+       allocationId = Value(allocationId),
+       businessUnitId = Value(businessUnitId),
+       departmentId = Value(departmentId),
+       sectionId = Value(sectionId),
+       categoryId = Value(categoryId),
+       pnlDate = Value(pnlDate),
+       pnlPeriodKey = Value(pnlPeriodKey),
+       amountMinor = Value(amountMinor),
+       financialYear = Value(financialYear),
+       documentGeneration = Value(documentGeneration),
+       syncedAt = Value(syncedAt);
+  static Insertable<ReportingExpenseRow> custom({
+    Expression<String>? ownerUserId,
+    Expression<String>? orgId,
+    Expression<String>? contributionId,
+    Expression<String>? expenseId,
+    Expression<String>? allocationId,
+    Expression<String>? businessUnitId,
+    Expression<String>? departmentId,
+    Expression<String>? sectionId,
+    Expression<String>? categoryId,
+    Expression<String>? vendorId,
+    Expression<String>? pnlDate,
+    Expression<String>? pnlPeriodKey,
+    Expression<int>? amountMinor,
+    Expression<int>? financialYear,
+    Expression<int>? documentGeneration,
+    Expression<DateTime>? syncedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (ownerUserId != null) 'owner_user_id': ownerUserId,
+      if (orgId != null) 'org_id': orgId,
+      if (contributionId != null) 'contribution_id': contributionId,
+      if (expenseId != null) 'expense_id': expenseId,
+      if (allocationId != null) 'allocation_id': allocationId,
+      if (businessUnitId != null) 'business_unit_id': businessUnitId,
+      if (departmentId != null) 'department_id': departmentId,
+      if (sectionId != null) 'section_id': sectionId,
+      if (categoryId != null) 'category_id': categoryId,
+      if (vendorId != null) 'vendor_id': vendorId,
+      if (pnlDate != null) 'pnl_date': pnlDate,
+      if (pnlPeriodKey != null) 'pnl_period_key': pnlPeriodKey,
+      if (amountMinor != null) 'amount_minor': amountMinor,
+      if (financialYear != null) 'financial_year': financialYear,
+      if (documentGeneration != null) 'document_generation': documentGeneration,
+      if (syncedAt != null) 'synced_at': syncedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  ReportingExpenseContributionsCompanion copyWith({
+    Value<String>? ownerUserId,
+    Value<String>? orgId,
+    Value<String>? contributionId,
+    Value<String>? expenseId,
+    Value<String>? allocationId,
+    Value<String>? businessUnitId,
+    Value<String>? departmentId,
+    Value<String>? sectionId,
+    Value<String>? categoryId,
+    Value<String?>? vendorId,
+    Value<String>? pnlDate,
+    Value<String>? pnlPeriodKey,
+    Value<int>? amountMinor,
+    Value<int>? financialYear,
+    Value<int>? documentGeneration,
+    Value<DateTime>? syncedAt,
+    Value<int>? rowid,
+  }) {
+    return ReportingExpenseContributionsCompanion(
+      ownerUserId: ownerUserId ?? this.ownerUserId,
+      orgId: orgId ?? this.orgId,
+      contributionId: contributionId ?? this.contributionId,
+      expenseId: expenseId ?? this.expenseId,
+      allocationId: allocationId ?? this.allocationId,
+      businessUnitId: businessUnitId ?? this.businessUnitId,
+      departmentId: departmentId ?? this.departmentId,
+      sectionId: sectionId ?? this.sectionId,
+      categoryId: categoryId ?? this.categoryId,
+      vendorId: vendorId ?? this.vendorId,
+      pnlDate: pnlDate ?? this.pnlDate,
+      pnlPeriodKey: pnlPeriodKey ?? this.pnlPeriodKey,
+      amountMinor: amountMinor ?? this.amountMinor,
+      financialYear: financialYear ?? this.financialYear,
+      documentGeneration: documentGeneration ?? this.documentGeneration,
+      syncedAt: syncedAt ?? this.syncedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (ownerUserId.present) {
+      map['owner_user_id'] = Variable<String>(ownerUserId.value);
+    }
+    if (orgId.present) {
+      map['org_id'] = Variable<String>(orgId.value);
+    }
+    if (contributionId.present) {
+      map['contribution_id'] = Variable<String>(contributionId.value);
+    }
+    if (expenseId.present) {
+      map['expense_id'] = Variable<String>(expenseId.value);
+    }
+    if (allocationId.present) {
+      map['allocation_id'] = Variable<String>(allocationId.value);
+    }
+    if (businessUnitId.present) {
+      map['business_unit_id'] = Variable<String>(businessUnitId.value);
+    }
+    if (departmentId.present) {
+      map['department_id'] = Variable<String>(departmentId.value);
+    }
+    if (sectionId.present) {
+      map['section_id'] = Variable<String>(sectionId.value);
+    }
+    if (categoryId.present) {
+      map['category_id'] = Variable<String>(categoryId.value);
+    }
+    if (vendorId.present) {
+      map['vendor_id'] = Variable<String>(vendorId.value);
+    }
+    if (pnlDate.present) {
+      map['pnl_date'] = Variable<String>(pnlDate.value);
+    }
+    if (pnlPeriodKey.present) {
+      map['pnl_period_key'] = Variable<String>(pnlPeriodKey.value);
+    }
+    if (amountMinor.present) {
+      map['amount_minor'] = Variable<int>(amountMinor.value);
+    }
+    if (financialYear.present) {
+      map['financial_year'] = Variable<int>(financialYear.value);
+    }
+    if (documentGeneration.present) {
+      map['document_generation'] = Variable<int>(documentGeneration.value);
+    }
+    if (syncedAt.present) {
+      map['synced_at'] = Variable<DateTime>(syncedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ReportingExpenseContributionsCompanion(')
+          ..write('ownerUserId: $ownerUserId, ')
+          ..write('orgId: $orgId, ')
+          ..write('contributionId: $contributionId, ')
+          ..write('expenseId: $expenseId, ')
+          ..write('allocationId: $allocationId, ')
+          ..write('businessUnitId: $businessUnitId, ')
+          ..write('departmentId: $departmentId, ')
+          ..write('sectionId: $sectionId, ')
+          ..write('categoryId: $categoryId, ')
+          ..write('vendorId: $vendorId, ')
+          ..write('pnlDate: $pnlDate, ')
+          ..write('pnlPeriodKey: $pnlPeriodKey, ')
+          ..write('amountMinor: $amountMinor, ')
+          ..write('financialYear: $financialYear, ')
+          ..write('documentGeneration: $documentGeneration, ')
+          ..write('syncedAt: $syncedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $ReportingCoverageMarkersTable extends ReportingCoverageMarkers
+    with TableInfo<$ReportingCoverageMarkersTable, ReportingCoverageRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ReportingCoverageMarkersTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _ownerUserIdMeta = const VerificationMeta(
+    'ownerUserId',
+  );
+  @override
+  late final GeneratedColumn<String> ownerUserId = GeneratedColumn<String>(
+    'owner_user_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _orgIdMeta = const VerificationMeta('orgId');
+  @override
+  late final GeneratedColumn<String> orgId = GeneratedColumn<String>(
+    'org_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _businessUnitIdMeta = const VerificationMeta(
+    'businessUnitId',
+  );
+  @override
+  late final GeneratedColumn<String> businessUnitId = GeneratedColumn<String>(
+    'business_unit_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _datasetMeta = const VerificationMeta(
+    'dataset',
+  );
+  @override
+  late final GeneratedColumn<String> dataset = GeneratedColumn<String>(
+    'dataset',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _financialYearMeta = const VerificationMeta(
+    'financialYear',
+  );
+  @override
+  late final GeneratedColumn<int> financialYear = GeneratedColumn<int>(
+    'financial_year',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _generationMeta = const VerificationMeta(
+    'generation',
+  );
+  @override
+  late final GeneratedColumn<int> generation = GeneratedColumn<int>(
+    'generation',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _serverConfirmedAtMeta = const VerificationMeta(
+    'serverConfirmedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> serverConfirmedAt =
+      GeneratedColumn<DateTime>(
+        'server_confirmed_at',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _onDemandMeta = const VerificationMeta(
+    'onDemand',
+  );
+  @override
+  late final GeneratedColumn<bool> onDemand = GeneratedColumn<bool>(
+    'on_demand',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("on_demand" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    ownerUserId,
+    orgId,
+    businessUnitId,
+    dataset,
+    financialYear,
+    generation,
+    serverConfirmedAt,
+    onDemand,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'reporting_coverage_markers';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ReportingCoverageRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('owner_user_id')) {
+      context.handle(
+        _ownerUserIdMeta,
+        ownerUserId.isAcceptableOrUnknown(
+          data['owner_user_id']!,
+          _ownerUserIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_ownerUserIdMeta);
+    }
+    if (data.containsKey('org_id')) {
+      context.handle(
+        _orgIdMeta,
+        orgId.isAcceptableOrUnknown(data['org_id']!, _orgIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_orgIdMeta);
+    }
+    if (data.containsKey('business_unit_id')) {
+      context.handle(
+        _businessUnitIdMeta,
+        businessUnitId.isAcceptableOrUnknown(
+          data['business_unit_id']!,
+          _businessUnitIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_businessUnitIdMeta);
+    }
+    if (data.containsKey('dataset')) {
+      context.handle(
+        _datasetMeta,
+        dataset.isAcceptableOrUnknown(data['dataset']!, _datasetMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_datasetMeta);
+    }
+    if (data.containsKey('financial_year')) {
+      context.handle(
+        _financialYearMeta,
+        financialYear.isAcceptableOrUnknown(
+          data['financial_year']!,
+          _financialYearMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_financialYearMeta);
+    }
+    if (data.containsKey('generation')) {
+      context.handle(
+        _generationMeta,
+        generation.isAcceptableOrUnknown(data['generation']!, _generationMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_generationMeta);
+    }
+    if (data.containsKey('server_confirmed_at')) {
+      context.handle(
+        _serverConfirmedAtMeta,
+        serverConfirmedAt.isAcceptableOrUnknown(
+          data['server_confirmed_at']!,
+          _serverConfirmedAtMeta,
+        ),
+      );
+    }
+    if (data.containsKey('on_demand')) {
+      context.handle(
+        _onDemandMeta,
+        onDemand.isAcceptableOrUnknown(data['on_demand']!, _onDemandMeta),
+      );
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {
+    ownerUserId,
+    businessUnitId,
+    dataset,
+    financialYear,
+  };
+  @override
+  ReportingCoverageRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ReportingCoverageRow(
+      ownerUserId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}owner_user_id'],
+      )!,
+      orgId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}org_id'],
+      )!,
+      businessUnitId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}business_unit_id'],
+      )!,
+      dataset: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}dataset'],
+      )!,
+      financialYear: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}financial_year'],
+      )!,
+      generation: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}generation'],
+      )!,
+      serverConfirmedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}server_confirmed_at'],
+      ),
+      onDemand: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}on_demand'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $ReportingCoverageMarkersTable createAlias(String alias) {
+    return $ReportingCoverageMarkersTable(attachedDatabase, alias);
+  }
+}
+
+class ReportingCoverageRow extends DataClass
+    implements Insertable<ReportingCoverageRow> {
+  final String ownerUserId;
+  final String orgId;
+  final String businessUnitId;
+
+  /// `revenue` or `expense`.
+  final String dataset;
+
+  /// The financial year's opening year — the same identity `FinancialYear` uses, so a
+  /// marker and a `FinancialYearPeriod` cannot disagree about which year they mean.
+  final int financialYear;
+
+  /// The authoritative generation this scope is complete to. A later delta asks for
+  /// changes above it, less the safety overlap (ARCHITECTURE §5.2).
+  final int generation;
+
+  /// The server's own time, carried as evidence for Slice 6 and **not interpreted here**.
+  /// Never the device clock: a client-authored timestamp is not proof of anything about a
+  /// server's state (D-112's reasoning, applied to a different question).
+  final DateTime? serverConfirmedAt;
+
+  /// Whether this year is normal retention (current or previous FY) or was fetched on
+  /// demand. Pruning treats them differently and the difference has to be recorded, not
+  /// recomputed — "which year is previous" changes every 1 April.
+  final bool onDemand;
+  final DateTime updatedAt;
+  const ReportingCoverageRow({
+    required this.ownerUserId,
+    required this.orgId,
+    required this.businessUnitId,
+    required this.dataset,
+    required this.financialYear,
+    required this.generation,
+    this.serverConfirmedAt,
+    required this.onDemand,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['owner_user_id'] = Variable<String>(ownerUserId);
+    map['org_id'] = Variable<String>(orgId);
+    map['business_unit_id'] = Variable<String>(businessUnitId);
+    map['dataset'] = Variable<String>(dataset);
+    map['financial_year'] = Variable<int>(financialYear);
+    map['generation'] = Variable<int>(generation);
+    if (!nullToAbsent || serverConfirmedAt != null) {
+      map['server_confirmed_at'] = Variable<DateTime>(serverConfirmedAt);
+    }
+    map['on_demand'] = Variable<bool>(onDemand);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  ReportingCoverageMarkersCompanion toCompanion(bool nullToAbsent) {
+    return ReportingCoverageMarkersCompanion(
+      ownerUserId: Value(ownerUserId),
+      orgId: Value(orgId),
+      businessUnitId: Value(businessUnitId),
+      dataset: Value(dataset),
+      financialYear: Value(financialYear),
+      generation: Value(generation),
+      serverConfirmedAt: serverConfirmedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(serverConfirmedAt),
+      onDemand: Value(onDemand),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory ReportingCoverageRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ReportingCoverageRow(
+      ownerUserId: serializer.fromJson<String>(json['ownerUserId']),
+      orgId: serializer.fromJson<String>(json['orgId']),
+      businessUnitId: serializer.fromJson<String>(json['businessUnitId']),
+      dataset: serializer.fromJson<String>(json['dataset']),
+      financialYear: serializer.fromJson<int>(json['financialYear']),
+      generation: serializer.fromJson<int>(json['generation']),
+      serverConfirmedAt: serializer.fromJson<DateTime?>(
+        json['serverConfirmedAt'],
+      ),
+      onDemand: serializer.fromJson<bool>(json['onDemand']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'ownerUserId': serializer.toJson<String>(ownerUserId),
+      'orgId': serializer.toJson<String>(orgId),
+      'businessUnitId': serializer.toJson<String>(businessUnitId),
+      'dataset': serializer.toJson<String>(dataset),
+      'financialYear': serializer.toJson<int>(financialYear),
+      'generation': serializer.toJson<int>(generation),
+      'serverConfirmedAt': serializer.toJson<DateTime?>(serverConfirmedAt),
+      'onDemand': serializer.toJson<bool>(onDemand),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  ReportingCoverageRow copyWith({
+    String? ownerUserId,
+    String? orgId,
+    String? businessUnitId,
+    String? dataset,
+    int? financialYear,
+    int? generation,
+    Value<DateTime?> serverConfirmedAt = const Value.absent(),
+    bool? onDemand,
+    DateTime? updatedAt,
+  }) => ReportingCoverageRow(
+    ownerUserId: ownerUserId ?? this.ownerUserId,
+    orgId: orgId ?? this.orgId,
+    businessUnitId: businessUnitId ?? this.businessUnitId,
+    dataset: dataset ?? this.dataset,
+    financialYear: financialYear ?? this.financialYear,
+    generation: generation ?? this.generation,
+    serverConfirmedAt: serverConfirmedAt.present
+        ? serverConfirmedAt.value
+        : this.serverConfirmedAt,
+    onDemand: onDemand ?? this.onDemand,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  ReportingCoverageRow copyWithCompanion(
+    ReportingCoverageMarkersCompanion data,
+  ) {
+    return ReportingCoverageRow(
+      ownerUserId: data.ownerUserId.present
+          ? data.ownerUserId.value
+          : this.ownerUserId,
+      orgId: data.orgId.present ? data.orgId.value : this.orgId,
+      businessUnitId: data.businessUnitId.present
+          ? data.businessUnitId.value
+          : this.businessUnitId,
+      dataset: data.dataset.present ? data.dataset.value : this.dataset,
+      financialYear: data.financialYear.present
+          ? data.financialYear.value
+          : this.financialYear,
+      generation: data.generation.present
+          ? data.generation.value
+          : this.generation,
+      serverConfirmedAt: data.serverConfirmedAt.present
+          ? data.serverConfirmedAt.value
+          : this.serverConfirmedAt,
+      onDemand: data.onDemand.present ? data.onDemand.value : this.onDemand,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ReportingCoverageRow(')
+          ..write('ownerUserId: $ownerUserId, ')
+          ..write('orgId: $orgId, ')
+          ..write('businessUnitId: $businessUnitId, ')
+          ..write('dataset: $dataset, ')
+          ..write('financialYear: $financialYear, ')
+          ..write('generation: $generation, ')
+          ..write('serverConfirmedAt: $serverConfirmedAt, ')
+          ..write('onDemand: $onDemand, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    ownerUserId,
+    orgId,
+    businessUnitId,
+    dataset,
+    financialYear,
+    generation,
+    serverConfirmedAt,
+    onDemand,
+    updatedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ReportingCoverageRow &&
+          other.ownerUserId == this.ownerUserId &&
+          other.orgId == this.orgId &&
+          other.businessUnitId == this.businessUnitId &&
+          other.dataset == this.dataset &&
+          other.financialYear == this.financialYear &&
+          other.generation == this.generation &&
+          other.serverConfirmedAt == this.serverConfirmedAt &&
+          other.onDemand == this.onDemand &&
+          other.updatedAt == this.updatedAt);
+}
+
+class ReportingCoverageMarkersCompanion
+    extends UpdateCompanion<ReportingCoverageRow> {
+  final Value<String> ownerUserId;
+  final Value<String> orgId;
+  final Value<String> businessUnitId;
+  final Value<String> dataset;
+  final Value<int> financialYear;
+  final Value<int> generation;
+  final Value<DateTime?> serverConfirmedAt;
+  final Value<bool> onDemand;
+  final Value<DateTime> updatedAt;
+  final Value<int> rowid;
+  const ReportingCoverageMarkersCompanion({
+    this.ownerUserId = const Value.absent(),
+    this.orgId = const Value.absent(),
+    this.businessUnitId = const Value.absent(),
+    this.dataset = const Value.absent(),
+    this.financialYear = const Value.absent(),
+    this.generation = const Value.absent(),
+    this.serverConfirmedAt = const Value.absent(),
+    this.onDemand = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  ReportingCoverageMarkersCompanion.insert({
+    required String ownerUserId,
+    required String orgId,
+    required String businessUnitId,
+    required String dataset,
+    required int financialYear,
+    required int generation,
+    this.serverConfirmedAt = const Value.absent(),
+    this.onDemand = const Value.absent(),
+    required DateTime updatedAt,
+    this.rowid = const Value.absent(),
+  }) : ownerUserId = Value(ownerUserId),
+       orgId = Value(orgId),
+       businessUnitId = Value(businessUnitId),
+       dataset = Value(dataset),
+       financialYear = Value(financialYear),
+       generation = Value(generation),
+       updatedAt = Value(updatedAt);
+  static Insertable<ReportingCoverageRow> custom({
+    Expression<String>? ownerUserId,
+    Expression<String>? orgId,
+    Expression<String>? businessUnitId,
+    Expression<String>? dataset,
+    Expression<int>? financialYear,
+    Expression<int>? generation,
+    Expression<DateTime>? serverConfirmedAt,
+    Expression<bool>? onDemand,
+    Expression<DateTime>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (ownerUserId != null) 'owner_user_id': ownerUserId,
+      if (orgId != null) 'org_id': orgId,
+      if (businessUnitId != null) 'business_unit_id': businessUnitId,
+      if (dataset != null) 'dataset': dataset,
+      if (financialYear != null) 'financial_year': financialYear,
+      if (generation != null) 'generation': generation,
+      if (serverConfirmedAt != null) 'server_confirmed_at': serverConfirmedAt,
+      if (onDemand != null) 'on_demand': onDemand,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  ReportingCoverageMarkersCompanion copyWith({
+    Value<String>? ownerUserId,
+    Value<String>? orgId,
+    Value<String>? businessUnitId,
+    Value<String>? dataset,
+    Value<int>? financialYear,
+    Value<int>? generation,
+    Value<DateTime?>? serverConfirmedAt,
+    Value<bool>? onDemand,
+    Value<DateTime>? updatedAt,
+    Value<int>? rowid,
+  }) {
+    return ReportingCoverageMarkersCompanion(
+      ownerUserId: ownerUserId ?? this.ownerUserId,
+      orgId: orgId ?? this.orgId,
+      businessUnitId: businessUnitId ?? this.businessUnitId,
+      dataset: dataset ?? this.dataset,
+      financialYear: financialYear ?? this.financialYear,
+      generation: generation ?? this.generation,
+      serverConfirmedAt: serverConfirmedAt ?? this.serverConfirmedAt,
+      onDemand: onDemand ?? this.onDemand,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (ownerUserId.present) {
+      map['owner_user_id'] = Variable<String>(ownerUserId.value);
+    }
+    if (orgId.present) {
+      map['org_id'] = Variable<String>(orgId.value);
+    }
+    if (businessUnitId.present) {
+      map['business_unit_id'] = Variable<String>(businessUnitId.value);
+    }
+    if (dataset.present) {
+      map['dataset'] = Variable<String>(dataset.value);
+    }
+    if (financialYear.present) {
+      map['financial_year'] = Variable<int>(financialYear.value);
+    }
+    if (generation.present) {
+      map['generation'] = Variable<int>(generation.value);
+    }
+    if (serverConfirmedAt.present) {
+      map['server_confirmed_at'] = Variable<DateTime>(serverConfirmedAt.value);
+    }
+    if (onDemand.present) {
+      map['on_demand'] = Variable<bool>(onDemand.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ReportingCoverageMarkersCompanion(')
+          ..write('ownerUserId: $ownerUserId, ')
+          ..write('orgId: $orgId, ')
+          ..write('businessUnitId: $businessUnitId, ')
+          ..write('dataset: $dataset, ')
+          ..write('financialYear: $financialYear, ')
+          ..write('generation: $generation, ')
+          ..write('serverConfirmedAt: $serverConfirmedAt, ')
+          ..write('onDemand: $onDemand, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -17985,6 +20709,12 @@ abstract class _$AppDatabase extends GeneratedDatabase {
       $RevenueConfigSnapshotsTable(this);
   late final $RevenueAttachmentsTable revenueAttachments =
       $RevenueAttachmentsTable(this);
+  late final $ReportingRevenueContributionsTable reportingRevenueContributions =
+      $ReportingRevenueContributionsTable(this);
+  late final $ReportingExpenseContributionsTable reportingExpenseContributions =
+      $ReportingExpenseContributionsTable(this);
+  late final $ReportingCoverageMarkersTable reportingCoverageMarkers =
+      $ReportingCoverageMarkersTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -18013,6 +20743,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     businessUnitTaxStatuses,
     revenueConfigSnapshots,
     revenueAttachments,
+    reportingRevenueContributions,
+    reportingExpenseContributions,
+    reportingCoverageMarkers,
   ];
   @override
   StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
@@ -29791,6 +32524,1272 @@ typedef $$RevenueAttachmentsTableProcessedTableManager =
       RevenueAttachmentRow,
       PrefetchHooks Function({bool revenueEntryId})
     >;
+typedef $$ReportingRevenueContributionsTableCreateCompanionBuilder =
+    ReportingRevenueContributionsCompanion Function({
+      required String ownerUserId,
+      required String orgId,
+      required String contributionId,
+      required String revenueEntryId,
+      required String businessUnitId,
+      required String revenueCategoryId,
+      required String pnlDate,
+      required String pnlPeriodKey,
+      required int grossMinor,
+      required int taxMinor,
+      required int netMinor,
+      required String taxTreatment,
+      required int taxRateBasisPoints,
+      required String enteredBasis,
+      Value<String?> valueBandId,
+      Value<String?> supplySubtypeId,
+      required int financialYear,
+      required int documentGeneration,
+      required DateTime syncedAt,
+      Value<int> rowid,
+    });
+typedef $$ReportingRevenueContributionsTableUpdateCompanionBuilder =
+    ReportingRevenueContributionsCompanion Function({
+      Value<String> ownerUserId,
+      Value<String> orgId,
+      Value<String> contributionId,
+      Value<String> revenueEntryId,
+      Value<String> businessUnitId,
+      Value<String> revenueCategoryId,
+      Value<String> pnlDate,
+      Value<String> pnlPeriodKey,
+      Value<int> grossMinor,
+      Value<int> taxMinor,
+      Value<int> netMinor,
+      Value<String> taxTreatment,
+      Value<int> taxRateBasisPoints,
+      Value<String> enteredBasis,
+      Value<String?> valueBandId,
+      Value<String?> supplySubtypeId,
+      Value<int> financialYear,
+      Value<int> documentGeneration,
+      Value<DateTime> syncedAt,
+      Value<int> rowid,
+    });
+
+class $$ReportingRevenueContributionsTableFilterComposer
+    extends Composer<_$AppDatabase, $ReportingRevenueContributionsTable> {
+  $$ReportingRevenueContributionsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get ownerUserId => $composableBuilder(
+    column: $table.ownerUserId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get orgId => $composableBuilder(
+    column: $table.orgId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get contributionId => $composableBuilder(
+    column: $table.contributionId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get revenueEntryId => $composableBuilder(
+    column: $table.revenueEntryId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get businessUnitId => $composableBuilder(
+    column: $table.businessUnitId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get revenueCategoryId => $composableBuilder(
+    column: $table.revenueCategoryId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get pnlDate => $composableBuilder(
+    column: $table.pnlDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get pnlPeriodKey => $composableBuilder(
+    column: $table.pnlPeriodKey,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get grossMinor => $composableBuilder(
+    column: $table.grossMinor,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get taxMinor => $composableBuilder(
+    column: $table.taxMinor,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get netMinor => $composableBuilder(
+    column: $table.netMinor,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get taxTreatment => $composableBuilder(
+    column: $table.taxTreatment,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get taxRateBasisPoints => $composableBuilder(
+    column: $table.taxRateBasisPoints,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get enteredBasis => $composableBuilder(
+    column: $table.enteredBasis,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get valueBandId => $composableBuilder(
+    column: $table.valueBandId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get supplySubtypeId => $composableBuilder(
+    column: $table.supplySubtypeId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get financialYear => $composableBuilder(
+    column: $table.financialYear,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get documentGeneration => $composableBuilder(
+    column: $table.documentGeneration,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get syncedAt => $composableBuilder(
+    column: $table.syncedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$ReportingRevenueContributionsTableOrderingComposer
+    extends Composer<_$AppDatabase, $ReportingRevenueContributionsTable> {
+  $$ReportingRevenueContributionsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get ownerUserId => $composableBuilder(
+    column: $table.ownerUserId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get orgId => $composableBuilder(
+    column: $table.orgId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get contributionId => $composableBuilder(
+    column: $table.contributionId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get revenueEntryId => $composableBuilder(
+    column: $table.revenueEntryId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get businessUnitId => $composableBuilder(
+    column: $table.businessUnitId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get revenueCategoryId => $composableBuilder(
+    column: $table.revenueCategoryId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get pnlDate => $composableBuilder(
+    column: $table.pnlDate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get pnlPeriodKey => $composableBuilder(
+    column: $table.pnlPeriodKey,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get grossMinor => $composableBuilder(
+    column: $table.grossMinor,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get taxMinor => $composableBuilder(
+    column: $table.taxMinor,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get netMinor => $composableBuilder(
+    column: $table.netMinor,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get taxTreatment => $composableBuilder(
+    column: $table.taxTreatment,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get taxRateBasisPoints => $composableBuilder(
+    column: $table.taxRateBasisPoints,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get enteredBasis => $composableBuilder(
+    column: $table.enteredBasis,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get valueBandId => $composableBuilder(
+    column: $table.valueBandId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get supplySubtypeId => $composableBuilder(
+    column: $table.supplySubtypeId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get financialYear => $composableBuilder(
+    column: $table.financialYear,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get documentGeneration => $composableBuilder(
+    column: $table.documentGeneration,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get syncedAt => $composableBuilder(
+    column: $table.syncedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$ReportingRevenueContributionsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $ReportingRevenueContributionsTable> {
+  $$ReportingRevenueContributionsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get ownerUserId => $composableBuilder(
+    column: $table.ownerUserId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get orgId =>
+      $composableBuilder(column: $table.orgId, builder: (column) => column);
+
+  GeneratedColumn<String> get contributionId => $composableBuilder(
+    column: $table.contributionId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get revenueEntryId => $composableBuilder(
+    column: $table.revenueEntryId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get businessUnitId => $composableBuilder(
+    column: $table.businessUnitId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get revenueCategoryId => $composableBuilder(
+    column: $table.revenueCategoryId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get pnlDate =>
+      $composableBuilder(column: $table.pnlDate, builder: (column) => column);
+
+  GeneratedColumn<String> get pnlPeriodKey => $composableBuilder(
+    column: $table.pnlPeriodKey,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get grossMinor => $composableBuilder(
+    column: $table.grossMinor,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get taxMinor =>
+      $composableBuilder(column: $table.taxMinor, builder: (column) => column);
+
+  GeneratedColumn<int> get netMinor =>
+      $composableBuilder(column: $table.netMinor, builder: (column) => column);
+
+  GeneratedColumn<String> get taxTreatment => $composableBuilder(
+    column: $table.taxTreatment,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get taxRateBasisPoints => $composableBuilder(
+    column: $table.taxRateBasisPoints,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get enteredBasis => $composableBuilder(
+    column: $table.enteredBasis,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get valueBandId => $composableBuilder(
+    column: $table.valueBandId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get supplySubtypeId => $composableBuilder(
+    column: $table.supplySubtypeId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get financialYear => $composableBuilder(
+    column: $table.financialYear,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get documentGeneration => $composableBuilder(
+    column: $table.documentGeneration,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get syncedAt =>
+      $composableBuilder(column: $table.syncedAt, builder: (column) => column);
+}
+
+class $$ReportingRevenueContributionsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $ReportingRevenueContributionsTable,
+          ReportingRevenueRow,
+          $$ReportingRevenueContributionsTableFilterComposer,
+          $$ReportingRevenueContributionsTableOrderingComposer,
+          $$ReportingRevenueContributionsTableAnnotationComposer,
+          $$ReportingRevenueContributionsTableCreateCompanionBuilder,
+          $$ReportingRevenueContributionsTableUpdateCompanionBuilder,
+          (
+            ReportingRevenueRow,
+            BaseReferences<
+              _$AppDatabase,
+              $ReportingRevenueContributionsTable,
+              ReportingRevenueRow
+            >,
+          ),
+          ReportingRevenueRow,
+          PrefetchHooks Function()
+        > {
+  $$ReportingRevenueContributionsTableTableManager(
+    _$AppDatabase db,
+    $ReportingRevenueContributionsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ReportingRevenueContributionsTableFilterComposer(
+                $db: db,
+                $table: table,
+              ),
+          createOrderingComposer: () =>
+              $$ReportingRevenueContributionsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$ReportingRevenueContributionsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> ownerUserId = const Value.absent(),
+                Value<String> orgId = const Value.absent(),
+                Value<String> contributionId = const Value.absent(),
+                Value<String> revenueEntryId = const Value.absent(),
+                Value<String> businessUnitId = const Value.absent(),
+                Value<String> revenueCategoryId = const Value.absent(),
+                Value<String> pnlDate = const Value.absent(),
+                Value<String> pnlPeriodKey = const Value.absent(),
+                Value<int> grossMinor = const Value.absent(),
+                Value<int> taxMinor = const Value.absent(),
+                Value<int> netMinor = const Value.absent(),
+                Value<String> taxTreatment = const Value.absent(),
+                Value<int> taxRateBasisPoints = const Value.absent(),
+                Value<String> enteredBasis = const Value.absent(),
+                Value<String?> valueBandId = const Value.absent(),
+                Value<String?> supplySubtypeId = const Value.absent(),
+                Value<int> financialYear = const Value.absent(),
+                Value<int> documentGeneration = const Value.absent(),
+                Value<DateTime> syncedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => ReportingRevenueContributionsCompanion(
+                ownerUserId: ownerUserId,
+                orgId: orgId,
+                contributionId: contributionId,
+                revenueEntryId: revenueEntryId,
+                businessUnitId: businessUnitId,
+                revenueCategoryId: revenueCategoryId,
+                pnlDate: pnlDate,
+                pnlPeriodKey: pnlPeriodKey,
+                grossMinor: grossMinor,
+                taxMinor: taxMinor,
+                netMinor: netMinor,
+                taxTreatment: taxTreatment,
+                taxRateBasisPoints: taxRateBasisPoints,
+                enteredBasis: enteredBasis,
+                valueBandId: valueBandId,
+                supplySubtypeId: supplySubtypeId,
+                financialYear: financialYear,
+                documentGeneration: documentGeneration,
+                syncedAt: syncedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String ownerUserId,
+                required String orgId,
+                required String contributionId,
+                required String revenueEntryId,
+                required String businessUnitId,
+                required String revenueCategoryId,
+                required String pnlDate,
+                required String pnlPeriodKey,
+                required int grossMinor,
+                required int taxMinor,
+                required int netMinor,
+                required String taxTreatment,
+                required int taxRateBasisPoints,
+                required String enteredBasis,
+                Value<String?> valueBandId = const Value.absent(),
+                Value<String?> supplySubtypeId = const Value.absent(),
+                required int financialYear,
+                required int documentGeneration,
+                required DateTime syncedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => ReportingRevenueContributionsCompanion.insert(
+                ownerUserId: ownerUserId,
+                orgId: orgId,
+                contributionId: contributionId,
+                revenueEntryId: revenueEntryId,
+                businessUnitId: businessUnitId,
+                revenueCategoryId: revenueCategoryId,
+                pnlDate: pnlDate,
+                pnlPeriodKey: pnlPeriodKey,
+                grossMinor: grossMinor,
+                taxMinor: taxMinor,
+                netMinor: netMinor,
+                taxTreatment: taxTreatment,
+                taxRateBasisPoints: taxRateBasisPoints,
+                enteredBasis: enteredBasis,
+                valueBandId: valueBandId,
+                supplySubtypeId: supplySubtypeId,
+                financialYear: financialYear,
+                documentGeneration: documentGeneration,
+                syncedAt: syncedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$ReportingRevenueContributionsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $ReportingRevenueContributionsTable,
+      ReportingRevenueRow,
+      $$ReportingRevenueContributionsTableFilterComposer,
+      $$ReportingRevenueContributionsTableOrderingComposer,
+      $$ReportingRevenueContributionsTableAnnotationComposer,
+      $$ReportingRevenueContributionsTableCreateCompanionBuilder,
+      $$ReportingRevenueContributionsTableUpdateCompanionBuilder,
+      (
+        ReportingRevenueRow,
+        BaseReferences<
+          _$AppDatabase,
+          $ReportingRevenueContributionsTable,
+          ReportingRevenueRow
+        >,
+      ),
+      ReportingRevenueRow,
+      PrefetchHooks Function()
+    >;
+typedef $$ReportingExpenseContributionsTableCreateCompanionBuilder =
+    ReportingExpenseContributionsCompanion Function({
+      required String ownerUserId,
+      required String orgId,
+      required String contributionId,
+      required String expenseId,
+      required String allocationId,
+      required String businessUnitId,
+      required String departmentId,
+      required String sectionId,
+      required String categoryId,
+      Value<String?> vendorId,
+      required String pnlDate,
+      required String pnlPeriodKey,
+      required int amountMinor,
+      required int financialYear,
+      required int documentGeneration,
+      required DateTime syncedAt,
+      Value<int> rowid,
+    });
+typedef $$ReportingExpenseContributionsTableUpdateCompanionBuilder =
+    ReportingExpenseContributionsCompanion Function({
+      Value<String> ownerUserId,
+      Value<String> orgId,
+      Value<String> contributionId,
+      Value<String> expenseId,
+      Value<String> allocationId,
+      Value<String> businessUnitId,
+      Value<String> departmentId,
+      Value<String> sectionId,
+      Value<String> categoryId,
+      Value<String?> vendorId,
+      Value<String> pnlDate,
+      Value<String> pnlPeriodKey,
+      Value<int> amountMinor,
+      Value<int> financialYear,
+      Value<int> documentGeneration,
+      Value<DateTime> syncedAt,
+      Value<int> rowid,
+    });
+
+class $$ReportingExpenseContributionsTableFilterComposer
+    extends Composer<_$AppDatabase, $ReportingExpenseContributionsTable> {
+  $$ReportingExpenseContributionsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get ownerUserId => $composableBuilder(
+    column: $table.ownerUserId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get orgId => $composableBuilder(
+    column: $table.orgId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get contributionId => $composableBuilder(
+    column: $table.contributionId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get expenseId => $composableBuilder(
+    column: $table.expenseId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get allocationId => $composableBuilder(
+    column: $table.allocationId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get businessUnitId => $composableBuilder(
+    column: $table.businessUnitId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get departmentId => $composableBuilder(
+    column: $table.departmentId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get sectionId => $composableBuilder(
+    column: $table.sectionId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get categoryId => $composableBuilder(
+    column: $table.categoryId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get vendorId => $composableBuilder(
+    column: $table.vendorId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get pnlDate => $composableBuilder(
+    column: $table.pnlDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get pnlPeriodKey => $composableBuilder(
+    column: $table.pnlPeriodKey,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get amountMinor => $composableBuilder(
+    column: $table.amountMinor,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get financialYear => $composableBuilder(
+    column: $table.financialYear,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get documentGeneration => $composableBuilder(
+    column: $table.documentGeneration,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get syncedAt => $composableBuilder(
+    column: $table.syncedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$ReportingExpenseContributionsTableOrderingComposer
+    extends Composer<_$AppDatabase, $ReportingExpenseContributionsTable> {
+  $$ReportingExpenseContributionsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get ownerUserId => $composableBuilder(
+    column: $table.ownerUserId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get orgId => $composableBuilder(
+    column: $table.orgId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get contributionId => $composableBuilder(
+    column: $table.contributionId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get expenseId => $composableBuilder(
+    column: $table.expenseId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get allocationId => $composableBuilder(
+    column: $table.allocationId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get businessUnitId => $composableBuilder(
+    column: $table.businessUnitId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get departmentId => $composableBuilder(
+    column: $table.departmentId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get sectionId => $composableBuilder(
+    column: $table.sectionId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get categoryId => $composableBuilder(
+    column: $table.categoryId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get vendorId => $composableBuilder(
+    column: $table.vendorId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get pnlDate => $composableBuilder(
+    column: $table.pnlDate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get pnlPeriodKey => $composableBuilder(
+    column: $table.pnlPeriodKey,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get amountMinor => $composableBuilder(
+    column: $table.amountMinor,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get financialYear => $composableBuilder(
+    column: $table.financialYear,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get documentGeneration => $composableBuilder(
+    column: $table.documentGeneration,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get syncedAt => $composableBuilder(
+    column: $table.syncedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$ReportingExpenseContributionsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $ReportingExpenseContributionsTable> {
+  $$ReportingExpenseContributionsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get ownerUserId => $composableBuilder(
+    column: $table.ownerUserId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get orgId =>
+      $composableBuilder(column: $table.orgId, builder: (column) => column);
+
+  GeneratedColumn<String> get contributionId => $composableBuilder(
+    column: $table.contributionId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get expenseId =>
+      $composableBuilder(column: $table.expenseId, builder: (column) => column);
+
+  GeneratedColumn<String> get allocationId => $composableBuilder(
+    column: $table.allocationId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get businessUnitId => $composableBuilder(
+    column: $table.businessUnitId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get departmentId => $composableBuilder(
+    column: $table.departmentId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get sectionId =>
+      $composableBuilder(column: $table.sectionId, builder: (column) => column);
+
+  GeneratedColumn<String> get categoryId => $composableBuilder(
+    column: $table.categoryId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get vendorId =>
+      $composableBuilder(column: $table.vendorId, builder: (column) => column);
+
+  GeneratedColumn<String> get pnlDate =>
+      $composableBuilder(column: $table.pnlDate, builder: (column) => column);
+
+  GeneratedColumn<String> get pnlPeriodKey => $composableBuilder(
+    column: $table.pnlPeriodKey,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get amountMinor => $composableBuilder(
+    column: $table.amountMinor,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get financialYear => $composableBuilder(
+    column: $table.financialYear,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get documentGeneration => $composableBuilder(
+    column: $table.documentGeneration,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get syncedAt =>
+      $composableBuilder(column: $table.syncedAt, builder: (column) => column);
+}
+
+class $$ReportingExpenseContributionsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $ReportingExpenseContributionsTable,
+          ReportingExpenseRow,
+          $$ReportingExpenseContributionsTableFilterComposer,
+          $$ReportingExpenseContributionsTableOrderingComposer,
+          $$ReportingExpenseContributionsTableAnnotationComposer,
+          $$ReportingExpenseContributionsTableCreateCompanionBuilder,
+          $$ReportingExpenseContributionsTableUpdateCompanionBuilder,
+          (
+            ReportingExpenseRow,
+            BaseReferences<
+              _$AppDatabase,
+              $ReportingExpenseContributionsTable,
+              ReportingExpenseRow
+            >,
+          ),
+          ReportingExpenseRow,
+          PrefetchHooks Function()
+        > {
+  $$ReportingExpenseContributionsTableTableManager(
+    _$AppDatabase db,
+    $ReportingExpenseContributionsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ReportingExpenseContributionsTableFilterComposer(
+                $db: db,
+                $table: table,
+              ),
+          createOrderingComposer: () =>
+              $$ReportingExpenseContributionsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$ReportingExpenseContributionsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> ownerUserId = const Value.absent(),
+                Value<String> orgId = const Value.absent(),
+                Value<String> contributionId = const Value.absent(),
+                Value<String> expenseId = const Value.absent(),
+                Value<String> allocationId = const Value.absent(),
+                Value<String> businessUnitId = const Value.absent(),
+                Value<String> departmentId = const Value.absent(),
+                Value<String> sectionId = const Value.absent(),
+                Value<String> categoryId = const Value.absent(),
+                Value<String?> vendorId = const Value.absent(),
+                Value<String> pnlDate = const Value.absent(),
+                Value<String> pnlPeriodKey = const Value.absent(),
+                Value<int> amountMinor = const Value.absent(),
+                Value<int> financialYear = const Value.absent(),
+                Value<int> documentGeneration = const Value.absent(),
+                Value<DateTime> syncedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => ReportingExpenseContributionsCompanion(
+                ownerUserId: ownerUserId,
+                orgId: orgId,
+                contributionId: contributionId,
+                expenseId: expenseId,
+                allocationId: allocationId,
+                businessUnitId: businessUnitId,
+                departmentId: departmentId,
+                sectionId: sectionId,
+                categoryId: categoryId,
+                vendorId: vendorId,
+                pnlDate: pnlDate,
+                pnlPeriodKey: pnlPeriodKey,
+                amountMinor: amountMinor,
+                financialYear: financialYear,
+                documentGeneration: documentGeneration,
+                syncedAt: syncedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String ownerUserId,
+                required String orgId,
+                required String contributionId,
+                required String expenseId,
+                required String allocationId,
+                required String businessUnitId,
+                required String departmentId,
+                required String sectionId,
+                required String categoryId,
+                Value<String?> vendorId = const Value.absent(),
+                required String pnlDate,
+                required String pnlPeriodKey,
+                required int amountMinor,
+                required int financialYear,
+                required int documentGeneration,
+                required DateTime syncedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => ReportingExpenseContributionsCompanion.insert(
+                ownerUserId: ownerUserId,
+                orgId: orgId,
+                contributionId: contributionId,
+                expenseId: expenseId,
+                allocationId: allocationId,
+                businessUnitId: businessUnitId,
+                departmentId: departmentId,
+                sectionId: sectionId,
+                categoryId: categoryId,
+                vendorId: vendorId,
+                pnlDate: pnlDate,
+                pnlPeriodKey: pnlPeriodKey,
+                amountMinor: amountMinor,
+                financialYear: financialYear,
+                documentGeneration: documentGeneration,
+                syncedAt: syncedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$ReportingExpenseContributionsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $ReportingExpenseContributionsTable,
+      ReportingExpenseRow,
+      $$ReportingExpenseContributionsTableFilterComposer,
+      $$ReportingExpenseContributionsTableOrderingComposer,
+      $$ReportingExpenseContributionsTableAnnotationComposer,
+      $$ReportingExpenseContributionsTableCreateCompanionBuilder,
+      $$ReportingExpenseContributionsTableUpdateCompanionBuilder,
+      (
+        ReportingExpenseRow,
+        BaseReferences<
+          _$AppDatabase,
+          $ReportingExpenseContributionsTable,
+          ReportingExpenseRow
+        >,
+      ),
+      ReportingExpenseRow,
+      PrefetchHooks Function()
+    >;
+typedef $$ReportingCoverageMarkersTableCreateCompanionBuilder =
+    ReportingCoverageMarkersCompanion Function({
+      required String ownerUserId,
+      required String orgId,
+      required String businessUnitId,
+      required String dataset,
+      required int financialYear,
+      required int generation,
+      Value<DateTime?> serverConfirmedAt,
+      Value<bool> onDemand,
+      required DateTime updatedAt,
+      Value<int> rowid,
+    });
+typedef $$ReportingCoverageMarkersTableUpdateCompanionBuilder =
+    ReportingCoverageMarkersCompanion Function({
+      Value<String> ownerUserId,
+      Value<String> orgId,
+      Value<String> businessUnitId,
+      Value<String> dataset,
+      Value<int> financialYear,
+      Value<int> generation,
+      Value<DateTime?> serverConfirmedAt,
+      Value<bool> onDemand,
+      Value<DateTime> updatedAt,
+      Value<int> rowid,
+    });
+
+class $$ReportingCoverageMarkersTableFilterComposer
+    extends Composer<_$AppDatabase, $ReportingCoverageMarkersTable> {
+  $$ReportingCoverageMarkersTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get ownerUserId => $composableBuilder(
+    column: $table.ownerUserId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get orgId => $composableBuilder(
+    column: $table.orgId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get businessUnitId => $composableBuilder(
+    column: $table.businessUnitId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get dataset => $composableBuilder(
+    column: $table.dataset,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get financialYear => $composableBuilder(
+    column: $table.financialYear,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get generation => $composableBuilder(
+    column: $table.generation,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get serverConfirmedAt => $composableBuilder(
+    column: $table.serverConfirmedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get onDemand => $composableBuilder(
+    column: $table.onDemand,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$ReportingCoverageMarkersTableOrderingComposer
+    extends Composer<_$AppDatabase, $ReportingCoverageMarkersTable> {
+  $$ReportingCoverageMarkersTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get ownerUserId => $composableBuilder(
+    column: $table.ownerUserId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get orgId => $composableBuilder(
+    column: $table.orgId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get businessUnitId => $composableBuilder(
+    column: $table.businessUnitId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get dataset => $composableBuilder(
+    column: $table.dataset,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get financialYear => $composableBuilder(
+    column: $table.financialYear,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get generation => $composableBuilder(
+    column: $table.generation,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get serverConfirmedAt => $composableBuilder(
+    column: $table.serverConfirmedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get onDemand => $composableBuilder(
+    column: $table.onDemand,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$ReportingCoverageMarkersTableAnnotationComposer
+    extends Composer<_$AppDatabase, $ReportingCoverageMarkersTable> {
+  $$ReportingCoverageMarkersTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get ownerUserId => $composableBuilder(
+    column: $table.ownerUserId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get orgId =>
+      $composableBuilder(column: $table.orgId, builder: (column) => column);
+
+  GeneratedColumn<String> get businessUnitId => $composableBuilder(
+    column: $table.businessUnitId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get dataset =>
+      $composableBuilder(column: $table.dataset, builder: (column) => column);
+
+  GeneratedColumn<int> get financialYear => $composableBuilder(
+    column: $table.financialYear,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get generation => $composableBuilder(
+    column: $table.generation,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get serverConfirmedAt => $composableBuilder(
+    column: $table.serverConfirmedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get onDemand =>
+      $composableBuilder(column: $table.onDemand, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+}
+
+class $$ReportingCoverageMarkersTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $ReportingCoverageMarkersTable,
+          ReportingCoverageRow,
+          $$ReportingCoverageMarkersTableFilterComposer,
+          $$ReportingCoverageMarkersTableOrderingComposer,
+          $$ReportingCoverageMarkersTableAnnotationComposer,
+          $$ReportingCoverageMarkersTableCreateCompanionBuilder,
+          $$ReportingCoverageMarkersTableUpdateCompanionBuilder,
+          (
+            ReportingCoverageRow,
+            BaseReferences<
+              _$AppDatabase,
+              $ReportingCoverageMarkersTable,
+              ReportingCoverageRow
+            >,
+          ),
+          ReportingCoverageRow,
+          PrefetchHooks Function()
+        > {
+  $$ReportingCoverageMarkersTableTableManager(
+    _$AppDatabase db,
+    $ReportingCoverageMarkersTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ReportingCoverageMarkersTableFilterComposer(
+                $db: db,
+                $table: table,
+              ),
+          createOrderingComposer: () =>
+              $$ReportingCoverageMarkersTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$ReportingCoverageMarkersTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> ownerUserId = const Value.absent(),
+                Value<String> orgId = const Value.absent(),
+                Value<String> businessUnitId = const Value.absent(),
+                Value<String> dataset = const Value.absent(),
+                Value<int> financialYear = const Value.absent(),
+                Value<int> generation = const Value.absent(),
+                Value<DateTime?> serverConfirmedAt = const Value.absent(),
+                Value<bool> onDemand = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => ReportingCoverageMarkersCompanion(
+                ownerUserId: ownerUserId,
+                orgId: orgId,
+                businessUnitId: businessUnitId,
+                dataset: dataset,
+                financialYear: financialYear,
+                generation: generation,
+                serverConfirmedAt: serverConfirmedAt,
+                onDemand: onDemand,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String ownerUserId,
+                required String orgId,
+                required String businessUnitId,
+                required String dataset,
+                required int financialYear,
+                required int generation,
+                Value<DateTime?> serverConfirmedAt = const Value.absent(),
+                Value<bool> onDemand = const Value.absent(),
+                required DateTime updatedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => ReportingCoverageMarkersCompanion.insert(
+                ownerUserId: ownerUserId,
+                orgId: orgId,
+                businessUnitId: businessUnitId,
+                dataset: dataset,
+                financialYear: financialYear,
+                generation: generation,
+                serverConfirmedAt: serverConfirmedAt,
+                onDemand: onDemand,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$ReportingCoverageMarkersTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $ReportingCoverageMarkersTable,
+      ReportingCoverageRow,
+      $$ReportingCoverageMarkersTableFilterComposer,
+      $$ReportingCoverageMarkersTableOrderingComposer,
+      $$ReportingCoverageMarkersTableAnnotationComposer,
+      $$ReportingCoverageMarkersTableCreateCompanionBuilder,
+      $$ReportingCoverageMarkersTableUpdateCompanionBuilder,
+      (
+        ReportingCoverageRow,
+        BaseReferences<
+          _$AppDatabase,
+          $ReportingCoverageMarkersTable,
+          ReportingCoverageRow
+        >,
+      ),
+      ReportingCoverageRow,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -29850,4 +33849,21 @@ class $AppDatabaseManager {
       );
   $$RevenueAttachmentsTableTableManager get revenueAttachments =>
       $$RevenueAttachmentsTableTableManager(_db, _db.revenueAttachments);
+  $$ReportingRevenueContributionsTableTableManager
+  get reportingRevenueContributions =>
+      $$ReportingRevenueContributionsTableTableManager(
+        _db,
+        _db.reportingRevenueContributions,
+      );
+  $$ReportingExpenseContributionsTableTableManager
+  get reportingExpenseContributions =>
+      $$ReportingExpenseContributionsTableTableManager(
+        _db,
+        _db.reportingExpenseContributions,
+      );
+  $$ReportingCoverageMarkersTableTableManager get reportingCoverageMarkers =>
+      $$ReportingCoverageMarkersTableTableManager(
+        _db,
+        _db.reportingCoverageMarkers,
+      );
 }

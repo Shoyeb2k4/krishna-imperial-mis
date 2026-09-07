@@ -547,4 +547,123 @@ void main() {
       }
     });
   });
+
+  group('the canonical reporting cache goes with the property', () {
+    late AppDatabase db;
+    late ScopeCachePurge purge;
+
+    Future<void> cache(String owner, String unit, int year) async {
+      await db.customStatement(
+        "INSERT INTO reporting_coverage_markers (owner_user_id, org_id, "
+        "business_unit_id, dataset, financial_year, generation, on_demand, updated_at) "
+        "VALUES (?, ?, ?, 'revenue', ?, 40, 0, '2026-08-28T09:00:00.000Z')",
+        [owner, seedOrgId, unit, year],
+      );
+      await db.customStatement(
+        "INSERT INTO reporting_revenue_contributions (owner_user_id, org_id, "
+        "contribution_id, revenue_entry_id, business_unit_id, revenue_category_id, "
+        "pnl_date, pnl_period_key, gross_minor, tax_minor, net_minor, tax_treatment, "
+        "tax_rate_basis_points, entered_basis, financial_year, document_generation, "
+        "synced_at) VALUES (?, ?, ?, ?, ?, 'cat-rest', '2026-06-15', '2026-06', "
+        "10000000, 476190, 9523810, 'inclusive', 500, 'inclusive_total', ?, 40, "
+        "'2026-08-28T09:00:00.000Z')",
+        [owner, seedOrgId, 'c-$owner-$unit', 'r-$owner-$unit', unit, year],
+      );
+      await db.customStatement(
+        "INSERT INTO reporting_expense_contributions (owner_user_id, org_id, "
+        "contribution_id, expense_id, allocation_id, business_unit_id, department_id, "
+        "section_id, category_id, pnl_date, pnl_period_key, amount_minor, "
+        "financial_year, document_generation, synced_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, 'dept-1', 'sec-1', 'cat-1', '2026-06-30', '2026-06', "
+        "500000, ?, 40, '2026-08-28T09:00:00.000Z')",
+        [
+          owner,
+          seedOrgId,
+          'ce-$owner-$unit',
+          'e-$owner-$unit',
+          'a-$owner-$unit',
+          unit,
+          year,
+        ],
+      );
+    }
+
+    Future<List<String>> unitsIn(String table) async {
+      final rows = await db
+          .customSelect('SELECT business_unit_id AS u FROM $table ORDER BY u')
+          .get();
+      return [for (final row in rows) row.read<String>('u')];
+    }
+
+    setUp(() async {
+      db = AppDatabase(NativeDatabase.memory());
+      purge = ScopeCachePurge(db);
+      await seedMasterData(db, now: at);
+      await cache('manager', ccr, 2026);
+      await cache('manager', hki, 2026);
+      await cache('accountant', ccr, 2026);
+    });
+    tearDown(() => db.close());
+
+    test('a confirmed revocation removes the revoked property outright', () async {
+      final result = await purge.applyTo(
+        AuthorityRefresh.confirmed(snapshot({hki})),
+        previous: snapshot({ccr, hki}),
+      );
+      expect(result.didPurge, isTrue);
+
+      for (final table in const [
+        'reporting_coverage_markers',
+        'reporting_revenue_contributions',
+        'reporting_expense_contributions',
+      ]) {
+        expect(
+          await unitsIn(table),
+          [hki],
+          reason:
+              'unlike a financial document, nothing here is anybody unsent work: every '
+              'row came from the server and the server hands it back when authority '
+              'returns, so it goes whole rather than being retained (D-070, D-171). '
+              '$table',
+        );
+      }
+    });
+
+    test('the claim goes even where a colleague made it', () async {
+      await purge.applyTo(
+        AuthorityRefresh.confirmed(snapshot({hki})),
+        previous: snapshot({ccr, hki}),
+      );
+
+      final owners = await db
+          .customSelect(
+            'SELECT owner_user_id AS o FROM reporting_coverage_markers ORDER BY o',
+          )
+          .get();
+      expect(
+        [for (final row in owners) row.read<String>('o')],
+        ['manager'],
+        reason:
+            'the accountant Crystal Canopy claim is removed with the property. A '
+            'coverage marker is a statement about a scope, and this installation no '
+            'longer holds the rows behind it',
+      );
+    });
+
+    test('a failed refresh keeps every cached figure', () async {
+      final result = await purge.applyTo(
+        const AuthorityRefresh.unavailable(AuthorityUnavailableReason.offline),
+        previous: snapshot({ccr, hki}),
+      );
+
+      expect(result.didPurge, isFalse);
+      expect(
+        (await unitsIn('reporting_revenue_contributions')).length,
+        3,
+        reason:
+            'unknown is not revoked. A network failure says nothing about authority, '
+            'and purging a P&L on one would be the destructive reading (D-048)',
+      );
+    });
+  });
 }

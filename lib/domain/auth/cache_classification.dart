@@ -79,6 +79,25 @@ enum CacheOwnership {
   /// them under [organizationGlobal] would be untrue. The difference is two lines long
   /// and it is the whole policy, so it gets its own name.
   scopedFinancialHistory,
+
+  /// The canonical reporting cache: server-owned financial facts synchronised so this
+  /// device can report a property's P&L, including transactions it never recorded (D-171).
+  ///
+  /// **Purged unconditionally** for a revoked unit — and unlike [scopedFinancialHistory]
+  /// there is no exception to make, because nothing here exists only on this device. Every
+  /// row came from the server and the server hands it back the moment authority returns;
+  /// none of it is anybody's unsent attempt.
+  ///
+  /// Its own kind rather than [businessUnitScoped] because the two differ on the question
+  /// that matters when somebody reads the classification: *is this financial data?* A
+  /// cached department is not, and losing it costs a pull. These are a property's takings
+  /// and costs — and they are **owned by a user** rather than by the installation, because
+  /// the coverage a person synchronised under their own authority is not a fact about the
+  /// device (D-074).
+  ///
+  /// Deliberately not reference data. Calling a hotel's P&L "reference" is how it ends up
+  /// retained through a revocation by somebody correctly applying the reference-data rule.
+  canonicalReportingCache,
 }
 
 /// One locally cached table and what owns it.
@@ -98,7 +117,8 @@ final class CachedTable {
   /// Whether a confirmed revocation removes rows of this table for the revoked unit.
   bool get isPurgedOnRevocation =>
       ownership == CacheOwnership.businessUnitScoped ||
-      ownership == CacheOwnership.scopedFinancialHistory;
+      ownership == CacheOwnership.scopedFinancialHistory ||
+      ownership == CacheOwnership.canonicalReportingCache;
 
   /// Whether that removal must spare rows carrying the actor's own unsynced work.
   ///
@@ -106,6 +126,10 @@ final class CachedTable {
   /// no sense in which a cached department is somebody's unsent attempt.
   bool get retainsUnsyncedWork =>
       ownership == CacheOwnership.scopedFinancialHistory;
+
+  /// Whether rows of this table belong to one signed-in user rather than to the
+  /// installation, and must therefore never be read by, or inherited by, another (D-074).
+  bool get isOwnedByUser => ownership == CacheOwnership.canonicalReportingCache;
 }
 
 abstract final class CacheClassification {
@@ -244,6 +268,25 @@ abstract final class CacheClassification {
     CachedTable(
       'revenue_entries',
       CacheOwnership.scopedFinancialHistory,
+      unitColumn: 'business_unit_id',
+    ),
+
+    // ── The canonical reporting cache: server-owned, per user, purged outright ───
+    // Markers first: a coverage claim standing over rows that are about to go is worse
+    // than no claim at all, so the certificate is removed before the facts it certifies.
+    CachedTable(
+      'reporting_coverage_markers',
+      CacheOwnership.canonicalReportingCache,
+      unitColumn: 'business_unit_id',
+    ),
+    CachedTable(
+      'reporting_revenue_contributions',
+      CacheOwnership.canonicalReportingCache,
+      unitColumn: 'business_unit_id',
+    ),
+    CachedTable(
+      'reporting_expense_contributions',
+      CacheOwnership.canonicalReportingCache,
       unitColumn: 'business_unit_id',
     ),
 

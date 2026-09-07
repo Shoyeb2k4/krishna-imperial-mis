@@ -376,6 +376,39 @@ class ScopeCachePurge {
     return stamped;
   }
 
+  /// The canonical reporting cache for the revoked units (D-171).
+  ///
+  /// **Unconditional, and that is the difference from a financial document.** A synced
+  /// expense may be retained because it still carries its actor's unsent intent, which
+  /// exists nowhere else (D-070). Nothing in the reporting cache is like that: every row
+  /// came from the server, none of it is anybody's attempt, and the server hands it all
+  /// back the moment authority returns. So it goes, whole.
+  ///
+  /// The **marker first**. A coverage claim standing over rows that are about to be
+  /// deleted is worse than no claim: it would tell `LocalReportingEngine` that a property
+  /// is completely synchronised while its figures are being removed underneath, which is
+  /// the one thing the marker exists to prevent.
+  Future<void> _purgeReportingCache(
+    Set<String> units,
+    Map<String, int> removed,
+  ) async {
+    removed['reporting_coverage_markers'] = await _delete(
+      'DELETE FROM reporting_coverage_markers WHERE business_unit_id IN '
+      '${_in(units)}',
+      units,
+    );
+    removed['reporting_revenue_contributions'] = await _delete(
+      'DELETE FROM reporting_revenue_contributions WHERE business_unit_id IN '
+      '${_in(units)}',
+      units,
+    );
+    removed['reporting_expense_contributions'] = await _delete(
+      'DELETE FROM reporting_expense_contributions WHERE business_unit_id IN '
+      '${_in(units)}',
+      units,
+    );
+  }
+
   /// The deletion itself, for a set of units already established as revoked.
   ///
   /// Separate from [applyTo] so it can be exercised directly, but deliberately not the
@@ -408,6 +441,7 @@ class ScopeCachePurge {
       // a single fact rather than two that could half-happen (D-068).
       financial = await _purgeFinancialDocuments(units, removed);
       revenue = await _purgeRevenue(units, removed);
+      await _purgeReportingCache(units, removed);
 
       // Then reference data, bottom-up. Each step deletes only rows reachable from the
       // revoked units, and the order guarantees a parent is never removed before its
