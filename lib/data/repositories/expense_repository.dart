@@ -27,6 +27,7 @@ import 'package:drift/drift.dart';
 import 'package:krishna_mis/data/local/app_database.dart';
 import 'package:krishna_mis/data/local/expense_tables.dart';
 import 'package:krishna_mis/domain/expenses/expense.dart';
+import 'package:krishna_mis/domain/expenses/expense_contribution.dart';
 import 'package:krishna_mis/domain/expenses/expense_number.dart';
 import 'package:krishna_mis/domain/sync/pending_mutation.dart';
 import 'package:krishna_mis/domain/sync/sync_state.dart';
@@ -881,41 +882,180 @@ class ExpenseRepository {
     return [for (final row in rows) await _hydrate(row)];
   }
 
-  /// Everything this device holds for a business unit's contributions in one period.
-  ///
-  /// Reads `expense_period_allocations` and nothing else — the one reporting source
-  /// (D-060). A caller cannot accidentally add line amounts to contribution amounts here,
-  /// because line amounts are not in the result.
-  Future<Money> contributionTotal({
-    required String periodKey,
-    String? businessUnitId,
-  }) async {
-    final query =
-        _db.select(_db.expensePeriodAllocations).join([
-          innerJoin(
-            _db.expenses,
-            _db.expenses.id.equalsExp(_db.expensePeriodAllocations.expenseId),
-          ),
-        ])..where(
-          _db.expensePeriodAllocations.pnlPeriodKey.equals(periodKey) &
-              _db.expenses.voidedAt.isNull() &
-              // A retained document contributes nothing to any figure. It is somebody's
-              // unsent attempt over a property they no longer hold (D-068).
-              _db.expenses.scopeRevokedAt.isNull(),
-        );
-    if (businessUnitId != null) {
-      query.where(
-        _db.expensePeriodAllocations.businessUnitId.equals(businessUnitId),
-      );
-    }
-    final rows = await query.get();
-    return Money.fromPaise(
-      rows.fold<int>(
-        0,
-        (sum, r) => sum + r.readTable(_db.expensePeriodAllocations).amountMinor,
-      ),
+  // ── Reporting contributions (Phase 5 Slice 1, D-060, D-168) ────────────────
+  //
+  // Reads `expense_period_contributions` and nothing else — the one reporting source
+  // (D-060) and, since Slice 1, the same named projection the server exposes. A caller
+  // cannot accidentally add line amounts to contribution amounts, because line amounts
+  // are not in the view.
+  //
+  // **Everything is decided in SQL.** Filtering, scoping and the aggregate itself, so a
+  // month of a property's costs is one row off the database rather than every
+  // contribution folded in Dart (spec §27). It used to fold; that was the older pattern
+  // and this is the one the P&L needs at scale.
+  //
+  // Three predicates are not filters and are applied before any of them — the identical
+  // three the revenue side applies, which is the whole point of Slice 1:
+  //
+  //   * `voided_at IS NULL`        — a voided expense contributes nothing (D-006)
+  //   * `scope_revoked_at IS NULL` — a retained unsent attempt over a property this user
+  //                                  no longer holds is nobody's cost (D-070, D-074)
+  //   * `txn_number IS NOT NULL`   — **canonical only.** A document the server has not
+  //                                  accepted is an attempt, not a cost. Before D-168
+  //                                  this one was missing here and present on revenue,
+  //                                  so a P&L would have subtracted costs nobody had
+  //                                  accepted from sales that had to be.
+
+  /// Every contribution this device holds for [query], newest P&L date first.
+  Future<List<ExpenseContribution>> contributions(
+    ExpenseContributionQuery query,
+  ) async {
+    final (where, variables) = _contributionPredicate(query);
+    final rows = await _db
+        .customSelect(
+          'SELECT * FROM expense_period_contributions WHERE $where '
+          'ORDER BY pnl_date DESC, expense_id DESC, id DESC',
+          variables: variables,
+        )
+        .get();
+    return [for (final row in rows) _contributionOf(row)];
+  }
+
+  /// Summed paise for [query]. One row off the database, exact, no folding.
+  Future<ExpenseTotals> contributionTotals(
+    ExpenseContributionQuery query,
+  ) async {
+    final (where, variables) = _contributionPredicate(query);
+    final row = await _db
+        .customSelect(
+          'SELECT COALESCE(SUM(amount_minor), 0) AS a, COUNT(*) AS c '
+          '  FROM expense_period_contributions WHERE $where',
+          variables: variables,
+        )
+        .getSingle();
+    return ExpenseTotals(
+      amount: Money.fromPaise(row.read<int>('a')),
+      contributions: row.read<int>('c'),
     );
   }
+
+  /// The same, grouped down the hierarchy — the grain spec §10's target report shape
+  /// needs: expense lines by category, then Total Expenses, per property.
+  Future<List<ExpenseCategoryTotals>> contributionTotalsByCategory(
+    ExpenseContributionQuery query,
+  ) async {
+    final (where, variables) = _contributionPredicate(query);
+    final rows = await _db
+        .customSelect(
+          'SELECT business_unit_id AS u, department_id AS d, section_id AS s, '
+          '       category_id AS k, '
+          '       COALESCE(SUM(amount_minor), 0) AS a, COUNT(*) AS c '
+          '  FROM expense_period_contributions WHERE $where '
+          ' GROUP BY business_unit_id, department_id, section_id, category_id '
+          ' ORDER BY business_unit_id, department_id, section_id, category_id',
+          variables: variables,
+        )
+        .get();
+    return [
+      for (final row in rows)
+        ExpenseCategoryTotals(
+          businessUnitId: row.read<String>('u'),
+          departmentId: row.read<String>('d'),
+          sectionId: row.read<String>('s'),
+          categoryId: row.read<String>('k'),
+          totals: ExpenseTotals(
+            amount: Money.fromPaise(row.read<int>('a')),
+            contributions: row.read<int>('c'),
+          ),
+        ),
+    ];
+  }
+
+  /// The predicate every reporting read shares, so the three exclusions above cannot be
+  /// present in one query and forgotten in the next.
+  (String, List<Variable<Object>>) _contributionPredicate(
+    ExpenseContributionQuery query,
+  ) {
+    final clauses = <String>[
+      'voided_at IS NULL',
+      'scope_revoked_at IS NULL',
+      'txn_number IS NOT NULL',
+    ];
+    final variables = <Variable<Object>>[];
+
+    // Authority first, and never removable by a filter (D-121). An unscoped grant is
+    // `null` by construction (D-025) and restricts nothing.
+    final scope = query.businessUnitIds;
+    if (scope != null) {
+      if (scope.isEmpty) return ('0 = 1', const []);
+      clauses.add(
+        'business_unit_id IN (${List.filled(scope.length, '?').join(', ')})',
+      );
+      variables.addAll([for (final unit in scope) Variable<String>(unit)]);
+    }
+
+    void narrow(String column, String? value) {
+      if (value == null) return;
+      clauses.add('$column = ?');
+      variables.add(Variable<String>(value));
+    }
+
+    narrow('pnl_period_key', query.periodKey);
+    narrow('business_unit_id', query.businessUnitId);
+    narrow('department_id', query.departmentId);
+    narrow('section_id', query.sectionId);
+    narrow('category_id', query.categoryId);
+    narrow('vendor_id', query.vendorId);
+
+    // The range is over the P&L date, which is the accrual basis profitability uses
+    // (spec §5.3). Filtering the business date here would attribute a June salary paid in
+    // July to the wrong month, which is the whole reason the two dates are separate.
+    if (query.from != null) {
+      clauses.add('pnl_date >= ?');
+      variables.add(Variable<String>(query.from!.iso));
+    }
+    if (query.to != null) {
+      clauses.add('pnl_date <= ?');
+      variables.add(Variable<String>(query.to!.iso));
+    }
+
+    return (clauses.join(' AND '), variables);
+  }
+
+  ExpenseContribution _contributionOf(QueryRow row) => ExpenseContribution(
+    contributionId: row.read<String>('id'),
+    expenseId: row.read<String>('expense_id'),
+    allocationId: row.read<String>('allocation_id'),
+    orgId: row.read<String>('org_id'),
+    businessUnitId: row.read<String>('business_unit_id'),
+    departmentId: row.read<String>('department_id'),
+    sectionId: row.read<String>('section_id'),
+    categoryId: row.read<String>('category_id'),
+    amount: Money.fromPaise(row.read<int>('amount_minor')),
+    pnlDate: _date(row.read<String>('pnl_date')),
+    pnlPeriodKey: row.read<String>('pnl_period_key'),
+    businessDate: _date(row.read<String>('business_date')),
+    isDerived: row.read<bool>('is_derived'),
+    accountingPeriodStart: _optionalDate(
+      row.read<String?>('accounting_period_start'),
+    ),
+    accountingPeriodEnd: _optionalDate(
+      row.read<String?>('accounting_period_end'),
+    ),
+    vendorId: row.read<String?>('vendor_id'),
+    txnNumber: row.read<String?>('txn_number'),
+    voidedAt: row.read<DateTime?>('voided_at'),
+  );
+
+  /// `YYYY-MM-DD` off the projection. This is the stored form, so a malformed value is a
+  /// defect rather than user input and throwing is the right answer.
+  static BusinessDate _date(String iso) {
+    final parts = iso.split('-').map(int.parse).toList();
+    return BusinessDate.of(parts[0], parts[1], parts[2]);
+  }
+
+  static BusinessDate? _optionalDate(String? iso) =>
+      iso == null ? null : _date(iso);
 }
 
 /// Convenience for a business date read back out of the local text column.

@@ -9,6 +9,7 @@ library;
 import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:krishna_mis/domain/expenses/expense_contribution.dart';
 import 'package:krishna_mis/data/local/app_database.dart';
 import 'package:krishna_mis/data/local/seed/master_seed.dart';
 import 'package:krishna_mis/data/repositories/expense_repository.dart';
@@ -130,6 +131,22 @@ void main() {
 
   late AppDatabase db;
   late ExpenseRepository expenses;
+
+  /// The canonical expense reporting total for a period (D-168).
+  ///
+  /// Only server-accepted documents contribute, so a fixture that stays local contributes
+  /// nothing — which is the correction Slice 1 made and the reason these tests now accept
+  /// their expenses before asserting a figure.
+  Future<Money> contributionsOf(
+    String periodKey, {
+    String? businessUnitId,
+  }) async => (await expenses.contributionTotals(
+    ExpenseContributionQuery(
+      periodKey: periodKey,
+      businessUnitId: businessUnitId,
+    ),
+  )).amount;
+
   late OutboxRepository outbox;
   late FakeExpenseServer server;
   late RecordingReconciler reconciler;
@@ -399,8 +416,7 @@ void main() {
       await engineFor('user-1').pushOnce();
 
       expect(
-        await expenses.contributionTotal(periodKey: '2026-05') +
-            await expenses.contributionTotal(periodKey: '2026-06'),
+        await contributionsOf('2026-05') + await contributionsOf('2026-06'),
         Money.fromRupees(58000),
       );
     });

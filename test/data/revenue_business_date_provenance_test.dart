@@ -94,6 +94,12 @@ void main() {
         final raw = sqlite3.open(file.path);
         raw
           ..execute('PRAGMA user_version = 12')
+          // Every real database of this version carries the expense tables: they
+          // arrive at v7. Omitting them made the fixture a schema nobody has had,
+          // which only surfaced once a later step read them (D-159).
+          ..execute(v7ExpenseTablesDdl[0])
+          ..execute(v7ExpenseTablesDdl[1])
+          ..execute(v7ExpenseTablesDdl[2])
           ..execute('''
           CREATE TABLE revenue_entries (
             id TEXT NOT NULL PRIMARY KEY, org_id TEXT NOT NULL,

@@ -96,7 +96,7 @@ class AppDatabase extends _$AppDatabase {
   /// Financial tables raise this number as they land, each with a migration step and a
   /// migration test (docs/RELEASE_CHECKLIST.md §C).
   @override
-  int get schemaVersion => 15;
+  int get schemaVersion => 16;
 
   /// Timestamps are stored as ISO-8601 **UTC text**, not as unix seconds.
   ///
@@ -122,7 +122,9 @@ class AppDatabase extends _$AppDatabase {
       // schemas that predate conditional rules and then drop it at v11.
       await _createRevenueEntryTotalsView();
       await _createRevenuePeriodContributionsView();
+      await _createExpensePeriodContributionsView();
       await _createRevenueIndexes();
+      await _createExpenseReportingIndex();
       await _createImmutableBandTrigger();
     },
     onUpgrade: (m, from, to) async {
@@ -312,6 +314,19 @@ class AppDatabase extends _$AppDatabase {
         // "kept through a revocation", which has not happened to any of them.
         await m.addColumn(expenses, expenses.scopeRevokedAt);
       }
+      if (from < 16) {
+        // Phase 5 Slice 1 — the expense reporting projection and the index a period
+        // report reads (D-060, D-168).
+        //
+        // No version floor is needed and none is written. The three expense tables arrive
+        // at v7 and `expenses.scope_revoked_at` at v9, and the `from < 9` step above runs
+        // *before* this one, so by the time the view is created every column it names
+        // exists on every upgrade path. That ordering is load-bearing rather than
+        // incidental — this is the D-144 trap, and it is avoided here by sequence rather
+        // than by a guard.
+        await _createExpensePeriodContributionsView();
+        await _createExpenseReportingIndex();
+      }
     },
     beforeOpen: (details) async {
       // Referential integrity is not optional in a financial database. Without this,
@@ -357,6 +372,51 @@ class AppDatabase extends _$AppDatabase {
     '  FROM revenue_entries e '
     '  LEFT JOIN revenue_components c ON c.revenue_entry_id = e.id '
     ' GROUP BY e.id',
+  );
+
+  /// The expense reporting interface (D-060), and the local half of
+  /// `public.expense_period_contributions` column for column.
+  ///
+  /// Phase 5 Slice 1 adds it so both engines are read through one named projection. Before
+  /// it, revenue reporting queried a view and expense reporting joined three tables by
+  /// hand in Dart — two shapes for one question, which is how the canonical-only exclusion
+  /// came to be present on one side and absent on the other (D-168).
+  ///
+  /// Two columns the server view does not carry, for the same reason its revenue
+  /// counterpart carries them: `txn_number`, because a device legitimately holds
+  /// documents the server has never accepted and reporting must exclude them, and
+  /// `scope_revoked_at`, because it also holds retained work over a property this user has
+  /// lost (D-070). Neither distinction exists on the server, where every row is canonical
+  /// and in scope by construction.
+  ///
+  /// It filters on neither, exactly as both contribution views do: the exclusions belong
+  /// to the aggregate so a voided or retained row stays inspectable (D-006).
+  Future<void> _createExpensePeriodContributionsView() => customStatement(
+    'CREATE VIEW IF NOT EXISTS expense_period_contributions AS '
+    'SELECT p.id                       AS id, '
+    '       p.org_id                   AS org_id, '
+    '       p.expense_id               AS expense_id, '
+    '       p.allocation_id            AS allocation_id, '
+    '       p.business_unit_id         AS business_unit_id, '
+    '       a.department_id            AS department_id, '
+    '       a.section_id               AS section_id, '
+    '       a.category_id              AS category_id, '
+    '       p.accounting_period_start  AS accounting_period_start, '
+    '       p.accounting_period_end    AS accounting_period_end, '
+    '       p.pnl_date                 AS pnl_date, '
+    '       p.pnl_period_key           AS pnl_period_key, '
+    '       p.amount_minor             AS amount_minor, '
+    '       p.is_derived               AS is_derived, '
+    '       e.business_date            AS business_date, '
+    '       e.payment_status           AS payment_status, '
+    '       e.payment_date             AS payment_date, '
+    '       e.vendor_id                AS vendor_id, '
+    '       e.txn_number               AS txn_number, '
+    '       e.scope_revoked_at         AS scope_revoked_at, '
+    '       e.voided_at                AS voided_at '
+    '  FROM expense_period_allocations p '
+    '  JOIN expense_allocations a ON a.id = p.allocation_id '
+    '  JOIN expenses e            ON e.id = p.expense_id',
   );
 
   /// The revenue reporting interface (D-087, D-157): one row per accepted component.
@@ -433,6 +493,18 @@ class AppDatabase extends _$AppDatabase {
   ''');
 
   /// Indexes for the queries the revenue surfaces actually run.
+  /// What a period P&L actually reads on the expense side: a month, then a property.
+  ///
+  /// Deliberately on `expense_period_allocations` rather than on `expenses`, because that
+  /// is the one reporting source (D-060) and the period a contribution reports is its own,
+  /// not its document's — a cross-period split has two rows in two months under one
+  /// business date. The server's `expense_period_allocations_period_idx` is the same
+  /// index, so a plan that works on one side works on the other.
+  Future<void> _createExpenseReportingIndex() => customStatement(
+    'CREATE INDEX IF NOT EXISTS ix_expense_contributions_reporting '
+    'ON expense_period_allocations (org_id, pnl_period_key, business_unit_id)',
+  );
+
   Future<void> _createRevenueIndexes() async {
     for (final statement in const [
       // The ledger: a unit's entries for a date range, newest first.

@@ -11,6 +11,7 @@ library;
 import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:krishna_mis/domain/expenses/expense_contribution.dart';
 import 'package:krishna_mis/data/local/app_database.dart';
 import 'package:krishna_mis/data/local/seed/master_seed.dart';
 import 'package:krishna_mis/data/repositories/expense_repository.dart';
@@ -29,6 +30,22 @@ void main() {
   late AppDatabase db;
   late VendorRepository vendors;
   late ExpenseRepository expenses;
+
+  /// The canonical expense reporting total for a period (D-168).
+  ///
+  /// Only server-accepted documents contribute, so a fixture that stays local contributes
+  /// nothing — which is the correction Slice 1 made and the reason these tests now accept
+  /// their expenses before asserting a figure.
+  Future<Money> contributionsOf(
+    String periodKey, {
+    String? businessUnitId,
+  }) async => (await expenses.contributionTotals(
+    ExpenseContributionQuery(
+      periodKey: periodKey,
+      businessUnitId: businessUnitId,
+    ),
+  )).amount;
+
   final now = DateTime.utc(2026, 6, 15, 9);
 
   setUp(() async {
@@ -206,16 +223,21 @@ void main() {
           mutationId: const Uuid().v4(),
           now: now,
         );
+        // Reporting counts canonical documents only (D-168), and the claim under test is
+        // about which *period* an accepted cost lands in — so the fixture has to be one.
+        await expenses.reconcileAcceptance(
+          ExpenseAcceptance(
+            expenseId: expense.id,
+            rowVersion: 1,
+            txnNumber: 'KI-EXP-26-27-000002',
+            financialYear: 2026,
+            serverUpdatedAt: now,
+          ),
+        );
 
         // Profitability: June, because that is when the cost was incurred.
-        expect(
-          await expenses.contributionTotal(periodKey: '2026-06'),
-          Money.fromRupees(80000),
-        );
-        expect(
-          await expenses.contributionTotal(periodKey: '2026-07'),
-          Money.zero,
-        );
+        expect(await contributionsOf('2026-06'), Money.fromRupees(80000));
+        expect(await contributionsOf('2026-07'), Money.zero);
 
         // Cash: July, because that is when it left the bank.
         final saved = await expenses.load(expense.id);

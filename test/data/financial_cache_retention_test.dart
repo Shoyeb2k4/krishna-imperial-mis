@@ -25,6 +25,7 @@ import 'dart:io';
 import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:krishna_mis/domain/expenses/expense_contribution.dart';
 import 'package:krishna_mis/data/local/app_database.dart';
 import 'package:krishna_mis/data/local/seed/master_seed.dart';
 import 'package:krishna_mis/data/repositories/expense_repository.dart';
@@ -46,6 +47,13 @@ void main() {
 
   late AppDatabase db;
   late ExpenseRepository repository;
+
+  /// The canonical expense reporting total (D-168): server-accepted documents only.
+  Future<Money> total(String periodKey) async =>
+      (await repository.contributionTotals(
+        ExpenseContributionQuery(periodKey: periodKey),
+      )).amount;
+
   late OutboxRepository outbox;
   late ScopeCachePurge purge;
   late List<String> reclaimed;
@@ -397,20 +405,49 @@ void main() {
         mutationId: const Uuid().v4(),
         now: now,
       );
+      // Since D-168 an unsent attempt was never in the total to begin with: reporting
+      // counts canonical documents only. Asserted before the purge as well as after, so
+      // this test cannot pass for the wrong reason once both figures are zero.
       expect(
-        await repository.contributionTotal(periodKey: '2026-06'),
-        Money.fromRupees(200),
+        await total('2026-06'),
+        Money.zero,
+        reason: 'the server has never accepted it, so it is not a cost (D-168)',
       );
 
       await purge.purgeUnits({ccrId});
 
       expect(
-        await repository.contributionTotal(periodKey: '2026-06'),
+        await total('2026-06'),
         Money.zero,
         reason:
             'an unsent attempt over a property the user no longer holds must not '
             'move a total that is presented as authorised',
       );
+
+      // And the claim the original assertion was reaching for, on a fixture that can
+      // actually make it: an accepted document does contribute, and a confirmed
+      // revocation takes it out of the total (D-070).
+      final accepted = simpleExpense();
+      await repository.createLocally(
+        accepted,
+        actorUserId: 'user-1',
+        mutationId: const Uuid().v4(),
+        now: now,
+      );
+      await repository.reconcileAcceptance(
+        ExpenseAcceptance(
+          expenseId: accepted.id,
+          rowVersion: 1,
+          txnNumber: 'KI-EXP-26-27-000200',
+          financialYear: 2026,
+          serverUpdatedAt: now,
+        ),
+      );
+      expect(await total('2026-06'), Money.fromRupees(200));
+
+      await purge.purgeUnits({ccrId});
+
+      expect(await total('2026-06'), Money.zero);
     });
 
     test('it is reachable only through the dedicated workflow', () async {
@@ -833,10 +870,7 @@ void main() {
         hasLength(2),
         reason: 'and nothing destroyed — the safe half of both guarantees',
       );
-      expect(
-        await repository.contributionTotal(periodKey: '2026-06'),
-        Money.zero,
-      );
+      expect(await total('2026-06'), Money.zero);
     });
 
     test('it is idempotent, and leaves an existing stamp alone', () async {

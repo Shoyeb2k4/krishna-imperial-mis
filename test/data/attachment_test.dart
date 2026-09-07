@@ -348,6 +348,12 @@ void main() {
       final raw = sqlite3.open(file.path);
       raw
         ..execute('PRAGMA user_version = 9')
+        // Every real database of this version carries the expense tables: they
+        // arrive at v7. Omitting them made the fixture a schema nobody has had,
+        // which only surfaced once a later step read them (D-159).
+        ..execute(v7ExpenseTablesDdl[0])
+        ..execute(v7ExpenseTablesDdl[1])
+        ..execute(v7ExpenseTablesDdl[2])
         // Every real v9 database has these — they arrived in v1, v2 and v3. The fixture
         // carried only the attachments table, which was enough until v11 began adding
         // columns to the rule cache and v12 began clearing a superseded `app_meta` key;

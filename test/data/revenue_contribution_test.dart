@@ -32,7 +32,8 @@ import 'package:krishna_mis/domain/value_objects/business_date.dart';
 import 'package:krishna_mis/domain/value_objects/money.dart';
 import 'package:timezone/data/latest.dart' as tzdata;
 
-import '../support/expense_fixtures.dart' show createTempDatabaseFile;
+import '../support/expense_fixtures.dart'
+    show createTempDatabaseFile, v7ExpenseTablesDdl;
 import '../support/revenue_parity_vectors.dart';
 
 const _org = 'org-1';
@@ -1024,7 +1025,10 @@ void main() {
 
   group('the v14 to v15 migration', () {
     test('a fresh database is born with the projection', () async {
-      expect(db.schemaVersion, 15);
+      // A lower bound, not a literal. D-144 and D-159 each recorded the same correction
+      // after a hard-coded version had to be edited by an unrelated slice; this is the
+      // third time, so it is written as the claim the test actually makes.
+      expect(db.schemaVersion, greaterThanOrEqualTo(15));
       final view = await db
           .customSelect(
             "SELECT sql FROM sqlite_master WHERE name = "
@@ -1074,6 +1078,12 @@ void main() {
       final raw = sqlite3.open(file.path);
       raw
         ..execute('PRAGMA user_version = 14')
+        // Every real database of this version carries the expense tables: they
+        // arrive at v7. Omitting them made the fixture a schema nobody has had,
+        // which only surfaced once a later step read them (D-159).
+        ..execute(v7ExpenseTablesDdl[0])
+        ..execute(v7ExpenseTablesDdl[1])
+        ..execute(v7ExpenseTablesDdl[2])
         ..execute('''
           CREATE TABLE revenue_entries (
             id TEXT NOT NULL PRIMARY KEY, org_id TEXT NOT NULL,

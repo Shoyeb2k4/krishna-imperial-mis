@@ -74,6 +74,7 @@
 library;
 
 import 'dart:convert';
+import 'package:krishna_mis/domain/expenses/expense_contribution.dart';
 import 'package:krishna_mis/data/attachments/attachment_staging.dart';
 import 'package:krishna_mis/data/attachments/attachment_source.dart';
 import 'package:krishna_mis/data/attachments/attachment_upload_worker.dart';
@@ -4914,11 +4915,15 @@ void main() {
       );
 
       expect(
-        await repository.contributionTotal(periodKey: '2026-05'),
+        (await repository.contributionTotals(
+          ExpenseContributionQuery(periodKey: '2026-05'),
+        )).amount,
         Money.fromRupees(30000),
       );
       expect(
-        await repository.contributionTotal(periodKey: '2026-06'),
+        (await repository.contributionTotals(
+          ExpenseContributionQuery(periodKey: '2026-06'),
+        )).amount,
         Money.fromRupees(30000),
       );
     });
@@ -5085,12 +5090,16 @@ void main() {
       expect(saved.periodContributions.single.amountMinor, 8000000);
 
       expect(
-        await repository.contributionTotal(periodKey: '2026-06'),
+        (await repository.contributionTotals(
+          ExpenseContributionQuery(periodKey: '2026-06'),
+        )).amount,
         Money.fromRupees(80000),
         reason: '₹80,000 of June cost',
       );
       expect(
-        await repository.contributionTotal(periodKey: '2026-07'),
+        (await repository.contributionTotals(
+          ExpenseContributionQuery(periodKey: '2026-07'),
+        )).amount,
         Money.zero,
         reason:
             'and nothing at all in July — a payment date must never move an expense '
@@ -5239,7 +5248,9 @@ void main() {
         );
       }
       expect(
-        await repository.contributionTotal(periodKey: '2026-08'),
+        (await repository.contributionTotals(
+          ExpenseContributionQuery(periodKey: '2026-08'),
+        )).amount,
         Money.zero,
         reason: 'nothing retained contributes to a figure',
       );

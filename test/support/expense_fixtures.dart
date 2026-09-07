@@ -228,3 +228,83 @@ Future<File> createTempDatabaseFile() async {
   final dir = await Directory.systemTemp.createTemp('krishna_expense_test');
   return File('${dir.path}/test.sqlite');
 }
+
+/// The expense tables as they have existed since local schema **v7**, for hand-built
+/// migration fixtures.
+///
+/// A fixture that stamps `user_version = 9` and omits these is claiming to be a schema no
+/// device has ever had: the three tables arrive at v7, so every real v9, v12 and v14
+/// database carries them. That did not matter until a later step read them — and then it
+/// mattered in three files at once.
+///
+/// This is the third time a partial migration fixture has had to be completed rather than
+/// worked around (D-073a's v9 attachment fixture, D-159's `downgradeToV10`, and now this),
+/// so the DDL lives in one place instead of being pasted into the next one.
+const List<String> v7ExpenseTablesDdl = [
+  '''
+  CREATE TABLE expenses (
+    id TEXT NOT NULL PRIMARY KEY,
+    org_id TEXT NOT NULL,
+    txn_number TEXT NULL,
+    financial_year INTEGER NULL,
+    business_date TEXT NOT NULL,
+    business_date_source TEXT NOT NULL DEFAULT 'derived',
+    accounting_period_start TEXT NULL,
+    accounting_period_end TEXT NULL,
+    visibility TEXT NOT NULL DEFAULT 'complete',
+    document_total_minor INTEGER NULL,
+    visible_amount_minor INTEGER NOT NULL,
+    is_shared INTEGER NOT NULL DEFAULT 0,
+    vendor_id TEXT NULL,
+    payment_status TEXT NOT NULL DEFAULT 'unpaid',
+    payment_date TEXT NULL,
+    payment_method_id TEXT NULL,
+    reference_number TEXT NULL,
+    notes TEXT NULL,
+    tax_amount_minor INTEGER NULL,
+    created_by TEXT NOT NULL,
+    captured_at TEXT NOT NULL,
+    voided_at TEXT NULL,
+    voided_by TEXT NULL,
+    void_reason TEXT NULL,
+    scope_revoked_at TEXT NULL,
+    pending_mutation_id TEXT NULL,
+    server_updated_at TEXT NULL,
+    row_version INTEGER NOT NULL DEFAULT 1,
+    updated_at TEXT NOT NULL
+  )
+  ''',
+  '''
+  CREATE TABLE expense_allocations (
+    id TEXT NOT NULL PRIMARY KEY,
+    org_id TEXT NOT NULL,
+    expense_id TEXT NOT NULL REFERENCES expenses (id) ON DELETE CASCADE,
+    business_unit_id TEXT NOT NULL,
+    department_id TEXT NOT NULL,
+    section_id TEXT NOT NULL,
+    category_id TEXT NOT NULL,
+    amount_minor INTEGER NOT NULL,
+    category_label TEXT NOT NULL,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    row_version INTEGER NOT NULL DEFAULT 1,
+    updated_at TEXT NOT NULL
+  )
+  ''',
+  '''
+  CREATE TABLE expense_period_allocations (
+    id TEXT NOT NULL PRIMARY KEY,
+    org_id TEXT NOT NULL,
+    expense_id TEXT NOT NULL REFERENCES expenses (id) ON DELETE CASCADE,
+    allocation_id TEXT NOT NULL REFERENCES expense_allocations (id) ON DELETE CASCADE,
+    business_unit_id TEXT NOT NULL,
+    accounting_period_start TEXT NOT NULL,
+    accounting_period_end TEXT NOT NULL,
+    amount_minor INTEGER NOT NULL,
+    pnl_date TEXT NOT NULL,
+    pnl_period_key TEXT NOT NULL,
+    is_derived INTEGER NOT NULL DEFAULT 1,
+    row_version INTEGER NOT NULL DEFAULT 1,
+    updated_at TEXT NOT NULL
+  )
+  ''',
+];
