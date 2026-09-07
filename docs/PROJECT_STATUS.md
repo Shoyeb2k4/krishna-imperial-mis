@@ -3224,7 +3224,7 @@ are not merged because they could be implemented quickly.
 |---|---|---|
 | 1 | Source parity and the canonical-only correction (E1–E4) | **COMPLETE** |
 | 2 | `domain/finance` — the canonical calculation specification | **COMPLETE** |
-| 3 | `LocalReportingEngine` | not started |
+| 3 | `LocalReportingEngine` | **COMPLETE** |
 | 4 | Canonical reporting cache + synchronisation completeness (D-171, D-172, D-173) | not started |
 | 5 | Server reporting boundary + `RemoteReportingEngine` parity | not started |
 | 6 | Freshness, as-of and closed periods | not started |
@@ -3562,3 +3562,129 @@ where dead-API cleanup belongs — and **carried to Slice 7**, which owns the re
 capability model and the API-surface audit.
 
 **`reports.view` still has no evaluator** and D-139's exemption entry stands. Slice 7's.
+
+---
+
+## Phase 5 Slice 3 — `LocalReportingEngine`: **COMPLETE**
+
+Canonical local facts → exact SQL aggregates → `Pnl.compute` → `PnlResult`. **No Supabase
+migration, no Drift migration, no RPC, no pull, no reporting cache, no screen** — the schema
+stays at v16 and the migration ledger is unchanged.
+
+### What was created
+
+| File | |
+|---|---|
+| `lib/domain/finance/reporting_source.dart` | the port: `ReportingCoverage`, `ReportingScope`, `ReportRequest`, `UnitReportingFacts`, `LocalReportingSource` |
+| `lib/data/reporting/local_reporting_engine.dart` | `LocalReportingEngine`, `ReportEnvelope` |
+| `lib/data/reporting/drift_reporting_source.dart` | `DriftReportingSource`, `ReportingCoverageOracle`, `NoCanonicalCoverage` |
+
+Added to Slice 2's domain: `ReportRange.wholeMonthKey` and
+`PnlRefusal.noPermittedBusinessUnit`.
+
+### The constraint that shaped the slice
+
+**A device holds only what it recorded** (D-173). Rows being present proves nothing about
+whether a range is complete, so an engine that reported them as the hotel's June would be
+wrong in a way no reader could detect from the figure.
+
+Coverage is therefore a first-class answer carried with the figures, and the production
+wiring — `NoCanonicalCoverage` — answers `notDownloaded` for every range, so **the engine
+refuses**. That is the honest state until Slice 4, not a placeholder. The first test group
+asserts it before any other group assumes otherwise.
+
+Two coverage values, **deliberately not three**: nothing could produce a third today, and a
+value no code constructs is the gap D-108 had to reopen.
+
+### Results, through real SQLite
+
+| | Gross | GST | Net | Expenses | Operating Profit |
+|---|---|---|---|---|---|
+| Crystal Canopy | 10870000 | 517619 | 10352381 | 4500000 | **5852381** |
+| Hotel Krishna | 9234300 | 247619 | 8986681 | 3000000 | 5986681 |
+| **Consolidated** | **20104300** | **765238** | **19339062** | **7500000** | **11839062** |
+
+`Σ per-unit == consolidated` for every primitive. The independent Slice 2 oracle, folding
+the same six rows, agrees on all five figures.
+
+**One-paisa control, through the engine:** two Restaurant days sum to **750715** paise where
+re-applying 5/105 to the aggregate would give 750714. The engine never sees a rate.
+
+### Proven
+
+| | |
+|---|---|
+| complete-zero vs unavailable | a known-complete empty range is a real zero P&L (margin not applicable); an unproven range refuses |
+| half-P&L | one property with unproven coverage refuses the whole consolidated report |
+| canonical only | pending revenue and pending expenses change nothing; voided rows leave the aggregate and stay in the table; scope-revoked contributes nothing |
+| accrual | a June salary paid 5 July stays in June; an accrual recorded 3 July for June reports in June |
+| cut-off | a sale whose stored trading day is 30 June reports in June, not July — the engine reads the stored date and recomputes nothing |
+| corrections | a revenue business-date correction moves June → July, **exactly once**; an expense accrual correction moves with its contribution |
+| scope | CCR-only contains no HKI figure and vice versa; an empty scope is refused, not zeroed |
+| range mapping | a month via `pnl_period_key` equals the same days via a date range; the path is a property of the range, not a caller choice |
+| periods | single day, Monday–Sunday week, month, financial year, custom, same-day, month-spanning, FY-spanning; a reversed range refuses and carries **no** range |
+
+### The control the schema made impossible, and where the guarantee moved
+
+The behavioural control for *"the engine does not compute `net = gross − tax`"* cannot be
+written: the local schema holds a CHECK that a component reconciles, so a deliberately
+non-reconciling fixture is refused before any engine sees it. That is the right place for
+the guarantee, and it is now asserted rather than assumed. The engine's own freedom from
+derived arithmetic is proven by the one-paisa control and by the structural guard.
+
+### Verified
+
+| Item | Status | Evidence |
+|---|---|---|
+| `dart format --set-exit-if-changed` | **Tested** | clean |
+| `flutter analyze` | **Tested** | **No issues found** |
+| Host suite | **Tested** | **1,318 tests, all passing** (1,276 + 42) |
+| — engine, through real SQLite | **Tested** | 34 |
+| — structural guard | **Tested** | 6 |
+| — the Slice 2 purity guard, over the new port file | **Tested** | 2 |
+| Structural guard **positive control** | **Tested** | an added `grossSales.paise - gst.paise` turned it RED; restored and **read back** |
+| Secret scan — tree and git history | **Tested** | clean, controls passing |
+| Drift migrations added | **None** — v16 |
+| Supabase migrations added | **None** |
+| Working tree | **Tested** | clean |
+
+### Performance
+
+Measured on a two-year fixture — 2,920 revenue components, 244 expense contributions:
+
+| Query | Plan | Time |
+|---|---|---|
+| revenue month (period key) | `SEARCH ix_revenue_entries_day` → `SEARCH ix_revenue_components_entry` | 0.42 ms |
+| revenue FY (date range) | the same two indexes | 0.58 ms |
+| expense month (period key) | `SCAN expense_period_allocations` → indexed joins | 0.07 ms |
+| expense FY (date range) | the same | 0.12 ms |
+
+One aggregate query per side per property, one row back, no N+1, no history in Dart.
+
+**Recorded, not fixed:** `ix_expense_contributions_reporting` leads with `org_id`, which the
+local reporting queries never constrain — a device holds one organisation — so it is
+unusable on this path and the expense side scans. 0.07 ms over the whole fixture, so no
+index is measurably required and the schema stays at v16. Recorded because an index nothing
+can use is the same family as a rule nothing evaluates; Slice 8 owns performance hardening.
+
+### Two mechanical defects found in my own work
+
+**Literal backspace bytes inside a regex.** A shell heredoc turned `\b` into control
+character 0x08, so the guard's SQL-detection pattern was silently corrupted and could never
+match. Caught by reading the file back rather than trusting the write — D-162's rule, and
+the second time this session a write mechanism has quietly mangled its own content. Every
+Slice 3 file is now scanned for control characters.
+
+**Three fixtures refused by the schema's own CHECK constraints** — a paid expense with no
+payment method, a voided document with no actor or reason, and the non-reconciling component
+above. All three are the local schema working, and all three were fixed in the fixture
+rather than worked around.
+
+### Carried forward, untouched
+
+**`public.expense_sees_whole_org()`** — on the reviewed API surface, called by nothing.
+Explicitly carried to **Slice 7**, which owns the reporting capability model and the
+API-surface audit. Not touched here: a pure reporting-engine commit is not where dead-API
+cleanup belongs (D-127).
+
+**`reports.view`** still has no evaluator and D-139's exemption entry stands. Slice 7's.

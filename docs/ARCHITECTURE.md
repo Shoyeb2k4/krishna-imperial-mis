@@ -9,7 +9,7 @@ Status: **Sections 1–12 proposed (Phase 0, revised); sections 13–16 and 18�
 is built and verified; section 17 is the Phase 4 *plan*, since built — read §18–§26 for what
 shipped.** Sections 6, 5.3 and 8 carry the project lead's mandated corrections.
 Implementation status is tracked in `PROJECT_STATUS.md`.
-Last updated: 2026-09-07 — Phase 5 Slices 1-2 (sections 27-28); Phase 4 closed
+Last updated: 2026-09-07 — Phase 5 Slices 1-3 (sections 27-29); Phase 4 closed
 
 ---
 
@@ -2554,3 +2554,132 @@ No reporting engine, no repository method, no query, no cache, no pull, no scree
 export. No Drift migration and no Supabase migration — the slice adds no schema of any
 kind. Freshness and as-of are Slice 6's and are composable with `PnlResult` rather than
 hardwired into it.
+
+---
+
+## 29. `LocalReportingEngine` (2026-09-07)
+
+Phase 5 Slice 3. The first of the two engines §6.1 draws, and the shape §28 was built to
+feed.
+
+```
+        ReportingPeriod ──normalise once──► ReportRange
+                                              │
+        DriftReportingSource ──► primitive summed paise + ReportingCoverage
+                                              │
+        LocalReportingEngine ──► Pnl.compute ──► PnlResult
+                             └─► Pnl.consolidate for the organisation
+```
+
+Three files, and the layering is the point:
+
+| | |
+|---|---|
+| `domain/finance/reporting_source.dart` | the **port**: `ReportingCoverage`, `ReportingScope`, `ReportRequest`, `UnitReportingFacts`, `LocalReportingSource`. Pure domain |
+| `data/reporting/local_reporting_engine.dart` | orchestration. Knows the port and `Pnl`, and **no storage at all** |
+| `data/reporting/drift_reporting_source.dart` | the only file in the path that knows what a database is |
+
+### 29.1 The engine derives nothing, and it is asserted
+
+No Net Sales, no Operating Profit, no margin, no tax extraction, no rate, no business-date
+derivation, no financial-year derivation. `local_reporting_engine_guard_test.dart` asserts
+it over the whole directory: no `Money.fromPaise`, no `Money.sum`, no `.paise`, no
+`gross − tax` or `net − expense` shape, no `TaxRule`, no `double`, no `fromInstant`, no
+`DateTime.now`, and no static or cached report anywhere.
+
+The complement is asserted too, because a file that computed nothing *and delegated
+nothing* would pass all of that: the engine must contain `Pnl.compute(` and
+`Pnl.consolidate(`, and the source must call `contributionTotals(` and must not contain a
+SQL statement of its own. Proven by sabotage — an added `grossSales.paise - gst.paise`
+turned the guard red, and it was restored and read back.
+
+### 29.2 Coverage, and what Slice 3 honestly cannot do
+
+**This is the constraint that shapes the whole slice.** A device holds only the
+transactions it recorded itself — there is no reporting pull on either engine (D-173) — so
+rows being present proves nothing about whether a range is complete. An engine that
+reported those rows as "the hotel's June" would be wrong in a way no reader could detect
+from the figure.
+
+So coverage is a **first-class answer**, carried with the figures rather than inferred from
+them, and `LocalReportingSource` returns it alongside the sums. The production wiring
+answers [ReportingCoverage.notDownloaded] for every range, through `NoCanonicalCoverage`,
+and **the engine refuses**. That is not a placeholder for Slice 4 to tidy away; it is the
+honest answer until the canonical reporting cache and its marker exist.
+
+Coverage has **two values, deliberately not three**. An `unavailable` beside
+`notDownloaded` had no producer: every path that fails to establish coverage today fails
+for the same reason. A value nothing constructs is the gap D-108 had to reopen, where a
+distinction lived in the type and never in the behaviour. Slice 4 adds what its markers can
+actually distinguish; Slice 6 owns freshness, and none of its vocabulary is here.
+
+**Zero and unavailable stay apart end to end.** A known-complete range with no transactions
+is a real zero P&L — gross, GST, net and expenses all nil, margin not applicable — and it
+computes. An unproven range refuses. The two are different variants, not different values
+(D-163, D-176).
+
+### 29.3 One range mapping, and the caller does not choose it
+
+`ReportRange.wholeMonthKey` returns `YYYY-MM` when the range is exactly one calendar month
+and null otherwise, so a whole month is answered by the indexed `pnl_period_key` equality
+both projections store and everything else by an inclusive `pnl_date` range. The
+optimisation is a **property of the range**, derived from it — a month asked for as a month
+and the same month asked for as a custom range are the same range and take the same path,
+so they cannot give different answers.
+
+Every range filter is on `pnl_date`. Never `captured_at`, never `payment_date`, never
+`created_at`, never the device clock, and never an expense's own business date: a June
+salary paid on 5 July is a June cost (D-016), and an accrual recorded on 3 July for the
+June service period reports in June. Both are permanent tests.
+
+Slice 3 also unified the two sides' vocabulary: the revenue contribution predicate filtered
+`business_date` where the expense one filtered `pnl_date`. For revenue those are the same
+column — the projection aliases it — so the change is behaviour-identical, and it means one
+range maps onto both engines by one name.
+
+### 29.4 Scope is explicit and never inferred
+
+`ReportingScope` is always an explicit set of business unit ids. There is deliberately no
+"null means the whole organisation" convention: that is how an engine ends up aggregating a
+property the reader was never granted. An empty scope is refused
+(`PnlRefusal.noPermittedBusinessUnit`), not reported as zero.
+
+Consolidation computes each property on its own and hands the results to `Pnl.consolidate`
+— there is one consolidation formula in this project and it is not in an engine. **One
+property whose coverage is unproven refuses the whole consolidated report**, because a
+total assembled from a complete property and an unproven one gives the reader no way to see
+which part is missing.
+
+The engine holds **no state**. Every call carries its own scope and range, and there is no
+process-level "latest P&L" — that is how a user switch or a confirmed revocation ends up
+showing one person another's figures (D-074), prevented here by construction rather than by
+a purge.
+
+### 29.5 Aggregation stays in SQL
+
+The source assembles a `RevenueContributionQuery` and an `ExpenseContributionQuery` and
+lets the repositories answer, so the canonical predicate — accepted, not voided, not
+scope-revoked (D-168) — keeps one home per engine and the range, scope and aggregate are all
+decided in SQL. A second query written in the source would be a second place for that rule
+to live, and the two engines had already drifted apart once.
+
+Measured on a two-year fixture (2,920 revenue components, 244 expense contributions):
+
+| Query | Plan | Time |
+|---|---|---|
+| revenue month, period key | `SEARCH ix_revenue_entries_day` → `SEARCH ix_revenue_components_entry` | 0.42 ms |
+| revenue financial year, date range | the same two indexes | 0.58 ms |
+| expense month, period key | `SCAN expense_period_allocations` → indexed joins | 0.07 ms |
+| expense financial year, date range | the same | 0.12 ms |
+
+No N+1: one aggregate query per side per property, returning one row. Nothing loads
+financial history into Dart.
+
+**One finding recorded rather than fixed.** `ix_expense_contributions_reporting` leads with
+`org_id`, and the local reporting queries never constrain it — a device holds one
+organisation, so the predicate has no reason to name it. The index is therefore unusable on
+the local path and the expense side scans. At V1 volume that scan is 0.07 ms over the whole
+fixture, so no index is *measurably* required and the schema stays at **v16**; changing an
+index on a measured non-problem would be speculative. It is recorded because an index
+nothing can use is the same family as a rule nothing evaluates, and Slice 8 owns
+performance hardening.

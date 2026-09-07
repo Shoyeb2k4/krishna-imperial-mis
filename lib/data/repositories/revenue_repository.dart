@@ -1877,14 +1877,17 @@ class RevenueRepository {
       clauses.add('pnl_period_key = ?');
       variables.add(Variable<String>(query.periodKey!));
     }
-    // Ranges are over the **business date**, never the capture instant: a sale rung up at
-    // 02:00 belongs to the previous trading day (D-067).
+    // Ranges are over the **P&L date**, never the capture instant: a sale rung up at 02:00
+    // belongs to the previous trading day (D-067). For revenue `pnl_date` *is* the business
+    // date — the projection aliases it — and naming the reporting column rather than the
+    // underlying one is what lets both engines be filtered by one vocabulary, which is
+    // what Slice 3's range mapping depends on.
     if (query.from != null) {
-      clauses.add('business_date >= ?');
+      clauses.add('pnl_date >= ?');
       variables.add(Variable<String>(query.from!.iso));
     }
     if (query.to != null) {
-      clauses.add('business_date <= ?');
+      clauses.add('pnl_date <= ?');
       variables.add(Variable<String>(query.to!.iso));
     }
     if (query.businessUnitId != null) {

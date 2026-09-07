@@ -220,6 +220,13 @@ enum PnlRefusal {
 
   /// Neither side could be.
   bothSidesUnavailable,
+
+  /// The report covers no property at all.
+  ///
+  /// Not a result of zero: a reader with no permitted business unit has not been shown a
+  /// company that made nothing, they have been shown nothing. Slice 7 decides who has a
+  /// scope; this is what happens when the answer is none (§16).
+  noPermittedBusinessUnit,
 }
 
 /// The outcome of asking for a P&L.

@@ -46,6 +46,23 @@ final class ReportRange {
 
   bool contains(BusinessDate date) => date >= from && date <= to;
 
+  /// `YYYY-MM` when this range is exactly one whole calendar month, otherwise null.
+  ///
+  /// Both contribution projections store `pnl_period_key`, and both index it. A range that
+  /// happens to be a whole month can therefore be answered by an indexed equality rather
+  /// than a scan — and, crucially, **the caller does not choose**: the optimisation is a
+  /// property of the range, derived here, so a month asked for as a month and the same
+  /// month asked for as a custom range take the same path and cannot give different
+  /// answers (§7 of the Slice 3 brief).
+  String? get wholeMonthKey {
+    if (from.year != to.year || from.month != to.month) return null;
+    if (from.day != 1) return null;
+    final nextMonthFirst = from.month == 12
+        ? BusinessDate.of(from.year + 1, 1, 1)
+        : BusinessDate.of(from.year, from.month + 1, 1);
+    return to == nextMonthFirst.addDays(-1) ? from.periodKey : null;
+  }
+
   @override
   bool operator ==(Object other) =>
       other is ReportRange && other.from == from && other.to == to;
