@@ -157,6 +157,148 @@ void main() {
     ],
   };
 
+  // ── Phase 5 Slice 1 · expense.view.own means own (E1, D-169) ───────────────
+  //
+  // Through the real PostgREST boundary rather than by impersonating a role in SQL: the
+  // defect was in what a signed-in client could actually read, and that is the thing to
+  // assert. Before the fix the Data Entry identity — which holds expense.view.own on
+  // Crystal Canopy and nothing else — read 787 documents of which 724 were other
+  // people's, including every expense the Owner and both managers had recorded.
+  group('expense.view.own is the author, not the property', () {
+    late String ownersDoc;
+    late String dataEntrysDoc;
+
+    Map<String, Object?> ccrBill(String id, String note) => {
+      'p_id': id,
+      'p_business_date': '2026-06-15',
+      'p_total_minor': 120000,
+      'p_notes': note,
+      'p_allocations': [
+        {...ccrKirana, 'amount_minor': 120000},
+      ],
+    };
+
+    setUpAll(() async {
+      ownersDoc = const Uuid().v4();
+      dataEntrysDoc = const Uuid().v4();
+      await createAs(
+        'giridhar@hki.com',
+        ccrBill(ownersDoc, 'Phase 5 Slice 1 live: recorded by the Owner'),
+      );
+      await createAs(
+        'data.entry@example.com',
+        ccrBill(dataEntrysDoc, 'Phase 5 Slice 1 live: recorded by Data Entry'),
+      );
+    });
+
+    /// Every expense document id this identity can reach, and the ones it may not.
+    Future<Set<String>> documentsVisibleTo(String email) async {
+      await signInAs(email);
+      final rows = await client.from('expense_document').select('id').inFilter(
+        'id',
+        [ownersDoc, dataEntrysDoc],
+      );
+      return {for (final row in rows) row['id'] as String};
+    }
+
+    test(
+      'Data Entry reads what it recorded and nothing a colleague did',
+      () async {
+        expect(
+          await documentsVisibleTo('data.entry@example.com'),
+          {dataEntrysDoc},
+          reason:
+              'the capability reads "View expenses this user created" and now does that. '
+              'The Owner recorded the other document in the same property',
+        );
+      },
+    );
+
+    test('a colleague document is not enumerable and not addressable', () async {
+      await signInAs('data.entry@example.com');
+
+      // Not in a listing.
+      final listed = await client
+          .from('expense_document')
+          .select('id')
+          .eq('created_by', (await client.auth.getUser()).user!.id);
+      expect(listed.every((r) => r['id'] != ownersDoc), isTrue);
+
+      // And not reachable by naming it, which is the half a listing test misses. Seeded
+      // ids are derivable (D-040), so "they would have to guess it" is not a defence.
+      final addressed = await client
+          .from('expense_document')
+          .select()
+          .eq('id', ownersDoc);
+      expect(addressed, isEmpty, reason: 'no existence oracle either (D-046)');
+
+      // The child tables are line-level and would otherwise still answer.
+      expect(
+        await client
+            .from('expense_allocations')
+            .select('id')
+            .eq('expense_id', ownersDoc),
+        isEmpty,
+        reason: 'the allocations policy consults the document predicate too',
+      );
+      expect(
+        await client
+            .from('expense_period_contributions')
+            .select('id')
+            .eq('expense_id', ownersDoc),
+        isEmpty,
+        reason: 'and so does the reporting projection a P&L will sum',
+      );
+    });
+
+    test('expense.view.all still reads any author in its property', () async {
+      expect(
+        await documentsVisibleTo('ccr.manager@example.com'),
+        {ownersDoc, dataEntrysDoc},
+        reason:
+            'the fix may only narrow. A Crystal Canopy manager holds expense.view.all '
+            'and sees the property, whoever recorded it',
+      );
+      expect(await documentsVisibleTo('accountant@example.com'), {
+        ownersDoc,
+        dataEntrysDoc,
+      });
+    });
+
+    test('the unscoped Owner is unchanged', () async {
+      expect(await documentsVisibleTo('giridhar@hki.com'), {
+        ownersDoc,
+        dataEntrysDoc,
+      });
+    });
+
+    test(
+      'a wrong-property manager reads neither, whoever recorded them',
+      () async {
+        expect(
+          await documentsVisibleTo('hki.manager@example.com'),
+          isEmpty,
+          reason: 'both documents charge Crystal Canopy only',
+        );
+      },
+    );
+
+    test('the reporting projection agrees with the document projection', () async {
+      // The two must not disagree about authorship, or a P&L would total rows whose
+      // documents the reader cannot open — which is the shape of leak D-062 closed for
+      // the header total, arriving through the aggregate instead.
+      await signInAs('data.entry@example.com');
+      final contributions = await client
+          .from('expense_period_contributions')
+          .select('expense_id')
+          .inFilter('expense_id', [ownersDoc, dataEntrysDoc]);
+      expect(
+        {for (final row in contributions) row['expense_id'] as String},
+        {dataEntrysDoc},
+      );
+    });
+  });
+
   group('the shared bill, as three different people hold it', () {
     late String expenseId;
     final databases = <String, File>{};
