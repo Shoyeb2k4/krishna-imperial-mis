@@ -1572,4 +1572,367 @@ void main() {
       }
     });
   });
+
+  // ── Slice 6 · One snapshot, and what a report may claim about it (D-188) ────
+  //
+  // Four properties only a real PostgreSQL can establish: that one statement is one MVCC
+  // snapshot, that the server's own time comes back with the facts rather than from a
+  // second call, that the authority boundary is unchanged by the new transport, and that
+  // a closed period is read rather than touched.
+
+  group('the snapshot transport (D-188)', () {
+    test('one call answers both datasets, with an identity and a server time', () async {
+      await createSale(unitId: _ccr, category: 'RESTAURANT', paise: 700000);
+      await createExpense(allocations: [ccrAllocation(250000)]);
+
+      final before = DateTime.now().toUtc();
+      final first =
+          await owner.rpc<dynamic>(
+                'reporting_snapshot',
+                params: {
+                  'p_business_unit_ids': [_ccr, _hki],
+                  'p_revenue_since': 0,
+                  'p_expense_since': 0,
+                },
+              )
+              as Map<String, dynamic>;
+
+      expect(
+        first['snapshot_id'],
+        isA<String>().having((v) => v.isNotEmpty, 'non-empty', isTrue),
+        reason:
+            'pg_current_snapshot() is the opaque identity the marker records',
+      );
+      final serverTime = DateTime.parse(first['server_time'] as String).toUtc();
+      expect(
+        serverTime.isAfter(before.subtract(const Duration(minutes: 10))),
+        isTrue,
+        reason:
+            'the time is the SAME statement transaction time — not a second select now(), '
+            'and never the device clock (spec section 9)',
+      );
+      expect(
+        (first['revenue'] as List).isNotEmpty,
+        isTrue,
+        reason: 'both projections are answered by the one statement',
+      );
+      expect((first['expense'] as List).isNotEmpty, isTrue);
+      expect(
+        (first['units'] as List).every(
+          (u) => (u as Map).containsKey('reporting_authorised'),
+        ),
+        isTrue,
+        reason:
+            'authority is stated per unit rather than inferred from empty rows',
+      );
+
+      // What the identity promises, established against the real database rather than
+      // assumed. `pg_current_snapshot()` is `xmin:xmax:xip_list`, so two reads of a
+      // database on which nothing has committed carry the **same** identity — and that is
+      // correct: they are the same MVCC view, and facts drawn from both really do describe
+      // one moment. Equality is therefore the meaningful operation; uniqueness per call is
+      // not, and a test asserting it would be asserting a coincidence.
+      final quiet =
+          await owner.rpc<dynamic>(
+                'reporting_snapshot',
+                params: {
+                  'p_business_unit_ids': [_ccr, _hki],
+                  'p_revenue_since': 0,
+                  'p_expense_since': 0,
+                },
+              )
+              as Map<String, dynamic>;
+      expect(
+        DateTime.parse(
+          quiet['server_time'] as String,
+        ).toUtc().isBefore(serverTime),
+        isFalse,
+        reason: 'server time does not run backwards between two reads',
+      );
+
+      // And once something has committed, the identity moves. That is the half the
+      // corrective depends on: a run that saw a different state says so.
+      await createSale(unitId: _ccr, category: 'RESTAURANT', paise: 310000);
+      final after =
+          await owner.rpc<dynamic>(
+                'reporting_snapshot',
+                params: {
+                  'p_business_unit_ids': [_ccr, _hki],
+                  'p_revenue_since': 0,
+                  'p_expense_since': 0,
+                },
+              )
+              as Map<String, dynamic>;
+      expect(
+        after['snapshot_id'],
+        isNot(quiet['snapshot_id']),
+        reason:
+            'a transaction committed in between, so this is a different authoritative '
+            'moment and the identity says so (D-188)',
+      );
+    });
+
+    test('the transport preserves the reporting authority boundary', () async {
+      // A property-scoped manager. The Slice 5 rule is unchanged by the new transport:
+      // reports.view AND revenue.view AND expense.view.all, per unit (D-164, D-187).
+      final manager = await sessionFor('ccr.manager@example.com');
+      final payload =
+          await manager.rpc<dynamic>(
+                'reporting_snapshot',
+                params: {
+                  'p_business_unit_ids': [_ccr, _hki],
+                  'p_revenue_since': 0,
+                  'p_expense_since': 0,
+                },
+              )
+              as Map<String, dynamic>;
+
+      final authorised = {
+        for (final unit in payload['units'] as List)
+          (unit as Map)['business_unit_id'] as String:
+              unit['reporting_authorised'] as bool,
+      };
+      expect(authorised[_ccr], isTrue);
+      expect(
+        authorised[_hki],
+        isFalse,
+        reason:
+            'a property this manager may not report on is refused, not merely empty',
+      );
+      expect(
+        (payload['revenue'] as List).every(
+          (r) => (r as Map)['business_unit_id'] == _ccr,
+        ),
+        isTrue,
+        reason: 'and no row of the refused property comes back with it',
+      );
+      expect(
+        (payload['expense'] as List).every(
+          (r) => (r as Map)['business_unit_id'] == _ccr,
+        ),
+        isTrue,
+      );
+
+      // An anonymous caller reaches neither the snapshot nor the head check.
+      final anon = SupabaseClient(
+        config['SUPABASE_URL'] as String,
+        config['SUPABASE_ANON_KEY'] as String,
+      );
+      for (final fn in const ['reporting_snapshot', 'reporting_newer_than']) {
+        await expectLater(
+          anon.rpc<dynamic>(
+            fn,
+            params: {
+              'p_business_unit_ids': [_ccr],
+              'p_revenue_since': 0,
+              'p_expense_since': 0,
+            },
+          ),
+          throwsA(anything),
+          reason: '$fn is not callable by anon (D-044)',
+        );
+      }
+    });
+
+    test('a synchronised device names one snapshot for every segment', () async {
+      await createSale(unitId: _ccr, category: 'RESTAURANT', paise: 900000);
+      await createExpense(allocations: [ccrAllocation(300000)]);
+
+      final device = await syncedDevice(owner, ownerId, units: {_ccr, _hki});
+      final markers = await device.cache.markersFor(ownerId);
+      expect(markers, isNotEmpty);
+      expect(
+        markers.map((m) => m.snapshotId).toSet().length,
+        1,
+        reason:
+            'one run is one authoritative snapshot, and every property, dataset and year '
+            'it certified says so',
+      );
+      expect(
+        markers.every((m) => m.serverConfirmedAt != null),
+        isTrue,
+        reason: 'each carries the server-confirmed time the facts arrived with',
+      );
+
+      final envelope = await device.engine.report(
+        ReportRequest(
+          period: _month(_period),
+          scope: ReportingScope({_ccr, _hki}),
+        ),
+      );
+      expect(
+        envelope.freshness?.state,
+        ReportingFreshnessState.synchronised,
+        reason: 'so the consolidated report can honestly say what it is as of',
+      );
+      expect(
+        envelope.freshness!.synchronisedAt,
+        markers.first.serverConfirmedAt,
+        reason:
+            'and the moment it names is the server-confirmed one, not a device clock',
+      );
+    });
+
+    test(
+      'a closed period is read, refuses a correction, and reopens with a reason',
+      () async {
+        final sale = await createSale(
+          unitId: _ccr,
+          category: 'RESTAURANT',
+          paise: 4000000,
+        );
+        final device = await syncedDevice(owner, ownerId, units: {_ccr});
+        final request = ReportRequest(
+          period: _month(_period),
+          scope: ReportingScope.unit(_ccr),
+        );
+        final before = (await device.engine.report(request)).resultOrNull!;
+
+        await owner.rpc<dynamic>(
+          'period_close',
+          params: {
+            'p_period_key': _period,
+            'p_business_unit_id': _ccr,
+            'p_mutation_id': const Uuid().v4(),
+          },
+        );
+        addTearDown(reopenEverything);
+
+        // A close writes a period lock and no contribution, so it is not this report being
+        // behind. The head check must be scope- and data-relevant or every administrative
+        // act would nag a manager to synchronise something that changes no figure.
+        expect(
+          (await device.sync.checkForNewer(
+            businessUnitIds: {_ccr},
+            years: [_fy],
+          )).serverHasNewer,
+          isFalse,
+          reason: 'a period lock is not reporting data',
+        );
+
+        // The figures are unchanged, on both engines, and the report is still readable.
+        await device.sync.synchronise(businessUnitIds: {_ccr}, years: [_fy]);
+        final closed = await engineOver(device.cache, ownerId);
+        expectParity(
+          await closed.report(request),
+          await remoteFor(owner).report(request),
+          context: 'while closed',
+        );
+        expect(
+          (await closed.report(request)).resultOrNull!.grossSales.paise,
+          before.grossSales.paise,
+          reason:
+              'a closed month reports exactly what it reported the day before',
+        );
+
+        // A correction into it is refused server-side. Reporting neither causes nor relaxes
+        // that: engines are readers (spec section 13.4).
+        Object? refusal;
+        try {
+          await owner.rpc<dynamic>(
+            'revenue_update',
+            params: {
+              'p_id': sale,
+              'p_business_date': _businessDate,
+              'p_notes': _marker,
+              'p_components': [
+                {'entered_amount_minor': 4500000},
+              ],
+              'p_base_row_version': await versionOf('revenue_document', sale),
+              'p_mutation_id': const Uuid().v4(),
+            },
+          );
+        } catch (error) {
+          refusal = error;
+        }
+        expect(
+          refusal,
+          isNotNull,
+          reason: 'a closed period rejects every write affecting it (D-026)',
+        );
+        expect(
+          (await device.sync.checkForNewer(
+            businessUnitIds: {_ccr},
+            years: [_fy],
+          )).serverHasNewer,
+          isFalse,
+          reason:
+              'and a refused correction changed nothing, so nothing is newer',
+        );
+
+        // The Owner reopens with a stated reason, the correction is accepted, and the
+        // figure moves exactly once — after the device synchronises, not before.
+        await owner.rpc<dynamic>(
+          'period_reopen',
+          params: {
+            'p_period_key': _period,
+            'p_business_unit_id': _ccr,
+            'p_reason':
+                'Slice 6 acceptance: correcting a recorded sale ($_marker)',
+            'p_mutation_id': const Uuid().v4(),
+          },
+        );
+        await owner.rpc<dynamic>(
+          'revenue_update',
+          params: {
+            'p_id': sale,
+            'p_business_date': _businessDate,
+            'p_notes': _marker,
+            'p_components': [
+              {'entered_amount_minor': 4500000},
+            ],
+            'p_base_row_version': await versionOf('revenue_document', sale),
+            'p_mutation_id': const Uuid().v4(),
+          },
+        );
+        expect(
+          (await device.sync.checkForNewer(
+            businessUnitIds: {_ccr},
+            years: [_fy],
+          )).serverHasNewer,
+          isTrue,
+          reason: 'now reporting data really has moved',
+        );
+
+        await device.sync.synchronise(businessUnitIds: {_ccr}, years: [_fy]);
+        final reopened = await engineOver(device.cache, ownerId);
+        expectParity(
+          await reopened.report(request),
+          await remoteFor(owner).report(request),
+          context: 'after the reopened correction',
+        );
+        expect(
+          (await reopened.report(request)).resultOrNull!.grossSales.paise -
+              before.grossSales.paise,
+          500000,
+          reason: 'the correction lands once, and for exactly what it changed',
+        );
+
+        // The audit is intact: the close, the reopen with its reason, and the correction.
+        final lock = await owner
+            .from('period_locks')
+            .select('id')
+            .eq('period_key', _period)
+            .eq('business_unit_id', _ccr)
+            .single();
+        final events = await owner
+            .from('period_lock_events')
+            .select('action, reason')
+            .eq('period_lock_id', lock['id'] as String)
+            .order('occurred_at', ascending: false)
+            .limit(2);
+        expect(
+          events.map((e) => e['action']).toList(),
+          containsAll(<String>['close', 'reopen']),
+          reason: 'both acts are on the append-only record',
+        );
+        expect(
+          events.firstWhere((e) => e['action'] == 'reopen')['reason'],
+          contains(_marker),
+          reason:
+              'and the reopen carries the reason its actor stated (D-026, D-145)',
+        );
+      },
+    );
+  });
 }

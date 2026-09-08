@@ -344,18 +344,30 @@ assert against from Phase 1, before Postgres is provisioned.
 Every screen reads from `LocalReportingEngine` by default. Reporting never waits for, or
 fails because of, connectivity.
 
-Because local results legitimately include entries the server has not seen, every report
-result object carries a freshness descriptor, surfaced in the UI:
+Every report result object carries a freshness descriptor, surfaced in the UI.
+
+**Amended 2026-09-08 (D-167, D-188).** The table as written had three states and the first
+of them is **superseded for P&L**:
 
 | State | Meaning |
 |---|---|
-| **Local — current** (`N unsynced entries`) | Includes everything on this device, some not yet on the server |
-| **Synced — as of `<time>`** | Local and server agree; nothing pending |
-| **Local — server has newer changes** | A pull is outstanding; figures may rise |
+| ~~**Local — current** (`N unsynced entries`)~~ | **Superseded.** A canonical P&L contains only server-accepted facts, so an unsynced attempt contributes nothing and there is no figure for it to be *included in*. No valid P&L can construct this, and an arm nothing constructs is the gap D-108 had to reopen — so it is not preserved |
+| **Synchronized as of `<server-confirmed time>`** | The local canonical reporting cache represents the complete authoritative reporting snapshot successfully synchronized at that time. It does **not** claim the device has proved nothing changed since, so an offline device may truthfully stay here |
+| **Server has newer canonical changes** | An authoritative answer about **reporting** data says the server has moved past what the device holds. A vendor rename, a tax-rule change or an audit row moves the global sequence and changes no contribution, and must never land a report here |
 
-A manager is never left guessing which of these they are looking at. Exports embed the
-same freshness statement in their header, so a PDF mailed to someone else states the basis
-and the freshness on its face.
+Unsynced work stays real and stays visible on the **transaction** surfaces as operational
+sync status. *"N unsynced transactions"* there is a statement about queued work and never
+an implication that those transactions moved a reported figure.
+
+**Availability is a separate question** and is answered by the coverage vocabulary —
+*complete*, *not downloaded*, *not authorised* — which is never reported as a monetary zero
+(D-170, D-183). Freshness describes how current an **available** figure is, and a report
+whose segments cannot be shown to belong to one authoritative snapshot carries **no**
+freshness claim rather than a third state (§32).
+
+There is **no reporting TTL**: age is disclosed, not enforced. Exports embed the same
+freshness statement in their header, so a PDF mailed to someone else states the basis and
+the freshness on its face.
 
 ### 6.5 Money and rounding rules
 

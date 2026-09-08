@@ -10,6 +10,8 @@
 /// reconciles against itself, and it is wrong.
 library;
 
+import 'dart:io';
+
 import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -1530,6 +1532,577 @@ void main() {
         );
       },
     );
+  });
+
+  // ── Freshness is a claim about a snapshot, never about the network ───────────────────
+  //
+  // Availability says whether there is a figure; freshness says how current the figure
+  // there is happens to be. The two are established by different evidence and are proven
+  // apart here, because collapsing them is how a readable offline report starts being
+  // reported as broken — and how a network failure starts looking like a financial one.
+  group('freshness', () {
+    late LocalReportingEngine engine;
+
+    Future<ReportEnvelope> june(Set<String> units) async {
+      engine = LocalReportingEngine(
+        CachedReportingSource(
+          cache: cache,
+          ownerUserId: _me,
+          coverage: await MarkerCoverage.load(cache, _me),
+        ),
+      );
+      return engine.report(
+        ReportRequest(
+          period: const MonthPeriod(2026, 6),
+          scope: ReportingScope(units),
+        ),
+      );
+    }
+
+    setUp(() {
+      gateway.putRevenue(
+        'rev-1',
+        changeSeq: 100,
+        components: [
+          _component(
+            id: 'c-1',
+            unit: _ccr,
+            category: 'cat-restaurant',
+            pnlDate: '2026-06-15',
+            gross: 10000000,
+            tax: 476190,
+          ),
+        ],
+      );
+      gateway.putExpense(
+        'exp-1',
+        changeSeq: 101,
+        lines: [
+          _line(
+            id: 'l-1',
+            allocation: 'a-1',
+            unit: _ccr,
+            pnlDate: '2026-06-20',
+            amount: 4500000,
+          ),
+        ],
+      );
+    });
+
+    test('an offline report is readable and still names its snapshot', () async {
+      await run(units: {_ccr}, years: [fy2026]);
+      // The network goes away entirely. Nothing about a synchronised report depends on it:
+      // being unable to ask is not evidence of staleness, and a report is never gated on
+      // connectivity to be read (spec §21.4).
+      gateway.unreachableWith = RemoteFailure.offline;
+
+      final envelope = await june({_ccr});
+      expect(
+        (envelope.outcome as PnlComputed).result.operatingProfit,
+        Money.fromPaise(9523810 - 4500000),
+        reason: 'the figures are the canonical ones the snapshot carried',
+      );
+      expect(
+        envelope.freshness?.state,
+        ReportingFreshnessState.synchronised,
+        reason:
+            'synchronised-as-of is a claim about what was successfully synchronised at T, '
+            'not a claim that the device has just checked',
+      );
+      expect(
+        envelope.freshness?.synchronisedAt,
+        DateTime.utc(2027, 1, 14, 9, 30),
+      );
+    });
+
+    test('no amount of elapsed time makes a report stale', () async {
+      await run(units: {_ccr}, years: [fy2026]);
+
+      // The device clock is moved two years past the snapshot and the run is repeated.
+      // There is no reporting TTL: age is disclosed, never enforced, and D-112's 24-hour
+      // window governs creating new offline revenue rather than reading a report (D-170).
+      final muchLater = ReportingSync(
+        cache: cache,
+        gateway: gateway,
+        ownerUserId: _me,
+        orgId: _org,
+        clock: () => DateTime.utc(2028, 9, 7, 12),
+      );
+      await muchLater.synchronise(businessUnitIds: {_ccr}, years: [fy2026]);
+
+      expect(
+        (await cache.markersFor(_me)).map((m) => m.serverConfirmedAt).toSet(),
+        {DateTime.utc(2027, 1, 14, 9, 30)},
+        reason:
+            'the evidence is the SERVER time from the answer that carried the facts. A '
+            'device clock two years out does not become the moment a report is as of',
+      );
+
+      final envelope = await june({_ccr});
+      expect(
+        envelope.freshness?.state,
+        ReportingFreshnessState.synchronised,
+        reason:
+            'nothing in the freshness path consults a clock, so no elapsed period can '
+            'downgrade a claim about a moment that did happen',
+      );
+      expect(
+        envelope.revenueCoverage,
+        ReportingCoverage.complete,
+        reason: 'and age never removes availability either',
+      );
+    });
+
+    test('the server having newer changes moves no figure', () async {
+      await run(units: {_ccr}, years: [fy2026]);
+      final before = await june({_ccr});
+      final s1 = before.freshness!.evidence;
+
+      // A sale is accepted on the server and this device does not synchronise.
+      gateway.putRevenue(
+        'rev-2',
+        changeSeq: 200,
+        components: [
+          _component(
+            id: 'c-2',
+            unit: _ccr,
+            category: 'cat-restaurant',
+            pnlDate: '2026-06-16',
+            gross: 2100000,
+            tax: 100000,
+          ),
+        ],
+      );
+
+      final head = await sync.checkForNewer(
+        businessUnitIds: {_ccr},
+        years: [fy2026],
+      );
+      expect(head.confirmed, isTrue);
+      expect(
+        head.serverHasNewer,
+        isTrue,
+        reason:
+            'the head check asks about reporting data and this is reporting data',
+      );
+
+      final flagged = before.asServerHasNewer();
+      expect(
+        flagged.freshness?.state,
+        ReportingFreshnessState.serverHasNewer,
+        reason: 'the claim changes because an authoritative answer said so',
+      );
+      expect(
+        flagged.freshness?.evidence,
+        s1,
+        reason:
+            'and it still names the snapshot the figures came from — being behind does '
+            'not make a report undated',
+      );
+      expect(
+        (flagged.outcome as PnlComputed).result.grossSales,
+        (before.outcome as PnlComputed).result.grossSales,
+        reason:
+            'knowing the server has moved on must not move a single paisa. The figures '
+            'stay the canonical facts of S1 until a synchronisation replaces them',
+      );
+
+      // S2: synchronise, and the report is current again against a new snapshot.
+      await run(units: {_ccr}, years: [fy2026]);
+      final after = await june({_ccr});
+      expect(
+        (after.outcome as PnlComputed).result.grossSales,
+        Money.fromPaise(12100000),
+        reason: 'now the new sale is in the figures',
+      );
+      expect(after.freshness?.state, ReportingFreshnessState.synchronised);
+      expect(
+        after.freshness?.evidence,
+        isNot(s1),
+        reason: 'a different snapshot, and the evidence says which',
+      );
+      expect(
+        (await sync.checkForNewer(
+          businessUnitIds: {_ccr},
+          years: [fy2026],
+        )).serverHasNewer,
+        isFalse,
+      );
+    });
+
+    test('a change that is not reporting data does not mark a report newer', () async {
+      await run(units: {_ccr}, years: [fy2026]);
+
+      // The head check asks the two contribution projections and nothing else. A tax-rule
+      // edit, a vendor rename or an audit row advances the global sequence and changes no
+      // contribution, so the question it answers is scope- and data-relevant by
+      // construction rather than by a filter somebody must remember.
+      expect(
+        (await sync.checkForNewer(
+          businessUnitIds: {_ccr},
+          years: [fy2026],
+        )).serverHasNewer,
+        isFalse,
+        reason: 'no contribution moved, so no report is behind',
+      );
+
+      // And a contribution this reader may not see is not their report being behind.
+      gateway.putRevenue(
+        'rev-hki',
+        changeSeq: 300,
+        components: [
+          _component(
+            id: 'c-hki',
+            unit: _hki,
+            category: 'cat-room',
+            pnlDate: '2026-06-18',
+            gross: 5200000,
+            tax: 247619,
+          ),
+        ],
+      );
+      expect(
+        (await sync.checkForNewer(
+          businessUnitIds: {_ccr},
+          years: [fy2026],
+        )).serverHasNewer,
+        isFalse,
+        reason:
+            'a property outside the asked-for scope is not this report. Marking it newer '
+            'would send somebody to synchronise something that would not change a figure',
+      );
+    });
+
+    test('a transport failure destroys nothing and downgrades nothing', () async {
+      await run(units: {_ccr}, years: [fy2026]);
+      final before = await june({_ccr});
+      final markersBefore = await cache.markersFor(_me);
+
+      gateway.unreachableWith = RemoteFailure.offline;
+      final failed = await run(units: {_ccr}, years: [fy2026]);
+      expect(failed.isComplete, isFalse);
+
+      final markersAfter = await cache.markersFor(_me);
+      expect(
+        markersAfter
+            .map((m) => (m.dataset, m.snapshotId, m.generation))
+            .toSet(),
+        markersBefore
+            .map((m) => (m.dataset, m.snapshotId, m.generation))
+            .toSet(),
+        reason:
+            'a failed refresh purges no cache, destroys no marker and moves no cursor — '
+            'unknown is not revoked (D-048, D-070)',
+      );
+
+      final after = await june({_ccr});
+      expect(
+        (after.outcome as PnlComputed).result.netSales,
+        (before.outcome as PnlComputed).result.netSales,
+        reason: 'no figure is altered and nothing is zeroed',
+      );
+      expect(after.revenueCoverage, ReportingCoverage.complete);
+      expect(after.expenseCoverage, ReportingCoverage.complete);
+      expect(
+        after.freshness?.evidence,
+        before.freshness!.evidence,
+        reason: 'the same snapshot, still named by the same evidence',
+      );
+      expect(
+        after.freshness?.state,
+        ReportingFreshnessState.synchronised,
+        reason:
+            'a transport failure is not a statement about how current the cache is, so '
+            'the claim it already held stands',
+      );
+
+      final head = await sync.checkForNewer(
+        businessUnitIds: {_ccr},
+        years: [fy2026],
+      );
+      expect(
+        head.confirmed,
+        isFalse,
+        reason: 'nothing was confirmed, so nothing may be claimed either way',
+      );
+      expect(
+        head.serverHasNewer,
+        isFalse,
+        reason:
+            'an unanswered question is not an answer of yes. A report is not marked '
+            'behind because the network was unavailable',
+      );
+    });
+
+    test('losing authority is not staleness', () async {
+      await run(units: {_ccr, _hki}, years: [fy2026]);
+
+      // The grant over Hotel Krishna is withdrawn. The server answers, so this is a
+      // decision rather than an outage — and it is a statement about authority, not about
+      // how current anything is.
+      gateway.visibleUnits = {_ccr};
+      final report = await run(units: {_ccr, _hki}, years: [fy2026]);
+      expect(
+        report.isComplete,
+        isTrue,
+        reason:
+            'the run itself succeeded. A property the caller may no longer read is not a '
+            'synchronisation failure',
+      );
+
+      final ccr = await june({_ccr});
+      expect(
+        ccr.freshness?.state,
+        ReportingFreshnessState.synchronised,
+        reason:
+            'the property this reader still holds is certified by the new snapshot and '
+            'says so. An authorisation change elsewhere does not date it differently',
+      );
+      expect(ccr.revenueCoverage, ReportingCoverage.complete);
+      expect(
+        (ccr.outcome as PnlComputed).result.netSales,
+        Money.fromPaise(9523810),
+        reason:
+            'and the figures a reader still holds authority over are untouched',
+      );
+    });
+
+    test('another person freshness is not this reader claim', () async {
+      await run(units: {_ccr}, years: [fy2026]);
+
+      final theirs = ReportingSync(
+        cache: cache,
+        gateway: gateway,
+        ownerUserId: _colleague,
+        orgId: _org,
+        clock: () => DateTime.utc(2026, 9, 7, 12),
+      );
+      gateway.serverTime = DateTime.utc(2027, 2, 2, 8);
+      await theirs.synchronise(businessUnitIds: {_ccr}, years: [fy2026]);
+
+      final mine = await june({_ccr});
+      expect(
+        mine.freshness?.synchronisedAt,
+        DateTime.utc(2027, 1, 14, 9, 30),
+        reason:
+            'a colleague synchronising on a shared workstation vouches for nothing of '
+            'this reader — every marker is keyed by owner (D-074)',
+      );
+
+      final engineForThem = LocalReportingEngine(
+        CachedReportingSource(
+          cache: cache,
+          ownerUserId: _colleague,
+          coverage: await MarkerCoverage.load(cache, _colleague),
+        ),
+      );
+      final theirReport = await engineForThem.report(
+        ReportRequest(
+          period: const MonthPeriod(2026, 6),
+          scope: ReportingScope.unit(_ccr),
+        ),
+      );
+      expect(
+        theirReport.freshness?.synchronisedAt,
+        DateTime.utc(2027, 2, 2, 8),
+        reason: 'and they carry their own, from their own run',
+      );
+    });
+  });
+
+  // ── A closed period is read, never touched ──────────────────────────────────────────
+  //
+  // Period state is a property of the write path and is enforced server-side (spec §13.4).
+  // Reporting is a reader: it must show a closed period exactly as it stands, and it must
+  // have no way to close one, reopen one or alter one. The local reporting cache holds no
+  // period state at all, which is what makes that structural rather than remembered.
+  group('a closed period', () {
+    Future<ReportEnvelope> june() async {
+      final engine = LocalReportingEngine(
+        CachedReportingSource(
+          cache: cache,
+          ownerUserId: _me,
+          coverage: await MarkerCoverage.load(cache, _me),
+        ),
+      );
+      return engine.report(
+        ReportRequest(
+          period: const MonthPeriod(2026, 6),
+          scope: ReportingScope.unit(_ccr),
+        ),
+      );
+    }
+
+    setUp(() {
+      gateway.putRevenue(
+        'rev-1',
+        changeSeq: 100,
+        components: [
+          _component(
+            id: 'c-1',
+            unit: _ccr,
+            category: 'cat-restaurant',
+            pnlDate: '2026-06-15',
+            gross: 10000000,
+            tax: 476190,
+          ),
+        ],
+      );
+      gateway.putExpense(
+        'exp-1',
+        changeSeq: 101,
+        lines: [
+          _line(
+            id: 'l-1',
+            allocation: 'a-1',
+            unit: _ccr,
+            pnlDate: '2026-06-20',
+            amount: 4500000,
+          ),
+        ],
+      );
+    });
+
+    test('closing a period changes no contribution and no figure', () async {
+      await run(units: {_ccr}, years: [fy2026]);
+      final before = await june();
+
+      // June closes. A close writes a period lock and touches no contribution, so the
+      // next snapshot carries the same facts — and a closed month must go on reporting
+      // the figures it reported the day before it closed.
+      gateway.serverTime = DateTime.utc(2027, 1, 20, 18);
+      await run(units: {_ccr}, years: [fy2026]);
+      final after = await june();
+
+      final b = (before.outcome as PnlComputed).result;
+      final a = (after.outcome as PnlComputed).result;
+
+      // The figures are named, not merely compared with themselves. A month that vanished
+      // on both sides of the comparison would satisfy an equality assertion perfectly —
+      // which is how a closed period disappearing would look like a passing test.
+      expect(b.grossSales, Money.fromPaise(10000000));
+      expect(b.expenses, Money.fromPaise(4500000));
+      expect(a.grossSales, Money.fromPaise(10000000));
+      expect(a.expenses, Money.fromPaise(4500000));
+
+      expect(a.grossSales, b.grossSales);
+      expect(a.gst, b.gst);
+      expect(a.netSales, b.netSales);
+      expect(a.expenses, b.expenses);
+      expect(
+        a.operatingProfit,
+        b.operatingProfit,
+        reason:
+            'a closed month is not a hidden month and not a frozen copy — it is the same '
+            'canonical contributions, still summed the same way',
+      );
+      expect(
+        after.freshness?.synchronisedAt,
+        DateTime.utc(2027, 1, 20, 18),
+        reason: 'the report is newly current; only the figures are unchanged',
+      );
+    });
+
+    test('a reopened period accepts a correction, once', () async {
+      await run(units: {_ccr}, years: [fy2026]);
+      expect(
+        (await june()).outcome,
+        isA<PnlComputed>(),
+        reason: 'a closed period is readable',
+      );
+
+      // The Owner reopens with a stated reason (D-026), an authorised correction is
+      // accepted server-side, and the document comes back as a changed document.
+      gateway.putRevenue(
+        'rev-1',
+        changeSeq: 400,
+        components: [
+          _component(
+            id: 'c-1',
+            unit: _ccr,
+            category: 'cat-restaurant',
+            pnlDate: '2026-06-15',
+            gross: 8400000,
+            tax: 400000,
+          ),
+        ],
+      );
+
+      // Until this device synchronises it reports what it holds. That is not staleness
+      // wearing a different name: the figures are the canonical facts of the snapshot the
+      // report names, and the head check is what says the server has moved.
+      expect(
+        ((await june()).outcome as PnlComputed).result.grossSales,
+        Money.fromPaise(10000000),
+      );
+      expect(
+        (await sync.checkForNewer(
+          businessUnitIds: {_ccr},
+          years: [fy2026],
+        )).serverHasNewer,
+        isTrue,
+      );
+
+      await run(units: {_ccr}, years: [fy2026]);
+      expect(
+        ((await june()).outcome as PnlComputed).result.grossSales,
+        Money.fromPaise(8400000),
+        reason:
+            'the correction lands exactly once — document-grain replacement, not an '
+            'append (D-178)',
+      );
+      expect(
+        (await cache.markersFor(_me)).map((m) => m.snapshotId).toSet().length,
+        1,
+        reason: 'and it lands as one coherent snapshot',
+      );
+    });
+
+    test('reporting can neither close a period nor reopen one', () async {
+      // Asserted over the shipped surface rather than argued: a reader that could change
+      // period state would be a second write path into the thing spec §13.4 reserves to
+      // the Owner, with an audited reason.
+      final surface = [
+        File('lib/data/sync/reporting_sync.dart').readAsStringSync(),
+        File('lib/data/repositories/reporting_cache.dart').readAsStringSync(),
+        for (final f
+            in Directory('lib/data/reporting')
+                .listSync(recursive: true)
+                .whereType<File>()
+                .where((f) => f.path.endsWith('.dart')))
+          f.readAsStringSync(),
+      ].join('\n');
+
+      for (final forbidden in const [
+        'period_locks',
+        'period_lock_events',
+        'period_close',
+        'period_reopen',
+        'periodClose',
+        'periodReopen',
+        'closePeriod',
+        'reopenPeriod',
+      ]) {
+        expect(
+          surface.contains(forbidden),
+          isFalse,
+          reason:
+              'the reporting layer names $forbidden. Engines are readers; period state is '
+              'a write-path concern enforced server-side (spec §13.4, D-026)',
+        );
+      }
+
+      // And the cache carries no period state to be wrong about.
+      final columns = await db
+          .customSelect(
+            "select name from pragma_table_info('reporting_coverage_markers')",
+          )
+          .get();
+      expect(
+        columns.map((r) => r.data['name']).toList(),
+        isNot(contains('period_state')),
+      );
+    });
   });
 }
 

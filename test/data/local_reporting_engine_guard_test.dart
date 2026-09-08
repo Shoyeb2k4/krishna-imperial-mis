@@ -257,6 +257,35 @@ void main() {
     }
   });
 
+  test('no report expires', () {
+    // There is no reporting TTL and there must be no way to acquire one by accident
+    // (D-170). Age is disclosed, never enforced: a report stays readable and truthfully
+    // labelled however long ago it was synchronised, and D-112's 24-hour window governs
+    // creating new offline revenue rather than reading an existing P&L.
+    //
+    // The shapes below are how a TTL would be written: read a clock, or compare the
+    // evidence's time against one. `DateTime.now` is already forbidden above; this closes
+    // the comparison, which would otherwise be the half that looks harmless.
+    for (final path in files) {
+      final code = _code(path);
+      for (final forbidden in const [
+        'difference(',
+        'isBefore(',
+        'isAfter(',
+        'Duration(',
+        'DateTime.timestamp(',
+      ]) {
+        expect(
+          code.contains(forbidden),
+          isFalse,
+          reason:
+              '$path uses $forbidden. A reporting figure does not expire, and an age '
+              'comparison in this layer is the one way it could start to (D-170)',
+        );
+      }
+    }
+  });
+
   test('the coherence rule exists and is a comparison of snapshot evidence', () {
     // The complement, because the guard above would pass just as happily if coherence
     // were removed altogether — which is D-139's defect in reverse, and the reason every

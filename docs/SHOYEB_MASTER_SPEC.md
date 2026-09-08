@@ -743,15 +743,42 @@ implemented formulas; they render the same result objects the screen rendered.
 
 ### 21.4 Freshness is shown, never guessed
 
-Offline reporting is never gated on connectivity. Because local results may include
-entries not yet on the server, every report and dashboard figure carries an explicit
-freshness state:
+Offline reporting is never gated on connectivity, and every report and dashboard figure
+carries an explicit freshness state.
 
-- **Local — current, includes N unsynced entries**
-- **Synced — as of <timestamp>**
-- **Local — server has newer changes not yet pulled**
+**Amended 2026-09-08 for the P&L (D-167, D-188). The version does not move**: this records
+which of the three states below a canonical P&L can construct, and changes no calculation,
+no figure and no other section.
 
-A manager always knows which of the two they are looking at.
+The three states as originally written were:
+
+- ~~**Local — current, includes N unsynced entries**~~ — **superseded for P&L**
+- **Synchronized as of `<server-confirmed timestamp>`**
+- **Server has newer canonical changes not yet synchronized locally**
+
+**The first is superseded for P&L by D-167.** A canonical P&L contains only server-accepted
+financial facts, so a locally recorded attempt that has not been accepted contributes
+nothing and there is no figure for it to be *included in*. No valid P&L can construct that
+state, and a state nothing can construct is the gap D-108 had to reopen — so it is not
+preserved as an unreachable arm.
+
+Unsynced work stays real and stays visible, on the **transaction** surfaces, as operational
+sync status (§22). If a transaction surface says *"N unsynced transactions"* that is
+operational status about queued work and must never be read as implying those transactions
+moved a reported figure.
+
+**What `Synchronized as of T` means, exactly.** The local canonical reporting cache
+represents the complete authoritative reporting snapshot successfully synchronized at
+server-confirmed time T. It does **not** claim the device has proved that nothing changed
+on the server after T. An offline device may therefore stay truthfully in this state
+indefinitely, and a report is never gated on the network to be read.
+
+**Availability is a different question and is answered separately** (§10, D-170): *complete*,
+*not downloaded* and *not authorised* say whether there is a figure at all, and are never
+reported as a monetary zero. Freshness says how current the figure there is happens to be.
+
+There is **no reporting TTL.** Age is disclosed, never enforced, and D-112's 24-hour window
+governs creating new offline revenue rather than reading an existing report.
 
 ## 22. Offline-first
 
@@ -873,6 +900,15 @@ transaction path (§32).
 Clean extension points are welcome. Speculative modules are not.
 
 ## 30. Change log
+
+**v1.2 amendment — 2026-09-08.** §21.4 records which of its three freshness states a
+canonical P&L can actually construct. *"Local — current, includes N unsynced entries"* is
+**superseded for P&L** by D-167: canonical P&L contains only server-accepted facts, so an
+unsynced attempt contributes nothing and no valid P&L can construct that state. The two
+remaining states are stated precisely — what *Synchronized as of T* does and does not claim
+— and availability is kept distinct from freshness. **No other section changes** and the
+version does not move: this states what D-167 and D-170 already required of a canonical
+report rather than altering the calculation, and no figure moves (D-188).
 
 **v1.2 amendment — 2026-09-05 (second).** §14 gains **§14.1**, stating that every
 mandatory financial reason rejects a whitespace-only value and that the five acts carrying

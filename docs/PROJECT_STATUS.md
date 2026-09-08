@@ -5,7 +5,7 @@ Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
-Last updated: **2026-09-08** — **PHASE 5 — P&L / MIS REPORTING: SLICES 1–5 COMPLETE.**
+Last updated: **2026-09-08** — **PHASE 5 — P&L / MIS REPORTING: SLICES 1–6 COMPLETE.**
 Phase 4 closed at `96fc4ed`; the project lead's Phase 5 decisions are ratified and recorded
 as **D-163 … D-173**, and five slices of twelve are closed — source parity, the canonical
 calculation specification, `LocalReportingEngine`, the canonical reporting cache with its
@@ -3242,7 +3242,7 @@ are not merged because they could be implemented quickly.
 | 3 | `LocalReportingEngine` | **COMPLETE** |
 | 4 | Canonical reporting cache + synchronisation completeness (D-171, D-172, D-173) | **COMPLETE** |
 | 5 | Server reporting boundary + `RemoteReportingEngine` parity | **COMPLETE** |
-| 6 | Freshness, as-of and closed periods | not started |
+| 6 | Freshness, as-of and closed periods | **COMPLETE** |
 | 7 | The reporting capability model (D-163, D-164) | not started |
 | 8 | Windows P&L surface | not started |
 | 9 | Android P&L surface | not started |
@@ -4301,5 +4301,181 @@ scope resolution or purge semantics. They are **not** claimed as freshly passing
 screen changed; the only client-visible consequence is a refusal the engine already knew how
 to produce. Device acceptance is Slice 11's.
 
-**PHASE 5 SLICE 5 — COMPLETE.** **Slice 6 is not started**, and is not started
+**PHASE 5 SLICE 5 — COMPLETE.** Slice 6 follows, and its record is below.
+
+---
+
+## Phase 5 Slice 6 — freshness, as-of semantics and closed periods: **COMPLETE**
+
+Slice 6 was told to prove local as-of coherence **before** implementing any freshness. The
+audit found it could not be proved, so the slice opens with a corrective and the general
+work is built on top of it. Decisions **D-188**; `ARCHITECTURE.md` §32 and the §6.4
+amendment; spec §21.4 amended; local schema **v18**; three migrations.
+
+**No P&L surface, no chart, no export, no printing, no drill-down and no Slice 7 work.**
+
+### 1 · The corrective — one report is one snapshot (D-188)
+
+Proven against the tree and against `krishna-mis-dev` before anything was changed:
+
+| | |
+|---|---|
+| `generation` | `max(change_seq)` **over the rows the delta happened to return** — data-derived, not a boundary. Measured live: revenue max 19981, expense max 19658, head 19981, from one run, with nothing wrong |
+| the two datasets | **two HTTP calls**, therefore two MVCC snapshots under READ COMMITTED |
+| `server_confirmed_at` | on the marker since Slice 4, and **written by no reporting call site** |
+
+```
+        t0  revenue certified to 19981
+        t1  a sale accepted         19990
+        t2  an expense accepted     19991
+        t3  expense certified to 19991
+
+        there is NO generation G at which this cache equals the server's state
+```
+
+Both halves canonical; the pair a P&L of a moment that never existed. Under D-163 the two
+sides are subtracted from one another, so the error lands in Operating Profit — and every
+figure still reconciles, which is why nothing would have raised.
+
+**The corrective, in the shape the project lead ruled:**
+
+* `public.reporting_snapshot` returns both datasets, `pg_current_snapshot()` as an opaque
+  identity and `now()` as the server's own time **in one SQL statement**, so they are one
+  MVCC snapshot by construction. A deploy invariant refuses a body of more than one
+  statement or a `plpgsql` rewrite. Never a second `select now()`, never `DateTime.now()`.
+* Authority is the Slice 5 boundary **unchanged** — `reports.view` ∩ `revenue.view` ∩
+  `expense.view.all` per unit, `security invoker`, no base table, no role name — and
+  `reports.export` / `reports.print` are deliberately **not** required.
+* **Snapshot identity and the delta cursor stay separate.** A `change_seq` is allocated at
+  write and visible at commit, so it orders work and dates nothing; the safety overlap
+  (D-180) remains required exactly as it was.
+* Local **v18**: `reporting_coverage_markers.snapshot_id`, nullable, because a marker
+  written before the corrective cannot prove membership of anything.
+* One local transaction, in the mandated order, **snapshot evidence written last** — so a
+  failed run leaves no evidence and no half-certified side.
+
+### 2 · What a report may claim
+
+Every required segment — every property, **both** datasets, every financial year the range
+touches — must carry the **same** evidence. Otherwise the report is produced with **no**
+freshness claim: figures canonical, availability unchanged, not a paisa moved. Null is not
+a third state.
+
+| | |
+|---|---|
+| `Synchronized as of T` | the cache represents the complete authoritative snapshot successfully synchronized at server-confirmed T. It does **not** claim nothing changed since, so an offline device stays here truthfully |
+| `Server has newer canonical changes` | only from an authoritative answer about **reporting** data |
+| ~~`Local — current, includes N unsynced`~~ | **superseded for P&L** by D-167 and not preserved as an arm no valid report can construct |
+
+Availability (`complete` / `notDownloaded` / `notAuthorised`) answers a different question
+and is never a monetary zero. **There is no reporting TTL**, and D-112 is not reused.
+
+### 3 · `min(generation)` is prohibited, and the prohibition is installed
+
+Not written down — **installed**, two ways, both seen to fail:
+
+* a behavioural regression certifies two properties to the **identical** generation from
+  two runs and requires the freshness claim to be withheld;
+* a structural guard fails if any file in `lib/data/reporting` so much as names a
+  generation, paired with a positive assertion that the coherence comparison still exists —
+  because the guard alone would pass if coherence were deleted (D-139 in reverse).
+
+### 4 · Closed periods
+
+Reporting is a **reader**. A closed month reports exactly what it reported the day before
+it closed; there is no frozen copy and no hidden month. A guard asserts the reporting layer
+names no period lock, close or reopen, and the reporting cache carries no period state to
+be wrong about.
+
+Proven live, in sequence: create → sync → close → figures unchanged on both engines →
+**the close does not mark the report newer** (it is not reporting data) → a correction into
+the closed period **refused** → Owner reopen **with a stated reason** → correction accepted
+→ head check now true → sync → local == remote → the figure moved **once**, by exactly what
+changed → `period_lock_events` holds the close and the reopen, and the reopen carries its
+reason.
+
+### Verified
+
+| Item | Status | Evidence |
+|---|---|---|
+| `dart format --set-exit-if-changed` | **Tested** | clean, 227 files |
+| `flutter analyze` | **Tested** | **No issues found** |
+| Host suite | **Tested** | **1,415 tests, all passing** (1,397 + 18) |
+| Coherence regressions | **Tested** | 5 tests: one run one snapshot · two runs cannot be one · an identical cursor is not evidence · a range crossing 1 April · a marker from before the corrective |
+| Freshness | **Tested** | 7 tests: offline readable · no elapsed time makes it stale · server-newer moves no figure · an unrelated change marks nothing · a transport failure destroys nothing · losing authority is not staleness · another person's freshness is not this reader's |
+| Closed periods | **Tested** | 3 tests, incl. the structural reader guard |
+| Structural guards | **Tested** | no generation in the reporting layer · no report expires · the coherence rule exists |
+| **Six positive controls** | **Tested** | **all six RED**, each restored and read back |
+| Live reporting parity + Slice 6, `krishna-mis-dev` | **Tested** | **29 tests** (25 + 4) |
+| Live Slice 4 reporting suite | **Tested** | **13 tests**, re-run after the corrective |
+| Migration ledger parity (A0 / D-056) | **Tested** | all three verified **byte-for-byte by SHA-256** |
+| Secret scan — tree and git history | **Tested** | clean, controls passing |
+| Working tree | **Tested** | clean |
+
+### The six positive controls, each seen to fail
+
+| Control | Result |
+|---|---|
+| Two independent snapshots accepted as coherent | **RED** — 3 coherence tests |
+| `min(generation)` used as coherence | **RED** — the structural guard |
+| The device clock used as server evidence | **RED** — the no-TTL test |
+| An unrelated change marking a report newer | **RED** — the scope-relevance test |
+| A network failure invalidating a valid report | **RED** — the transport-failure test |
+| A closed period disappearing from a report | **RED** — the closed-period test |
+
+**The sixth was written first as a comparison of a report with itself and stayed green**
+against its own sabotage, because a month that vanished on both sides satisfies an equality
+assertion perfectly. It now names the figures. That is the sixth time this project has had
+to find a control by expecting red and getting green (D-071, D-074, D-094, D-139, D-180),
+and it is recorded rather than quietly corrected.
+
+### One finding about the evidence itself, recorded because it changed a test
+
+`pg_current_snapshot()` is `xmin:xmax:xip_list`, so **two reads of a database on which
+nothing has committed carry the same identity** — the first live assertion expected them to
+differ and was wrong to. That is correct behaviour and is the useful half: the identity is
+meaningful under **equality**, not uniqueness, and two runs that saw the same MVCC view
+really do describe one moment. The live test now asserts what the mechanism promises — the
+identity moves once a transaction has committed — rather than a coincidence.
+
+### Migration ledger
+
+| Ledger version | Name |
+|---|---|
+| 20260908122910 | `reporting_snapshot_transport` |
+| 20260908123059 | `api_surface_invariant_reporting_snapshot` |
+| 20260908124127 | `reporting_primitives_states_server_time` |
+
+All three verified byte-for-byte by SHA-256 against
+`supabase_migrations.schema_migrations.statements`.
+
+### Live fixture state after the run
+
+Every document created by the run was reversed through `revenue_void` / `expense_void` with
+a stated reason naming it (D-066, D-071); the teardown asserts **0 stranded documents** and
+**0 closed periods**, and it sweeps before the fixtures as well as after them, because a
+suite that depends on its own teardown having succeeded can pass exactly once (D-076).
+
+### Not rerun, and why
+
+**The Android and Windows device acceptance suites — not rerun.** Slice 6 adds no
+controller, no widget and no screen; the P&L surfaces are Slices 8 and 9 and do not exist.
+They are **not** claimed as freshly passing; device acceptance is Slice 11's.
+
+**`phase-a` … `multi-scope-b` — not rerun.** Nothing here touches authority caching,
+grants, scope resolution or purge semantics.
+
+### Carried to Slice 7, unchanged
+
+* the comprehensive reporting capability audit and the reporting-role template review;
+* the **local** consolidated-unscoped reporting rule, which is still unenforced on the
+  device — the server enforces it (D-187) and the local engine does not;
+* `public.expense_sees_whole_org()` — on the reviewed API surface, called by nothing,
+  **untouched** (D-127);
+* `reports.export` and `reports.print` evaluators — Phase 7, still exempt;
+* making `may_read_expense` cheaper (D-186);
+* accumulated-state and security acceptance for reporting.
+
+**PHASE 5 SLICE 6 — COMPLETE.** **Slice 7 is not started**, and is not started
 automatically.
+
