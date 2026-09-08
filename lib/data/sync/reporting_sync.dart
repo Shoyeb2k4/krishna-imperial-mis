@@ -96,10 +96,48 @@ final class DatasetRefused extends DatasetSyncOutcome {
   final ServerRefusal refusal;
 }
 
+/// What a freshness confirmation established, if anything.
+///
+/// [confirmed] is the load-bearing field: a transport failure answers *unknown*, never
+/// *up to date* and never *newer*. Not being able to ask is not an answer, and treating it
+/// as one is how a report starts making claims about a server nobody reached.
+final class ReportingHeadCheck {
+  const ReportingHeadCheck({
+    required this.confirmed,
+    required this.serverHasNewer,
+    this.serverTime,
+  });
+
+  const ReportingHeadCheck.unknown()
+    : confirmed = false,
+      serverHasNewer = false,
+      serverTime = null;
+
+  /// Whether the server actually answered.
+  final bool confirmed;
+
+  /// Whether canonical reporting facts in scope have moved past what this device holds.
+  /// Meaningless unless [confirmed].
+  final bool serverHasNewer;
+
+  final DateTime? serverTime;
+}
+
 /// One synchronisation run, over both datasets.
 final class ReportingSyncReport {
-  const ReportingSyncReport(this.outcomes);
+  const ReportingSyncReport(
+    this.outcomes, {
+    this.snapshotId,
+    this.serverConfirmedAt,
+  });
+
   final List<DatasetSyncOutcome> outcomes;
+
+  /// The authoritative snapshot every segment of this run was certified from, and the
+  /// server's own time for it. Null when nothing was certified — a run that failed
+  /// carries no evidence rather than weak evidence.
+  final String? snapshotId;
+  final DateTime? serverConfirmedAt;
 
   /// True only when **both** sides landed. A P&L needs both, so a caller that treats a
   /// half-run as success is the D-163 defect one layer up.
@@ -148,8 +186,12 @@ final class ReportingSync {
 
   /// Synchronises both datasets for [businessUnitIds] over [years].
   ///
+  /// **One server statement, one local transaction** (D-188). The snapshot arrives whole
+  /// or not at all, and it is applied whole or not at all, so the cache never holds
+  /// revenue from one moment beside expenses from another.
+  ///
   /// [onDemand] marks the coverage as fetched outside normal retention, so pruning can
-  /// tell a year somebody deliberately asked for from one that is merely current (§15).
+  /// tell a year somebody deliberately asked for from one that is merely current.
   Future<ReportingSyncReport> synchronise({
     required Set<String> businessUnitIds,
     required List<FinancialYear> years,
@@ -172,55 +214,54 @@ final class ReportingSync {
       ]);
     }
 
-    return ReportingSyncReport([
-      for (final dataset in ReportingDataset.values)
-        await _synchroniseDataset(
-          dataset: dataset,
-          businessUnitIds: businessUnitIds,
-          years: years,
-          onDemand: onDemand,
-        ),
-    ]);
-  }
-
-  Future<DatasetSyncOutcome> _synchroniseDataset({
-    required ReportingDataset dataset,
-    required Set<String> businessUnitIds,
-    required List<FinancialYear> years,
-    required bool onDemand,
-  }) async {
     final markers = await cache.markersFor(ownerUserId);
-    final held = <String, int>{
-      for (final marker in markers)
-        if (marker.dataset == dataset)
-          '${marker.businessUnitId}/${marker.financialYear}': marker.generation,
+    final held = <ReportingDataset, Map<String, int>>{
+      for (final dataset in ReportingDataset.values)
+        dataset: {
+          for (final marker in markers)
+            if (marker.dataset == dataset)
+              '${marker.businessUnitId}/${marker.financialYear}':
+                  marker.generation,
+        },
     };
 
     // The watermark is the **lowest** any requested scope has reached, and a scope with no
     // marker takes it to zero. Anything higher would ask the server for changes since a
     // point this scope never reached, and the rows in between would never be delivered —
     // a gap that no later run can notice, because the watermark says they arrived.
-    var since = 1 << 62;
-    for (final unit in businessUnitIds) {
-      for (final year in years) {
-        since = _min(since, held['$unit/${year.openingYear}'] ?? 0);
+    final askFrom = <ReportingDataset, int>{};
+    for (final dataset in ReportingDataset.values) {
+      var since = 1 << 62;
+      for (final unit in businessUnitIds) {
+        for (final year in years) {
+          since = _min(since, held[dataset]!['$unit/${year.openingYear}'] ?? 0);
+        }
       }
+      askFrom[dataset] = since - safetyOverlap < 0 ? 0 : since - safetyOverlap;
     }
-    final askFrom = since - safetyOverlap < 0 ? 0 : since - safetyOverlap;
 
-    final outcome = await gateway.changedContributions(
-      dataset: dataset,
-      sinceGeneration: askFrom,
+    final outcome = await gateway.snapshot(
+      businessUnitIds: businessUnitIds.toList(),
+      revenueSince: askFrom[ReportingDataset.revenue]!,
+      expenseSince: askFrom[ReportingDataset.expense]!,
     );
+
     switch (outcome) {
       case RemoteUnreachable(:final failure):
-        return DatasetUnreachable(dataset, failure);
+        // Unknown is not revoked (D-048 section 1). Nothing written, nothing withdrawn,
+        // and the previous coherent snapshot stands exactly as it was.
+        return ReportingSyncReport([
+          for (final dataset in ReportingDataset.values)
+            DatasetUnreachable(dataset, failure),
+        ]);
       case RemoteRefused(:final refusal):
-        return DatasetRefused(dataset, refusal);
+        return ReportingSyncReport([
+          for (final dataset in ReportingDataset.values)
+            DatasetRefused(dataset, refusal),
+        ]);
       case RemoteOk(:final value):
-        return _apply(
-          dataset: dataset,
-          rows: value,
+        return _applySnapshot(
+          response: value,
           businessUnitIds: businessUnitIds,
           years: years,
           held: held,
@@ -230,96 +271,205 @@ final class ReportingSync {
     }
   }
 
-  Future<DatasetSyncOutcome> _apply({
-    required ReportingDataset dataset,
-    required List<Map<String, dynamic>> rows,
+  /// Asks whether canonical reporting facts have moved past what this device holds.
+  ///
+  /// Scope-relevant by construction: it compares against the two contribution
+  /// projections, so a master, tax-configuration or audit-only mutation cannot make a P&L
+  /// look outdated. A transport failure answers *unknown* and never *newer* — a network
+  /// that could not be reached has proven nothing about the server's state.
+  Future<ReportingHeadCheck> checkForNewer({
     required Set<String> businessUnitIds,
     required List<FinancialYear> years,
-    required Map<String, int> held,
-    required int askFrom,
+  }) async {
+    if (businessUnitIds.isEmpty || years.isEmpty) {
+      return const ReportingHeadCheck.unknown();
+    }
+    final markers = await cache.markersFor(ownerUserId);
+    final cursors = <ReportingDataset, int>{};
+    for (final dataset in ReportingDataset.values) {
+      var since = 1 << 62;
+      for (final unit in businessUnitIds) {
+        for (final year in years) {
+          final held = markers
+              .where(
+                (m) =>
+                    m.dataset == dataset &&
+                    m.businessUnitId == unit &&
+                    m.financialYear == year.openingYear,
+              )
+              .map((m) => m.generation)
+              .toList();
+          since = _min(since, held.isEmpty ? 0 : held.first);
+        }
+      }
+      cursors[dataset] = since == 1 << 62 ? 0 : since;
+    }
+
+    final outcome = await gateway.newerThan(
+      businessUnitIds: businessUnitIds.toList(),
+      revenueSince: cursors[ReportingDataset.revenue]!,
+      expenseSince: cursors[ReportingDataset.expense]!,
+    );
+    return switch (outcome) {
+      RemoteOk(:final value) => ReportingHeadCheck(
+        confirmed: true,
+        serverHasNewer:
+            (value['revenue_newer'] as bool? ?? false) ||
+            (value['expense_newer'] as bool? ?? false),
+        serverTime: _serverTime(value['server_time']),
+      ),
+      _ => const ReportingHeadCheck.unknown(),
+    };
+  }
+
+  Future<ReportingSyncReport> _applySnapshot({
+    required Map<String, dynamic> response,
+    required Set<String> businessUnitIds,
+    required List<FinancialYear> years,
+    required Map<ReportingDataset, Map<String, int>> held,
+    required Map<ReportingDataset, int> askFrom,
     required bool onDemand,
   }) async {
-    // Every document the delta named, whatever period its rows landed in. This is the set
-    // whose cached rows are replaced, and it deliberately includes documents that came
-    // back **only** as voided rows and documents whose rows are now in a year this run is
-    // not refreshing — both of which are how a stale figure would otherwise survive.
-    final documents = <String>{};
-    final keep = <int, List<ReportingRowValues>>{};
-    var dropped = 0;
-    var generation = 0;
-
-    for (final row in rows) {
-      final documentId = row[dataset.documentColumn] as String;
-      documents.add(documentId);
-
-      final seq = (row['change_seq'] as num?)?.toInt() ?? 0;
-      if (seq > generation) generation = seq;
-
-      // A voided document contributes nothing and is not stored. Its rows still counted
-      // above, which is the whole point: the document is replaced by nothing.
-      if (row['voided_at'] != null) {
-        dropped++;
-        continue;
-      }
-
-      final pnlDate = row['pnl_date'] as String;
-      final date = BusinessDate.tryParse(pnlDate);
-      if (date == null) {
-        // A projection that cannot state a P&L date cannot be attributed to a period, and
-        // guessing one would decide which month a figure lands in. Refused, not repaired
-        // — the discipline D-043 and §19.5 both set for configuration, applied to money.
-        throw StateError(
-          'reporting delta carried an unparseable pnl_date "$pnlDate" for '
-          '${dataset.wireName} document $documentId',
-        );
-      }
-      final year = FinancialYear.of(date).openingYear;
-      (keep[year] ??= []).add(_valuesFor(dataset, row, pnlDate));
+    final snapshotId = response['snapshot_id'] as String?;
+    final serverTime = _serverTime(response['server_time']);
+    if (snapshotId == null || serverTime == null) {
+      // Without both, nothing downstream could honestly say what moment these facts are.
+      // Refusing to certify is the fail-closed answer, and the previous snapshot survives.
+      throw StateError(
+        'reporting snapshot carried no snapshot identity or no server time - a '
+        'synchronised-as-of claim cannot be built from a device clock (D-188)',
+      );
     }
 
-    var stored = 0;
-    final applied = <int>[];
-    final now = _clock();
+    // Only properties the server itself said are reporting-authorised may be certified.
+    // Certifying a unit whose rows were withheld would claim complete coverage over an
+    // empty set, which is the false-completeness failure the marker exists to prevent.
+    final authorised = <String>{
+      for (final entry in (response['units'] as List? ?? const []))
+        if ((entry as Map)['reporting_authorised'] == true)
+          entry['business_unit_id'] as String,
+    }..retainAll(businessUnitIds);
 
-    for (final year in years) {
-      final forYear = keep[year.openingYear] ?? const <ReportingRowValues>[];
+    if (authorised.isEmpty) {
+      return ReportingSyncReport([
+        for (final dataset in ReportingDataset.values)
+          DatasetSynchronised(
+            dataset,
+            sinceGeneration: askFrom[dataset]!,
+            generation: 0,
+            documentsReplaced: 0,
+            rowsStored: 0,
+            rowsDropped: 0,
+            years: const [],
+          ),
+      ]);
+    }
 
-      // The generation every scope in this run is certified to. One run is one
-      // authoritative boundary, so a unit that happened to have no changed document is
-      // certified to the same point as one that did (§21) — otherwise a quiet property
-      // would drift permanently behind a busy one and re-read the same delta for ever.
-      final certified = _max(
-        generation,
-        _maxHeldFor(held, businessUnitIds, year.openingYear),
-      );
+    final applications = <ReportingDataset, DatasetApplication>{};
+    final outcomes = <DatasetSyncOutcome>[];
 
-      await cache.applyYear(
-        ownerUserId: ownerUserId,
-        orgId: orgId,
-        dataset: dataset,
-        financialYear: year.openingYear,
-        businessUnitIds: businessUnitIds,
+    for (final dataset in ReportingDataset.values) {
+      final rows = [
+        for (final row in (response[dataset.wireName] as List? ?? const []))
+          Map<String, dynamic>.from(row as Map),
+      ];
+
+      final documents = <String>{};
+      final keep = <int, List<ReportingRowValues>>{};
+      var dropped = 0;
+      var generation = 0;
+
+      for (final row in rows) {
+        final documentId = row[dataset.documentColumn] as String;
+        documents.add(documentId);
+
+        final seq = (row['change_seq'] as num?)?.toInt() ?? 0;
+        if (seq > generation) generation = seq;
+
+        // A voided document contributes nothing and is not stored. Its rows still counted
+        // above, which is the whole point: the document is replaced by nothing.
+        if (row['voided_at'] != null) {
+          dropped++;
+          continue;
+        }
+
+        final pnlDate = row['pnl_date'] as String;
+        final date = BusinessDate.tryParse(pnlDate);
+        if (date == null) {
+          // A projection that cannot state a P&L date cannot be attributed to a period,
+          // and guessing one would decide which month a figure lands in. Refused, not
+          // repaired - the discipline D-043 sets for configuration, applied to money.
+          throw StateError(
+            'reporting snapshot carried an unparseable pnl_date "$pnlDate" for '
+            '${dataset.wireName} document $documentId',
+          );
+        }
+        final year = FinancialYear.of(date).openingYear;
+        (keep[year] ??= []).add(_valuesFor(dataset, row, pnlDate));
+      }
+
+      applications[dataset] = DatasetApplication(
         documentIds: documents.toList(),
-        rows: forYear,
-        generation: certified,
-        onDemand: onDemand,
-        now: now,
+        rowsByYear: {
+          for (final year in years)
+            year.openingYear:
+                keep[year.openingYear] ?? const <ReportingRowValues>[],
+        },
+        generationByYear: {
+          for (final year in years)
+            // One run is one authoritative boundary, so a unit that happened to have no
+            // changed document is certified to the same point as one that did - otherwise
+            // a quiet property would drift behind a busy one for ever.
+            year.openingYear: _max(
+              generation,
+              _maxHeldFor(held[dataset]!, authorised, year.openingYear),
+            ),
+        },
       );
 
-      stored += forYear.length;
-      applied.add(year.openingYear);
+      outcomes.add(
+        DatasetSynchronised(
+          dataset,
+          sinceGeneration: askFrom[dataset]!,
+          generation: generation,
+          documentsReplaced: documents.length,
+          rowsStored: [
+            for (final year in years)
+              (keep[year.openingYear] ?? const <ReportingRowValues>[]).length,
+          ].fold(0, (a, b) => a + b),
+          rowsDropped: dropped,
+          years: [for (final year in years) year.openingYear],
+        ),
+      );
     }
 
-    return DatasetSynchronised(
-      dataset,
-      sinceGeneration: askFrom,
-      generation: generation,
-      documentsReplaced: documents.length,
-      rowsStored: stored,
-      rowsDropped: dropped,
-      years: applied,
+    // One transaction for the whole snapshot: both datasets, every year, the markers and
+    // the snapshot evidence last. A failure anywhere leaves the previous coherent
+    // snapshot exactly as it was.
+    await cache.applySnapshot(
+      ownerUserId: ownerUserId,
+      orgId: orgId,
+      snapshotId: snapshotId,
+      serverConfirmedAt: serverTime,
+      businessUnitIds: authorised,
+      financialYears: [for (final year in years) year.openingYear],
+      datasets: applications,
+      onDemand: onDemand,
+      now: _clock(),
+    );
+
+    return ReportingSyncReport(
+      outcomes,
+      snapshotId: snapshotId,
+      serverConfirmedAt: serverTime,
     );
   }
+
+  static DateTime? _serverTime(Object? value) => switch (value) {
+    String text => DateTime.tryParse(text)?.toUtc(),
+    DateTime time => time.toUtc(),
+    _ => null,
+  };
 
   ReportingRowValues _valuesFor(
     ReportingDataset dataset,

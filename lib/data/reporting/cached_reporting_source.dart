@@ -74,6 +74,62 @@ final class MarkerCoverage implements ReportingCoverageOracle {
     }
     return ReportingCoverage.complete;
   }
+
+  /// The one authoritative snapshot every required segment shares, or null.
+  ///
+  /// Required segments are every property in [businessUnitIds], **both** datasets, and
+  /// every financial year [range] touches. They must all carry snapshot evidence and it
+  /// must be the same evidence — which is exactly the property Slice 4 could not express
+  /// and the corrective installs (D-188).
+  ///
+  /// Null is returned rather than a best guess in three cases, and each is a real one:
+  ///
+  ///   * a segment has no marker at all — there is nothing to be current;
+  ///   * a segment was certified before snapshot evidence existed, so it genuinely cannot
+  ///     be shown to belong to any snapshot;
+  ///   * segments were certified by **different** runs. Their figures are all canonical,
+  ///     but they are canonical at different moments, and a consolidated total assembled
+  ///     from two moments is not a report of either. The stronger freshness claim is
+  ///     withheld; the figures are not.
+  ReportingSnapshotEvidence? snapshotEvidence({
+    required Set<String> businessUnitIds,
+    required ReportRange range,
+  }) {
+    final years = financialYearsCovering(range);
+    ReportingSnapshotEvidence? shared;
+
+    for (final unit in businessUnitIds) {
+      for (final dataset in ReportingDataset.values) {
+        for (final year in years) {
+          ReportingCoverageMarker? marker;
+          for (final candidate in _markers) {
+            if (candidate.businessUnitId == unit &&
+                candidate.dataset == dataset &&
+                candidate.financialYear == year.openingYear) {
+              marker = candidate;
+              break;
+            }
+          }
+          if (marker == null || !marker.hasSnapshotEvidence) return null;
+
+          final evidence = ReportingSnapshotEvidence(
+            snapshotId: marker.snapshotId!,
+            serverConfirmedAt: marker.serverConfirmedAt!.toUtc(),
+          );
+          if (shared == null) {
+            shared = evidence;
+          } else if (shared != evidence) {
+            // Two runs. Deliberately **not** resolved by taking the earlier of them: the
+            // cache stores latest canonical state and holds no history, so an older
+            // timestamp would name a moment it cannot reproduce. `min(generation)` fails
+            // for the same reason and is prohibited for it.
+            return null;
+          }
+        }
+      }
+    }
+    return shared;
+  }
 }
 
 /// Reads the canonical reporting cache. Performs no business arithmetic (spec §21.2).
@@ -144,6 +200,19 @@ final class CachedReportingSource
         businessUnitId: businessUnitId,
         range: range,
       ),
+    );
+  }
+
+  @override
+  Future<ReportingSnapshotEvidence?> snapshotEvidenceFor({
+    required ReportRange range,
+    required ReportingScope scope,
+  }) async {
+    final oracle = coverage;
+    if (oracle is! MarkerCoverage) return null;
+    return oracle.snapshotEvidence(
+      businessUnitIds: scope.businessUnitIds,
+      range: range,
     );
   }
 }

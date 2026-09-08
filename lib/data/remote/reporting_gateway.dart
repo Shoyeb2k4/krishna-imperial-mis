@@ -87,6 +87,60 @@ class ReportingGateway extends SupabaseGateway {
     return all;
   });
 
+  /// One authoritative reporting snapshot: both datasets, from one server statement.
+  ///
+  /// This replaces a delta per dataset (D-188). Two queries are two MVCC snapshots, and
+  /// ordinary concurrent financial writes between them leave the cache holding revenue as
+  /// it stood at one moment beside expenses as they stood at another — a pair that was
+  /// never true of the hotel, and which nothing in the stored evidence could detect.
+  ///
+  /// The response carries the snapshot's own identity and the **server's** transaction
+  /// time from that same statement. A second call asking the clock afterwards would
+  /// describe a different moment, and the device clock is not evidence about a server at
+  /// all.
+  ///
+  /// The cursors stay per dataset because they answer a different question — where the
+  /// next delta resumes — and each is already reduced by the caller's safety overlap.
+  Future<RemoteOutcome<Map<String, dynamic>>> snapshot({
+    required List<String> businessUnitIds,
+    required int revenueSince,
+    required int expenseSince,
+  }) => guard(() async {
+    final answer = await client.rpc<dynamic>(
+      'reporting_snapshot',
+      params: {
+        'p_business_unit_ids': businessUnitIds,
+        'p_revenue_since': revenueSince,
+        'p_expense_since': expenseSince,
+      },
+    );
+    return Map<String, dynamic>.from(answer as Map);
+  });
+
+  /// Whether canonical reporting facts this caller may report on have moved past the
+  /// given cursors.
+  ///
+  /// Deliberately **not** a comparison against the global sequence head: a vendor rename,
+  /// a tax-rule change or an audit row all advance that sequence and change no
+  /// contribution, so a P&L would be reported as outdated because something unrelated
+  /// happened. This asks only about the projections a report is built from, and returns
+  /// no figures.
+  Future<RemoteOutcome<Map<String, dynamic>>> newerThan({
+    required List<String> businessUnitIds,
+    required int revenueSince,
+    required int expenseSince,
+  }) => guard(() async {
+    final answer = await client.rpc<dynamic>(
+      'reporting_newer_than',
+      params: {
+        'p_business_unit_ids': businessUnitIds,
+        'p_revenue_since': revenueSince,
+        'p_expense_since': expenseSince,
+      },
+    );
+    return Map<String, dynamic>.from(answer as Map);
+  });
+
   /// The authoritative primitive sums for a scope and an inclusive P&L-date range.
   ///
   /// One call, one statement, one snapshot on the server (D-184). Both sides of the P&L

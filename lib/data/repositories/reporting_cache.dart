@@ -44,14 +44,56 @@ final class ReportingCoverageMarker {
     required this.generation,
     required this.onDemand,
     this.serverConfirmedAt,
+    this.snapshotId,
   });
 
   final String businessUnitId;
   final ReportingDataset dataset;
   final int financialYear;
+
+  /// Where the next delta resumes. A cursor, never a clock (D-188).
   final int generation;
   final bool onDemand;
+
+  /// The server's own time for the snapshot this segment was certified from.
   final DateTime? serverConfirmedAt;
+
+  /// The authoritative snapshot this segment belongs to. Segments of one report must
+  /// share it before the report may claim to be synchronised as of anything.
+  final String? snapshotId;
+
+  /// Whether this segment carries coherent snapshot evidence at all. A marker written
+  /// before the Slice 6 corrective does not, and says so rather than guessing.
+  bool get hasSnapshotEvidence =>
+      snapshotId != null && serverConfirmedAt != null;
+}
+
+/// One dataset's share of a coherent snapshot, ready to be applied.
+///
+/// Assembled by the synchroniser from a single server response and handed to
+/// [ReportingCache.applySnapshot] whole, so both datasets commit together.
+final class DatasetApplication {
+  const DatasetApplication({
+    required this.documentIds,
+    required this.rowsByYear,
+    required this.generationByYear,
+  });
+
+  /// Every document the snapshot named, including those that came back only as voided
+  /// rows and those whose rows now fall in a year this run is not refreshing. Both are
+  /// how a stale figure would otherwise survive replacement (D-178).
+  final List<String> documentIds;
+
+  final Map<int, List<ReportingRowValues>> rowsByYear;
+
+  /// The delta cursor each year is certified to. Separate from the snapshot identity by
+  /// design: this says where the next pull resumes, not what moment these facts are.
+  final Map<int, int> generationByYear;
+
+  List<ReportingRowValues> rowsFor(int year) =>
+      rowsByYear[year] ?? const <ReportingRowValues>[];
+
+  int generationFor(int year) => generationByYear[year] ?? 0;
 }
 
 /// Reads and writes the canonical reporting cache.
@@ -226,7 +268,7 @@ final class ReportingCache {
   }) async {
     final rows = await _db
         .customSelect(
-          'SELECT generation, on_demand, server_confirmed_at '
+          'SELECT generation, on_demand, server_confirmed_at, snapshot_id '
           '  FROM reporting_coverage_markers '
           ' WHERE owner_user_id = ? AND business_unit_id = ? '
           '   AND dataset = ? AND financial_year = ?',
@@ -247,6 +289,7 @@ final class ReportingCache {
       generation: row.read<int>('generation'),
       onDemand: row.read<bool>('on_demand'),
       serverConfirmedAt: row.read<DateTime?>('server_confirmed_at'),
+      snapshotId: row.read<String?>('snapshot_id'),
     );
   }
 
@@ -255,7 +298,7 @@ final class ReportingCache {
     final rows = await _db
         .customSelect(
           'SELECT business_unit_id, dataset, financial_year, generation, '
-          '       on_demand, server_confirmed_at '
+          '       on_demand, server_confirmed_at, snapshot_id '
           '  FROM reporting_coverage_markers WHERE owner_user_id = ? '
           ' ORDER BY business_unit_id, dataset, financial_year',
           variables: [Variable<String>(ownerUserId)],
@@ -270,6 +313,7 @@ final class ReportingCache {
           generation: row.read<int>('generation'),
           onDemand: row.read<bool>('on_demand'),
           serverConfirmedAt: row.read<DateTime?>('server_confirmed_at'),
+          snapshotId: row.read<String?>('snapshot_id'),
         ),
     ];
   }
@@ -296,6 +340,81 @@ final class ReportingCache {
     required int generation,
     required bool onDemand,
     DateTime? serverConfirmedAt,
+    String? snapshotId,
+    required DateTime now,
+  }) => _db.transaction(
+    () => _applyYearWithin(
+      ownerUserId: ownerUserId,
+      orgId: orgId,
+      dataset: dataset,
+      financialYear: financialYear,
+      businessUnitIds: businessUnitIds,
+      documentIds: documentIds,
+      rows: rows,
+      generation: generation,
+      onDemand: onDemand,
+      serverConfirmedAt: serverConfirmedAt,
+      snapshotId: snapshotId,
+      now: now,
+    ),
+  );
+
+  /// One coherent snapshot, applied atomically (D-188).
+  ///
+  /// Both datasets and every retained year land in **one local transaction**, and the
+  /// snapshot evidence is written with the markers at the end of it. That is what makes
+  /// the coherence claim true rather than hopeful: there is no committed state in which
+  /// revenue has been replaced from this snapshot and expenses have not, and no state in
+  /// which a marker certifies a snapshot whose rows did not land.
+  ///
+  /// A failure anywhere rolls the whole run back, so the previous coherent snapshot
+  /// survives intact — a half-applied refresh would be exactly the mixed evidence the
+  /// corrective exists to remove.
+  Future<void> applySnapshot({
+    required String ownerUserId,
+    required String orgId,
+    required String snapshotId,
+    required DateTime serverConfirmedAt,
+    required Set<String> businessUnitIds,
+    required List<int> financialYears,
+    required Map<ReportingDataset, DatasetApplication> datasets,
+    required bool onDemand,
+    required DateTime now,
+  }) => _db.transaction(() async {
+    for (final dataset in ReportingDataset.values) {
+      final application = datasets[dataset];
+      if (application == null) continue;
+      for (final year in financialYears) {
+        await _applyYearWithin(
+          ownerUserId: ownerUserId,
+          orgId: orgId,
+          dataset: dataset,
+          financialYear: year,
+          businessUnitIds: businessUnitIds,
+          documentIds: application.documentIds,
+          rows: application.rowsFor(year),
+          generation: application.generationFor(year),
+          onDemand: onDemand,
+          serverConfirmedAt: serverConfirmedAt,
+          snapshotId: snapshotId,
+          now: now,
+        );
+      }
+    }
+  });
+
+  Future<void> _applyYearWithin({
+    required String ownerUserId,
+    required String orgId,
+    required ReportingDataset dataset,
+    required int financialYear,
+    required Set<String> businessUnitIds,
+    required List<String> documentIds,
+    required List<ReportingRowValues> rows,
+    required int generation,
+    required bool onDemand,
+    DateTime? serverConfirmedAt,
+    String? snapshotId,
     required DateTime now,
   }) async {
     final table = dataset == ReportingDataset.revenue
@@ -305,7 +424,7 @@ final class ReportingCache {
         ? 'revenue_entry_id'
         : 'expense_id';
 
-    await _db.transaction(() async {
+    {
       // 1 · Clear what these documents used to contribute to this year. Bounded by the
       //     year so another year's cached rows survive, and by the owner so nobody else's
       //     cache is touched.
@@ -339,11 +458,12 @@ final class ReportingCache {
         await _db.customStatement(
           'INSERT INTO reporting_coverage_markers '
           '(owner_user_id, org_id, business_unit_id, dataset, financial_year, '
-          ' generation, server_confirmed_at, on_demand, updated_at) '
-          'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) '
+          ' generation, server_confirmed_at, snapshot_id, on_demand, updated_at) '
+          'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) '
           'ON CONFLICT(owner_user_id, business_unit_id, dataset, financial_year) '
           'DO UPDATE SET generation = excluded.generation, '
           '              server_confirmed_at = excluded.server_confirmed_at, '
+          '              snapshot_id = excluded.snapshot_id, '
           '              on_demand = reporting_coverage_markers.on_demand '
           '                          AND excluded.on_demand, '
           '              updated_at = excluded.updated_at',
@@ -355,12 +475,13 @@ final class ReportingCache {
             financialYear,
             generation,
             serverConfirmedAt?.toUtc().toIso8601String(),
+            snapshotId,
             onDemand ? 1 : 0,
             now.toUtc().toIso8601String(),
           ],
         );
       }
-    });
+    }
   }
 
   /// Removes a year's cache and its markers for this owner. Used by retention pruning.

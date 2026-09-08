@@ -235,4 +235,51 @@ void main() {
       );
     }
   });
+
+  test('coherence is never decided by a delta generation', () {
+    // The permanent prohibition D-188 requires. `min(generation)` is the obvious shortcut
+    // for *"which snapshot do these facts belong to"* and it is not an answer to that
+    // question at all: `change_seq` is allocated when a row is written and becomes visible
+    // when its transaction commits, so it orders work and dates nothing (ARCHITECTURE
+    // §5.2). Two scopes certified to the same cursor by two runs are two moments.
+    //
+    // The cursor is legitimate — it is where the next delta resumes — and it lives with
+    // the synchroniser and the cache, which is why this is scoped to the reporting layer
+    // rather than written as a repository-wide ban.
+    for (final path in files) {
+      expect(
+        _code(path).contains('generation'),
+        isFalse,
+        reason:
+            '$path names a generation. Snapshot identity and the delta cursor are '
+            'separate concepts and a report may not be dated from the second (D-188)',
+      );
+    }
+  });
+
+  test('the coherence rule exists and is a comparison of snapshot evidence', () {
+    // The complement, because the guard above would pass just as happily if coherence
+    // were removed altogether — which is D-139's defect in reverse, and the reason every
+    // exemption in this project is paired with a positive statement of the requirement.
+    final source = _code('lib/data/reporting/cached_reporting_source.dart');
+    expect(
+      source,
+      contains('hasSnapshotEvidence'),
+      reason:
+          'a segment that cannot name a snapshot must refuse the claim rather than be '
+          'skipped, so the check has to be here to be seen',
+    );
+    expect(
+      source,
+      contains('ReportingSnapshotEvidence('),
+      reason: 'coherence is decided by comparing server-issued evidence',
+    );
+    expect(
+      source,
+      contains('shared != evidence'),
+      reason:
+          'two segments carrying different evidence are two snapshots, and the report '
+          'withholds the stronger claim rather than picking one of them',
+    );
+  });
 }

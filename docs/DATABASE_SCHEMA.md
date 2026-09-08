@@ -1480,11 +1480,23 @@ reporting_expense_contributions     one accepted expense period contribution
 reporting_coverage_markers          proof that a scope's dataset was completely synchronised
   PK (owner_user_id, business_unit_id, dataset, financial_year)
   dataset            CHECK IN ('revenue', 'expense')
-  generation         the authoritative generation this scope is complete to
-  server_confirmed_at?   the server's own time, carried as evidence for Slice 6
+  generation         the DELTA CURSOR this scope resumes from — not a moment (D-188)
+  snapshot_id?       WHICH authoritative snapshot these facts jointly represent (v18)
+  server_confirmed_at?   that snapshot's own server time, from the same statement
   on_demand          fetched outside normal retention, so pruning can tell the two apart
   updated_at
 ```
+
+**`snapshot_id` and `generation` are different facts and neither substitutes for the
+other** (D-188). The cursor says where the next delta resumes; the snapshot identity says
+what moment these facts are. A `change_seq` is allocated when a row is written and becomes
+visible when its transaction commits, so it orders work and dates nothing — which is why
+`min(generation)` is prohibited as a coherence rule and a permanent regression holds the
+prohibition.
+
+Both new columns are **nullable, and that is the honest type**: a marker written before the
+Slice 6 corrective cannot prove membership of any snapshot, and null is refused rather than
+read as coherent by default.
 
 **Six indexes, every one leading with `owner_user_id`** — two per contribution table for
 the period and date reads, and one per table on the document, which is what the
@@ -1513,6 +1525,22 @@ A confirmed revocation purges all three tables for the revoked property, **uncon
 is anybody's attempt. The **marker is deleted first**: a coverage claim standing over rows
 about to be removed would tell the reporting engine a property is complete while its
 figures disappear underneath.
+
+### Local schema v18 — the smallest change that expresses membership (Slice 6 corrective)
+
+`reporting_coverage_markers.snapshot_id`, and nothing else. The v18 step adds the one column
+under the D-144 range guard `from >= 17 && from < 18`, because the table itself is created
+at v17 from the current definition.
+
+A **separate snapshot table** was the alternative and was rejected: coherence then needs a
+join on every report, the aggregate stops being one comparison, and the saving is bounded
+duplication across units × datasets × years, which at this scale is a handful of rows.
+
+The property the column exists to support, stated as the invariant it is: **for one report,
+every required business unit × dataset × financial year must prove membership of the same
+snapshot before the envelope claims synchronised evidence.** Anything else — including a
+set assembled from two successful runs — produces a report with **no** freshness claim and
+unchanged figures.
 
 ### The migration
 

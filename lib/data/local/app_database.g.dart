@@ -20133,6 +20133,17 @@ class $ReportingCoverageMarkersTable extends ReportingCoverageMarkers
         type: DriftSqlType.dateTime,
         requiredDuringInsert: false,
       );
+  static const VerificationMeta _snapshotIdMeta = const VerificationMeta(
+    'snapshotId',
+  );
+  @override
+  late final GeneratedColumn<String> snapshotId = GeneratedColumn<String>(
+    'snapshot_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _onDemandMeta = const VerificationMeta(
     'onDemand',
   );
@@ -20168,6 +20179,7 @@ class $ReportingCoverageMarkersTable extends ReportingCoverageMarkers
     financialYear,
     generation,
     serverConfirmedAt,
+    snapshotId,
     onDemand,
     updatedAt,
   ];
@@ -20249,6 +20261,12 @@ class $ReportingCoverageMarkersTable extends ReportingCoverageMarkers
         ),
       );
     }
+    if (data.containsKey('snapshot_id')) {
+      context.handle(
+        _snapshotIdMeta,
+        snapshotId.isAcceptableOrUnknown(data['snapshot_id']!, _snapshotIdMeta),
+      );
+    }
     if (data.containsKey('on_demand')) {
       context.handle(
         _onDemandMeta,
@@ -20305,6 +20323,10 @@ class $ReportingCoverageMarkersTable extends ReportingCoverageMarkers
         DriftSqlType.dateTime,
         data['${effectivePrefix}server_confirmed_at'],
       ),
+      snapshotId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}snapshot_id'],
+      ),
       onDemand: attachedDatabase.typeMapping.read(
         DriftSqlType.bool,
         data['${effectivePrefix}on_demand'],
@@ -20339,10 +20361,26 @@ class ReportingCoverageRow extends DataClass
   /// changes above it, less the safety overlap (ARCHITECTURE §5.2).
   final int generation;
 
-  /// The server's own time, carried as evidence for Slice 6 and **not interpreted here**.
-  /// Never the device clock: a client-authored timestamp is not proof of anything about a
-  /// server's state (D-112's reasoning, applied to a different question).
+  /// The server's own transaction time, taken from the same statement that supplied this
+  /// segment's facts. Never the device clock: a client-authored timestamp is not proof of
+  /// anything about a server's state (D-112's reasoning, applied to a different question).
+  ///
+  /// Slice 4 declared this column and never wrote it. Slice 6 populates it, because
+  /// *"synchronised as of T"* is unsayable without it.
   final DateTime? serverConfirmedAt;
+
+  /// **Which authoritative snapshot these facts jointly represent** (D-188).
+  ///
+  /// Opaque, server-issued, and identical across every segment certified by one
+  /// synchronisation run. It is what makes a report's revenue and expense sides provably
+  /// one moment of the hotel rather than two — the question `generation` cannot answer,
+  /// because a sequence value is allocated at write and becomes visible at commit, so it
+  /// orders a cursor and does not date a snapshot (ARCHITECTURE §5.2).
+  ///
+  /// Nullable, and a null is not a gap to be filled in: markers written before Slice 6
+  /// genuinely cannot prove coherence, and a report built on them declines the stronger
+  /// freshness claim rather than inventing evidence for it.
+  final String? snapshotId;
 
   /// Whether this year is normal retention (current or previous FY) or was fetched on
   /// demand. Pruning treats them differently and the difference has to be recorded, not
@@ -20357,6 +20395,7 @@ class ReportingCoverageRow extends DataClass
     required this.financialYear,
     required this.generation,
     this.serverConfirmedAt,
+    this.snapshotId,
     required this.onDemand,
     required this.updatedAt,
   });
@@ -20371,6 +20410,9 @@ class ReportingCoverageRow extends DataClass
     map['generation'] = Variable<int>(generation);
     if (!nullToAbsent || serverConfirmedAt != null) {
       map['server_confirmed_at'] = Variable<DateTime>(serverConfirmedAt);
+    }
+    if (!nullToAbsent || snapshotId != null) {
+      map['snapshot_id'] = Variable<String>(snapshotId);
     }
     map['on_demand'] = Variable<bool>(onDemand);
     map['updated_at'] = Variable<DateTime>(updatedAt);
@@ -20388,6 +20430,9 @@ class ReportingCoverageRow extends DataClass
       serverConfirmedAt: serverConfirmedAt == null && nullToAbsent
           ? const Value.absent()
           : Value(serverConfirmedAt),
+      snapshotId: snapshotId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(snapshotId),
       onDemand: Value(onDemand),
       updatedAt: Value(updatedAt),
     );
@@ -20408,6 +20453,7 @@ class ReportingCoverageRow extends DataClass
       serverConfirmedAt: serializer.fromJson<DateTime?>(
         json['serverConfirmedAt'],
       ),
+      snapshotId: serializer.fromJson<String?>(json['snapshotId']),
       onDemand: serializer.fromJson<bool>(json['onDemand']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
@@ -20423,6 +20469,7 @@ class ReportingCoverageRow extends DataClass
       'financialYear': serializer.toJson<int>(financialYear),
       'generation': serializer.toJson<int>(generation),
       'serverConfirmedAt': serializer.toJson<DateTime?>(serverConfirmedAt),
+      'snapshotId': serializer.toJson<String?>(snapshotId),
       'onDemand': serializer.toJson<bool>(onDemand),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
@@ -20436,6 +20483,7 @@ class ReportingCoverageRow extends DataClass
     int? financialYear,
     int? generation,
     Value<DateTime?> serverConfirmedAt = const Value.absent(),
+    Value<String?> snapshotId = const Value.absent(),
     bool? onDemand,
     DateTime? updatedAt,
   }) => ReportingCoverageRow(
@@ -20448,6 +20496,7 @@ class ReportingCoverageRow extends DataClass
     serverConfirmedAt: serverConfirmedAt.present
         ? serverConfirmedAt.value
         : this.serverConfirmedAt,
+    snapshotId: snapshotId.present ? snapshotId.value : this.snapshotId,
     onDemand: onDemand ?? this.onDemand,
     updatedAt: updatedAt ?? this.updatedAt,
   );
@@ -20472,6 +20521,9 @@ class ReportingCoverageRow extends DataClass
       serverConfirmedAt: data.serverConfirmedAt.present
           ? data.serverConfirmedAt.value
           : this.serverConfirmedAt,
+      snapshotId: data.snapshotId.present
+          ? data.snapshotId.value
+          : this.snapshotId,
       onDemand: data.onDemand.present ? data.onDemand.value : this.onDemand,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
@@ -20487,6 +20539,7 @@ class ReportingCoverageRow extends DataClass
           ..write('financialYear: $financialYear, ')
           ..write('generation: $generation, ')
           ..write('serverConfirmedAt: $serverConfirmedAt, ')
+          ..write('snapshotId: $snapshotId, ')
           ..write('onDemand: $onDemand, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -20502,6 +20555,7 @@ class ReportingCoverageRow extends DataClass
     financialYear,
     generation,
     serverConfirmedAt,
+    snapshotId,
     onDemand,
     updatedAt,
   );
@@ -20516,6 +20570,7 @@ class ReportingCoverageRow extends DataClass
           other.financialYear == this.financialYear &&
           other.generation == this.generation &&
           other.serverConfirmedAt == this.serverConfirmedAt &&
+          other.snapshotId == this.snapshotId &&
           other.onDemand == this.onDemand &&
           other.updatedAt == this.updatedAt);
 }
@@ -20529,6 +20584,7 @@ class ReportingCoverageMarkersCompanion
   final Value<int> financialYear;
   final Value<int> generation;
   final Value<DateTime?> serverConfirmedAt;
+  final Value<String?> snapshotId;
   final Value<bool> onDemand;
   final Value<DateTime> updatedAt;
   final Value<int> rowid;
@@ -20540,6 +20596,7 @@ class ReportingCoverageMarkersCompanion
     this.financialYear = const Value.absent(),
     this.generation = const Value.absent(),
     this.serverConfirmedAt = const Value.absent(),
+    this.snapshotId = const Value.absent(),
     this.onDemand = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -20552,6 +20609,7 @@ class ReportingCoverageMarkersCompanion
     required int financialYear,
     required int generation,
     this.serverConfirmedAt = const Value.absent(),
+    this.snapshotId = const Value.absent(),
     this.onDemand = const Value.absent(),
     required DateTime updatedAt,
     this.rowid = const Value.absent(),
@@ -20570,6 +20628,7 @@ class ReportingCoverageMarkersCompanion
     Expression<int>? financialYear,
     Expression<int>? generation,
     Expression<DateTime>? serverConfirmedAt,
+    Expression<String>? snapshotId,
     Expression<bool>? onDemand,
     Expression<DateTime>? updatedAt,
     Expression<int>? rowid,
@@ -20582,6 +20641,7 @@ class ReportingCoverageMarkersCompanion
       if (financialYear != null) 'financial_year': financialYear,
       if (generation != null) 'generation': generation,
       if (serverConfirmedAt != null) 'server_confirmed_at': serverConfirmedAt,
+      if (snapshotId != null) 'snapshot_id': snapshotId,
       if (onDemand != null) 'on_demand': onDemand,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (rowid != null) 'rowid': rowid,
@@ -20596,6 +20656,7 @@ class ReportingCoverageMarkersCompanion
     Value<int>? financialYear,
     Value<int>? generation,
     Value<DateTime?>? serverConfirmedAt,
+    Value<String?>? snapshotId,
     Value<bool>? onDemand,
     Value<DateTime>? updatedAt,
     Value<int>? rowid,
@@ -20608,6 +20669,7 @@ class ReportingCoverageMarkersCompanion
       financialYear: financialYear ?? this.financialYear,
       generation: generation ?? this.generation,
       serverConfirmedAt: serverConfirmedAt ?? this.serverConfirmedAt,
+      snapshotId: snapshotId ?? this.snapshotId,
       onDemand: onDemand ?? this.onDemand,
       updatedAt: updatedAt ?? this.updatedAt,
       rowid: rowid ?? this.rowid,
@@ -20638,6 +20700,9 @@ class ReportingCoverageMarkersCompanion
     if (serverConfirmedAt.present) {
       map['server_confirmed_at'] = Variable<DateTime>(serverConfirmedAt.value);
     }
+    if (snapshotId.present) {
+      map['snapshot_id'] = Variable<String>(snapshotId.value);
+    }
     if (onDemand.present) {
       map['on_demand'] = Variable<bool>(onDemand.value);
     }
@@ -20660,6 +20725,7 @@ class ReportingCoverageMarkersCompanion
           ..write('financialYear: $financialYear, ')
           ..write('generation: $generation, ')
           ..write('serverConfirmedAt: $serverConfirmedAt, ')
+          ..write('snapshotId: $snapshotId, ')
           ..write('onDemand: $onDemand, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('rowid: $rowid')
@@ -33494,6 +33560,7 @@ typedef $$ReportingCoverageMarkersTableCreateCompanionBuilder =
       required int financialYear,
       required int generation,
       Value<DateTime?> serverConfirmedAt,
+      Value<String?> snapshotId,
       Value<bool> onDemand,
       required DateTime updatedAt,
       Value<int> rowid,
@@ -33507,6 +33574,7 @@ typedef $$ReportingCoverageMarkersTableUpdateCompanionBuilder =
       Value<int> financialYear,
       Value<int> generation,
       Value<DateTime?> serverConfirmedAt,
+      Value<String?> snapshotId,
       Value<bool> onDemand,
       Value<DateTime> updatedAt,
       Value<int> rowid,
@@ -33553,6 +33621,11 @@ class $$ReportingCoverageMarkersTableFilterComposer
 
   ColumnFilters<DateTime> get serverConfirmedAt => $composableBuilder(
     column: $table.serverConfirmedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get snapshotId => $composableBuilder(
+    column: $table.snapshotId,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -33611,6 +33684,11 @@ class $$ReportingCoverageMarkersTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get snapshotId => $composableBuilder(
+    column: $table.snapshotId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<bool> get onDemand => $composableBuilder(
     column: $table.onDemand,
     builder: (column) => ColumnOrderings(column),
@@ -33659,6 +33737,11 @@ class $$ReportingCoverageMarkersTableAnnotationComposer
 
   GeneratedColumn<DateTime> get serverConfirmedAt => $composableBuilder(
     column: $table.serverConfirmedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get snapshotId => $composableBuilder(
+    column: $table.snapshotId,
     builder: (column) => column,
   );
 
@@ -33722,6 +33805,7 @@ class $$ReportingCoverageMarkersTableTableManager
                 Value<int> financialYear = const Value.absent(),
                 Value<int> generation = const Value.absent(),
                 Value<DateTime?> serverConfirmedAt = const Value.absent(),
+                Value<String?> snapshotId = const Value.absent(),
                 Value<bool> onDemand = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -33733,6 +33817,7 @@ class $$ReportingCoverageMarkersTableTableManager
                 financialYear: financialYear,
                 generation: generation,
                 serverConfirmedAt: serverConfirmedAt,
+                snapshotId: snapshotId,
                 onDemand: onDemand,
                 updatedAt: updatedAt,
                 rowid: rowid,
@@ -33746,6 +33831,7 @@ class $$ReportingCoverageMarkersTableTableManager
                 required int financialYear,
                 required int generation,
                 Value<DateTime?> serverConfirmedAt = const Value.absent(),
+                Value<String?> snapshotId = const Value.absent(),
                 Value<bool> onDemand = const Value.absent(),
                 required DateTime updatedAt,
                 Value<int> rowid = const Value.absent(),
@@ -33757,6 +33843,7 @@ class $$ReportingCoverageMarkersTableTableManager
                 financialYear: financialYear,
                 generation: generation,
                 serverConfirmedAt: serverConfirmedAt,
+                snapshotId: snapshotId,
                 onDemand: onDemand,
                 updatedAt: updatedAt,
                 rowid: rowid,

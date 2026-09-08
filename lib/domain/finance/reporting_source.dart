@@ -82,6 +82,105 @@ enum ReportingDatasetSide {
   };
 }
 
+/// Which authoritative snapshot a set of canonical facts jointly represents (D-188).
+///
+/// The identity is opaque and server-issued; the time is the server's own, taken from the
+/// same statement that supplied the facts. Neither is derived on the device, because a
+/// device clock is not evidence about a server's state and a client cannot mint an
+/// authoritative moment.
+///
+/// This is deliberately **not** the delta cursor. The cursor says where the next pull
+/// resumes and is a `change_seq`; a sequence value is allocated when a row is written and
+/// becomes visible only when its transaction commits, so it orders work and does not date
+/// a snapshot (ARCHITECTURE §5.2). Asking one to be the other is what let two independent
+/// per-dataset queries look like one moment.
+final class ReportingSnapshotEvidence {
+  const ReportingSnapshotEvidence({
+    required this.snapshotId,
+    required this.serverConfirmedAt,
+  });
+
+  final String snapshotId;
+
+  /// The server's own transaction time for this snapshot. Always UTC.
+  final DateTime serverConfirmedAt;
+
+  @override
+  bool operator ==(Object other) =>
+      other is ReportingSnapshotEvidence &&
+      other.snapshotId == snapshotId &&
+      other.serverConfirmedAt == serverConfirmedAt;
+
+  @override
+  int get hashCode => Object.hash(snapshotId, serverConfirmedAt);
+
+  @override
+  String toString() =>
+      'ReportingSnapshotEvidence($snapshotId at '
+      '${serverConfirmedAt.toIso8601String()})';
+}
+
+/// How current an **available** report is.
+///
+/// Spec §21.4 and `ARCHITECTURE.md` §6.4 named three states, and the first of them —
+/// *"Local — current, includes N unsynced entries"* — was superseded for P&L by D-167:
+/// canonical P&L contains only server-accepted facts, so an unsynced attempt contributes
+/// nothing and there is no figure for it to be *included in*. The arm is not preserved,
+/// because a state no valid report can construct is the gap D-108 had to reopen.
+///
+/// Unsynced work remains real and remains visible — on the transaction surfaces, as
+/// operational sync status. It is not a P&L freshness state and must never imply that
+/// those transactions moved a reported figure.
+///
+/// Availability is a different question and is answered by [ReportingCoverage]. *Not
+/// downloaded* and *not authorised* say there is no figure; these two say how current the
+/// figure there is happens to be.
+enum ReportingFreshnessState {
+  /// Synchronised as of the evidence's server-confirmed time.
+  ///
+  /// It means: *the cache represents the complete authoritative snapshot successfully
+  /// synchronised at T*. It does **not** claim that nothing has changed since. An offline
+  /// device may truthfully stay here — being unable to ask is not evidence of staleness,
+  /// and a report is never gated on the network to be read (spec §21.4).
+  synchronised,
+
+  /// The server has confirmed that canonical reporting facts in this scope have moved
+  /// past what the device holds.
+  ///
+  /// Only ever set from an authoritative answer about **reporting** data. A vendor
+  /// rename, a tax-rule change or an audit row moves the global sequence and changes no
+  /// contribution, and must never land a report here.
+  serverHasNewer,
+}
+
+/// The freshness of an available report, and the evidence behind it.
+final class ReportingFreshness {
+  const ReportingFreshness({required this.state, required this.evidence});
+
+  const ReportingFreshness.synchronised(ReportingSnapshotEvidence evidence)
+    : this(state: ReportingFreshnessState.synchronised, evidence: evidence);
+
+  final ReportingFreshnessState state;
+
+  /// What the claim rests on. Always present: a freshness state without evidence would be
+  /// an assertion about a server nobody asked.
+  final ReportingSnapshotEvidence evidence;
+
+  /// The same report, now known to be behind the server.
+  ///
+  /// The figures do not move — they are the canonical facts of [evidence]'s snapshot, and
+  /// they stay exactly that until a synchronisation replaces them.
+  ReportingFreshness asServerHasNewer() => ReportingFreshness(
+    state: ReportingFreshnessState.serverHasNewer,
+    evidence: evidence,
+  );
+
+  DateTime get synchronisedAt => evidence.serverConfirmedAt;
+
+  @override
+  String toString() => 'ReportingFreshness(${state.name}, $evidence)';
+}
+
 /// The business units a report covers.
 ///
 /// Always explicit and always non-empty. There is deliberately no "null means everything"
@@ -208,10 +307,28 @@ abstract interface class ReportingFactsSource {
   /// correction committing between two of them would produce a consolidated figure that
   /// never existed. The local adapter reads a single SQLite database and implements this as
   /// the obvious loop.
-  Future<List<UnitReportingFacts>> factsForScope({
+  Future<ReportingScopeFacts> factsForScope({
     required ReportRange range,
     required ReportingScope scope,
   });
+}
+
+/// One scope's facts and the snapshot evidence behind them, from one read.
+///
+/// The two travel together deliberately. The remote adapter learns both from the same
+/// statement, and asking it a second time would describe a different moment — which is
+/// the very substitution the coherence corrective exists to prevent (D-188).
+final class ReportingScopeFacts {
+  const ReportingScopeFacts({required this.units, this.snapshot});
+
+  final List<UnitReportingFacts> units;
+
+  /// The authoritative snapshot every required segment jointly represents, or **null**
+  /// when they cannot be shown to represent one — a set assembled from more than one
+  /// synchronisation run, a segment certified before snapshot evidence existed, or a
+  /// device's own ledger, which is nobody's snapshot. The figures are canonical either
+  /// way; what is unavailable is the stronger claim about *when* they were current.
+  final ReportingSnapshotEvidence? snapshot;
 }
 
 /// The loop, for a source whose store answers one property as cheaply as several.
@@ -221,11 +338,25 @@ abstract interface class ReportingFactsSource {
 /// say so rather than inherit a per-property fallback by silence.
 base mixin PerUnitReportingFacts implements ReportingFactsSource {
   @override
-  Future<List<UnitReportingFacts>> factsForScope({
+  Future<ReportingScopeFacts> factsForScope({
     required ReportRange range,
     required ReportingScope scope,
-  }) async => [
-    for (final unit in scope.ordered)
-      await factsFor(businessUnitId: unit, range: range, scope: scope),
-  ];
+  }) async => ReportingScopeFacts(
+    units: [
+      for (final unit in scope.ordered)
+        await factsFor(businessUnitId: unit, range: range, scope: scope),
+    ],
+    snapshot: await snapshotEvidenceFor(range: range, scope: scope),
+  );
+
+  /// What snapshot, if any, this source's facts belong to.
+  ///
+  /// Defaults to **null**, which is the truthful answer for a store that holds no
+  /// server-issued evidence — a device's own transaction projections are not a snapshot
+  /// of the hotel and must never be described as one. An adapter that does hold evidence
+  /// overrides this.
+  Future<ReportingSnapshotEvidence?> snapshotEvidenceFor({
+    required ReportRange range,
+    required ReportingScope scope,
+  }) async => null;
 }

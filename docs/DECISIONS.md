@@ -6668,3 +6668,138 @@ claimed a complete authorization story and did not have one. D-184 stays as writ
 this log is append-only — and every canonical document that repeated its conclusion now
 says what was actually true: the original enforced the **data** half of D-164, the reporting
 half was missing, and Slice 5 is closed on the corrective rather than on the first report.
+
+---
+
+# Phase 5 Slice 6 corrective — one report is one snapshot (2026-09-08)
+
+## D-188 — Local as-of coherence: a report's facts must belong to one authoritative snapshot
+**Date:** 2026-09-08 · **Status:** Accepted (project-lead ruling) — **an as-of correctness
+defect in the Slice 4 synchroniser, found by the audit Slice 6 opens with and corrected
+before any freshness work began**
+
+Slice 6 was told to prove, before implementing anything, that the reporting cache can
+honestly say *"as of T"*. It could not, and the reason is not a bug in a line of code — it
+is that nothing in the design ever established what "as of" meant.
+
+### What was actually shipped, read from the tree rather than from the closure record
+
+Three facts, each verified against the code and against `krishna-mis-dev`:
+
+* **`generation` is data-derived, not a boundary.** `ReportingSync` set a year's generation
+  to `max(change_seq)` **over the rows that happened to come back**. It is the largest
+  document generation the delta returned, and it says nothing about what the server held
+  when it answered. Measured live: revenue max 19981, expense max 19658, head 19981 — the
+  expense side's "generation" was 323 behind the revenue side's, from one run, with nothing
+  wrong.
+* **Two datasets were two HTTP calls, therefore two snapshots.** The revenue delta and the
+  expense delta were separate PostgREST requests. Under READ COMMITTED each took its own
+  MVCC snapshot, and anything committing between them lands in one and not the other.
+* **`server_confirmed_at` was never written by any call site.** The marker column existed
+  from Slice 4 and every reporting caller left it null. There was no server-confirmed time
+  in the reporting cache at all.
+
+### The interleaving, constructed rather than imagined
+
+```
+        t0   revenue delta answers; revenue certified to 19981
+        t1   a sale is accepted                     change_seq 19990
+        t2   an expense is accepted                 change_seq 19991
+        t3   expense delta answers; expense certified to 19991
+```
+
+The cache now holds revenue as at t0 and expenses as at t3. **There is no generation G for
+which this cache equals the server's state**, and a report drawn from it is a P&L of a
+moment that never existed. Both halves are canonical; the pair is not a snapshot of
+anything. Under D-163 the two sides are subtracted from one another, so the error lands
+directly in Operating Profit — and it is invisible, because every figure reconciles.
+
+### The corrective, in one sentence
+
+**A successful reporting synchronisation establishes ONE coherent authoritative PostgreSQL
+snapshot for every dataset it certifies, and a report may claim currentness only when every
+required segment provably belongs to one such snapshot.**
+
+### Transport — one statement, one snapshot, one server time
+
+`public.reporting_snapshot(uuid[], bigint, bigint) returns jsonb` (`20260908122910`) returns
+**in a single SQL statement**, under one MVCC snapshot: `pg_current_snapshot()` as an opaque
+identity, `now()` as the server's own transaction time, the per-unit authority answer, and
+both datasets' contribution rows.
+
+* **Not `plpgsql`, and not two calls.** `language sql`, and a deploy invariant refuses a
+  body containing more than one statement — the same structural argument
+  `reporting_primitives` already carries (D-184). A revenue query followed by an expense
+  query is precisely the defect and cannot be written here.
+* **The server time comes from the same statement.** Not a second `select now()`, which
+  would date one moment with another's clock, and never `DateTime.now()`, which is a device
+  reading and is not evidence about a server (spec §9).
+* **`now()` rather than `clock_timestamp()`**, deliberately: `now()` is the transaction
+  timestamp, which is the moment the snapshot belongs to, and PostgREST gives each RPC its
+  own transaction.
+* **It is not the Slice 5 aggregation RPC.** It returns canonical facts and nothing derived
+  — no P&L arithmetic, no tax re-rating, no UI strings — and `reporting_primitives` is
+  untouched apart from stating its own `server_time` from its own statement
+  (`20260908124127`).
+
+**Authority is preserved and is stated explicitly per unit**: `reports.view` ∩
+`revenue.view` ∩ `expense.view.all` (D-164, D-187), `security invoker`, no base table
+exposed, no role name, non-enumeration kept, and `reports.export` / `reports.print`
+deliberately **not** required — a snapshot for reading a report is not an export.
+
+### Snapshot identity and the delta cursor are separate, and stay separate
+
+They answer different questions and one cannot stand in for the other:
+
+| | |
+|---|---|
+| **snapshot identity + server time** | *which authoritative moment these facts jointly are* |
+| **`change_seq` cursor** | *where the next delta resumes* |
+
+A sequence value is allocated when a row is written and becomes visible when its
+transaction commits, so `change_seq` orders work and **dates nothing** (`ARCHITECTURE.md`
+§5.2). *Complete through generation G* therefore does **not** mean *every canonical
+transaction with `change_seq <= G` was in this snapshot*, and the safety-overlap doctrine
+(D-180) remains required exactly as it was.
+
+**`min(generation)` is explicitly prohibited as a coherence rule**, and the prohibition is
+installed rather than written down: a behavioural regression certifies two properties to
+the *identical* generation from two runs and requires the report to refuse the freshness
+claim, and a structural guard fails if any file in `lib/data/reporting` so much as names a
+generation. Both were seen to fail before they were trusted.
+
+### Local schema v18 — the smallest change that can express membership
+
+`reporting_coverage_markers` gains **`snapshot_id`**, beside the `server_confirmed_at` the
+table already had and nothing wrote. A marker therefore answers *which authoritative
+snapshot these facts jointly represent*, and **nullable is the honest type**: a marker
+written before this corrective cannot prove membership of anything, and null is refused
+rather than treated as coherent by default.
+
+Chosen over a separate snapshot table because coherence then needs no join, the aggregate is
+one comparison, and the duplication is bounded by units × datasets × years. The v18 step
+carries the D-144 range guard.
+
+**The commit order inside the one local transaction is part of the rule:** receive the whole
+snapshot → begin → revenue replacements → expense replacements → coverage markers →
+**shared snapshot evidence last** → commit. A run that fails anywhere leaves no evidence and
+no half-certified side, which is what makes *"one snapshot or none"* true rather than
+intended.
+
+### What is refused, and what is never refused
+
+A report whose required segments — every property, **both** datasets, every financial year
+the range touches — do not all carry the **same** evidence produces **no freshness claim**.
+It still produces the report: the figures are canonical, availability is unchanged, and
+nothing about money moves. Withholding the stronger claim is the whole of the remedy.
+
+Null is **not** a third freshness state and must never be rendered as one.
+
+### Consequences
+
+* Slice 4's `f9711ae` … `f20a37f` are not rewritten. This is a corrective on top of them,
+  with its own commit, and the defect is recorded rather than tidied away.
+* The delta, the safety overlap, the document-grain replacement (D-178), the void handling
+  (D-179) and the lowest-watermark rule (D-180) are all unchanged.
+* The local consolidated-unscoped reporting rule is still unenforced on the device and is
+  still Slice 7's.

@@ -185,11 +185,27 @@ class ReportingCoverageMarkers extends Table {
   /// changes above it, less the safety overlap (ARCHITECTURE §5.2).
   IntColumn get generation => integer().named('generation')();
 
-  /// The server's own time, carried as evidence for Slice 6 and **not interpreted here**.
-  /// Never the device clock: a client-authored timestamp is not proof of anything about a
-  /// server's state (D-112's reasoning, applied to a different question).
+  /// The server's own transaction time, taken from the same statement that supplied this
+  /// segment's facts. Never the device clock: a client-authored timestamp is not proof of
+  /// anything about a server's state (D-112's reasoning, applied to a different question).
+  ///
+  /// Slice 4 declared this column and never wrote it. Slice 6 populates it, because
+  /// *"synchronised as of T"* is unsayable without it.
   DateTimeColumn get serverConfirmedAt =>
       dateTime().named('server_confirmed_at').nullable()();
+
+  /// **Which authoritative snapshot these facts jointly represent** (D-188).
+  ///
+  /// Opaque, server-issued, and identical across every segment certified by one
+  /// synchronisation run. It is what makes a report's revenue and expense sides provably
+  /// one moment of the hotel rather than two — the question `generation` cannot answer,
+  /// because a sequence value is allocated at write and becomes visible at commit, so it
+  /// orders a cursor and does not date a snapshot (ARCHITECTURE §5.2).
+  ///
+  /// Nullable, and a null is not a gap to be filled in: markers written before Slice 6
+  /// genuinely cannot prove coherence, and a report built on them declines the stronger
+  /// freshness claim rather than inventing evidence for it.
+  TextColumn get snapshotId => text().named('snapshot_id').nullable()();
 
   /// Whether this year is normal retention (current or previous FY) or was fetched on
   /// demand. Pruning treats them differently and the difference has to be recorded, not

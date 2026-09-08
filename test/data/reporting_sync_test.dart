@@ -62,6 +62,80 @@ final class _FakeReportingGateway extends ReportingGateway {
 
   RemoteFailure? unreachableWith;
 
+  /// Which snapshot the next run gets. Bumped per call, exactly as a real server issues a
+  /// new MVCC snapshot per statement.
+  int snapshots = 0;
+
+  /// The server's own clock. Never the device's — the whole point of the evidence.
+  DateTime serverTime = DateTime.utc(2027, 1, 14, 9, 30);
+
+  /// One authoritative snapshot: both datasets, one identity, one server time.
+  ///
+  /// Modelled on `public.reporting_snapshot`, including the part that matters — the two
+  /// datasets are answered **together**, so nothing can be written between them.
+  @override
+  Future<RemoteOutcome<Map<String, dynamic>>> snapshot({
+    required List<String> businessUnitIds,
+    required int revenueSince,
+    required int expenseSince,
+  }) async {
+    asked.add((dataset: ReportingDataset.revenue, since: revenueSince));
+    asked.add((dataset: ReportingDataset.expense, since: expenseSince));
+    if (unreachableWith case final failure?) return RemoteUnreachable(failure);
+
+    snapshots++;
+    final authorised = businessUnitIds.where(visibleUnits.contains).toSet();
+
+    List<Map<String, dynamic>> matching(ReportingDataset dataset, int since) =>
+        (rows[dataset]!
+                .where(
+                  (r) =>
+                      (r['change_seq'] as int) > since &&
+                      authorised.contains(r['business_unit_id']),
+                )
+                .toList()
+              ..sort(
+                (a, b) =>
+                    (a['change_seq'] as int).compareTo(b['change_seq'] as int),
+              ))
+            .map(Map<String, dynamic>.from)
+            .toList();
+
+    return RemoteOk({
+      'snapshot_id': 'snapshot-$snapshots',
+      'server_time': serverTime.toIso8601String(),
+      'units': [
+        for (final unit in businessUnitIds)
+          {
+            'business_unit_id': unit,
+            'reporting_authorised': visibleUnits.contains(unit),
+          },
+      ],
+      'revenue': matching(ReportingDataset.revenue, revenueSince),
+      'expense': matching(ReportingDataset.expense, expenseSince),
+    });
+  }
+
+  @override
+  Future<RemoteOutcome<Map<String, dynamic>>> newerThan({
+    required List<String> businessUnitIds,
+    required int revenueSince,
+    required int expenseSince,
+  }) async {
+    if (unreachableWith case final failure?) return RemoteUnreachable(failure);
+    final authorised = businessUnitIds.where(visibleUnits.contains).toSet();
+    bool any(ReportingDataset dataset, int since) => rows[dataset]!.any(
+      (r) =>
+          (r['change_seq'] as int) > since &&
+          authorised.contains(r['business_unit_id']),
+    );
+    return RemoteOk({
+      'server_time': serverTime.toIso8601String(),
+      'revenue_newer': any(ReportingDataset.revenue, revenueSince),
+      'expense_newer': any(ReportingDataset.expense, expenseSince),
+    });
+  }
+
   @override
   Future<RemoteOutcome<List<Map<String, dynamic>>>> changedContributions({
     required ReportingDataset dataset,
@@ -784,7 +858,7 @@ void main() {
       },
     );
 
-    test('one dataset failing leaves the other certified, and the P&L refuses', () async {
+    test('a failing run certifies neither side — one snapshot or none', () async {
       gateway.putRevenue(
         'rev-1',
         changeSeq: 100,
@@ -800,9 +874,11 @@ void main() {
         ],
       );
 
-      // Revenue lands; the expense delta never answers.
-      var call = 0;
-      final half = _HalfFailingGateway(gateway, () => call++ >= 1);
+      // The snapshot never answers. Before the coherence corrective this scenario could
+      // leave revenue certified and expenses not, because the two datasets were two
+      // independent queries — the run half-succeeded and the cache held one side of a
+      // moment. One statement removes the case entirely: there is nothing to half-apply.
+      final half = _HalfFailingGateway(gateway, () => true);
       final partial = ReportingSync(
         cache: cache,
         gateway: half,
@@ -816,8 +892,18 @@ void main() {
       );
 
       expect(report.isComplete, isFalse);
-      final datasets = (await cache.markersFor(_me)).map((m) => m.dataset);
-      expect(datasets, [ReportingDataset.revenue]);
+      expect(
+        report.snapshotId,
+        isNull,
+        reason: 'a run that failed certifies no snapshot',
+      );
+      expect(
+        (await cache.markersFor(_me)).map((m) => m.dataset),
+        isEmpty,
+        reason:
+            'neither side may be certified from a run that did not complete — a marker '
+            'over one dataset is exactly the half-snapshot D-188 removes',
+      );
 
       final engine = LocalReportingEngine(
         CachedReportingSource(
@@ -837,28 +923,36 @@ void main() {
         envelope.outcome,
         isA<PnlRefused>(),
         reason:
-            'revenue without expenses is not a profit. The marker is per dataset '
-            'precisely so a half-synchronised scope refuses rather than presenting '
-            'takings as though they were profit (D-163)',
+            'a run that certified nothing leaves nothing to report, and an uncertified '
+            'range refuses rather than presenting an empty cache as a zero (D-163)',
       );
-      // Slice 4 recorded a limitation here and pointed at Slice 5: coverage was one value
-      // per property, so a missing expense side took the whole property down with it and
-      // the refusal named neither half. D-183 closed that. The markers were always per
-      // dataset; now the refusal is too, and it says which side did not arrive.
+      // Both sides, and that is the corrective rather than a regression of D-183. The
+      // per-side refusal is intact and still names one half wherever one half is what is
+      // missing — an unauthorised side, or a year pruned from one dataset. What can no
+      // longer happen is *this* shape: a run that failed leaving revenue certified and
+      // expenses not. There is one statement and one transaction, so a failure leaves
+      // neither, and naming both sides is now the truthful answer.
       expect(
         (envelope.outcome as PnlRefused).refusal,
-        PnlRefusal.expensesUnavailable,
+        PnlRefusal.bothSidesUnavailable,
         reason:
-            'the expense delta is the one that failed, and a refusal that named both '
-            'sides would send somebody looking for a revenue problem that is not there',
+            'nothing was certified, so neither side is available — before the coherence '
+            'corrective this run would have half-succeeded (D-188)',
       );
-      expect(envelope.revenueCoverage, ReportingCoverage.complete);
+      expect(envelope.revenueCoverage, ReportingCoverage.notDownloaded);
       expect(envelope.expenseCoverage, ReportingCoverage.notDownloaded);
       expect(
+        envelope.freshness,
+        isNull,
+        reason: 'a refused report makes no claim about how current it is',
+      );
+      expect(
         (envelope.outcome as PnlRefused).sideReason,
-        ReportingSideUnavailable.notDownloaded,
+        isNull,
         reason:
-            'a run that did not answer is a synchronisation problem, not a grant one',
+            'sideReason names why the ONE unavailable side was unavailable, and here '
+            'neither side is available — the per-side coverage above is what says this '
+            'is a synchronisation problem rather than a grant one',
       );
     });
   });
@@ -1146,10 +1240,301 @@ void main() {
       },
     );
   });
+
+  // ── One report is one snapshot (D-188) ───────────────────────────────────────────────
+  //
+  // The permanent regression against the Slice 4 as-of defect. Before the corrective a
+  // report's figures could be assembled from segments certified by *different*
+  // synchronisation runs, and nothing in the cache could tell: each marker was internally
+  // consistent, every figure was canonical, and the report dated itself from whichever
+  // number a caller reached for. `min(generation)` was the obvious thing to reach for and
+  // is the thing these tests exist to keep prohibited.
+  //
+  // The seam is deliberate and deterministic — two explicit `synchronise` calls — so
+  // nothing here depends on a sleep, a clock or a race.
+  group('one report is one snapshot', () {
+    Future<ReportEnvelope> reportOver(
+      Set<String> units, {
+      ReportingPeriod period = const MonthPeriod(2026, 6),
+    }) async {
+      final engine = LocalReportingEngine(
+        CachedReportingSource(
+          cache: cache,
+          ownerUserId: _me,
+          coverage: await MarkerCoverage.load(cache, _me),
+        ),
+      );
+      return engine.report(
+        ReportRequest(period: period, scope: ReportingScope(units)),
+      );
+    }
+
+    setUp(() {
+      gateway.putRevenue(
+        'rev-ccr',
+        changeSeq: 100,
+        components: [
+          _component(
+            id: 'c-ccr',
+            unit: _ccr,
+            category: 'cat-restaurant',
+            pnlDate: '2026-06-15',
+            gross: 10000000,
+            tax: 476190,
+          ),
+        ],
+      );
+      gateway.putExpense(
+        'exp-ccr',
+        changeSeq: 101,
+        lines: [
+          _line(
+            id: 'l-ccr',
+            allocation: 'a-ccr',
+            unit: _ccr,
+            pnlDate: '2026-06-20',
+            amount: 4500000,
+          ),
+        ],
+      );
+      gateway.putRevenue(
+        'rev-hki',
+        changeSeq: 102,
+        components: [
+          _component(
+            id: 'c-hki',
+            unit: _hki,
+            category: 'cat-room',
+            pnlDate: '2026-06-18',
+            gross: 5200000,
+            tax: 247619,
+          ),
+        ],
+      );
+      gateway.putExpense(
+        'exp-hki',
+        changeSeq: 103,
+        lines: [
+          _line(
+            id: 'l-hki',
+            allocation: 'a-hki',
+            unit: _hki,
+            pnlDate: '2026-06-22',
+            amount: 3000000,
+          ),
+        ],
+      );
+    });
+
+    test('one run certifies every segment into the same snapshot', () async {
+      await run(units: {_ccr, _hki}, years: [fy2026]);
+
+      final markers = await cache.markersFor(_me);
+      expect(
+        markers.length,
+        4,
+        reason: 'two properties x two datasets, all from the one run',
+      );
+      expect(
+        markers.map((m) => m.snapshotId).toSet(),
+        {'snapshot-1'},
+        reason:
+            'one statement answered both datasets for both properties, so every marker '
+            'names the one snapshot they jointly represent',
+      );
+      expect(
+        markers.map((m) => m.serverConfirmedAt).toSet(),
+        {gateway.serverTime},
+        reason:
+            'the time comes from the same answer as the facts — never a second call, and '
+            'never the device clock',
+      );
+
+      final envelope = await reportOver({_ccr, _hki});
+      expect(envelope.outcome, isA<PnlComputed>());
+      expect(
+        envelope.freshness?.state,
+        ReportingFreshnessState.synchronised,
+        reason: 'every required segment provably belongs to one snapshot',
+      );
+      expect(envelope.freshness?.synchronisedAt, gateway.serverTime);
+      expect(
+        envelope.freshness?.evidence.snapshotId,
+        'snapshot-1',
+        reason:
+            'the evidence is the server issued identity, not a generation and not a '
+            'device timestamp',
+      );
+    });
+
+    test('two runs cannot be presented as one snapshot', () async {
+      // The mixed-generation scenario, built the way it happens: a report needs two
+      // properties and they were certified by two runs. Both figures are canonical. The
+      // pair is not a snapshot of anything, because no instant existed at which the
+      // server held exactly these two states together.
+      await run(units: {_ccr}, years: [fy2026]);
+      gateway.serverTime = DateTime.utc(2027, 1, 14, 11, 45);
+      await run(units: {_hki}, years: [fy2026]);
+
+      expect(
+        (await cache.markersFor(_me)).map((m) => m.snapshotId).toSet(),
+        {'snapshot-1', 'snapshot-2'},
+        reason:
+            'two runs, two snapshots — the state the corrective must detect',
+      );
+
+      final consolidated = await reportOver({_ccr, _hki});
+      expect(
+        consolidated.outcome,
+        isA<PnlComputed>(),
+        reason:
+            'the figures are canonical and the report is produced. What is withheld is '
+            'the claim about when, not the money (D-070)',
+      );
+      expect(
+        consolidated.revenueCoverage,
+        ReportingCoverage.complete,
+        reason:
+            'availability is not freshness — both properties did synchronise',
+      );
+      expect(consolidated.expenseCoverage, ReportingCoverage.complete);
+      expect(
+        consolidated.freshness,
+        isNull,
+        reason:
+            'a consolidated total assembled from two moments is a report of neither, and '
+            'dating it from either one would name a state the cache cannot reproduce',
+      );
+
+      // And the per-property reports are unaffected: each property IS one snapshot.
+      final ccr = await reportOver({_ccr});
+      expect(ccr.freshness?.evidence.snapshotId, 'snapshot-1');
+      expect(ccr.freshness?.synchronisedAt, DateTime.utc(2027, 1, 14, 9, 30));
+      final hki = await reportOver({_hki});
+      expect(hki.freshness?.evidence.snapshotId, 'snapshot-2');
+      expect(hki.freshness?.synchronisedAt, DateTime.utc(2027, 1, 14, 11, 45));
+    });
+
+    test('an identical delta cursor is not evidence of one snapshot', () async {
+      // **The permanent regression against `min(generation)`.** Nothing changed on the
+      // server between the two runs, so every marker is certified to the *same*
+      // generation — a coherence rule keyed on the cursor, by min, by max or by equality,
+      // would call this one snapshot. It is not one: the two properties were read at two
+      // moments, and a sequence value is allocated when a row is written rather than when
+      // a transaction becomes visible, so it orders work and dates nothing.
+      gateway.rows[ReportingDataset.revenue]!.clear();
+      gateway.rows[ReportingDataset.expense]!.clear();
+
+      await run(units: {_ccr}, years: [fy2026]);
+      await run(units: {_hki}, years: [fy2026]);
+
+      final markers = await cache.markersFor(_me);
+      expect(
+        markers.map((m) => m.generation).toSet().length,
+        1,
+        reason:
+            'the fixture is only a control if the generations really are identical — '
+            'otherwise the assertion below could pass for the wrong reason',
+      );
+      expect(markers.map((m) => m.snapshotId).toSet().length, 2);
+
+      expect(
+        (await reportOver({_ccr, _hki})).freshness,
+        isNull,
+        reason:
+            'equal cursors, two snapshots. Coherence is membership of one authoritative '
+            'snapshot and is never derived from a generation (D-188)',
+      );
+    });
+
+    test('a range crossing 1 April needs both years from one run', () async {
+      gateway.putRevenue(
+        'rev-march',
+        changeSeq: 200,
+        components: [
+          _component(
+            id: 'c-march',
+            unit: _ccr,
+            category: 'cat-restaurant',
+            pnlDate: '2026-03-20',
+            gross: 2100000,
+            tax: 100000,
+          ),
+        ],
+      );
+      await run(units: {_ccr}, years: [fy2025]);
+      await run(units: {_ccr}, years: [fy2026]);
+
+      final spanning = await reportOver(
+        {_ccr},
+        period: CustomRangePeriod(
+          from: BusinessDate.of(2026, 3, 1),
+          to: BusinessDate.of(2026, 6, 30),
+        ),
+      );
+      expect(
+        spanning.outcome,
+        isA<PnlComputed>(),
+        reason: 'both years are certified, so both sides are available',
+      );
+      expect(
+        spanning.freshness,
+        isNull,
+        reason:
+            'the two financial years were certified by different runs, so the range they '
+            'jointly cover belongs to no single snapshot',
+      );
+
+      // One run over both years, and the same range is datable again.
+      await run(units: {_ccr}, years: [fy2025, fy2026]);
+      final refreshed = await reportOver(
+        {_ccr},
+        period: CustomRangePeriod(
+          from: BusinessDate.of(2026, 3, 1),
+          to: BusinessDate.of(2026, 6, 30),
+        ),
+      );
+      expect(refreshed.freshness?.state, ReportingFreshnessState.synchronised);
+    });
+
+    test(
+      'a marker from before the corrective proves nothing, and the figures stand',
+      () async {
+        await run(units: {_ccr}, years: [fy2026]);
+        // A device part-way through the corrective: the expense side was certified before
+        // anything recorded which snapshot facts came from, and the revenue side after.
+        // Both sets of figures are canonical, and only one of them can name a snapshot. A
+        // segment that cannot name one must **refuse** the claim rather than be skipped
+        // over, because skipping dates the report from whichever subset happened to carry
+        // evidence — a stronger statement than the cache can support.
+        await db.customStatement(
+          "update reporting_coverage_markers set snapshot_id = null "
+          "where dataset = 'expense'",
+        );
+
+        final envelope = await reportOver({_ccr});
+        expect(
+          (envelope.outcome as PnlComputed).result.netSales,
+          Money.fromPaise(9523810),
+          reason:
+              'freshness is not availability and is not arithmetic. Withholding the claim '
+              'must not move a single paisa',
+        );
+        expect(envelope.revenueCoverage, ReportingCoverage.complete);
+        expect(
+          envelope.freshness,
+          isNull,
+          reason:
+              'a marker that cannot name a snapshot cannot be shown to belong to one, and '
+              'assuming it does is the defect rather than a convenience',
+        );
+      },
+    );
+  });
 }
 
-/// Answers the first dataset and drops the second, so a half-synchronised scope can be
-/// built without pretending a network failure is selective by dataset name.
+/// Drops the snapshot call, so a failed run can be observed without pretending a network
+/// failure is selective by dataset name.
 final class _HalfFailingGateway extends ReportingGateway {
   _HalfFailingGateway(this._delegate, this._shouldFail)
     : super(SupabaseClient('http://localhost', 'test-key'));
@@ -1158,16 +1543,16 @@ final class _HalfFailingGateway extends ReportingGateway {
   final bool Function() _shouldFail;
 
   @override
-  Future<RemoteOutcome<List<Map<String, dynamic>>>> changedContributions({
-    required ReportingDataset dataset,
-    required int sinceGeneration,
-    int pageSize = 1000,
+  Future<RemoteOutcome<Map<String, dynamic>>> snapshot({
+    required List<String> businessUnitIds,
+    required int revenueSince,
+    required int expenseSince,
   }) async {
     if (_shouldFail()) return RemoteUnreachable(RemoteFailure.offline);
-    return _delegate.changedContributions(
-      dataset: dataset,
-      sinceGeneration: sinceGeneration,
-      pageSize: pageSize,
+    return _delegate.snapshot(
+      businessUnitIds: businessUnitIds,
+      revenueSince: revenueSince,
+      expenseSince: expenseSince,
     );
   }
 }

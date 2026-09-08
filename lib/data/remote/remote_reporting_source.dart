@@ -68,16 +68,16 @@ final class RemoteReportingSource implements ReportingFactsSource {
       range: range,
       scope: ReportingScope.unit(businessUnitId),
     );
-    return all.single;
+    return all.units.single;
   }
 
   @override
-  Future<List<UnitReportingFacts>> factsForScope({
+  Future<ReportingScopeFacts> factsForScope({
     required ReportRange range,
     required ReportingScope scope,
   }) async {
     final units = scope.ordered;
-    if (units.isEmpty) return const [];
+    if (units.isEmpty) return const ReportingScopeFacts(units: []);
 
     final outcome = await gateway.primitives(
       businessUnitIds: units,
@@ -88,14 +88,17 @@ final class RemoteReportingSource implements ReportingFactsSource {
 
     if (outcome is! RemoteOk<Map<String, dynamic>>) {
       // Refused or unreachable. Either way nothing is established, and an unestablished
-      // side is never a zero.
-      return [
-        for (final unit in units)
-          UnitReportingFacts.uncovered(
-            businessUnitId: unit,
-            coverage: ReportingCoverage.notDownloaded,
-          ),
-      ];
+      // side is never a zero. No evidence either: a call that did not answer dates
+      // nothing.
+      return ReportingScopeFacts(
+        units: [
+          for (final unit in units)
+            UnitReportingFacts.uncovered(
+              businessUnitId: unit,
+              coverage: ReportingCoverage.notDownloaded,
+            ),
+        ],
+      );
     }
 
     final answered = <String, Map<String, dynamic>>{
@@ -105,7 +108,32 @@ final class RemoteReportingSource implements ReportingFactsSource {
         ),
     };
 
-    return [for (final unit in units) _factsFrom(unit, answered[unit])];
+    return ReportingScopeFacts(
+      units: [for (final unit in units) _factsFrom(unit, answered[unit])],
+      // The evidence comes from the **same statement** as the figures (D-188). A remote
+      // report is one MVCC snapshot by construction (D-184), so its identity is that
+      // statement's own answer and its time is the server's own — never a second call,
+      // and never this device's clock.
+      snapshot: _evidenceFrom(outcome.value),
+    );
+  }
+
+  static ReportingSnapshotEvidence? _evidenceFrom(
+    Map<String, dynamic> payload,
+  ) {
+    final raw = payload['server_time'];
+    final at = switch (raw) {
+      String text => DateTime.tryParse(text)?.toUtc(),
+      DateTime time => time.toUtc(),
+      _ => null,
+    };
+    if (at == null) return null;
+    // A remote answer is its own snapshot, so the time identifies it. There is no cache to
+    // compare segments across, which is the only thing a separate opaque token buys.
+    return ReportingSnapshotEvidence(
+      snapshotId: 'server:${at.toIso8601String()}',
+      serverConfirmedAt: at,
+    );
   }
 
   UnitReportingFacts _factsFrom(String unit, Map<String, dynamic>? row) {

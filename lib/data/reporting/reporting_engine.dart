@@ -54,6 +54,7 @@ final class ReportEnvelope {
     required this.scope,
     required this.revenueCoverage,
     required this.expenseCoverage,
+    this.freshness,
   });
 
   final PnlOutcome outcome;
@@ -72,6 +73,39 @@ final class ReportEnvelope {
   /// side is available.
   final ReportingCoverage revenueCoverage;
   final ReportingCoverage expenseCoverage;
+
+  /// How current the figures are, or **null** when that cannot be said.
+  ///
+  /// Availability and freshness are separate questions and are answered separately.
+  /// [revenueCoverage] and [expenseCoverage] say whether there is a figure at all; this
+  /// says how current the figure there is happens to be, and it is present only when
+  /// every required segment of the report provably belongs to one authoritative snapshot
+  /// (D-188).
+  ///
+  /// Null is not a third freshness state and must never be rendered as one. It means the
+  /// stronger claim is unavailable — segments from more than one synchronisation run,
+  /// evidence predating the corrective, or a source that holds no server evidence at all.
+  /// The figures are canonical regardless.
+  final ReportingFreshness? freshness;
+
+  /// The same report, now known to be behind the server.
+  ///
+  /// Separated from [report] on purpose: an engine performs no network call, so a
+  /// currentness confirmation is somebody else's round trip and its result is folded in
+  /// here. **The figures do not move** — they stay the canonical facts of the snapshot
+  /// they came from until a synchronisation replaces them.
+  ReportEnvelope asServerHasNewer() {
+    final current = freshness;
+    if (current == null) return this;
+    return ReportEnvelope(
+      outcome: outcome,
+      range: range,
+      scope: scope,
+      revenueCoverage: revenueCoverage,
+      expenseCoverage: expenseCoverage,
+      freshness: current.asServerHasNewer(),
+    );
+  }
 
   /// One badge's worth, for a caller that shows a single indicator. Lossy on purpose, and
   /// never consulted to decide a refusal — the refusal is already in [outcome], per side.
@@ -113,18 +147,44 @@ base class ReportingEngine {
     if (resolved is ReportRangeRejected) return _rejectedRange(scope);
     final range = (resolved as ReportRangeResolved).range;
 
-    final facts = await source.factsFor(
-      businessUnitId: businessUnitId,
+    // A property outside the requested scope is refused before anything is read; the
+    // sources refuse it again at the read, and the server a third time. Scope is
+    // authority, not a filter.
+    if (!scope.businessUnitIds.contains(businessUnitId)) {
+      final facts = await source.factsFor(
+        businessUnitId: businessUnitId,
+        range: range,
+        scope: scope,
+      );
+      return ReportEnvelope(
+        outcome: _outcomeFor(period: period, facts: facts),
+        range: range,
+        scope: scope,
+        revenueCoverage: facts.revenueCoverage,
+        expenseCoverage: facts.expenseCoverage,
+      );
+    }
+
+    // **One read**, so the figures and the evidence that dates them come from the same
+    // answer. Asking a second time would describe a different moment on the remote source
+    // and would be the substitution the coherence corrective exists to prevent (D-188).
+    final scopeFacts = await source.factsForScope(
       range: range,
-      scope: scope,
+      scope: ReportingScope.unit(businessUnitId),
     );
+    final facts = scopeFacts.units.single;
+    final outcome = _outcomeFor(period: period, facts: facts);
 
     return ReportEnvelope(
-      outcome: _outcomeFor(period: period, facts: facts),
+      outcome: outcome,
       range: range,
       scope: scope,
       revenueCoverage: facts.revenueCoverage,
       expenseCoverage: facts.expenseCoverage,
+      freshness: _freshnessFrom(
+        outcome: outcome,
+        evidence: scopeFacts.snapshot,
+      ),
     );
   }
 
@@ -152,10 +212,11 @@ base class ReportingEngine {
     // snapshot does — and so a consolidated total is never assembled from figures taken at
     // two different moments (§4). Ordered, because a breakdown list that shuffled would
     // make two identical reports look different to anybody diffing them.
-    final facts = await source.factsForScope(
+    final scopeFacts = await source.factsForScope(
       range: range,
       scope: request.scope,
     );
+    final facts = scopeFacts.units;
 
     final revenueCoverage = _weakest(facts.map((f) => f.revenueCoverage));
     final expenseCoverage = _weakest(facts.map((f) => f.expenseCoverage));
@@ -178,15 +239,43 @@ base class ReportingEngine {
       perUnit.add((outcome as PnlComputed).result);
     }
 
+    final outcome = PnlComputed(
+      perUnit.length == 1 ? perUnit.single : Pnl.consolidate(perUnit),
+    );
+
     return ReportEnvelope(
-      outcome: PnlComputed(
-        perUnit.length == 1 ? perUnit.single : Pnl.consolidate(perUnit),
-      ),
+      outcome: outcome,
       range: range,
       scope: request.scope,
       revenueCoverage: revenueCoverage,
       expenseCoverage: expenseCoverage,
+      freshness: _freshnessFrom(
+        outcome: outcome,
+        evidence: scopeFacts.snapshot,
+      ),
     );
+  }
+
+  /// Freshness for a report, or null when the stronger claim is unavailable.
+  ///
+  /// Two conditions gate it, and both are deliberate:
+  ///
+  ///   * a **refused** report has no freshness. There is no figure, so there is nothing
+  ///     for a currentness claim to be about — availability already said so, per side;
+  ///   * evidence must exist. A consolidated set assembled from two synchronisation runs,
+  ///     or markers written before snapshot evidence existed, cannot name one moment, and
+  ///     naming the earlier of the two would date a state the cache cannot reproduce.
+  ///
+  /// Nothing here consults a clock, a network or an age. A report stays readable and
+  /// truthfully labelled however long ago it was synchronised: there is no reporting TTL,
+  /// and D-112's revenue-configuration window governs creating new offline revenue rather
+  /// than reading an existing P&L (D-170).
+  ReportingFreshness? _freshnessFrom({
+    required PnlOutcome outcome,
+    required ReportingSnapshotEvidence? evidence,
+  }) {
+    if (outcome is! PnlComputed || evidence == null) return null;
+    return ReportingFreshness.synchronised(evidence);
   }
 
   /// Turns one property's facts into an outcome.

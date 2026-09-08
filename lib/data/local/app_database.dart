@@ -100,7 +100,7 @@ class AppDatabase extends _$AppDatabase {
   /// Financial tables raise this number as they land, each with a migration step and a
   /// migration test (docs/RELEASE_CHECKLIST.md §C).
   @override
-  int get schemaVersion => 17;
+  int get schemaVersion => 18;
 
   /// Timestamps are stored as ISO-8601 **UTC text**, not as unix seconds.
   ///
@@ -343,6 +343,27 @@ class AppDatabase extends _$AppDatabase {
         // than by a guard.
         await _createExpensePeriodContributionsView();
         await _createExpenseReportingIndex();
+      }
+      if (from >= 17 && from < 18) {
+        // Phase 5 Slice 6 — the coherent-snapshot corrective (D-188).
+        //
+        // Coverage markers gain the identity of the authoritative snapshot they were
+        // certified from, so a report can prove its revenue and expense sides came from
+        // one moment instead of two independent queries.
+        //
+        // **`from >= 17` is the D-144 guard, not defensiveness.** The markers table is
+        // created by the `from < 17` step from the *current* definition, which already
+        // carries this column — so a device arriving from v16 or earlier has it before
+        // this step is reached, and adding it again would fail with `duplicate column`.
+        //
+        // Existing markers keep a null snapshot id. That is the honest value: they were
+        // certified by two separate queries and cannot be shown to represent one
+        // snapshot, so a report over them declines the stronger freshness claim until the
+        // device synchronises again. A migration certifies nothing (D-108).
+        await m.addColumn(
+          reportingCoverageMarkers,
+          reportingCoverageMarkers.snapshotId,
+        );
       }
     },
     beforeOpen: (details) async {
