@@ -5,11 +5,12 @@ Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
-Last updated: **2026-09-07** — **PHASE 5 — P&L / MIS REPORTING: SLICES 1–4 COMPLETE.**
+Last updated: **2026-09-08** — **PHASE 5 — P&L / MIS REPORTING: SLICES 1–5 COMPLETE.**
 Phase 4 closed at `96fc4ed`; the project lead's Phase 5 decisions are ratified and recorded
-as **D-163 … D-173**, and four slices of twelve are closed — source parity, the canonical
-calculation specification, `LocalReportingEngine`, and the canonical reporting cache with
-its cross-device delta. **Slice 5 is not started.** The Phase 5 record is at the **end of
+as **D-163 … D-173**, and five slices of twelve are closed — source parity, the canonical
+calculation specification, `LocalReportingEngine`, the canonical reporting cache with its
+cross-device delta, and the authoritative server reporting boundary with exact local/remote
+D-020 parity (D-183 … D-186). **Slice 6 is not started.** The Phase 5 record is at the **end of
 this file** and is authoritative for it; the Phase 4 closure sits immediately above it and
 remains authoritative for Phase 4, **except** that its handoff contract's revenue-only
 statement of the pull gap is corrected by D-173 — the gap is **both engines**. Everything
@@ -3237,7 +3238,7 @@ are not merged because they could be implemented quickly.
 | 2 | `domain/finance` — the canonical calculation specification | **COMPLETE** |
 | 3 | `LocalReportingEngine` | **COMPLETE** |
 | 4 | Canonical reporting cache + synchronisation completeness (D-171, D-172, D-173) | **COMPLETE** |
-| 5 | Server reporting boundary + `RemoteReportingEngine` parity | not started |
+| 5 | Server reporting boundary + `RemoteReportingEngine` parity | **COMPLETE** |
 | 6 | Freshness, as-of and closed periods | not started |
 | 7 | The reporting capability model (D-163, D-164) | not started |
 | 8 | Windows P&L surface | not started |
@@ -3864,3 +3865,243 @@ whole of what exists to exercise. It is reported as that rather than as a device
 | `f20a37f` | live cross-device acceptance |
 
 **Slice 5 is not started**, and is not started automatically.
+
+---
+
+## Phase 5 Slice 5 — the server reporting boundary and D-020 parity: **COMPLETE**
+
+The question the slice existed to answer, and it is now answered against the real backend:
+
+> Given the same authorised scope and the same `ReportRange`, do the offline canonical
+> reporting engine and an authoritative server calculation produce **exactly** the same
+> management financial result?
+
+Decisions D-183 … D-186. `ARCHITECTURE.md` §31. `DATABASE_SCHEMA.md` §11. Three migrations.
+**No P&L screen, no export, no chart, no freshness presentation, no drill-down, no
+`reports.view` evaluator** — Slices 6 to 10 own those.
+
+### 1 · The Slice 4 handoff, verified mechanically before anything was built
+
+Ten items, each read from the tree rather than from the closure record:
+
+| | |
+|---|---|
+| Drift v17 reporting cache | `schemaVersion => 17`, three tables in `reporting_tables.dart` |
+| Revenue + expense canonical caches | `reporting_revenue_contributions`, `reporting_expense_contributions` |
+| Dataset / FY coverage markers | `reporting_coverage_markers`, keyed `(owner, unit, dataset, year)` |
+| Marker-backed production oracle | `MarkerCoverage`, wired through `localReportingSourceProvider` |
+| Current + previous FY retention | `ReportingRetention.retainedAt` |
+| Reporting synchronisation, both engines | `ReportingSync.synchronise` over both `ReportingDataset` values |
+| D-070 purge of the reporting cache | `_purgeReportingCache`, markers deleted first |
+| D-074 owner isolation | every primary key and index leads with `owner_user_id` |
+| Effective document generation | `change_seq` on both projections (`20260907121017`) |
+
+**No discrepancy.** Nothing was rebuilt and nothing was re-litigated.
+
+### 2 · The coverage collapse, corrected (D-183)
+
+Slice 4 stored markers **per dataset** and then collapsed them into one value per property,
+so a scope whose expenses were complete and whose revenue had never arrived refused as
+`bothSidesUnavailable` — naming neither half. Slice 4's own test recorded that limitation
+and pointed at Slice 5; it now asserts the corrected behaviour instead.
+
+```
+        revenue missing, expenses complete   ->  revenueUnavailable
+        expenses missing, revenue complete   ->  expensesUnavailable
+        both missing                         ->  bothSidesUnavailable
+        both complete, no trade              ->  a real ₹0 report
+```
+
+`ReportingCoverage` gains `notAuthorised` beside `notDownloaded`, because the remote source
+can produce it and *"synchronise this"* and *"ask for a grant"* are different instructions.
+
+**Positive control, seen to fail:** reverting the engine to hand `weakestCoverage` to both
+sides turns **5** tests red — the three refusal cases and the two remote-authority ones,
+including Data Entry. Restored and read back (D-142).
+
+### 3 · The server primitive contract
+
+```
+public.reporting_primitives(p_business_unit_ids uuid[], p_from date, p_to date,
+                            p_breakdown boolean default false) returns jsonb
+        language sql · stable · SECURITY INVOKER · set search_path = public, pg_temp
+```
+
+Per requested property: `revenue_authorised`, `expense_authorised`,
+`revenue {gross_minor, tax_minor, net_minor, contributions}`,
+`expense {amount_minor, contributions}`, and — when asked — `revenue_by_category` carrying
+`tax_treatment`, and `expense_by_hierarchy` carrying department, section and category.
+
+It **derives nothing**: no tax rule, no rate, no business date, no accounting period, no Net
+Sales, Operating Profit or margin. Every sum is cast to `bigint`; invariants refuse a body
+naming `float`, `real`, `double precision`, a rate, or a date basis other than `pnl_date`.
+
+### 4 · One snapshot, proven rather than asserted
+
+Both sides are read in **one SQL statement**, so under MVCC they come from one snapshot. A
+deploy invariant refuses a body with more than one statement or a `plpgsql` rewrite, where
+two statements under READ COMMITTED would take two.
+
+The live control drives the interleaving itself — read revenue, void both documents, read
+expenses — with **no sleep and no race**, and produces `(R, 0)`: a pair that was never true
+of the hotel at any instant. The RPC, asked at any moment, returns one of the three states
+that were.
+
+### 5 · Authorization, and why no STOP was required (D-184)
+
+`SECURITY INVOKER` is the whole of its safety. It reads the two `security_barrier`
+projections **with the caller's own privileges**, so anything it can return the caller could
+already have selected row by row and added up. It grants **no new data access**.
+
+It enforces **D-164's data half now** — `revenue.view` for revenue, `expense.view.all` for
+expenses, per property, `expense.view.own` never — and an unauthorised side comes back
+**null, never zero**. What it does not check is `reports.view`, which has an evaluator
+nowhere and stays Slice 7's; its absence creates no exposure for the reason above. **The
+Slice 7 boundary was not moved forward and `expense_sees_whole_org()` was not touched.**
+
+### 6 · `RemoteReportingEngine`, and local/remote independence
+
+One port, two adapters, one orchestration (D-185). The remote engine **writes nothing** — no
+cache, no marker, no local row — and a guard forbids the words that would let it; a remote
+read that synchronised on the way past would make the two sources agree because one had just
+overwritten the other. The local engine holds no reference to the remote one and answers
+with the transport removed.
+
+### 7 · D-020 parity — the results
+
+**Host: 22 tests.** One fixture set feeds both the cache and the server model, and the two
+reports are compared to the paisa: per-unit, consolidated, every period shape, categories,
+hierarchy, zero range, authority mapping, retry, offline, and the permitted asymmetry.
+
+**Live against `krishna-mis-dev`: 24 tests, all passing.** Context A records; context B has
+no copy of any of it, synchronises the reporting cache, and is asked the same question as
+the server.
+
+| | |
+|---|---|
+| Four verified categories, cross-device | **PASS** — CCR 10870000 / 517619 / 10352381, HKI 9234300 / 247619 / 8986681 |
+| Categories independent, `none` distinguishable | **PASS** — four lines, Banquet `none` at ₹0 tax |
+| Expense hierarchy at its grain | **PASS** |
+| Amount correction | **PASS** |
+| Business date June → July, both months | **PASS** — source keeps no row, target holds one |
+| Expense accounting-period correction | **PASS** |
+| Void, both engines to zero, nothing destroyed | **PASS** |
+| Shared expense CCR + HKI + consolidated, then re-apportioned | **PASS** — no residue |
+| Closed period readable; reopened correction moves both | **PASS** |
+| Zero range | **PASS** — a real ₹0, coverage complete |
+| notDownloaded vs remote answering, then agreeing | **PASS** |
+| Retry × 3 | **PASS** |
+| Remote fills no cache, moves no marker | **PASS** |
+| Local answers with no network | **PASS** |
+| One snapshot | **PASS** — the two-call control reproduces the impossible pair |
+| Every period shape, cross-device | **PASS** |
+
+**Two controls give the comparison teeth**, both seen to fail: a zero-valued ghost row fails
+on the **count** alone, and a re-rated aggregate returning `750714` where the truth is
+`750715` fails on **one paisa**.
+
+### 8 · Security matrix (§34), live
+
+| Identity | Result |
+|---|---|
+| Owner (unscoped) | both properties |
+| CCR manager | HKI refused, both sides `notAuthorised`; **own property answers** (the D-116 control) |
+| HKI manager | the converse |
+| **Data Entry** (`expense.view.own`, no `revenue.view`) | **refused** — and the raw payload carries `revenue: null`, `expense: null`, so there was never a figure to render |
+| Anonymous | RPC refused, projections refused |
+| Null unit set | `units: []` — no branch widens to the organisation |
+| `expenses`, `revenue_entries`, `revenue_components` | still unreadable by any client |
+
+### 9 · Performance (§33), measured
+
+| | |
+|---|---|
+| revenue FY aggregate | **0.3 ms**, `Index Scan using revenue_entries_reporting_idx` |
+| expense FY aggregate | **368.7 ms**, dominated by `Filter: may_read_expense(expense_id)` over 1,094 rows |
+| FY consolidated + breakdown | **774 ms → 398.6 ms** after D-186 |
+| FY consolidated, no breakdown | **368.7 ms** |
+| one month, one property | **39 ms** server-side; 98–185 ms end to end to Mumbai |
+
+The first version scanned the expense projection **twice** when a breakdown was asked for.
+Each side is now grouped once and the headline rolls up from those subtotals — the same
+integer, since integer addition is associative. **No materialised view, no aggregate table.**
+
+**Recorded, not fixed:** `may_read_expense` evaluated once per candidate row is the whole
+remaining cost. It is a reviewed authority predicate; making it cheaper belongs to Slice 7
+or Slice 8, not to a parity slice (D-127).
+
+### Verified
+
+| Item | Status | Evidence |
+|---|---|---|
+| `dart format --set-exit-if-changed` | **Tested** | clean |
+| `flutter analyze` | **Tested** | **No issues found** |
+| Host suite | **Tested** | **1,397 tests, all passing** |
+| Host parity + remote engine | **Tested** | 22 tests, incl. two controls seen to fail |
+| Side-specific coverage | **Tested** | 5 tests + a control that turns 5 red |
+| Structural guard over `lib/data/reporting` | **Tested** | 11 tests, incl. "the remote engine cannot write" |
+| Live D-020 parity against `krishna-mis-dev` | **Tested** | **24 tests, all passing** |
+| Live revenue boundary suite | **Tested** | **81 tests**, 1 deliberately skipped |
+| Live expense suite | **Tested** | **56 tests** |
+| Live two-client acceptance | **Tested** | **10 tests** |
+| Live `drift` migration provenance | **Tested** | every applied version has a committed file |
+| Migration audit + backend schema parity | **Tested** | 38 host tests |
+| Migration ledger parity (A0 / D-056) | **Tested** | all three verified **byte-for-byte by hash** |
+| API-surface and PUBLIC-execute invariants | **Tested** | restated in full; `reporting_primitives` named |
+| Secret scan — tree and git history | **Tested** | clean, controls passing |
+| Working tree | **Tested** | clean |
+
+### Migration ledger
+
+| Ledger version | Name |
+|---|---|
+| 20260907201332 | `reporting_primitives_boundary` |
+| 20260907201539 | `api_surface_invariant_reporting_primitives` |
+| 20260907204444 | `reporting_primitives_reads_each_side_once` |
+
+All three verified byte-for-byte by SHA-256 against
+`supabase_migrations.schema_migrations.statements`.
+
+### Live fixture state after the run
+
+Every document created by the parity suite was reversed through `revenue_void` /
+`expense_void` with a stated reason naming the run (D-066, D-071) — never by deleting a row.
+
+| | |
+|---|---|
+| Open documents created by this slice | **0** |
+| Closed periods | **0** — the fixture period was reopened |
+| Live tax rules | **4**, the verified baseline, untouched |
+| Value bands / supply subtypes / premises statuses | **0 / 0 / 0** |
+| Storage reconciliation | exact — 188 revenue objects ↔ 188 rows, 46 expense ↔ 46, **0 stranded** |
+
+### One suite finding, recorded rather than fixed
+
+**The Slice 11 bucket-reconciliation assertion now exceeds the default per-test timeout.**
+`the bucket holds no object that nothing names` sweeps the whole bucket over HTTP and takes
+**about four minutes** against 234 objects, so `flutter test` kills it at 30 seconds and
+reports two failures that are not defects. With `--timeout=10x` the suite is **81 passing,
+1 skipped**, and the bucket reconciles exactly.
+
+It is the D-076 family — an assertion whose cost grows with a fixture that never shrinks,
+because financial evidence is kept rather than deleted (D-006). It is a characteristic of a
+reviewed Slice 11 acceptance suite and is **not changed inside a parity slice** (D-127);
+the live revenue suite needs `--timeout=10x` until it is.
+
+### Not rerun, and why
+
+**`phase-a` … `multi-scope-b` — not rerun.** Nothing here touches authority caching, grants,
+scope resolution or purge semantics. They are **not** claimed as freshly passing.
+
+**The Android and Windows device acceptance suites — not rerun.** Slice 5 adds no
+controller, widget or screen, and a guard asserts the reporting layer still names no P&L
+surface. Device acceptance is Slice 11's.
+
+### What Slice 5 deliberately did not build
+
+No P&L page on either platform, no report filters, no freshness banner, no dashboard card,
+no chart, no export, no transaction drill-down, no production release infrastructure. No
+`reports.view` evaluator, and no change to `public.expense_sees_whole_org()` — both still
+carried to **Slice 7**.
+
+**Slice 6 is not started**, and is not started automatically.

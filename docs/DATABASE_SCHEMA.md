@@ -945,11 +945,17 @@ unavailable rather than avoided by careful queries.
 ### The canonical-only rule (D-168)
 
 On the **server** every row of both projections is canonical by construction — the tables
-hold only what the server accepted. On a **device** they do not: a local database
-legitimately holds documents this device recorded and the server has never seen, and work
-retained over a property the user has lost. The two local views therefore carry two columns
-the server ones do not, `txn_number` and `scope_revoked_at`, and every local reporting read
-applies one shared predicate:
+hold only what the server accepted. **Corrected 2026-09-08:** the server projections now say
+so rather than resting on that observation. `revenue_period_contributions` always carried
+`txn_number`; `expense_period_contributions` gained it in `20260907201332`, appended after
+`change_seq` because `create or replace view` may only grow at the end. The reporting
+boundary filters on it explicitly, so the canonical rule is expressed on the server in the
+same words the client uses.
+
+On a **device** the rule is not automatic: a local database legitimately holds documents
+this device recorded and the server has never seen, and work retained over a property the
+user has lost. The two local views therefore carry `scope_revoked_at` as well, and every
+local reporting read applies one shared predicate:
 
 ```
 voided_at IS NULL  AND  scope_revoked_at IS NULL  AND  txn_number IS NOT NULL
@@ -965,12 +971,47 @@ the transaction surfaces where somebody can act on it. There is no provisional P
 through `expense_document` and `revenue_document`. Read-only: reporting navigates to the
 transaction surfaces that already exist and reimplements no correction or void path (D-166).
 
+### The reporting boundary (Phase 5 Slice 5, D-184)
+
+```
+public.reporting_primitives(p_business_unit_ids uuid[], p_from date, p_to date,
+                            p_breakdown boolean default false) returns jsonb
+        language sql · stable · SECURITY INVOKER · set search_path = public, pg_temp
+```
+
+The authoritative primitive sums a P&L is built from, and the comparison point the D-020
+parity suite measures the offline cache against. It reads the two projections above and
+**nothing else**.
+
+`SECURITY INVOKER` is the whole of its safety: it runs with the caller's own privileges, so
+every predicate that already governs a reporting read governs it, and it can return nothing
+the caller could not already have selected row by row and added up. Two invariants assert
+`prosecdef = false`.
+
+| | |
+|---|---|
+| Revenue side | gated on `has_capability('revenue.view', unit)` |
+| Expense side | gated on `has_capability('expense.view.all', unit)` — `expense.view.own` never qualifies (D-164) |
+| Unauthorised side | comes back **null, never zero**, so no caller can render a P&L from a side it may not read (D-163) |
+| `reports.view` | **not** checked — no evaluator exists yet; Slice 7's, and its absence adds no exposure |
+| Snapshot | **one SQL statement**, so both sides come from one snapshot; an invariant refuses a second statement or a `plpgsql` rewrite |
+| Date basis | `pnl_date` on both sides, always; an invariant refuses `captured_at`, `payment_date`, `created_at` and `business_date` |
+| Arithmetic | summed integer paise cast to `bigint`; no rate, no tax rule, no derived P&L figure |
+| Scope | `unnest(coalesce(p_business_unit_ids, '{}'))` — no branch in which an omitted set means the whole organisation |
+
+Returned shape, per requested property: `revenue_authorised`, `expense_authorised`,
+`revenue {gross_minor, tax_minor, net_minor, contributions}`,
+`expense {amount_minor, contributions}`, and — when `p_breakdown` — `revenue_by_category`
+carrying `tax_treatment`, and `expense_by_hierarchy` carrying department, section and
+category. Each side is grouped once at its finest grain and the headline rolls up from those
+subtotals, so a breakdown costs no second pass (D-186).
+
 ### What does not exist yet
 
-**No reporting RPC**, on either engine — the projections are queried directly. **No
-reporting pull**: `ExpensePull.pullOne(expenseId)` fetches one document by id for the
-Review-latest path, and revenue has no pull at all, so a device can report only what it
-recorded itself (D-173). Both are Phase 5 Slice 4 and Slice 5.
+**No P&L screen**, on either platform, and no export, chart or freshness presentation —
+Slices 6 to 9. **No `reports.view` evaluator** — Slice 7. **No general reporting pull beyond
+the Slice 4 delta**: `ExpensePull.pullOne(expenseId)` still fetches one document by id for
+the Review-latest path only.
 
 ## 12. Seed and fixture data
 

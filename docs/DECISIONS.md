@@ -6336,3 +6336,197 @@ design error while looking for arithmetic.
 
 `lib/data/reporting/` now holds the engine and its two sources, and nothing in it touches
 paise, a rate or a date derivation.
+
+---
+
+# Phase 5 Slice 5 — the server reporting boundary and D-020 parity (2026-09-08)
+
+## D-183 — Coverage is per side, because the two sides are established separately
+**Date:** 2026-09-08 · **Status:** Accepted — corrects what Slice 4 shipped
+
+**The defect, and it was in the seam rather than in either half.** Slice 4 stored coverage
+markers per **dataset**: `(owner, business unit, dataset, financial year)`, revenue and
+expense certified independently, exactly as they are synchronised independently (D-108).
+`UnitReportingFacts` then carried **one** `ReportingCoverage` per property, and the engine
+handed that single value to both sides of `Pnl.compute`.
+
+So a scope whose expenses were fully synchronised and whose revenue had never arrived
+refused as `bothSidesUnavailable` — naming neither the side that was missing nor the side
+that was fine. The refusal was correct (D-163 requires it) and the *reason* was wrong, and a
+wrong reason on a refusal is not cosmetic: it sends somebody to look for a problem that is
+not there and away from the one that is.
+
+**Decision.** Coverage is established, carried and reported **per side**:
+
+```
+        markers            per dataset          (unchanged, since D-108)
+        oracle             coverageFor(unit, range, side)
+        UnitReportingFacts revenueCoverage, expenseCoverage
+        engine             each side mapped independently into Pnl.compute
+        envelope           revenueCoverage, expenseCoverage
+```
+
+Revenue missing alone → `revenueUnavailable`. Expenses missing alone →
+`expensesUnavailable`. Both → `bothSidesUnavailable`. Both complete over a range with no
+trade → a real ₹0 report, because zero is a figure and unavailable is not (D-176).
+
+`ReportEnvelope.coverage` survives as a **lossy** single badge for a caller that shows one
+indicator, and is documented as never consulted to decide a refusal — the refusal is already
+in the outcome, per side.
+
+**`ReportingCoverage` gains a third value, and that is not a reversal.** Slice 3 wrote the
+enum with two and said in as many words why: an `unavailable` beside `notDownloaded` had no
+producer, and a value no code constructs is the gap D-108 had to reopen. Slice 5 gives it
+one. The remote source reads a server that always holds the canonical facts, so it can never
+answer `notDownloaded`; what it *can* answer is that this caller holds no authority over a
+side. **"Synchronise this" and "ask somebody for a grant" are different instructions**, so
+`notDownloaded` and `notAuthorised` stay different values and travel into
+`ReportingSideUnavailable` unchanged.
+
+**Positive control, seen to fail.** With the engine reverted to handing
+`facts.weakestCoverage` to both sides — the Slice 4 behaviour — **five** tests turn red: the
+three D-183 refusal cases, and the two remote-authority cases including the Data Entry one.
+Restored and read back (D-142).
+
+## D-184 — The server reporting boundary is `security invoker` and adds no data access
+**Date:** 2026-09-08 · **Status:** Accepted
+
+**The problem this had to solve.** Slice 5 needs an authoritative server calculation to
+measure the offline cache against, and Slice 7 — not Slice 5 — owns `reports.view` and the
+complete reporting capability matrix (D-164). Shipping a client-callable P&L endpoint that
+skipped the authorization work would be exactly the temporarily under-authorized surface the
+brief forbids. Shipping the aggregation core with **no** client `EXECUTE` — the preferred
+option — would have left the parity harness unable to call it: the live suites authenticate
+as real development identities holding the anon key, nothing in `app` is reachable by a
+client role by design (D-044, D-045), and no service-role path exists or should.
+
+**Decision.** `public.reporting_primitives(uuid[], date, date, boolean)`, and the whole of
+its safety is that it is **`security invoker`**.
+
+It runs with the **caller's own privileges**, over the two `security_barrier` contribution
+projections and nothing else. Every predicate that already governs a reporting read governs
+it: `current_org_id()`, `has_capability('revenue.view', unit)` on one side,
+`expense_visible_units()` plus `may_read_expense()` on the other. **Anything it can return,
+the caller could already have selected row by row and added up.** It therefore grants no new
+data access at all, which is what makes it safe to expose before Slice 7 rather than in
+spite of Slice 7.
+
+A `security definer` version would have run as the owner against tables the caller
+deliberately cannot read, and handed one property's figures to the other property's manager.
+Two invariants assert `prosecdef = false` — one in the boundary migration, one in the API
+surface restatement, where a reviewer looking for it will find it.
+
+**It enforces D-164's data half now.** `revenue.view` gates the revenue side and
+`expense.view.all` gates the expense side, per property, and **`expense.view.own` never
+qualifies** — a subset of one author's costs is not a property's cost base. An unauthorised
+side comes back **null, never zero**, so the shape §34 names is unavailable: a Data Entry
+holder cannot receive a plausible P&L assembled from their own costs against a revenue side
+of nothing. Proven live from the payload as well as from the refusal.
+
+**What it does not check is `reports.view`**, which today has an evaluator nowhere and sits
+on D-139's exemption list. That stays Slice 7's, deliberately. Its absence creates no
+exposure for the reason above; it is a third gate on top of a boundary that already holds,
+not the boundary itself. **No STOP was required**, because a secure client-callable engine
+demonstrably exists without moving that boundary forward.
+
+**One statement, therefore one snapshot.** Revenue and expenses are read in a single SQL
+statement, so under Postgres MVCC both sides come from one snapshot. The dangerous shape —
+read revenue, let a transaction commit, read expenses, and call the pair one P&L — is
+excluded **structurally**: the function is `language sql` and an invariant refuses a body
+containing more than one statement or a `plpgsql` rewrite, where two statements under READ
+COMMITTED would take two snapshots. The scope-wide read exists for the same reason, so a
+consolidated total is never assembled from two properties read at two moments.
+
+**And the hazard is demonstrated rather than argued.** The live control drives the
+interleaving itself — read revenue, void both documents, read expenses — with no sleep and
+no race, and produces `(R, 0)`: a pair that was never true of the hotel at any instant. The
+RPC, asked at any moment, returns one of the three states that were.
+
+**It derives nothing.** No tax rule, no rate, no business date, no accounting period, no Net
+Sales, no Operating Profit, no margin. It returns summed integer paise and the counts behind
+them, and the derived P&L is `domain/finance`'s on both engines (spec §21.1, §21.2, D-020).
+It therefore needs no tax configuration to answer a historical P&L. Every sum is cast to
+`bigint` rather than left as the `numeric` that `sum()` returns, and an invariant refuses a
+body naming `float`, `real` or `double precision`, or reaching for a rate.
+
+**Scope cannot widen by omission.** `unnest(coalesce(p_business_unit_ids, '{}'))` over a null
+or empty array yields no units, so there is no branch in which an omitted id means the whole
+organisation; the client then refuses `noPermittedBusinessUnit`. Asserted at deploy and
+proven live with a null argument.
+
+## D-185 — Two engines, one orchestration; the parity that matters is between the sources
+**Date:** 2026-09-08 · **Status:** Accepted
+
+Spec §21.2 says an engine's whole contract is *"select and sum the right rows"* and that it
+*"performs no business arithmetic"*. Taken seriously that leaves an engine with nothing to
+differ about **except its source** — so `LocalReportingEngine` and `RemoteReportingEngine`
+are one `ReportingEngine` over two adapters behind one port, and the D-020 suite compares
+two *sources*: does the synchronised offline cache mean the same thing as the authoritative
+backend?
+
+Writing the orchestration twice so the parity suite had two copies to compare would be
+testing a duplication this design exists to avoid — and it would compare them on the one
+axis that cannot go wrong while leaving the axis that can, the rows, untested. A structural
+guard asserts both engines `extends ReportingEngine` and that neither has acquired its own
+`Pnl.compute(`.
+
+**The comparison is exact and has teeth.** Range, scope, Gross Sales, GST, Net Sales,
+Expenses, Operating Profit, **contribution counts**, per-unit totals, consolidated totals,
+the revenue category breakdown **including its treatment**, and the expense hierarchy
+breakdown. No tolerance, integers only. The counts are in it because two engines can agree
+on every figure while one of them summed the wrong set of rows to get there — a control adds
+a zero-valued ghost row and the comparison fails on the count alone. A second control
+degrades the server model to re-rate an aggregate, producing `750714` where the truth is
+`750715`, and the suite fails on that one paisa.
+
+**One asymmetry is designed and is stated rather than skipped.** The remote engine can answer
+a range the device has never downloaded; the local engine answers `notDownloaded`, correctly
+(D-170). That is the two engines disagreeing about *coverage*, not about money, so parity is
+asserted only where local coverage is complete and
+`expectLocalUncoveredWhileRemoteAnswers` asserts the other case explicitly — a harness that
+silently skipped disagreements would skip real ones too.
+
+**The remote engine writes nothing.** It fills no cache, moves no coverage marker and holds
+no database; a guard forbids the words that would let it. A remote read that synchronised on
+the way past would make the two sources agree because one had just overwritten the other,
+which is the opposite of a parity proof. Retry is therefore free — the query is read-only
+and `stable` — and the local engine holds no reference to the remote one, so reporting stays
+ungated on connectivity (spec §21.4).
+
+## D-186 — The reporting boundary reads each side once
+**Date:** 2026-09-08 · **Status:** Accepted — a measured change
+
+`EXPLAIN (ANALYZE, BUFFERS)` as the development Owner, over the whole of FY 2026-27:
+
+```
+        revenue aggregate     0.3 ms   Index Scan using revenue_entries_reporting_idx
+        expense aggregate   368.7 ms   Index Scan on expense_period_allocations,
+                                       Filter: may_read_expense(expense_id)
+                                       1,094 rows, 11,240 buffer hits in that one node
+        reporting_primitives(both units, whole FY, breakdown)   774 ms
+```
+
+The expense projection carries a per-row `security definer` predicate (D-169), so every
+candidate row costs a function call — and the first version of the boundary scanned that
+projection **twice** whenever a breakdown was asked for, paying that cost again for an answer
+it already had.
+
+**Decision.** Each side is grouped once, at its finest grain, and the headline figure rolls
+up from those subtotals. Integer addition is associative and rounding happened once at the
+component and was stored (spec §6.5, D-017), so the rolled-up total is the same integer as
+the direct sum — to the paisa, with nothing to reorder. `p_breakdown` now governs only what
+is **returned**, not what is read, and an invariant asserts each projection is named exactly
+once in a `from`.
+
+Warm, after: FY consolidated with breakdown **398.6 ms**, without breakdown **368.7 ms** —
+the breakdown now costs about thirty milliseconds rather than doubling the query. One month
+for one property is **39 ms** server-side and 98–185 ms end to end including the round trip
+to Mumbai, well inside the 400 ms escalation trigger `ARCHITECTURE.md` §9 records. The full
+Slice 5 live parity suite was re-run against the replacement and is green.
+
+**Recorded and deliberately not changed:** `may_read_expense` evaluated once per candidate
+row is the whole of the remaining cost. Making it cheaper is a change to how an expense's
+visibility is decided — a reviewed authority predicate — and belongs with the reporting
+capability model (Slice 7) or performance hardening (Slice 8), not inside a parity slice
+(D-127). **No materialised view and no aggregate table**: nothing has been measured that
+needs one.

@@ -9,7 +9,7 @@ Status: **Sections 1–12 proposed (Phase 0, revised); sections 13–16 and 18�
 is built and verified; section 17 is the Phase 4 *plan*, since built — read §18–§26 for what
 shipped.** Sections 6, 5.3 and 8 carry the project lead's mandated corrections.
 Implementation status is tracked in `PROJECT_STATUS.md`.
-Last updated: 2026-09-07 — Phase 5 Slices 1-3 (sections 27-29); Phase 4 closed
+Last updated: 2026-09-08 — Phase 5 Slice 5 (section 31); Slices 1-4 in sections 27-30
 
 ---
 
@@ -2861,3 +2861,150 @@ widening the check — which is the D-103 anti-pattern:
 
 `lib/data/reporting/` now holds the engine and its two sources, and nothing in it touches
 paise, a rate, or a date derivation.
+
+---
+
+## 31. The server reporting boundary, and D-020 parity (2026-09-08)
+
+Phase 5 Slice 5. §30 gave the local engine something to stand behind; this gives it
+something to be **checked against**, and answers the question the slice exists for:
+
+> Given the same authorised scope and the same `ReportRange`, do the offline canonical
+> reporting engine and an authoritative server calculation produce exactly the same
+> management financial result?
+
+```
+        ReportRequest ──normalise once──► ReportRange
+                              │
+          ┌───────────────────┴───────────────────┐
+          │                                       │
+   CachedReportingSource                  RemoteReportingSource
+   (the synchronised cache)               (public.reporting_primitives)
+          │                                       │
+          └────────► primitive summed paise ◄─────┘
+                     + per-side coverage
+                              │
+                       Pnl.compute / Pnl.consolidate      ← one calculator
+                              │
+                        ReportEnvelope
+```
+
+### 31.1 Coverage is per side (D-183)
+
+Slice 4 stored coverage markers per **dataset** and then collapsed them into one value per
+property, so a scope whose expenses were complete and whose revenue had never arrived
+refused as `bothSidesUnavailable` — naming neither the missing side nor the sound one. The
+refusal was right and the reason was wrong, which is not cosmetic: it sends a reader to look
+for a problem that is not there.
+
+`UnitReportingFacts` now carries `revenueCoverage` and `expenseCoverage`, the oracle answers
+per side, and the engine maps each independently into `Pnl.compute`. Revenue missing alone
+refuses `revenueUnavailable`; expenses missing alone `expensesUnavailable`; both, both. Both
+complete over a range with no trade is a real ₹0 report, because **zero is a figure and
+unavailable is not**.
+
+`ReportingCoverage` gains `notAuthorised` beside `notDownloaded`. Slice 3 wrote the enum
+with two values precisely because nothing could construct a third; the remote source now
+can, and *"synchronise this"* and *"ask somebody for a grant"* are different instructions
+that must not arrive as one.
+
+### 31.2 The boundary is `security invoker`, and that is the whole of its safety (D-184)
+
+`public.reporting_primitives(uuid[], date, date, boolean)` returns the primitive canonical
+sums for a named set of properties over one inclusive `pnl_date` range.
+
+It runs with the **caller's own privileges**, over the two `security_barrier` contribution
+projections and nothing else, so every predicate that already governs a reporting read
+governs it. **Anything it can return, the caller could already have selected row by row and
+added up** — it grants no new data access, which is what makes it safe to expose before
+Slice 7 rather than in spite of it. A `security definer` version would have run as the owner
+against tables the caller deliberately cannot read; two invariants assert `prosecdef =
+false`.
+
+It enforces **D-164's data half** now: `revenue.view` gates the revenue side,
+`expense.view.all` the expense side, per property, and `expense.view.own` never qualifies.
+An unauthorised side comes back **null, never zero**, so a Data Entry holder cannot be handed
+a plausible P&L built from their own costs against a revenue side of nothing.
+
+What it does not check is `reports.view`, which has an evaluator nowhere and stays on
+D-139's exemption list until Slice 7. Its absence creates no exposure for the reason above.
+
+**It derives nothing** — no tax rule, no rate, no business date, no accounting period, no
+Net Sales, Operating Profit or margin. It needs no tax configuration to answer a historical
+P&L. Every sum is cast to `bigint`, and an invariant refuses a body naming `float`, `real`,
+`double precision`, or reaching for a rate.
+
+**Scope cannot widen by omission**: `unnest(coalesce(p_business_unit_ids, '{}'))` over a null
+or empty array yields no units, so there is no branch in which an omitted id means the whole
+organisation.
+
+### 31.3 One statement, therefore one snapshot
+
+Both sides are read in a **single SQL statement**, so under Postgres MVCC they come from one
+snapshot. The dangerous shape — read revenue, let a transaction commit, read expenses, and
+call the pair one P&L — is excluded structurally rather than by care: the function is
+`language sql` and an invariant refuses a body containing more than one statement or a
+`plpgsql` rewrite, where two statements under READ COMMITTED would take two snapshots. The
+port's scope-wide read exists for the same reason, so a consolidated total is never assembled
+from two properties read at two moments.
+
+The hazard is demonstrated rather than argued. The live control drives the interleaving
+itself — read revenue, void both documents, read expenses — with no sleep and no race, and
+produces a pair that was never true of the hotel at any instant. The RPC, asked at any
+moment, returns one of the states that were.
+
+### 31.4 Two engines, one orchestration (D-185)
+
+Spec §21.2 leaves an engine nothing to differ about except its source, so
+`LocalReportingEngine` and `RemoteReportingEngine` are one `ReportingEngine` over two
+adapters behind one port — and the D-020 suite therefore compares the thing that can
+actually differ: **does the synchronised offline cache mean the same thing as the
+authoritative backend?**
+
+The comparison is exact: range, scope, Gross Sales, GST, Net Sales, Expenses, Operating
+Profit, **contribution counts**, per-unit and consolidated totals, the revenue category
+breakdown **including its treatment**, and the expense hierarchy breakdown. No tolerance,
+integers only. Two controls give it teeth — a zero-valued ghost row that fails on the count
+alone, and a re-rated aggregate returning `750714` where the truth is `750715`.
+
+One asymmetry is designed and is stated rather than skipped: the remote engine can answer a
+range the device has never downloaded, and the local engine says `notDownloaded` for it
+(D-170). That is a disagreement about coverage, not about money, so parity is asserted only
+where local coverage is complete and the other case is asserted explicitly.
+
+**The remote engine writes nothing** — no cache, no marker, no local row — and a guard
+forbids the words that would let it. A remote read that synchronised on the way past would
+make the two sources agree because one had just overwritten the other. Retry is free: the
+query is read-only and `stable`. The local engine holds no reference to the remote one, so
+reporting stays ungated on connectivity (spec §21.4).
+
+### 31.5 Measured, and what is recorded rather than fixed (D-186)
+
+`EXPLAIN (ANALYZE, BUFFERS)` as the development Owner, whole of FY 2026-27:
+
+| | |
+|---|---|
+| revenue aggregate | **0.3 ms**, `Index Scan using revenue_entries_reporting_idx` |
+| expense aggregate | **368.7 ms**, dominated by `Filter: may_read_expense(expense_id)` over 1,094 rows |
+| FY consolidated + breakdown | **774 ms** before, **398.6 ms** after |
+| FY consolidated, no breakdown | **368.7 ms** |
+| one month, one property | **39 ms** server-side; 98–185 ms end to end to Mumbai |
+
+The first version scanned the expense projection **twice** when a breakdown was asked for.
+Each side is now grouped once at its finest grain and the headline rolls up from those
+subtotals — the same integer, because integer addition is associative and rounding happened
+once at the component and was stored (spec §6.5). `p_breakdown` governs what is returned,
+not what is read.
+
+The remaining cost is `may_read_expense` evaluated once per candidate row: a reviewed
+authority predicate (D-169). Making it cheaper belongs with the reporting capability model
+(Slice 7) or performance hardening (Slice 8), not inside a parity slice. **No materialised
+view and no aggregate table** — nothing has been measured that needs one, and one month sits
+comfortably inside the 400 ms escalation trigger §9 records.
+
+### 31.6 What Slice 5 deliberately did not build
+
+No P&L screen on either platform, no filters, no charts, no exports, no freshness
+presentation, no transaction drill-down, no production release infrastructure. No
+`reports.view` evaluator. No change to `public.expense_sees_whole_org()`, which is still on
+the reviewed API surface, still called by nothing, and still carried to Slice 7 (D-127).
