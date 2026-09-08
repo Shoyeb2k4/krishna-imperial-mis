@@ -10,7 +10,10 @@ Phase 4 closed at `96fc4ed`; the project lead's Phase 5 decisions are ratified a
 as **D-163 … D-173**, and five slices of twelve are closed — source parity, the canonical
 calculation specification, `LocalReportingEngine`, the canonical reporting cache with its
 cross-device delta, and the authoritative server reporting boundary with exact local/remote
-D-020 parity (D-183 … D-186). **Slice 6 is not started.** The Phase 5 record is at the **end of
+D-020 parity (D-183 … D-186), **closed on the security corrective that made the reporting
+boundary enforce `reports.view` (D-187)** — the first Slice 5 report claimed a complete
+authorization story and did not have one, and the correction is recorded rather than
+reissued. **Slice 6 is not started.** The Phase 5 record is at the **end of
 this file** and is authoritative for it; the Phase 4 closure sits immediately above it and
 remains authoritative for Phase 4, **except** that its handoff contract's revenue-only
 statement of the pull gap is corrected by D-173 — the gap is **both engines**. Everything
@@ -3947,17 +3950,27 @@ expenses — with **no sleep and no race**, and produces `(R, 0)`: a pair that w
 of the hotel at any instant. The RPC, asked at any moment, returns one of the three states
 that were.
 
-### 5 · Authorization, and why no STOP was required (D-184)
+### 5 · Authorization — the half this report first got wrong (D-184, corrected by D-187)
 
-`SECURITY INVOKER` is the whole of its safety. It reads the two `security_barrier`
-projections **with the caller's own privileges**, so anything it can return the caller could
-already have selected row by row and added up. It grants **no new data access**.
+**As first written, this section claimed a complete authorization story and did not have
+one.** It said `SECURITY INVOKER` was *"the whole of its safety"*, that the boundary
+enforced *"D-164's data half"*, and that the absence of a `reports.view` check *"creates no
+exposure"*. The first clause is true about **data access** and was the wrong test to apply:
+D-164 is the approved reporting **authorization contract**, it names three capabilities, and
+a client-callable P&L endpoint enforcing two of them is under-authorized against it however
+little it can expose. The project lead ruled accordingly, and **Slice 5 is closed on the
+corrective below rather than on the first report.**
 
-It enforces **D-164's data half now** — `revenue.view` for revenue, `expense.view.all` for
-expenses, per property, `expense.view.own` never — and an unauthorised side comes back
-**null, never zero**. What it does not check is `reports.view`, which has an evaluator
-nowhere and stays Slice 7's; its absence creates no exposure for the reason above. **The
-Slice 7 boundary was not moved forward and `expense_sees_whole_org()` was not touched.**
+Proven red first, with a capability-based fixture and never a role name: a principal holding
+`revenue.view` and `expense.view.all` for Crystal Canopy and **no** `reports.view` received
+**₹2,28,086.02** of that property's cost base over 63 contributions. No existing development
+identity could have shown it — every holder of the two data capabilities also holds
+`reports.view` — so the fixture was built, used, removed and the removal read back.
+
+The boundary now enforces D-164 in full, and the same probe returns
+`revenue: null, expense: null`. What is still true, and was worth keeping, is the
+`SECURITY INVOKER` property: it grants **no new data access**, and two invariants assert
+`prosecdef = false`. See *Phase 5 Slice 5 corrective* at the end of this file.
 
 ### 6 · `RemoteReportingEngine`, and local/remote independence
 
@@ -4104,4 +4117,189 @@ no chart, no export, no transaction drill-down, no production release infrastruc
 `reports.view` evaluator, and no change to `public.expense_sees_whole_org()` — both still
 carried to **Slice 7**.
 
-**Slice 6 is not started**, and is not started automatically.
+*(The `reports.view` half of that sentence is superseded by the corrective below: the
+evaluator shipped. `expense_sees_whole_org()` is untouched and still Slice 7's.)*
+
+---
+
+## Phase 5 Slice 5 corrective — the reporting boundary enforces `reports.view`: **DONE**
+
+One mandatory security gate, ruled by the project lead after the Slice 5 report was
+substantively approved. Recorded as **D-187**, which corrects D-184. **Slice 5 is formally
+closed on this corrective, not on the first report.**
+
+### The gate, in one sentence
+
+`public.reporting_primitives` is an ordinary authenticated client-callable P&L RPC.
+`SECURITY INVOKER` correctly prevents it returning any financial row the caller could not
+already select — and that is a statement about **data access**, not about the approved
+reporting **authorization contract**. D-164 names three capabilities per business unit.
+The boundary enforced two.
+
+### Proven RED first, by capability and never by role name
+
+No existing development identity could prove the gap: every principal holding
+`revenue.view` and `expense.view.all` also holds `reports.view`. A controlled authority
+fixture was therefore built — a role carrying exactly the two data capabilities, granted
+scoped to Crystal Canopy — so the proof does not depend on today's role templates and would
+still be the proof if they changed.
+
+```
+        reports.view      false
+        revenue.view      true
+        expense.view.all  true
+
+        reporting_primitives(CCR, FY 2026-27)
+          expense.amount_minor  22808602        <- Rs 2,28,086.02
+          contributions         63
+          revenue_authorised    true
+          expense_authorised    true
+```
+
+A property's cost base, returned to a principal the approved contract does not permit to
+read a report at all.
+
+### The corrected contract, and the same probe GREEN
+
+```
+        reporting_ok(unit) = has_capability('reports.view', unit)
+                             AND (one property requested OR unscoped reporting authority)
+
+        revenue_authorised = reporting_ok AND has_capability('revenue.view', unit)
+        expense_authorised = reporting_ok AND has_capability('expense.view.all', unit)
+
+        the same probe  ->  revenue: null, expense: null,
+                            reports_authorised: false
+```
+
+**Missing authority is never zero**, and a missing `reports.view` removes **both** sides
+together — so no combination of absent capabilities can produce half a P&L (D-163). The
+payload gained `reports_authorised` for diagnostic honesty. `expense.view.own` is named
+nowhere and cannot qualify; nothing branches on a role code, and a deploy invariant refuses
+a body that names one.
+
+### The client needed no change, which is the design working
+
+`RemoteReportingSource` already maps a null side to `ReportingCoverage.notAuthorised`, and
+`ReportingEngine` already maps that to a refusal. **No authorization logic was added to
+`Pnl.compute`**, which stays a pure calculator that is handed two sides and never asks who
+is looking. Authorization belongs outside the finance domain and stayed outside it.
+
+### Consolidated authority (D-164), proven in both directions
+
+A request naming more than one property is the **organisation** report and needs the
+**unscoped** form of all three capabilities. Two scoped grants do not add up to it.
+
+| Principal | CCR alone | HKI alone | Both together |
+|---|---|---|---|
+| scoped to CCR **and** HKI | authorised | authorised | **refused**, both sides null |
+| unscoped Owner | authorised | authorised | **authorised** |
+
+The second row is the control that separates *"the unscoped rule binds"* from
+*"consolidated never works"*. The scoped fixture is made and withdrawn through the real
+administrative RPCs inside the live suite, and the withdrawal is **read back** (D-142).
+
+**Positive control, seen to fail:** with the consolidated condition removed from the shipped
+body, the live regression turns **RED** on exactly that assertion. Restored, and the restore
+read back before anything else was claimed.
+
+### The live security matrix, under the corrected rule
+
+| Identity | CCR | HKI | Consolidated | Payload for a refused unit |
+|---|---|---|---|---|
+| Owner, unscoped | authorised | authorised | **authorised** | — |
+| Crystal Canopy manager | authorised | refused | refused | `revenue: null, expense: null` |
+| Hotel Krishna manager | refused | authorised | refused | `revenue: null, expense: null` |
+| Accountant, CCR | authorised | refused | refused | `revenue: null, expense: null` |
+| Data Entry (`expense.view.own`) | refused | refused | refused | `revenue: null, expense: null` |
+| **probe: no `reports.view`** | **refused** | refused | refused | `revenue: null, expense: null` |
+| Anonymous | RPC refused | — | — | — |
+| null unit set | `units: []` — no branch widens to the organisation | | | |
+| `expenses`, `revenue_entries`, `revenue_components` | unreadable by any client role | | | |
+
+### D-139's exemption machinery, updated in the same corrective
+
+`reports.view` was exempt because *"the surface it governs does not exist yet"*. Slice 5
+granted a client-callable P&L endpoint to `authenticated`, so that sentence stopped being
+true. Its line is gone; `reports.export`, `reports.print` and `settings.manage` stay,
+because those surfaces are Phase 7 and genuinely do not exist.
+
+A third assertion states the requirement **positively** — `reports.view` must be granted to
+some role *and* named by the boundary — because the two existing assertions would both pass
+if it were simply granted to nobody, which is the D-139 defect in reverse.
+
+**Two host guards had to be corrected before they could see any of it**, and both are the
+family this file keeps recording:
+
+* the exemption list was read with `firstMatch` over every migration, so a later
+  restatement was invisible; it reads the **last** declaration now;
+* the evaluator extraction matched only a bare `$$` function body, and
+  `reporting_primitives` — the evaluator the list now depends on — is quoted `$fn$`, so with
+  the exemption removed the test would have reported `reports.view` as dead. The body tag is
+  captured now. D-155's finding in a new file, and the third instance of D-103.
+
+### Verified
+
+| Item | Status | Evidence |
+|---|---|---|
+| `dart format --set-exit-if-changed` | **Tested** | clean |
+| `flutter analyze` | **Tested** | **No issues found** |
+| Host suite | **Tested** | **1,397 tests, all passing** |
+| Migration audit, incl. the corrected D-139 machinery | **Tested** | 21 tests; the two guards proven to read the right thing |
+| Live D-020 parity against `krishna-mis-dev` | **Tested** | **25 tests** (24 + the consolidated-authority regression) |
+| Consolidated-rule **positive control** | **Tested** | condition removed → **RED**; restored and read back |
+| RED → GREEN probe on the shipped boundary | **Tested** | ₹2,28,086.02 → `revenue: null, expense: null` |
+| Live revenue boundary suite | **Tested** | **81 tests**, 1 deliberately skipped (`--timeout=10x`) |
+| Live expense suite | **Tested** | **56 tests** |
+| Migration ledger parity (A0 / D-056) | **Tested** | verified **byte-for-byte by SHA-256** |
+| API-surface and PUBLIC-execute invariants | **Tested** | restated over the replacement; `anon` executes nothing |
+| Secret scan — tree and git history | **Tested** | clean, controls passing |
+| Working tree | **Tested** | clean |
+
+### Migration ledger
+
+| Ledger version | Name |
+|---|---|
+| 20260908050614 | `reporting_primitives_requires_reports_view` |
+
+Verified byte-for-byte by SHA-256 against
+`supabase_migrations.schema_migrations.statements`.
+
+### Fixtures removed, and the removal read back
+
+| | |
+|---|---|
+| `reporting_gap_probe` role | **removed** |
+| its `role_capabilities` rows | **removed** |
+| its scoped CCR grant | **removed** |
+| the `profiles` row created for it | **removed** |
+| Active authority grants | **5** — the development baseline |
+| Roles | **4** — owner, manager, accountant, data_entry |
+| The consolidated-authority second grant | made and withdrawn inside the live test, withdrawal asserted |
+| Live tax rules / bands / subtypes / statuses | **4 / 0 / 0 / 0** |
+| Closed periods | **0** |
+
+### Slice 7 is still Slice 7
+
+The capability boundary moved forward by exactly one evaluator at exactly one boundary.
+**Not done here, and still Slice 7's:**
+
+* the comprehensive reporting capability audit and the reporting-role template review;
+* the accumulated-state and security acceptance for reporting;
+* `public.expense_sees_whole_org()` — on the reviewed API surface, called by nothing,
+  **untouched** (D-127);
+* `reports.export` and `reports.print` evaluators — Phase 7, and still exempt;
+* all reporting-security UI and provider work;
+* making `may_read_expense` cheaper (D-186), which is Slice 7's or Slice 8's.
+
+### Not rerun, and why
+
+**`phase-a` … `multi-scope-b` — not rerun.** Nothing here touches authority caching, grants,
+scope resolution or purge semantics. They are **not** claimed as freshly passing.
+
+**The Android and Windows device acceptance suites — not rerun.** No controller, widget or
+screen changed; the only client-visible consequence is a refusal the engine already knew how
+to produce. Device acceptance is Slice 11's.
+
+**PHASE 5 SLICE 5 — COMPLETE.** **Slice 6 is not started**, and is not started
+automatically.

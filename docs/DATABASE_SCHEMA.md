@@ -971,7 +971,7 @@ the transaction surfaces where somebody can act on it. There is no provisional P
 through `expense_document` and `revenue_document`. Read-only: reporting navigates to the
 transaction surfaces that already exist and reimplements no correction or void path (D-166).
 
-### The reporting boundary (Phase 5 Slice 5, D-184)
+### The reporting boundary (Phase 5 Slice 5, D-184, corrected by D-187)
 
 ```
 public.reporting_primitives(p_business_unit_ids uuid[], p_from date, p_to date,
@@ -983,23 +983,26 @@ The authoritative primitive sums a P&L is built from, and the comparison point t
 parity suite measures the offline cache against. It reads the two projections above and
 **nothing else**.
 
-`SECURITY INVOKER` is the whole of its safety: it runs with the caller's own privileges, so
-every predicate that already governs a reporting read governs it, and it can return nothing
-the caller could not already have selected row by row and added up. Two invariants assert
-`prosecdef = false`.
+`SECURITY INVOKER` keeps it from returning any row the caller could not already have
+selected row by row and added up, so it grants no new **data** access. Two invariants assert
+`prosecdef = false`. That is necessary and it is not the authorization contract: D-164 is a
+statement about who may read a **report**, and the corrective in `20260908050614` enforces
+all three of its capabilities here rather than two (D-187).
 
 | | |
 |---|---|
-| Revenue side | gated on `has_capability('revenue.view', unit)` |
-| Expense side | gated on `has_capability('expense.view.all', unit)` — `expense.view.own` never qualifies (D-164) |
-| Unauthorised side | comes back **null, never zero**, so no caller can render a P&L from a side it may not read (D-163) |
-| `reports.view` | **not** checked — no evaluator exists yet; Slice 7's, and its absence adds no exposure |
+| Reporting authority | `has_capability('reports.view', unit)` — required before either side is considered |
+| Revenue side | `reports.view` **and** `has_capability('revenue.view', unit)` |
+| Expense side | `reports.view` **and** `has_capability('expense.view.all', unit)` — `expense.view.own` never qualifies (D-164) |
+| Consolidated request | more than one property named is the organisation report, and needs the **unscoped** form of all three; two scoped grants do not add up to it |
+| Unauthorised side | comes back **null, never zero**, so no caller can render a P&L from a side it may not read (D-163). Missing `reports.view` removes both sides together, so no combination yields half a P&L |
 | Snapshot | **one SQL statement**, so both sides come from one snapshot; an invariant refuses a second statement or a `plpgsql` rewrite |
 | Date basis | `pnl_date` on both sides, always; an invariant refuses `captured_at`, `payment_date`, `created_at` and `business_date` |
 | Arithmetic | summed integer paise cast to `bigint`; no rate, no tax rule, no derived P&L figure |
 | Scope | `unnest(coalesce(p_business_unit_ids, '{}'))` — no branch in which an omitted set means the whole organisation |
 
-Returned shape, per requested property: `revenue_authorised`, `expense_authorised`,
+Returned shape, per requested property: `reports_authorised`, `revenue_authorised`,
+`expense_authorised`,
 `revenue {gross_minor, tax_minor, net_minor, contributions}`,
 `expense {amount_minor, contributions}`, and — when `p_breakdown` — `revenue_by_category`
 carrying `tax_treatment`, and `expense_by_hierarchy` carrying department, section and
@@ -1009,7 +1012,9 @@ subtotals, so a breakdown costs no second pass (D-186).
 ### What does not exist yet
 
 **No P&L screen**, on either platform, and no export, chart or freshness presentation —
-Slices 6 to 9. **No `reports.view` evaluator** — Slice 7. **No general reporting pull beyond
+Slices 6 to 9. **No `reports.export` or `reports.print` evaluator** — Phase 7, and both stay
+on D-139's exemption list; `reports.view` came off it here, because the surface it governs
+now exists. **No general reporting pull beyond
 the Slice 4 delta**: `ExpensePull.pullOne(expenseId)` still fetches one document by id for
 the Review-latest path only.
 

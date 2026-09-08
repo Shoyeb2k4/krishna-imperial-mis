@@ -213,7 +213,10 @@ safety: it reads the two `security_barrier` projections with the caller's own pr
 it can return nothing the caller could not already have selected row by row and added up
 (D-184). It gates each side of the P&L on D-164's data half - `revenue.view` and
 `expense.view.all`, per property, `expense.view.own` never - and an unauthorised side comes
-back **null rather than zero**. It does not check `reports.view`, which stays Slice 7's.
+back **null rather than zero**. It does not check `reports.view`, which the corrective below
+adds; the sentence that once stood here - that its absence stays Slice 7's and adds no
+exposure - was wrong, and is corrected there rather than edited out of an applied
+migration's own account (D-187).
 
 One SQL statement, so both sides come from one snapshot; the invariant refuses a second
 statement or a `plpgsql` rewrite. It derives nothing, needs no tax configuration to answer a
@@ -232,6 +235,41 @@ went from 774 ms to 399 ms; a month is 39 ms (D-186).
 
 All three verified byte-for-byte against `supabase_migrations.schema_migrations.statements`
 (D-056).
+
+## Phase 5 Slice 5 corrective - the reporting boundary enforces `reports.view`
+
+| Ledger version | Ledger name | Committed file |
+|---|---|---|
+| 20260908050614 | `reporting_primitives_requires_reports_view` | `20260908050614_reporting_primitives_requires_reports_view.sql` |
+
+**Proven red first.** A controlled authority fixture - a principal holding `revenue.view`
+and `expense.view.all` for Crystal Canopy and **no** `reports.view`, stated by capability
+and never by role name - received Rs 2,28,086.02 of that property's cost base over 63
+contributions from the shipped RPC. `security invoker` had kept it from returning any row
+that principal could not already select, and that is a statement about data access rather
+than about the approved reporting authorization contract, which is D-164 and names three
+capabilities.
+
+`reporting_primitives` now requires `reports.view` per property before either side is
+considered, and the **unscoped** form of all three for a request naming more than one
+property - so two scoped grants cannot become an organisation-wide consolidated privilege.
+Missing authority is still `null` and never zero, and missing `reports.view` removes both
+sides together, so no combination produces half a P&L (D-163). The same green probe returns
+`revenue: null, expense: null`.
+
+The migration restates every Slice 5 invariant over the replacement - not `security
+definer`, `stable`, `language sql`, one statement, both projections read exactly once, no
+base table, `pnl_date` only, no rate, no float, no role name, scope never widening by
+omission - because a `create or replace` is where a lost predicate gets in (D-174).
+
+**D-139's exemption machinery is updated in the same migration**, which is the only honest
+place for it: `reports.view` now has an evaluator, so its line goes, and `reports.export`,
+`reports.print` and `settings.manage` stay because those surfaces genuinely do not exist.
+A third assertion states it positively - `reports.view` must be granted to some role **and**
+named by the boundary - because the first two would both pass if it were simply granted to
+nobody.
+
+Verified byte-for-byte against `supabase_migrations.schema_migrations.statements` (D-056).
 
 ## The full applied ledger, in order
 
@@ -316,4 +354,5 @@ All three verified byte-for-byte against `supabase_migrations.schema_migrations.
 20260907201332 reporting_primitives_boundary
 20260907201539 api_surface_invariant_reporting_primitives
 20260907204444 reporting_primitives_reads_each_side_once
+20260908050614 reporting_primitives_requires_reports_view
 ```

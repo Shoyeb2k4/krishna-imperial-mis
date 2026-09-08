@@ -6530,3 +6530,141 @@ visibility is decided — a reviewed authority predicate — and belongs with th
 capability model (Slice 7) or performance hardening (Slice 8), not inside a parity slice
 (D-127). **No materialised view and no aggregate table**: nothing has been measured that
 needs one.
+
+---
+
+# Phase 5 Slice 5 corrective — the reporting boundary enforces `reports.view` (2026-09-08)
+
+## D-187 — `SECURITY INVOKER` answers a question about data access, not the reporting authorization contract
+**Date:** 2026-09-08 · **Status:** Accepted (project-lead ruling) — **corrects D-184**
+
+**What D-184 concluded, and why it was too narrow.** Slice 5 shipped
+`public.reporting_primitives` enforcing two of D-164's three capabilities — `revenue.view`
+for the revenue side, `expense.view.all` for the expense side — and not `reports.view`. The
+reasoning recorded in D-184, and repeated in `ARCHITECTURE.md` §31.2, `DATABASE_SCHEMA.md`
+§11 and the ledger, was that `security invoker` prevents the function returning any row the
+caller could not already have selected row by row and added up, so the missing check
+*"creates no exposure"* and *"no STOP was required"*.
+
+The first clause is true and remains true. The conclusion drawn from it is not, and the
+project lead has ruled:
+
+> `SECURITY INVOKER` correctly prevents the RPC from exposing underlying financial rows the
+> caller could not otherwise access, but that is **not** sufficient for the approved
+> reporting authorization contract.
+
+D-164 is a statement about **who may read a report**, not merely about which rows a query
+may touch. It names three capabilities and it names them for a reason: reporting is its own
+privilege in this product's permission model, and a client-callable P&L endpoint that
+enforces two of the three is under-authorized against the approved contract however little
+it can expose. *"Nothing leaks"* is a claim about confidentiality; *"this principal may run
+a report"* is a claim about authority, and the second was never established.
+
+**Proven red before it was closed**, with a capability-based fixture rather than a role
+name — so the proof does not depend on today's role templates, and would still be the proof
+if the templates changed tomorrow. A purpose-built principal holding exactly `revenue.view`
+and `expense.view.all` for Crystal Canopy, and no `reports.view`:
+
+```
+        reports.view      false
+        revenue.view      true
+        expense.view.all  true
+
+        reporting_primitives(CCR, FY 2026-27)
+          expense.amount_minor  22808602   over 63 contributions
+          revenue_authorised    true
+          expense_authorised    true
+```
+
+₹2,28,086.02 of a property's cost base, returned to a principal the approved contract does
+not permit to read a report at all. No existing development identity could have shown this —
+every principal holding the two data capabilities also holds `reports.view` — which is
+exactly why a fixture had to be built rather than an existing login reused.
+
+**The corrected rule, enforced in `20260908050614`:**
+
+```
+        reporting_ok(unit) = has_capability('reports.view', unit)
+                             AND (one property requested OR unscoped reporting authority)
+
+        revenue_authorised = reporting_ok AND has_capability('revenue.view', unit)
+        expense_authorised = reporting_ok AND has_capability('expense.view.all', unit)
+```
+
+`expense.view.own` is named nowhere in the body and cannot qualify. Nothing branches on a
+role code, and a deploy-time invariant refuses a body that names one.
+
+**Missing authority is never zero, and it cannot produce half a P&L.** An unauthorised side
+comes back `null`, exactly as before; what is new is that a missing `reports.view` removes
+**both** sides together, so there is no combination of absent capabilities that yields
+Revenue against Expenses of nothing, or the reverse. The client refuses
+`bothSidesUnavailable` and renders no figure (D-163). The same green probe now returns
+`revenue: null, expense: null`.
+
+**The client needed no change at all, and that is the design working rather than luck.**
+`RemoteReportingSource` already maps a null side to `ReportingCoverage.notAuthorised`, and
+`ReportingEngine` already maps that to a `SideUnavailable` refusal. No authorization logic
+was added to `Pnl.compute`, which stays a pure calculator that is handed two sides and never
+asks who is looking (D-176). Authorization belongs outside the finance domain, and it stayed
+outside it.
+
+**The consolidated rule (D-164), which is the half that is easy to get wrong.** A request
+naming **more than one** property is the organisation report, and requires the **unscoped**
+form of all three capabilities. Two scoped grants do not silently add up to an
+organisation-wide privilege — their holder keeps every per-property report their authority
+supports and does not get the consolidated view.
+
+Proven in both directions, because a test that only showed the refusal could not tell *"the
+unscoped rule binds"* from *"consolidated never works"*:
+
+| | |
+|---|---|
+| a principal scoped to CCR **and** HKI, each alone | authorised |
+| the same principal, both together | **refused**, both units `notAuthorised`, both sides null |
+| the unscoped Owner, both together | authorised |
+
+The scoped fixture for the first two rows was made and withdrawn through the real
+administrative RPCs inside the live suite, with the withdrawal read back (D-142); the
+capability-only probe that proved the original gap was built and removed the same way, and
+the removal was read back too.
+
+**Positive control, seen to fail.** With the consolidated condition removed from the body,
+the live regression turns **red** on exactly the assertion it exists for — the scoped
+holder receives the organisation report. Restored, and the restore read back before anything
+else was claimed.
+
+**D-139's exemption list is updated in the same corrective**, which is the only honest place
+for it. `reports.view` was exempt because *"the surface it governs does not exist yet"*, and
+that sentence stopped being true the moment Slice 5 granted a client-callable P&L endpoint
+to `authenticated`. Its line goes; `reports.export`, `reports.print` and `settings.manage`
+stay, because those surfaces are Phase 7 and genuinely do not exist. A third assertion
+states the requirement positively — `reports.view` must be granted to some role **and**
+named by the boundary — because the two existing assertions would both pass if it were
+simply granted to nobody, which is the D-139 defect in reverse.
+
+**Two host-side guards had to be corrected before they could see any of this**, and both are
+the family this log keeps recording:
+
+* the exemption list was read with `firstMatch` over every migration, so a later
+  restatement was invisible and the test would have gone on checking a list two migrations
+  out of date while reporting success. It reads the **last** declaration now;
+* the evaluator extraction matched only a bare `$$` function body. `reporting_primitives` —
+  the evaluator the list now depends on — is quoted `$fn$`, so with the exemption removed
+  the test would have reported `reports.view` as dead. The body tag is captured now. That is
+  D-155's finding in a new file, and the third instance of D-103.
+
+Both were found by expecting the corrected test to pass and watching it fail for the wrong
+reason, which is the same discipline as expecting red and getting green.
+
+**What this corrective deliberately does not do.** It does not remove
+`public.expense_sees_whole_org()`, redesign the reporting role templates, build any Slice 7
+reporting-security UI or provider work, or add an export or print evaluator. It moves the
+capability boundary forward by exactly one evaluator at exactly one boundary. Slice 7 still
+owns the comprehensive reporting capability audit, the accumulated-state security
+acceptance, the dead-API review and the remaining reporting-security surface.
+
+**And the closure record is corrected rather than quietly reissued.** The Slice 5 report
+claimed a complete authorization story and did not have one. D-184 stays as written —
+this log is append-only — and every canonical document that repeated its conclusion now
+says what was actually true: the original enforced the **data** half of D-164, the reporting
+half was missing, and Slice 5 is closed on the corrective rather than on the first report.

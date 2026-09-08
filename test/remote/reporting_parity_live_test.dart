@@ -1277,6 +1277,96 @@ void main() {
       expect(own.isComputed, isTrue);
     });
 
+    test('two scoped grants do not add up to an organisation-wide report (D-164)', () async {
+      // The consolidated half of the reporting authority contract, and the half that
+      // is easy to get wrong by writing the obvious thing: a request naming more than
+      // one property is the **organisation** report, and D-164 requires the unscoped
+      // authority for it. A holder of two scoped grants keeps every per-property
+      // report their authority supports and does not get the organisation view.
+      //
+      // The grant is made and withdrawn through the real administrative RPCs, and the
+      // withdrawal is read back rather than assumed (D-142). Without the second grant
+      // this test would prove only that the manager lacks Hotel Krishna, which is a
+      // different statement and is already asserted above.
+      final manager = await sessionFor('ccr.manager@example.com');
+      final managerId = manager.auth.currentUser!.id;
+
+      final granted =
+          await owner.rpc(
+                'user_role_grant',
+                params: {
+                  'p_user_id': managerId,
+                  'p_role_code': 'manager',
+                  'p_business_unit_id': _hki,
+                  'p_mutation_id': const Uuid().v4(),
+                },
+              )
+              as Map<String, dynamic>;
+      final grantId = granted['entity_id'] as String;
+      addTearDown(() async {
+        await owner.rpc(
+          'user_role_revoke',
+          params: {'p_grant_id': grantId, 'p_mutation_id': const Uuid().v4()},
+        );
+        // Read the restore back: the second property must be refused again.
+        final after = await remoteFor(manager).report(
+          ReportRequest(
+            period: _month(_period),
+            scope: ReportingScope.unit(_hki),
+          ),
+        );
+        expect(
+          after.isComputed,
+          isFalse,
+          reason:
+              'the temporary grant survived the run — a fixture that is not '
+              'restored is a standing authority change nobody reviewed',
+        );
+      });
+
+      // Each property, on its own, answers.
+      for (final unit in [_ccr, _hki]) {
+        final scoped = await remoteFor(manager).report(
+          ReportRequest(
+            period: _month(_period),
+            scope: ReportingScope.unit(unit),
+          ),
+        );
+        expect(
+          scoped.isComputed,
+          isTrue,
+          reason: 'a scoped grant still supports that property own report',
+        );
+      }
+
+      // Both together do not.
+      final consolidated = await remoteFor(manager).report(
+        ReportRequest(
+          period: _month(_period),
+          scope: ReportingScope({_ccr, _hki}),
+        ),
+      );
+      expect(
+        consolidated.isComputed,
+        isFalse,
+        reason:
+            'two scoped grants became an organisation-wide consolidated '
+            'privilege, which is exactly what D-164 unscoped rule refuses',
+      );
+      expect(consolidated.revenueCoverage, ReportingCoverage.notAuthorised);
+      expect(consolidated.expenseCoverage, ReportingCoverage.notAuthorised);
+
+      // And the control that stops this reading as "consolidated never works":
+      // the unscoped Owner gets it.
+      final ownerConsolidated = await remoteFor(owner).report(
+        ReportRequest(
+          period: _month(_period),
+          scope: ReportingScope({_ccr, _hki}),
+        ),
+      );
+      expect(ownerConsolidated.isComputed, isTrue);
+    });
+
     test(
       'Data Entry never receives a P&L from own-only expenses and zero revenue',
       () async {

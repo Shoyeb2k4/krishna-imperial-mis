@@ -266,16 +266,23 @@ void main() {
             'reports success (D-103)',
       );
 
-      final unbuiltDeclaration = RegExp(
+      // The **last** declaration, not the first. A later migration restates the list
+      // whole when a capability stops being unbuilt — `reports.view` acquired an
+      // evaluator at the reporting boundary and its line went — and reading the first
+      // one would go on checking a list two migrations out of date while reporting
+      // success. That is D-103's lesson in this file's own machinery: a guard keyed on
+      // the wrong occurrence of the right thing has quietly stopped checking.
+      final unbuiltDeclarations = RegExp(
         r'v_unbuilt constant text\[\] := array\[([\s\S]*?)\];',
-      ).firstMatch(everySql);
+      ).allMatches(everySql).toList();
       expect(
-        unbuiltDeclaration,
-        isNotNull,
+        unbuiltDeclarations,
+        isNotEmpty,
         reason: 'the not-yet-built exemption list has been lost',
       );
+      final unbuiltDeclaration = unbuiltDeclarations.last;
       final exempt = RegExp(r"'([a-z_.]+)'")
-          .allMatches(unbuiltDeclaration!.group(1)!)
+          .allMatches(unbuiltDeclaration.group(1)!)
           .map((m) => m.group(1)!)
           .toSet();
 
@@ -291,9 +298,16 @@ void main() {
       // All three were counted as evaluation by the first version of this test, and all
       // three let the sabotage control pass. Found by expecting red and getting green,
       // which is the fourth time this project has had to look for that (D-094).
+      //
+      // The body tag is captured rather than assumed to be a bare dollar-dollar. Three
+      // `security definer` predicates once became invisible to an entire assertion group
+      // because they were quoted with a named tag (D-155), and `reporting_primitives` —
+      // the evaluator this list now depends on — is quoted the same way. A guard keyed on
+      // an incidental quoting convention is the third instance of D-103 in this file's
+      // history, and it is not going to be the fourth.
       final bodies = RegExp(
-        r'create or replace function[\s\S]*?as \$\$([\s\S]*?)\$\$;',
-      ).allMatches(everySql).map((m) => m.group(1)!).join('\n');
+        r'create or replace function[\s\S]*?as (\$[a-z_]*\$)([\s\S]*?)\1;',
+      ).allMatches(everySql).map((m) => m.group(2)!).join('\n');
       final policies = RegExp(
         r'create policy[\s\S]*?;',
       ).allMatches(everySql).map((m) => m.group(0)!).join('\n');
@@ -329,6 +343,34 @@ void main() {
             'the surface it governs shipped in Phase 3; exempting it would be the '
             'defect this corrective exists to close, written down as policy',
       );
+
+      // And `reports.view` is the same finding one phase later. Slice 5 shipped the
+      // first client-callable P&L boundary, so the sentence that exempted it — *the
+      // surface it governs does not exist yet* — stopped being true the moment that RPC
+      // was granted to `authenticated`. Both halves are asserted: the excuse is gone,
+      // and the check that replaced it exists.
+      expect(
+        exempt,
+        isNot(contains('reports.view')),
+        reason:
+            'reporting_primitives is client-callable, so the surface reports.view '
+            'governs exists; an excuse that has stopped being true is worse than no '
+            'list at all (D-139, D-187)',
+      );
+      expect(
+        evaluators,
+        contains('reports.view'),
+        reason:
+            'reports.view is exempt nowhere and evaluated nowhere, which is the D-139 '
+            'defect in reverse: the excuse was deleted without the check being written',
+      );
+
+      // Still exempt, and each for a surface that genuinely does not exist. Stated so
+      // that removing one is a deliberate act rather than a side effect of editing the
+      // line above it.
+      expect(exempt, contains('reports.export'));
+      expect(exempt, contains('reports.print'));
+      expect(exempt, contains('settings.manage'));
     });
 
     test('the business-date correction is evaluated at the Expense boundary', () {

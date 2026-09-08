@@ -2908,7 +2908,16 @@ with two values precisely because nothing could construct a third; the remote so
 can, and *"synchronise this"* and *"ask somebody for a grant"* are different instructions
 that must not arrive as one.
 
-### 31.2 The boundary is `security invoker`, and that is the whole of its safety (D-184)
+### 31.2 The boundary is `security invoker`, and it enforces D-164 in full (D-184, D-187)
+
+> **Corrected 2026-09-08.** This section first said that `security invoker` was *"the whole
+> of its safety"* and that the absence of a `reports.view` check *"creates no exposure"*.
+> The first half is true about **data access** and was the wrong test to apply: D-164 is a
+> statement about the reporting **authorization contract**, and a client-callable P&L that
+> enforced two of its three capabilities was under-authorized against it. Proven red — a
+> principal holding `revenue.view` and `expense.view.all` for Crystal Canopy and no
+> `reports.view` received ₹2,28,086.02 of that property's cost base — and closed in
+> `20260908050614`. The corrected rules are below; the reasoning is D-187.
 
 `public.reporting_primitives(uuid[], date, date, boolean)` returns the primitive canonical
 sums for a named set of properties over one inclusive `pnl_date` range.
@@ -2916,18 +2925,38 @@ sums for a named set of properties over one inclusive `pnl_date` range.
 It runs with the **caller's own privileges**, over the two `security_barrier` contribution
 projections and nothing else, so every predicate that already governs a reporting read
 governs it. **Anything it can return, the caller could already have selected row by row and
-added up** — it grants no new data access, which is what makes it safe to expose before
-Slice 7 rather than in spite of it. A `security definer` version would have run as the owner
-against tables the caller deliberately cannot read; two invariants assert `prosecdef =
-false`.
+added up** — it grants no new data access. A `security definer` version would have run as
+the owner against tables the caller deliberately cannot read; two invariants assert
+`prosecdef = false`.
 
-It enforces **D-164's data half** now: `revenue.view` gates the revenue side,
-`expense.view.all` the expense side, per property, and `expense.view.own` never qualifies.
-An unauthorised side comes back **null, never zero**, so a Data Entry holder cannot be handed
-a plausible P&L built from their own costs against a revenue side of nothing.
+That is necessary and it is not sufficient, which is the whole of the correction. The
+authorization contract is D-164, and it is enforced here in full:
 
-What it does not check is `reports.view`, which has an evaluator nowhere and stays on
-D-139's exemption list until Slice 7. Its absence creates no exposure for the reason above.
+```
+        reporting_ok(unit) = has_capability('reports.view', unit)
+                             AND (one property requested OR unscoped reporting authority)
+
+        revenue_authorised = reporting_ok AND has_capability('revenue.view', unit)
+        expense_authorised = reporting_ok AND has_capability('expense.view.all', unit)
+```
+
+`expense.view.own` is named nowhere and cannot qualify; nothing branches on a role code. An
+unauthorised side comes back **null, never zero**, so a Data Entry holder cannot be handed a
+plausible P&L built from their own costs against a revenue side of nothing — and a principal
+without `reports.view` loses **both** sides together, so no combination of missing
+capabilities can produce half a P&L (D-163).
+
+**A request naming more than one property is the organisation report**, and needs the
+unscoped form of all three capabilities. Two scoped grants do not silently add up to an
+organisation-wide privilege: their holder keeps every per-property report their authority
+supports and does not get the consolidated view. Proven live in both directions — the
+scoped holder refused, the unscoped Owner answered.
+
+`reports.view` therefore came off D-139's exemption list in the same migration, which is
+where an exemption is supposed to go: the sentence that excused it — *the surface it governs
+does not exist yet* — stopped being true the moment this RPC was granted to `authenticated`.
+`reports.export`, `reports.print` and `settings.manage` stay exempt, and Slice 7 still owns
+the comprehensive reporting capability audit.
 
 **It derives nothing** — no tax rule, no rate, no business date, no accounting period, no
 Net Sales, Operating Profit or margin. It needs no tax configuration to answer a historical
@@ -3005,6 +3034,13 @@ comfortably inside the 400 ms escalation trigger §9 records.
 ### 31.6 What Slice 5 deliberately did not build
 
 No P&L screen on either platform, no filters, no charts, no exports, no freshness
-presentation, no transaction drill-down, no production release infrastructure. No
-`reports.view` evaluator. No change to `public.expense_sees_whole_org()`, which is still on
-the reviewed API surface, still called by nothing, and still carried to Slice 7 (D-127).
+presentation, no transaction drill-down, no production release infrastructure. No change to
+`public.expense_sees_whole_org()`, which is still on the reviewed API surface, still called
+by nothing, and still carried to Slice 7 (D-127).
+
+**And the corrective is bounded to what it names.** It adds a `reports.view` evaluator at
+the one client-callable reporting boundary and deletes that capability's exemption line.
+It does **not** remove `expense_sees_whole_org()`, redesign the reporting role templates,
+build any Slice 7 reporting-security UI or provider work, or add an export or print
+evaluator. Slice 7 still owns all four, plus the comprehensive reporting capability audit
+and the accumulated-state security acceptance.
