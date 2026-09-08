@@ -31,6 +31,7 @@ import 'package:krishna_mis/data/remote/reporting_gateway.dart';
 import 'package:krishna_mis/domain/expenses/expense_contribution.dart';
 import 'package:krishna_mis/domain/finance/reporting_period.dart';
 import 'package:krishna_mis/domain/revenue/revenue_contribution.dart';
+import 'package:krishna_mis/domain/tax/tax_rule.dart' show TaxTreatment;
 import 'package:krishna_mis/domain/value_objects/money.dart';
 
 /// One coverage claim: this owner's dataset for this property and financial year is
@@ -139,7 +140,12 @@ final class ReportingCache {
           '       COALESCE(SUM(gross_minor), 0) AS g, '
           '       COALESCE(SUM(tax_minor), 0)   AS t, '
           '       COALESCE(SUM(net_minor), 0)   AS n, '
-          '       COUNT(*)                      AS c '
+          '       COUNT(*)                      AS c, '
+          // The treatment the cached components recorded. `none` and a configured 0% both
+          // give zero tax and stay distinguishable (D-091, D-122); a group spanning both
+          // is described by neither and collapses to null.
+          '       CASE WHEN COUNT(DISTINCT tax_treatment) = 1 '
+          '            THEN MIN(tax_treatment) ELSE NULL END AS tr '
           '  FROM reporting_revenue_contributions '
           ' WHERE owner_user_id = ? AND business_unit_id = ? '
           '   AND pnl_date >= ? AND pnl_date <= ? '
@@ -157,6 +163,10 @@ final class ReportingCache {
         RevenueCategoryTotals(
           businessUnitId: businessUnitId,
           revenueCategoryId: row.read<String>('r'),
+          treatment: switch (row.read<String?>('tr')) {
+            final String name => TaxTreatment.fromName(name),
+            null => null,
+          },
           totals: RevenueTotals(
             gross: Money.fromPaise(row.read<int>('g')),
             tax: Money.fromPaise(row.read<int>('t')),

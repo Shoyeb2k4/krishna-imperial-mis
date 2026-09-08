@@ -38,19 +38,41 @@ const _ccr = 'unit-ccr';
 const _hki = 'unit-hki';
 
 /// A coverage oracle a test controls, standing in for Slice 4's marker.
+///
+/// Per side since D-183, so a fixture can make revenue complete and expenses absent and
+/// see which of them the refusal actually names.
 final class _Coverage implements ReportingCoverageOracle {
-  _Coverage(this._byUnit);
+  _Coverage(this._byUnit, {Map<String, ReportingCoverage>? expenses})
+    : _expensesByUnit = expenses ?? _byUnit;
   final Map<String, ReportingCoverage> _byUnit;
+  final Map<String, ReportingCoverage> _expensesByUnit;
 
   @override
   ReportingCoverage coverageFor({
     required String businessUnitId,
     required ReportRange range,
-  }) => _byUnit[businessUnitId] ?? ReportingCoverage.notDownloaded;
+    required ReportingDatasetSide side,
+  }) =>
+      (side == ReportingDatasetSide.revenue
+          ? _byUnit
+          : _expensesByUnit)[businessUnitId] ??
+      ReportingCoverage.notDownloaded;
 }
 
 ReportingCoverageOracle _complete([Set<String> units = const {_ccr, _hki}]) =>
     _Coverage({for (final u in units) u: ReportingCoverage.complete});
+
+/// One side covered and the other not, for the D-183 assertions.
+ReportingCoverageOracle _sideOnly({
+  required ReportingDatasetSide covered,
+  Set<String> units = const {_ccr, _hki},
+}) {
+  final present = {for (final u in units) u: ReportingCoverage.complete};
+  const absent = <String, ReportingCoverage>{};
+  return covered == ReportingDatasetSide.revenue
+      ? _Coverage(present, expenses: absent)
+      : _Coverage(absent, expenses: present);
+}
 
 void main() {
   setUpAll(() {
@@ -265,6 +287,95 @@ void main() {
   }
 
   final june = MonthPeriod(2026, 6);
+
+  // ── Coverage is per side, and the refusal names the side (D-183) ──────────
+  group('a missing side is reported as that side', () {
+    setUp(() async {
+      await canonicalRevenue(
+        unit: _ccr,
+        category: 'cat-restaurant',
+        businessDate: '2026-06-15',
+        gross: 10000000,
+        tax: 476190,
+        net: 9523810,
+      );
+      await canonicalExpense(
+        unit: _ccr,
+        pnlDate: '2026-06-20',
+        amount: 4500000,
+      );
+    });
+
+    test('revenue missing, expenses complete → revenueUnavailable', () async {
+      final envelope = await engineWith(
+        _sideOnly(covered: ReportingDatasetSide.expenses, units: {_ccr}),
+      ).report(ReportRequest(period: june, scope: ReportingScope.unit(_ccr)));
+
+      expect(
+        envelope.refusalOrNull,
+        PnlRefusal.revenueUnavailable,
+        reason:
+            'the markers always knew which dataset was missing; folding them into one '
+            'value per property threw that away and refused as bothSidesUnavailable, '
+            'naming neither the absent side nor the one that was fine (D-183)',
+      );
+      expect(envelope.revenueCoverage, ReportingCoverage.notDownloaded);
+      expect(envelope.expenseCoverage, ReportingCoverage.complete);
+    });
+
+    test('expenses missing, revenue complete → expensesUnavailable', () async {
+      final envelope = await engineWith(
+        _sideOnly(covered: ReportingDatasetSide.revenue, units: {_ccr}),
+      ).report(ReportRequest(period: june, scope: ReportingScope.unit(_ccr)));
+
+      expect(envelope.refusalOrNull, PnlRefusal.expensesUnavailable);
+      expect(envelope.revenueCoverage, ReportingCoverage.complete);
+      expect(envelope.expenseCoverage, ReportingCoverage.notDownloaded);
+    });
+
+    test('both missing → bothSidesUnavailable', () async {
+      final envelope = await engineWith(
+        _Coverage(const {}),
+      ).report(ReportRequest(period: june, scope: ReportingScope.unit(_ccr)));
+
+      expect(envelope.refusalOrNull, PnlRefusal.bothSidesUnavailable);
+      expect(envelope.revenueCoverage, ReportingCoverage.notDownloaded);
+      expect(envelope.expenseCoverage, ReportingCoverage.notDownloaded);
+    });
+
+    test(
+      'both complete over an empty range → a real zero, not a refusal',
+      () async {
+        final envelope = await engineWith(_complete({_ccr})).report(
+          ReportRequest(
+            period: const MonthPeriod(2026, 2),
+            scope: ReportingScope.unit(_ccr),
+          ),
+        );
+        final result = resultOf(envelope);
+        expect(result.grossSales, Money.zero);
+        expect(result.gst, Money.zero);
+        expect(result.netSales, Money.zero);
+        expect(result.expenses, Money.zero);
+        expect(result.operatingProfit, Money.zero);
+        expect(result.margin, isA<MarginNotApplicable>());
+        expect(envelope.coverage, ReportingCoverage.complete);
+      },
+    );
+
+    test('the unavailable side carries why, so a caller can act on it', () async {
+      final envelope = await engineWith(
+        _sideOnly(covered: ReportingDatasetSide.expenses, units: {_ccr}),
+      ).report(ReportRequest(period: june, scope: ReportingScope.unit(_ccr)));
+      expect(
+        (envelope.outcome as PnlRefused).sideReason,
+        ReportingSideUnavailable.notDownloaded,
+        reason:
+            '"synchronise" and "ask for a grant" are different instructions, so '
+            'notDownloaded and notAuthorised stay different values',
+      );
+    });
+  });
 
   // ── The production wiring tells the truth ─────────────────────────────────
   group('until Slice 4, production coverage is not established', () {

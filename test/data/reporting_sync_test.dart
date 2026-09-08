@@ -841,15 +841,25 @@ void main() {
             'precisely so a half-synchronised scope refuses rather than presenting '
             'takings as though they were profit (D-163)',
       );
-      // Coverage is one value per property today, so a missing expense side takes the
-      // whole property down with it rather than naming which half is absent. The rule
-      // D-163 states is satisfied either way; the finer message belongs to Slice 5,
-      // which owns what a manager is actually told.
+      // Slice 4 recorded a limitation here and pointed at Slice 5: coverage was one value
+      // per property, so a missing expense side took the whole property down with it and
+      // the refusal named neither half. D-183 closed that. The markers were always per
+      // dataset; now the refusal is too, and it says which side did not arrive.
       expect(
         (envelope.outcome as PnlRefused).refusal,
-        PnlRefusal.bothSidesUnavailable,
+        PnlRefusal.expensesUnavailable,
+        reason:
+            'the expense delta is the one that failed, and a refusal that named both '
+            'sides would send somebody looking for a revenue problem that is not there',
       );
-      expect(envelope.coverage, ReportingCoverage.notDownloaded);
+      expect(envelope.revenueCoverage, ReportingCoverage.complete);
+      expect(envelope.expenseCoverage, ReportingCoverage.notDownloaded);
+      expect(
+        (envelope.outcome as PnlRefused).sideReason,
+        ReportingSideUnavailable.notDownloaded,
+        reason:
+            'a run that did not answer is a synchronisation problem, not a grant one',
+      );
     });
   });
 
@@ -1008,10 +1018,11 @@ void main() {
 
   group('coverage is a conjunction', () {
     Future<ReportingCoverage> coverageOf(ReportRange range) async =>
-        (await MarkerCoverage.load(
-          cache,
-          _me,
-        )).coverageFor(businessUnitId: _ccr, range: range);
+        (await MarkerCoverage.load(cache, _me)).coverageFor(
+          businessUnitId: _ccr,
+          range: range,
+          side: ReportingDatasetSide.revenue,
+        );
 
     test('an empty year is complete when it was certified', () async {
       await run(units: {_ccr});
@@ -1049,7 +1060,11 @@ void main() {
       await run(units: {_ccr});
       final markers = await MarkerCoverage.load(cache, _me);
       expect(
-        markers.coverageFor(businessUnitId: _hki, range: _june()),
+        markers.coverageFor(
+          businessUnitId: _hki,
+          range: _june(),
+          side: ReportingDatasetSide.revenue,
+        ),
         ReportingCoverage.notDownloaded,
       );
     });
@@ -1118,7 +1133,11 @@ void main() {
         final oldJune =
             (const MonthPeriod(2024, 6).resolve() as ReportRangeResolved).range;
         expect(
-          coverage.coverageFor(businessUnitId: _ccr, range: oldJune),
+          coverage.coverageFor(
+            businessUnitId: _ccr,
+            range: oldJune,
+            side: ReportingDatasetSide.revenue,
+          ),
           ReportingCoverage.notDownloaded,
           reason:
               'outside retention the honest answer is "not here", never a confident zero '

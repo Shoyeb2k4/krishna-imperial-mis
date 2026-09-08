@@ -285,7 +285,7 @@ final reportingSyncProvider = Provider<ReportingSync?>((ref) {
 /// A `FutureProvider` because coverage is loaded once per report rather than queried per
 /// property per year, and it depends on the session: a user switch must not leave the
 /// previous person's markers standing behind this person's figures (D-072a §3, D-074).
-final localReportingSourceProvider = FutureProvider<LocalReportingSource>((
+final localReportingSourceProvider = FutureProvider<ReportingFactsSource>((
   ref,
 ) async {
   final session = ref.watch(sessionProvider);

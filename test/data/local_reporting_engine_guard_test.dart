@@ -130,13 +130,68 @@ void main() {
     // The complement of everything above: it is not enough that the engine computes
     // nothing, it has to be handing the primitives somewhere. If this ever stopped being
     // true the tests above would still pass over a file that did nothing at all.
-    final engine = _code('lib/data/reporting/local_reporting_engine.dart');
+    final engine = _code('lib/data/reporting/reporting_engine.dart');
     expect(engine, contains('Pnl.compute('));
     expect(
       engine,
       contains('Pnl.consolidate('),
       reason: 'consolidation has one implementation and it is not in an engine',
     );
+  });
+
+  test('both engines are that one orchestration, not two copies of it', () {
+    // Spec §21.2 leaves an engine nothing to differ about except the rows it sums, so the
+    // two are the same code over two sources. Asserted, because the alternative — writing
+    // the orchestration twice so the parity suite has two copies to compare — would test a
+    // duplication this design exists to avoid, on the one axis that cannot go wrong, while
+    // leaving the axis that can untested (D-185).
+    for (final path in const [
+      'lib/data/reporting/local_reporting_engine.dart',
+      'lib/data/reporting/remote_reporting_engine.dart',
+    ]) {
+      final code = _code(path);
+      expect(
+        code,
+        contains('extends ReportingEngine'),
+        reason: '$path re-implements the orchestration instead of sharing it',
+      );
+      expect(
+        code.contains('Pnl.compute('),
+        isFalse,
+        reason: '$path has acquired a second copy of the calculation path',
+      );
+    }
+  });
+
+  test('the remote engine cannot write anything', () {
+    // The remote engine exists to be an independent answer. One that filled the cache on
+    // the way past would make the two sources agree because one had just overwritten the
+    // other — a parity suite proving only that a copy equals its original (§30).
+    for (final path in const [
+      'lib/data/reporting/remote_reporting_engine.dart',
+      'lib/data/remote/remote_reporting_source.dart',
+    ]) {
+      final code = _code(path);
+      for (final forbidden in const [
+        'ReportingCache',
+        'ReportingSync',
+        'AppDatabase',
+        'applyYear(',
+        'pruneYear(',
+        'customStatement',
+        'INSERT',
+        'UPDATE ',
+        'DELETE',
+      ]) {
+        expect(
+          code.contains(forbidden),
+          isFalse,
+          reason:
+              '$path reaches for $forbidden — the remote read is independent of the '
+              'cache, and independence is what makes the parity comparison mean anything',
+        );
+      }
+    }
   });
 
   test('the source delegates to the canonical repository predicates', () {

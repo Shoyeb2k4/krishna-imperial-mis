@@ -40,9 +40,12 @@ import 'package:krishna_mis/domain/revenue/revenue_contribution.dart';
 /// Its own type because it is the one thing Slice 4 replaces. Everything else in this file
 /// keeps working when the marker arrives.
 abstract interface class ReportingCoverageOracle {
+  /// Coverage for **one side**, because the two are established independently and a
+  /// caller that folded them would lose the one fact a reader needs (D-183).
   ReportingCoverage coverageFor({
     required String businessUnitId,
     required ReportRange range,
+    required ReportingDatasetSide side,
   });
 }
 
@@ -58,11 +61,14 @@ final class NoCanonicalCoverage implements ReportingCoverageOracle {
   ReportingCoverage coverageFor({
     required String businessUnitId,
     required ReportRange range,
+    required ReportingDatasetSide side,
   }) => ReportingCoverage.notDownloaded;
 }
 
 /// Reads `revenue_period_contributions` and `expense_period_contributions`.
-final class DriftReportingSource implements LocalReportingSource {
+final class DriftReportingSource
+    with PerUnitReportingFacts
+    implements ReportingFactsSource {
   const DriftReportingSource({
     required this.revenue,
     required this.expenses,
@@ -103,9 +109,15 @@ final class DriftReportingSource implements LocalReportingSource {
 
     return UnitReportingFacts(
       businessUnitId: businessUnitId,
-      coverage: coverage.coverageFor(
+      revenueCoverage: coverage.coverageFor(
         businessUnitId: businessUnitId,
         range: range,
+        side: ReportingDatasetSide.revenue,
+      ),
+      expenseCoverage: coverage.coverageFor(
+        businessUnitId: businessUnitId,
+        range: range,
+        side: ReportingDatasetSide.expenses,
       ),
       revenue: await revenue.contributionTotals(revenueQuery),
       expenses: await expenses.contributionTotals(expenseQuery),

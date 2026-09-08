@@ -1828,7 +1828,12 @@ class RevenueRepository {
           '       COALESCE(SUM(gross_minor), 0) AS g, '
           '       COALESCE(SUM(tax_minor), 0)   AS t, '
           '       COALESCE(SUM(net_minor), 0)   AS n, '
-          '       COUNT(*)                      AS c '
+          '       COUNT(*)                      AS c, '
+          // `none` and a configured 0% both give zero tax and are different facts, so the
+          // treatment is carried; a group spanning two of them is described by neither and
+          // collapses to null rather than to whichever row came first (D-091).
+          '       CASE WHEN COUNT(DISTINCT tax_treatment) = 1 '
+          '            THEN MIN(tax_treatment) ELSE NULL END AS tr '
           '  FROM revenue_period_contributions WHERE $where '
           ' GROUP BY business_unit_id, revenue_category_id '
           ' ORDER BY business_unit_id, revenue_category_id',
@@ -1840,6 +1845,10 @@ class RevenueRepository {
         RevenueCategoryTotals(
           businessUnitId: row.read<String>('u'),
           revenueCategoryId: row.read<String>('r'),
+          treatment: switch (row.read<String?>('tr')) {
+            final String name => TaxTreatment.fromName(name),
+            null => null,
+          },
           totals: RevenueTotals(
             gross: Money.fromPaise(row.read<int>('g')),
             tax: Money.fromPaise(row.read<int>('t')),

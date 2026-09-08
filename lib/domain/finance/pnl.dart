@@ -161,6 +161,8 @@ final class PnlResult {
     required this.netSales,
     required this.expenses,
     this.businessUnitId,
+    this.revenueContributions = 0,
+    this.expenseContributions = 0,
     this.revenueByCategory = const [],
     this.expenseByHierarchy = const [],
   });
@@ -174,6 +176,15 @@ final class PnlResult {
   final Money gst;
   final Money netSales;
   final Money expenses;
+
+  /// How many canonical rows each side summed.
+  ///
+  /// Carried because zero over no rows and zero over forty rows are different facts, and a
+  /// report that cannot tell them apart will eventually present the first as the second.
+  /// They are also what makes the D-020 parity comparison mean something: two engines can
+  /// agree on every figure while one of them summed the wrong set of rows to get there.
+  final int revenueContributions;
+  final int expenseContributions;
 
   final List<RevenueCategoryLine> revenueByCategory;
   final List<ExpenseHierarchyLine> expenseByHierarchy;
@@ -305,6 +316,8 @@ abstract final class Pnl {
             gst: sales.tax,
             netSales: sales.net,
             expenses: costs.amount,
+            revenueContributions: sales.contributions,
+            expenseContributions: costs.contributions,
             revenueByCategory: List.unmodifiable(revenueByCategory),
             expenseByHierarchy: List.unmodifiable(expenseByHierarchy),
           ),
@@ -350,6 +363,8 @@ abstract final class Pnl {
       gst: Money.sum(list.map((p) => p.gst)),
       netSales: Money.sum(list.map((p) => p.netSales)),
       expenses: Money.sum(list.map((p) => p.expenses)),
+      revenueContributions: list.fold(0, (n, p) => n + p.revenueContributions),
+      expenseContributions: list.fold(0, (n, p) => n + p.expenseContributions),
       revenueByCategory: List.unmodifiable(
         list.expand((p) => p.revenueByCategory),
       ),

@@ -200,13 +200,25 @@ final class RevenueCategoryTotals {
     required this.businessUnitId,
     required this.revenueCategoryId,
     required this.totals,
+    this.treatment,
   });
 
   final String businessUnitId;
   final String revenueCategoryId;
   final RevenueTotals totals;
 
+  /// The treatment every component in this group recorded, or `null` where the group spans
+  /// more than one.
+  ///
+  /// It travels because `none` and a configured `0%` both produce ₹0 of tax and are **not
+  /// the same fact** (D-091, D-122). The headline P&L sums `tax` and does not care; a
+  /// breakdown that dropped this would answer *"why is Banquet's GST nil?"* with the wrong
+  /// reason. Collapsed to `null` rather than to whichever came first, because a group of
+  /// mixed treatments is described by neither of them.
+  final TaxTreatment? treatment;
+
   @override
   String toString() =>
-      'RevenueCategoryTotals($businessUnitId/$revenueCategoryId: $totals)';
+      'RevenueCategoryTotals($businessUnitId/$revenueCategoryId '
+      '${treatment?.name ?? 'mixed'}: $totals)';
 }

@@ -34,10 +34,6 @@ import 'package:krishna_mis/data/remote/reporting_gateway.dart';
 import 'package:krishna_mis/data/reporting/drift_reporting_source.dart'
     show ReportingCoverageOracle;
 import 'package:krishna_mis/data/repositories/reporting_cache.dart';
-import 'package:krishna_mis/domain/expenses/expense_contribution.dart'
-    show ExpenseTotals;
-import 'package:krishna_mis/domain/revenue/revenue_contribution.dart'
-    show RevenueTotals;
 import 'package:krishna_mis/domain/finance/reporting_period.dart';
 import 'package:krishna_mis/domain/finance/reporting_source.dart';
 
@@ -59,24 +55,31 @@ final class MarkerCoverage implements ReportingCoverageOracle {
   ReportingCoverage coverageFor({
     required String businessUnitId,
     required ReportRange range,
+    required ReportingDatasetSide side,
   }) {
+    // One side, and every financial year the range touches. The markers were always
+    // stored per dataset; until D-183 they were read as a conjunction over both, which
+    // turned "revenue has not synchronised" into "neither side is available".
+    final dataset = side == ReportingDatasetSide.revenue
+        ? ReportingDataset.revenue
+        : ReportingDataset.expense;
     for (final year in financialYearsCovering(range)) {
-      for (final dataset in ReportingDataset.values) {
-        final certified = _markers.any(
-          (m) =>
-              m.businessUnitId == businessUnitId &&
-              m.dataset == dataset &&
-              m.financialYear == year.openingYear,
-        );
-        if (!certified) return ReportingCoverage.notDownloaded;
-      }
+      final certified = _markers.any(
+        (m) =>
+            m.businessUnitId == businessUnitId &&
+            m.dataset == dataset &&
+            m.financialYear == year.openingYear,
+      );
+      if (!certified) return ReportingCoverage.notDownloaded;
     }
     return ReportingCoverage.complete;
   }
 }
 
 /// Reads the canonical reporting cache. Performs no business arithmetic (spec §21.2).
-final class CachedReportingSource implements LocalReportingSource {
+final class CachedReportingSource
+    with PerUnitReportingFacts
+    implements ReportingFactsSource {
   const CachedReportingSource({
     required this.cache,
     required this.ownerUserId,
@@ -103,19 +106,23 @@ final class CachedReportingSource implements LocalReportingSource {
     // engine already refuses a scope it was not given; this is the second place, at the
     // read itself, so no caller can widen a report by asking for a unit directly.
     if (!scope.businessUnitIds.contains(businessUnitId)) {
-      return UnitReportingFacts(
+      return UnitReportingFacts.uncovered(
         businessUnitId: businessUnitId,
         coverage: ReportingCoverage.notDownloaded,
-        revenue: RevenueTotals.zero,
-        expenses: ExpenseTotals.zero,
       );
     }
 
     return UnitReportingFacts(
       businessUnitId: businessUnitId,
-      coverage: coverage.coverageFor(
+      revenueCoverage: coverage.coverageFor(
         businessUnitId: businessUnitId,
         range: range,
+        side: ReportingDatasetSide.revenue,
+      ),
+      expenseCoverage: coverage.coverageFor(
+        businessUnitId: businessUnitId,
+        range: range,
+        side: ReportingDatasetSide.expenses,
       ),
       revenue: await cache.revenueTotals(
         ownerUserId: ownerUserId,

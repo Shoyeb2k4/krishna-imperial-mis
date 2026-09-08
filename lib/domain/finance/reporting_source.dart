@@ -1,44 +1,85 @@
 /// What a reporting engine needs from wherever the canonical facts live.
 ///
-/// Phase 5 Slice 3. This is a **port**: pure domain, no Drift, no network. The local
-/// adapter reads this device's projections; the remote adapter will read the server's.
-/// Both hand the same three things to the same calculator, which is what makes the parity
-/// suite §21.3 requires possible at all.
+/// Phase 5 Slice 3, extended in Slice 5. This is a **port**: pure domain, no Drift, no
+/// network. The cached local adapter reads this device's synchronised reporting cache; the
+/// remote adapter reads the authoritative server. Both hand the same three things to the
+/// same calculator, which is what makes the parity suite §21.3 requires possible at all.
 ///
 /// ## Coverage is a first-class answer, not an inference
 ///
 /// The one thing a reporting source must not do is let a caller mistake *"I have no rows"*
-/// for *"there was no trade"*. Today a device holds only the transactions it recorded
-/// itself — there is no reporting pull on either engine (D-173) — so an empty result is
-/// almost always the first thing and almost never the second.
+/// for *"there was no trade"*. A device holds only what has been synchronised to it, so an
+/// empty result is very often the first thing and very rarely the second.
 ///
 /// So a source states its coverage separately from its figures, and the engine refuses
 /// rather than reporting a number it cannot stand behind. That is D-163 and D-176 applied
 /// one layer down: **zero is not unavailable**, and the difference has to be carried, not
 /// reconstructed.
+///
+/// ## And it is stated per side (D-183)
+///
+/// Revenue and expense coverage are established independently — different markers locally,
+/// different capabilities remotely — so they are reported independently. Folding them into
+/// one value per property loses exactly the fact a reader needs: *which* half is missing.
 library;
 
 import 'package:krishna_mis/domain/expenses/expense_contribution.dart';
+import 'package:krishna_mis/domain/finance/pnl.dart'
+    show ReportingSideUnavailable;
 import 'package:krishna_mis/domain/finance/reporting_period.dart';
 import 'package:krishna_mis/domain/revenue/revenue_contribution.dart';
 
-/// Whether a source can stand behind a figure for one scope and range.
+/// Whether a source can stand behind a figure for one **dataset**, scope and range.
 ///
-/// **Two values, and deliberately not three.** An earlier draft had `unavailable` beside
-/// `notDownloaded`, and nothing in the system could produce it: every path that fails to
-/// establish coverage today fails for the same reason, which is that nothing has ever
-/// synchronised canonical reporting data to this device. A value no code constructs is the
-/// gap D-108 had to reopen — the distinction lived in the type and never in the behaviour.
+/// ## Why there is a third value now
 ///
-/// Slice 4 adds whatever finer distinctions its markers can actually support, and Slice 6
-/// owns freshness. Neither is guessed at here.
+/// Slice 3 wrote this enum with two values and said so in as many words: an `unavailable`
+/// beside `notDownloaded` had no producer, and a value no code constructs is the gap D-108
+/// had to reopen — a distinction living in the type and never in the behaviour.
+///
+/// Slice 5 gives it one. The remote source reads an authoritative server that always holds
+/// the canonical facts, so it can never answer `notDownloaded`; what it *can* answer is
+/// that this caller holds no authority over a side (D-164's data half). Those are different
+/// facts and they send a reader to different places — one to a synchronisation, the other
+/// to whoever grants capabilities — so they are kept apart rather than collapsed.
 enum ReportingCoverage {
-  /// A proven complete canonical dataset for this scope and range.
+  /// A proven complete canonical dataset for this scope, range and side.
   complete,
 
   /// Not proven. The range may be partly present, wholly present or absent — the point is
   /// that nothing has established which, so no figure derived from it is reportable.
   notDownloaded,
+
+  /// The caller holds no authority to read this side for this property. Not merely absent
+  /// from this device: not theirs to see.
+  notAuthorised;
+
+  /// How this coverage travels into the calculator's own vocabulary.
+  ///
+  /// `null` for [complete], because a covered side is not unavailable at all.
+  ReportingSideUnavailable? get sideReason => switch (this) {
+    complete => null,
+    notDownloaded => ReportingSideUnavailable.notDownloaded,
+    notAuthorised => ReportingSideUnavailable.notAuthorised,
+  };
+}
+
+/// Which side of the P&L a coverage question is about.
+///
+/// Coverage is **per dataset**, and that is the whole of the Slice 5 correction. Slice 4
+/// stored revenue and expense markers independently and then collapsed them into one value
+/// per property — so a scope whose revenue had never synchronised and whose expenses were
+/// complete refused as `bothSidesUnavailable`, naming neither the side that was missing nor
+/// the one that was fine (D-183).
+enum ReportingDatasetSide {
+  revenue,
+  expenses;
+
+  /// The dataset's stored vocabulary, shared with the coverage markers.
+  String get wireName => switch (this) {
+    revenue => 'revenue',
+    expenses => 'expense',
+  };
 }
 
 /// The business units a report covers.
@@ -62,6 +103,9 @@ final class ReportingScope {
   /// True when the report covers more than one property and is therefore consolidated.
   bool get isConsolidated => businessUnitIds.length > 1;
 
+  /// Deterministic order, so two identical reports are identical to anybody diffing them.
+  List<String> get ordered => businessUnitIds.toList()..sort();
+
   @override
   String toString() => 'ReportingScope(${businessUnitIds.join(', ')})';
 }
@@ -81,32 +125,71 @@ final class ReportRequest {
 final class UnitReportingFacts {
   const UnitReportingFacts({
     required this.businessUnitId,
-    required this.coverage,
+    required this.revenueCoverage,
+    required this.expenseCoverage,
     required this.revenue,
     required this.expenses,
     this.revenueByCategory = const [],
     this.expensesByCategory = const [],
   });
 
-  final String businessUnitId;
-  final ReportingCoverage coverage;
+  /// Both sides unreadable for the same reason. The ordinary shape of a refusal.
+  const UnitReportingFacts.uncovered({
+    required this.businessUnitId,
+    required ReportingCoverage coverage,
+  }) : revenueCoverage = coverage,
+       expenseCoverage = coverage,
+       revenue = RevenueTotals.zero,
+       expenses = ExpenseTotals.zero,
+       revenueByCategory = const [],
+       expensesByCategory = const [];
 
-  /// Primitive summed paise. Nothing derived: an engine sums, the domain computes.
+  final String businessUnitId;
+
+  /// Established independently, and never folded together here. A caller that needs one
+  /// value has [weakestCoverage] and can see what it gave up.
+  final ReportingCoverage revenueCoverage;
+  final ReportingCoverage expenseCoverage;
+
+  /// Primitive summed paise. Nothing derived: a source sums, the domain computes.
   final RevenueTotals revenue;
   final ExpenseTotals expenses;
 
   /// Cheap groupings the repositories already return. Slice 10 owns real drill-down.
   final List<RevenueCategoryTotals> revenueByCategory;
   final List<ExpenseCategoryTotals> expensesByCategory;
+
+  /// Coverage for one side by name, for a caller iterating the two.
+  ReportingCoverage coverageOf(ReportingDatasetSide side) =>
+      side == ReportingDatasetSide.revenue ? revenueCoverage : expenseCoverage;
+
+  /// The weaker of the two, for an envelope that shows one badge.
+  ///
+  /// **Lossy on purpose, and never used to decide a refusal** — the refusal is decided per
+  /// side, so a missing revenue side is reported as a missing revenue side. This is
+  /// presentation shorthand and Slice 6 owns what is done with it.
+  ReportingCoverage get weakestCoverage =>
+      revenueCoverage == ReportingCoverage.complete
+      ? expenseCoverage
+      : revenueCoverage;
+
+  bool get isFullyCovered =>
+      revenueCoverage == ReportingCoverage.complete &&
+      expenseCoverage == ReportingCoverage.complete;
 }
 
 /// Where canonical reporting facts come from.
 ///
+/// **One port, two adapters.** The cached local adapter and the remote adapter implement
+/// exactly this, so `ReportRequest`, `ReportingScope`, `ReportRange` and `PnlResult` are
+/// one contract rather than two DTO families that agree by coincidence (§16). The whole
+/// divergence surface between the two engines is therefore *"did you sum the right rows"*,
+/// which is small enough for the D-020 parity suite to pin down completely.
+///
 /// Implementations perform **no business arithmetic**: they select and sum the right rows
-/// and say whether they can stand behind the answer. Net Sales, Operating Profit and
-/// margin are computed once, in `domain/finance`, from what comes back (spec §21.2,
-/// D-020).
-abstract interface class LocalReportingSource {
+/// and say whether they can stand behind each side. Net Sales, Operating Profit and margin
+/// are computed once, in `domain/finance`, from what comes back (spec §21.2, D-020).
+abstract interface class ReportingFactsSource {
   /// The canonical facts for one property over one range.
   ///
   /// [range] is already normalised, so a source never interprets a week, a month or a
@@ -116,4 +199,33 @@ abstract interface class LocalReportingSource {
     required ReportRange range,
     required ReportingScope scope,
   });
+
+  /// Every property in [scope], in [ReportingScope.ordered] order.
+  ///
+  /// A consolidated report reads its properties through **one** call so a source that can
+  /// answer them together does. That matters for the remote adapter: a consolidated total
+  /// assembled from one request per property would read each at its own snapshot, and a
+  /// correction committing between two of them would produce a consolidated figure that
+  /// never existed. The local adapter reads a single SQLite database and implements this as
+  /// the obvious loop.
+  Future<List<UnitReportingFacts>> factsForScope({
+    required ReportRange range,
+    required ReportingScope scope,
+  });
+}
+
+/// The loop, for a source whose store answers one property as cheaply as several.
+///
+/// Written once so the two local adapters cannot drift, and deliberately not the default on
+/// the interface: a source that *can* read a whole scope at one snapshot should be made to
+/// say so rather than inherit a per-property fallback by silence.
+base mixin PerUnitReportingFacts implements ReportingFactsSource {
+  @override
+  Future<List<UnitReportingFacts>> factsForScope({
+    required ReportRange range,
+    required ReportingScope scope,
+  }) async => [
+    for (final unit in scope.ordered)
+      await factsFor(businessUnitId: unit, range: range, scope: scope),
+  ];
 }
