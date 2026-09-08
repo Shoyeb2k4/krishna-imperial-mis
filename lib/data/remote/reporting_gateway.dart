@@ -87,6 +87,33 @@ class ReportingGateway extends SupabaseGateway {
     return all;
   });
 
+  /// The authoritative primitive sums for a scope and an inclusive P&L-date range.
+  ///
+  /// One call, one statement, one snapshot on the server (D-184). Both sides of the P&L
+  /// and every requested property come back together, because a consolidated figure
+  /// assembled from several requests would be several moments' worth of the hotel.
+  ///
+  /// [businessUnitIds] is explicit and is never omitted to mean "everything": the function
+  /// coalesces a null array to empty and returns no units, so an accidental whole-org
+  /// report is unavailable rather than guarded against.
+  Future<RemoteOutcome<Map<String, dynamic>>> primitives({
+    required List<String> businessUnitIds,
+    required String fromIsoDate,
+    required String toIsoDate,
+    bool breakdown = false,
+  }) => guard(() async {
+    final answer = await client.rpc<dynamic>(
+      'reporting_primitives',
+      params: {
+        'p_business_unit_ids': businessUnitIds,
+        'p_from': fromIsoDate,
+        'p_to': toIsoDate,
+        'p_breakdown': breakdown,
+      },
+    );
+    return Map<String, dynamic>.from(answer as Map);
+  });
+
   /// The complete current contribution set for named documents.
   ///
   /// Used where a delta has established *that* a document changed and the client needs
