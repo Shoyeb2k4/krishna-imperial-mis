@@ -199,6 +199,40 @@ rather than over a list (D-162).
 
 Verified byte-for-byte against `supabase_migrations.schema_migrations.statements` (D-056).
 
+## Phase 5 Slice 5 - the server reporting boundary
+
+| Ledger version | Ledger name | Committed file |
+|---|---|---|
+| 20260907201332 | `reporting_primitives_boundary` | `20260907201332_reporting_primitives_boundary.sql` |
+| 20260907201539 | `api_surface_invariant_reporting_primitives` | `20260907201539_api_surface_invariant_reporting_primitives.sql` |
+| 20260907204444 | `reporting_primitives_reads_each_side_once` | `20260907204444_reporting_primitives_reads_each_side_once.sql` |
+
+`public.reporting_primitives` is the authoritative comparison point the D-020 parity suite
+measures the offline cache against. It is **`security invoker`**, which is the whole of its
+safety: it reads the two `security_barrier` projections with the caller's own privileges, so
+it can return nothing the caller could not already have selected row by row and added up
+(D-184). It gates each side of the P&L on D-164's data half - `revenue.view` and
+`expense.view.all`, per property, `expense.view.own` never - and an unauthorised side comes
+back **null rather than zero**. It does not check `reports.view`, which stays Slice 7's.
+
+One SQL statement, so both sides come from one snapshot; the invariant refuses a second
+statement or a `plpgsql` rewrite. It derives nothing, needs no tax configuration to answer a
+historical P&L, casts every sum to `bigint`, and has no branch in which an omitted unit set
+means the whole organisation.
+
+The expense projection is recreated to carry `txn_number`, appended after `change_seq`
+because `create or replace view` may only grow at the end - stating the canonical rule
+D-168 settled on the server in the same words the client uses.
+
+The third migration is a **measured** change, not a tidy-up: the expense projection carries a
+per-row `security definer` predicate (D-169), and the first version scanned it twice whenever
+a breakdown was asked for. Each side is now grouped once and the headline rolls up from those
+subtotals - the same integer, since integer addition is associative. A whole financial year
+went from 774 ms to 399 ms; a month is 39 ms (D-186).
+
+All three verified byte-for-byte against `supabase_migrations.schema_migrations.statements`
+(D-056).
+
 ## The full applied ledger, in order
 
 ```
@@ -279,4 +313,7 @@ Verified byte-for-byte against `supabase_migrations.schema_migrations.statements
 20260907030443 attachment_metadata_policy_restored_and_guarded
 20260907115757 revenue_change_seq_advances_on_update
 20260907121017 reporting_contributions_carry_document_generation
+20260907201332 reporting_primitives_boundary
+20260907201539 api_surface_invariant_reporting_primitives
+20260907204444 reporting_primitives_reads_each_side_once
 ```
