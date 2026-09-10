@@ -290,6 +290,38 @@ abstract final class CacheClassification {
       unitColumn: 'business_unit_id',
     ),
 
+    // ── Owner accounts (Phase 5 OA-1) ────────────────────────────────────────
+    //
+    // The three masters are **organisation-global**, and that is a deliberate reading of
+    // what they are rather than a convenience. An owner is an owner of the business, not
+    // of a property; a family link is a fact about a person; a share is a fact about the
+    // organisation's profit. None of them belongs to one business unit, so losing a
+    // property does not make any of them unreadable — exactly the argument that puts
+    // vendors here (D-049).
+    //
+    // The *authority to read them at all* is a different question, decided by capability
+    // on the server. A user who holds nothing of the Owner domain never receives a row to
+    // cache in the first place, which is where that boundary belongs.
+    CachedTable('owners', CacheOwnership.organizationGlobal),
+    CachedTable('ownership_shares', CacheOwnership.organizationGlobal),
+    CachedTable('owner_family_members', CacheOwnership.organizationGlobal),
+
+    // The ledger is **scoped financial history**, on exactly the terms an expense and a
+    // revenue entry already are: purged for a revoked unit, **except** where a movement
+    // still carries the actor's own queued, failed, rejected or conflicted intent — which
+    // exists nowhere else and is not the server's to hand back (D-070, D-074).
+    //
+    // Its unit column is the *source* property the movement was recorded against (§10).
+    // That is what a revocation can meaningfully act on: losing Hotel Krishna withdraws
+    // the right to see what was drawn from Hotel Krishna. The owner's overall position is
+    // a reporting question and belongs to OA-3's cache, which will be its own purgeable
+    // authority class rather than this one (§33).
+    CachedTable(
+      'owner_ledger_entries',
+      CacheOwnership.scopedFinancialHistory,
+      unitColumn: 'business_unit_id',
+    ),
+
     // ── User-local: never purged for any authority reason ────────────────────
     CachedTable('sync_outbox', CacheOwnership.userLocal),
     CachedTable('app_meta', CacheOwnership.userLocal),

@@ -20734,6 +20734,3497 @@ class ReportingCoverageMarkersCompanion
   }
 }
 
+class $OwnersTable extends Owners with TableInfo<$OwnersTable, OwnerRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $OwnersTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _orgIdMeta = const VerificationMeta('orgId');
+  @override
+  late final GeneratedColumn<String> orgId = GeneratedColumn<String>(
+    'org_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _codeMeta = const VerificationMeta('code');
+  @override
+  late final GeneratedColumn<String> code = GeneratedColumn<String>(
+    'code',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _displayNameMeta = const VerificationMeta(
+    'displayName',
+  );
+  @override
+  late final GeneratedColumn<String> displayName = GeneratedColumn<String>(
+    'display_name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _activeMeta = const VerificationMeta('active');
+  @override
+  late final GeneratedColumn<bool> active = GeneratedColumn<bool>(
+    'active',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("active" IN (0, 1))',
+    ),
+    defaultValue: const Constant(true),
+  );
+  static const VerificationMeta _archivedAtMeta = const VerificationMeta(
+    'archivedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> archivedAt = GeneratedColumn<DateTime>(
+    'archived_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _rowVersionMeta = const VerificationMeta(
+    'rowVersion',
+  );
+  @override
+  late final GeneratedColumn<int> rowVersion = GeneratedColumn<int>(
+    'row_version',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(1),
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    orgId,
+    code,
+    displayName,
+    active,
+    archivedAt,
+    rowVersion,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'owners';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<OwnerRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('org_id')) {
+      context.handle(
+        _orgIdMeta,
+        orgId.isAcceptableOrUnknown(data['org_id']!, _orgIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_orgIdMeta);
+    }
+    if (data.containsKey('code')) {
+      context.handle(
+        _codeMeta,
+        code.isAcceptableOrUnknown(data['code']!, _codeMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_codeMeta);
+    }
+    if (data.containsKey('display_name')) {
+      context.handle(
+        _displayNameMeta,
+        displayName.isAcceptableOrUnknown(
+          data['display_name']!,
+          _displayNameMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_displayNameMeta);
+    }
+    if (data.containsKey('active')) {
+      context.handle(
+        _activeMeta,
+        active.isAcceptableOrUnknown(data['active']!, _activeMeta),
+      );
+    }
+    if (data.containsKey('archived_at')) {
+      context.handle(
+        _archivedAtMeta,
+        archivedAt.isAcceptableOrUnknown(data['archived_at']!, _archivedAtMeta),
+      );
+    }
+    if (data.containsKey('row_version')) {
+      context.handle(
+        _rowVersionMeta,
+        rowVersion.isAcceptableOrUnknown(data['row_version']!, _rowVersionMeta),
+      );
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  List<Set<GeneratedColumn>> get uniqueKeys => [
+    {orgId, code},
+  ];
+  @override
+  OwnerRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return OwnerRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      orgId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}org_id'],
+      )!,
+      code: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}code'],
+      )!,
+      displayName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}display_name'],
+      )!,
+      active: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}active'],
+      )!,
+      archivedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}archived_at'],
+      ),
+      rowVersion: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}row_version'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $OwnersTable createAlias(String alias) {
+    return $OwnersTable(attachedDatabase, alias);
+  }
+}
+
+class OwnerRow extends DataClass implements Insertable<OwnerRow> {
+  /// Client-generated UUID (D-008).
+  final String id;
+  final String orgId;
+
+  /// Immutable once created, like every master's code (D-035).
+  final String code;
+
+  /// Renameable where meaning is preserved (D-038).
+  final String displayName;
+  final bool active;
+  final DateTime? archivedAt;
+  final int rowVersion;
+  final DateTime updatedAt;
+  const OwnerRow({
+    required this.id,
+    required this.orgId,
+    required this.code,
+    required this.displayName,
+    required this.active,
+    this.archivedAt,
+    required this.rowVersion,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['org_id'] = Variable<String>(orgId);
+    map['code'] = Variable<String>(code);
+    map['display_name'] = Variable<String>(displayName);
+    map['active'] = Variable<bool>(active);
+    if (!nullToAbsent || archivedAt != null) {
+      map['archived_at'] = Variable<DateTime>(archivedAt);
+    }
+    map['row_version'] = Variable<int>(rowVersion);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  OwnersCompanion toCompanion(bool nullToAbsent) {
+    return OwnersCompanion(
+      id: Value(id),
+      orgId: Value(orgId),
+      code: Value(code),
+      displayName: Value(displayName),
+      active: Value(active),
+      archivedAt: archivedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(archivedAt),
+      rowVersion: Value(rowVersion),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory OwnerRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return OwnerRow(
+      id: serializer.fromJson<String>(json['id']),
+      orgId: serializer.fromJson<String>(json['orgId']),
+      code: serializer.fromJson<String>(json['code']),
+      displayName: serializer.fromJson<String>(json['displayName']),
+      active: serializer.fromJson<bool>(json['active']),
+      archivedAt: serializer.fromJson<DateTime?>(json['archivedAt']),
+      rowVersion: serializer.fromJson<int>(json['rowVersion']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'orgId': serializer.toJson<String>(orgId),
+      'code': serializer.toJson<String>(code),
+      'displayName': serializer.toJson<String>(displayName),
+      'active': serializer.toJson<bool>(active),
+      'archivedAt': serializer.toJson<DateTime?>(archivedAt),
+      'rowVersion': serializer.toJson<int>(rowVersion),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  OwnerRow copyWith({
+    String? id,
+    String? orgId,
+    String? code,
+    String? displayName,
+    bool? active,
+    Value<DateTime?> archivedAt = const Value.absent(),
+    int? rowVersion,
+    DateTime? updatedAt,
+  }) => OwnerRow(
+    id: id ?? this.id,
+    orgId: orgId ?? this.orgId,
+    code: code ?? this.code,
+    displayName: displayName ?? this.displayName,
+    active: active ?? this.active,
+    archivedAt: archivedAt.present ? archivedAt.value : this.archivedAt,
+    rowVersion: rowVersion ?? this.rowVersion,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  OwnerRow copyWithCompanion(OwnersCompanion data) {
+    return OwnerRow(
+      id: data.id.present ? data.id.value : this.id,
+      orgId: data.orgId.present ? data.orgId.value : this.orgId,
+      code: data.code.present ? data.code.value : this.code,
+      displayName: data.displayName.present
+          ? data.displayName.value
+          : this.displayName,
+      active: data.active.present ? data.active.value : this.active,
+      archivedAt: data.archivedAt.present
+          ? data.archivedAt.value
+          : this.archivedAt,
+      rowVersion: data.rowVersion.present
+          ? data.rowVersion.value
+          : this.rowVersion,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('OwnerRow(')
+          ..write('id: $id, ')
+          ..write('orgId: $orgId, ')
+          ..write('code: $code, ')
+          ..write('displayName: $displayName, ')
+          ..write('active: $active, ')
+          ..write('archivedAt: $archivedAt, ')
+          ..write('rowVersion: $rowVersion, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    orgId,
+    code,
+    displayName,
+    active,
+    archivedAt,
+    rowVersion,
+    updatedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is OwnerRow &&
+          other.id == this.id &&
+          other.orgId == this.orgId &&
+          other.code == this.code &&
+          other.displayName == this.displayName &&
+          other.active == this.active &&
+          other.archivedAt == this.archivedAt &&
+          other.rowVersion == this.rowVersion &&
+          other.updatedAt == this.updatedAt);
+}
+
+class OwnersCompanion extends UpdateCompanion<OwnerRow> {
+  final Value<String> id;
+  final Value<String> orgId;
+  final Value<String> code;
+  final Value<String> displayName;
+  final Value<bool> active;
+  final Value<DateTime?> archivedAt;
+  final Value<int> rowVersion;
+  final Value<DateTime> updatedAt;
+  final Value<int> rowid;
+  const OwnersCompanion({
+    this.id = const Value.absent(),
+    this.orgId = const Value.absent(),
+    this.code = const Value.absent(),
+    this.displayName = const Value.absent(),
+    this.active = const Value.absent(),
+    this.archivedAt = const Value.absent(),
+    this.rowVersion = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  OwnersCompanion.insert({
+    required String id,
+    required String orgId,
+    required String code,
+    required String displayName,
+    this.active = const Value.absent(),
+    this.archivedAt = const Value.absent(),
+    this.rowVersion = const Value.absent(),
+    required DateTime updatedAt,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       orgId = Value(orgId),
+       code = Value(code),
+       displayName = Value(displayName),
+       updatedAt = Value(updatedAt);
+  static Insertable<OwnerRow> custom({
+    Expression<String>? id,
+    Expression<String>? orgId,
+    Expression<String>? code,
+    Expression<String>? displayName,
+    Expression<bool>? active,
+    Expression<DateTime>? archivedAt,
+    Expression<int>? rowVersion,
+    Expression<DateTime>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (orgId != null) 'org_id': orgId,
+      if (code != null) 'code': code,
+      if (displayName != null) 'display_name': displayName,
+      if (active != null) 'active': active,
+      if (archivedAt != null) 'archived_at': archivedAt,
+      if (rowVersion != null) 'row_version': rowVersion,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  OwnersCompanion copyWith({
+    Value<String>? id,
+    Value<String>? orgId,
+    Value<String>? code,
+    Value<String>? displayName,
+    Value<bool>? active,
+    Value<DateTime?>? archivedAt,
+    Value<int>? rowVersion,
+    Value<DateTime>? updatedAt,
+    Value<int>? rowid,
+  }) {
+    return OwnersCompanion(
+      id: id ?? this.id,
+      orgId: orgId ?? this.orgId,
+      code: code ?? this.code,
+      displayName: displayName ?? this.displayName,
+      active: active ?? this.active,
+      archivedAt: archivedAt ?? this.archivedAt,
+      rowVersion: rowVersion ?? this.rowVersion,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (orgId.present) {
+      map['org_id'] = Variable<String>(orgId.value);
+    }
+    if (code.present) {
+      map['code'] = Variable<String>(code.value);
+    }
+    if (displayName.present) {
+      map['display_name'] = Variable<String>(displayName.value);
+    }
+    if (active.present) {
+      map['active'] = Variable<bool>(active.value);
+    }
+    if (archivedAt.present) {
+      map['archived_at'] = Variable<DateTime>(archivedAt.value);
+    }
+    if (rowVersion.present) {
+      map['row_version'] = Variable<int>(rowVersion.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('OwnersCompanion(')
+          ..write('id: $id, ')
+          ..write('orgId: $orgId, ')
+          ..write('code: $code, ')
+          ..write('displayName: $displayName, ')
+          ..write('active: $active, ')
+          ..write('archivedAt: $archivedAt, ')
+          ..write('rowVersion: $rowVersion, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $OwnershipSharesTable extends OwnershipShares
+    with TableInfo<$OwnershipSharesTable, OwnershipShareRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $OwnershipSharesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _orgIdMeta = const VerificationMeta('orgId');
+  @override
+  late final GeneratedColumn<String> orgId = GeneratedColumn<String>(
+    'org_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _ownerIdMeta = const VerificationMeta(
+    'ownerId',
+  );
+  @override
+  late final GeneratedColumn<String> ownerId = GeneratedColumn<String>(
+    'owner_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _shareBasisPointsMeta = const VerificationMeta(
+    'shareBasisPoints',
+  );
+  @override
+  late final GeneratedColumn<int> shareBasisPoints = GeneratedColumn<int>(
+    'share_basis_points',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _effectiveFromMeta = const VerificationMeta(
+    'effectiveFrom',
+  );
+  @override
+  late final GeneratedColumn<String> effectiveFrom = GeneratedColumn<String>(
+    'effective_from',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _effectiveToMeta = const VerificationMeta(
+    'effectiveTo',
+  );
+  @override
+  late final GeneratedColumn<String> effectiveTo = GeneratedColumn<String>(
+    'effective_to',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _rowVersionMeta = const VerificationMeta(
+    'rowVersion',
+  );
+  @override
+  late final GeneratedColumn<int> rowVersion = GeneratedColumn<int>(
+    'row_version',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(1),
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    orgId,
+    ownerId,
+    shareBasisPoints,
+    effectiveFrom,
+    effectiveTo,
+    rowVersion,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'ownership_shares';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<OwnershipShareRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('org_id')) {
+      context.handle(
+        _orgIdMeta,
+        orgId.isAcceptableOrUnknown(data['org_id']!, _orgIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_orgIdMeta);
+    }
+    if (data.containsKey('owner_id')) {
+      context.handle(
+        _ownerIdMeta,
+        ownerId.isAcceptableOrUnknown(data['owner_id']!, _ownerIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_ownerIdMeta);
+    }
+    if (data.containsKey('share_basis_points')) {
+      context.handle(
+        _shareBasisPointsMeta,
+        shareBasisPoints.isAcceptableOrUnknown(
+          data['share_basis_points']!,
+          _shareBasisPointsMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_shareBasisPointsMeta);
+    }
+    if (data.containsKey('effective_from')) {
+      context.handle(
+        _effectiveFromMeta,
+        effectiveFrom.isAcceptableOrUnknown(
+          data['effective_from']!,
+          _effectiveFromMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_effectiveFromMeta);
+    }
+    if (data.containsKey('effective_to')) {
+      context.handle(
+        _effectiveToMeta,
+        effectiveTo.isAcceptableOrUnknown(
+          data['effective_to']!,
+          _effectiveToMeta,
+        ),
+      );
+    }
+    if (data.containsKey('row_version')) {
+      context.handle(
+        _rowVersionMeta,
+        rowVersion.isAcceptableOrUnknown(data['row_version']!, _rowVersionMeta),
+      );
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  OwnershipShareRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return OwnershipShareRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      orgId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}org_id'],
+      )!,
+      ownerId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}owner_id'],
+      )!,
+      shareBasisPoints: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}share_basis_points'],
+      )!,
+      effectiveFrom: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}effective_from'],
+      )!,
+      effectiveTo: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}effective_to'],
+      ),
+      rowVersion: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}row_version'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $OwnershipSharesTable createAlias(String alias) {
+    return $OwnershipSharesTable(attachedDatabase, alias);
+  }
+}
+
+class OwnershipShareRow extends DataClass
+    implements Insertable<OwnershipShareRow> {
+  final String id;
+  final String orgId;
+
+  /// Soft pointer, for the reason every cached financial pointer here is soft: a purge
+  /// legitimately removes a master while rows naming it remain (D-049, D-068).
+  final String ownerId;
+
+  /// 1..10000. A valid applicable set totals exactly 10000 (OA-D1).
+  final int shareBasisPoints;
+
+  /// `YYYY-MM-DD`. Constrained to the first day of a month: an ownership change takes
+  /// effect only at a settlement-period boundary (OA-1 §5).
+  final String effectiveFrom;
+
+  /// Inclusive, and null is open-ended. Constrained to the last day of a month, so one
+  /// share ends the day before the next begins with no gap and no overlap.
+  final String? effectiveTo;
+  final int rowVersion;
+  final DateTime updatedAt;
+  const OwnershipShareRow({
+    required this.id,
+    required this.orgId,
+    required this.ownerId,
+    required this.shareBasisPoints,
+    required this.effectiveFrom,
+    this.effectiveTo,
+    required this.rowVersion,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['org_id'] = Variable<String>(orgId);
+    map['owner_id'] = Variable<String>(ownerId);
+    map['share_basis_points'] = Variable<int>(shareBasisPoints);
+    map['effective_from'] = Variable<String>(effectiveFrom);
+    if (!nullToAbsent || effectiveTo != null) {
+      map['effective_to'] = Variable<String>(effectiveTo);
+    }
+    map['row_version'] = Variable<int>(rowVersion);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  OwnershipSharesCompanion toCompanion(bool nullToAbsent) {
+    return OwnershipSharesCompanion(
+      id: Value(id),
+      orgId: Value(orgId),
+      ownerId: Value(ownerId),
+      shareBasisPoints: Value(shareBasisPoints),
+      effectiveFrom: Value(effectiveFrom),
+      effectiveTo: effectiveTo == null && nullToAbsent
+          ? const Value.absent()
+          : Value(effectiveTo),
+      rowVersion: Value(rowVersion),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory OwnershipShareRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return OwnershipShareRow(
+      id: serializer.fromJson<String>(json['id']),
+      orgId: serializer.fromJson<String>(json['orgId']),
+      ownerId: serializer.fromJson<String>(json['ownerId']),
+      shareBasisPoints: serializer.fromJson<int>(json['shareBasisPoints']),
+      effectiveFrom: serializer.fromJson<String>(json['effectiveFrom']),
+      effectiveTo: serializer.fromJson<String?>(json['effectiveTo']),
+      rowVersion: serializer.fromJson<int>(json['rowVersion']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'orgId': serializer.toJson<String>(orgId),
+      'ownerId': serializer.toJson<String>(ownerId),
+      'shareBasisPoints': serializer.toJson<int>(shareBasisPoints),
+      'effectiveFrom': serializer.toJson<String>(effectiveFrom),
+      'effectiveTo': serializer.toJson<String?>(effectiveTo),
+      'rowVersion': serializer.toJson<int>(rowVersion),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  OwnershipShareRow copyWith({
+    String? id,
+    String? orgId,
+    String? ownerId,
+    int? shareBasisPoints,
+    String? effectiveFrom,
+    Value<String?> effectiveTo = const Value.absent(),
+    int? rowVersion,
+    DateTime? updatedAt,
+  }) => OwnershipShareRow(
+    id: id ?? this.id,
+    orgId: orgId ?? this.orgId,
+    ownerId: ownerId ?? this.ownerId,
+    shareBasisPoints: shareBasisPoints ?? this.shareBasisPoints,
+    effectiveFrom: effectiveFrom ?? this.effectiveFrom,
+    effectiveTo: effectiveTo.present ? effectiveTo.value : this.effectiveTo,
+    rowVersion: rowVersion ?? this.rowVersion,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  OwnershipShareRow copyWithCompanion(OwnershipSharesCompanion data) {
+    return OwnershipShareRow(
+      id: data.id.present ? data.id.value : this.id,
+      orgId: data.orgId.present ? data.orgId.value : this.orgId,
+      ownerId: data.ownerId.present ? data.ownerId.value : this.ownerId,
+      shareBasisPoints: data.shareBasisPoints.present
+          ? data.shareBasisPoints.value
+          : this.shareBasisPoints,
+      effectiveFrom: data.effectiveFrom.present
+          ? data.effectiveFrom.value
+          : this.effectiveFrom,
+      effectiveTo: data.effectiveTo.present
+          ? data.effectiveTo.value
+          : this.effectiveTo,
+      rowVersion: data.rowVersion.present
+          ? data.rowVersion.value
+          : this.rowVersion,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('OwnershipShareRow(')
+          ..write('id: $id, ')
+          ..write('orgId: $orgId, ')
+          ..write('ownerId: $ownerId, ')
+          ..write('shareBasisPoints: $shareBasisPoints, ')
+          ..write('effectiveFrom: $effectiveFrom, ')
+          ..write('effectiveTo: $effectiveTo, ')
+          ..write('rowVersion: $rowVersion, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    orgId,
+    ownerId,
+    shareBasisPoints,
+    effectiveFrom,
+    effectiveTo,
+    rowVersion,
+    updatedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is OwnershipShareRow &&
+          other.id == this.id &&
+          other.orgId == this.orgId &&
+          other.ownerId == this.ownerId &&
+          other.shareBasisPoints == this.shareBasisPoints &&
+          other.effectiveFrom == this.effectiveFrom &&
+          other.effectiveTo == this.effectiveTo &&
+          other.rowVersion == this.rowVersion &&
+          other.updatedAt == this.updatedAt);
+}
+
+class OwnershipSharesCompanion extends UpdateCompanion<OwnershipShareRow> {
+  final Value<String> id;
+  final Value<String> orgId;
+  final Value<String> ownerId;
+  final Value<int> shareBasisPoints;
+  final Value<String> effectiveFrom;
+  final Value<String?> effectiveTo;
+  final Value<int> rowVersion;
+  final Value<DateTime> updatedAt;
+  final Value<int> rowid;
+  const OwnershipSharesCompanion({
+    this.id = const Value.absent(),
+    this.orgId = const Value.absent(),
+    this.ownerId = const Value.absent(),
+    this.shareBasisPoints = const Value.absent(),
+    this.effectiveFrom = const Value.absent(),
+    this.effectiveTo = const Value.absent(),
+    this.rowVersion = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  OwnershipSharesCompanion.insert({
+    required String id,
+    required String orgId,
+    required String ownerId,
+    required int shareBasisPoints,
+    required String effectiveFrom,
+    this.effectiveTo = const Value.absent(),
+    this.rowVersion = const Value.absent(),
+    required DateTime updatedAt,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       orgId = Value(orgId),
+       ownerId = Value(ownerId),
+       shareBasisPoints = Value(shareBasisPoints),
+       effectiveFrom = Value(effectiveFrom),
+       updatedAt = Value(updatedAt);
+  static Insertable<OwnershipShareRow> custom({
+    Expression<String>? id,
+    Expression<String>? orgId,
+    Expression<String>? ownerId,
+    Expression<int>? shareBasisPoints,
+    Expression<String>? effectiveFrom,
+    Expression<String>? effectiveTo,
+    Expression<int>? rowVersion,
+    Expression<DateTime>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (orgId != null) 'org_id': orgId,
+      if (ownerId != null) 'owner_id': ownerId,
+      if (shareBasisPoints != null) 'share_basis_points': shareBasisPoints,
+      if (effectiveFrom != null) 'effective_from': effectiveFrom,
+      if (effectiveTo != null) 'effective_to': effectiveTo,
+      if (rowVersion != null) 'row_version': rowVersion,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  OwnershipSharesCompanion copyWith({
+    Value<String>? id,
+    Value<String>? orgId,
+    Value<String>? ownerId,
+    Value<int>? shareBasisPoints,
+    Value<String>? effectiveFrom,
+    Value<String?>? effectiveTo,
+    Value<int>? rowVersion,
+    Value<DateTime>? updatedAt,
+    Value<int>? rowid,
+  }) {
+    return OwnershipSharesCompanion(
+      id: id ?? this.id,
+      orgId: orgId ?? this.orgId,
+      ownerId: ownerId ?? this.ownerId,
+      shareBasisPoints: shareBasisPoints ?? this.shareBasisPoints,
+      effectiveFrom: effectiveFrom ?? this.effectiveFrom,
+      effectiveTo: effectiveTo ?? this.effectiveTo,
+      rowVersion: rowVersion ?? this.rowVersion,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (orgId.present) {
+      map['org_id'] = Variable<String>(orgId.value);
+    }
+    if (ownerId.present) {
+      map['owner_id'] = Variable<String>(ownerId.value);
+    }
+    if (shareBasisPoints.present) {
+      map['share_basis_points'] = Variable<int>(shareBasisPoints.value);
+    }
+    if (effectiveFrom.present) {
+      map['effective_from'] = Variable<String>(effectiveFrom.value);
+    }
+    if (effectiveTo.present) {
+      map['effective_to'] = Variable<String>(effectiveTo.value);
+    }
+    if (rowVersion.present) {
+      map['row_version'] = Variable<int>(rowVersion.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('OwnershipSharesCompanion(')
+          ..write('id: $id, ')
+          ..write('orgId: $orgId, ')
+          ..write('ownerId: $ownerId, ')
+          ..write('shareBasisPoints: $shareBasisPoints, ')
+          ..write('effectiveFrom: $effectiveFrom, ')
+          ..write('effectiveTo: $effectiveTo, ')
+          ..write('rowVersion: $rowVersion, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $OwnerFamilyMembersTable extends OwnerFamilyMembers
+    with TableInfo<$OwnerFamilyMembersTable, OwnerFamilyMemberRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $OwnerFamilyMembersTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _orgIdMeta = const VerificationMeta('orgId');
+  @override
+  late final GeneratedColumn<String> orgId = GeneratedColumn<String>(
+    'org_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _ownerIdMeta = const VerificationMeta(
+    'ownerId',
+  );
+  @override
+  late final GeneratedColumn<String> ownerId = GeneratedColumn<String>(
+    'owner_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _displayNameMeta = const VerificationMeta(
+    'displayName',
+  );
+  @override
+  late final GeneratedColumn<String> displayName = GeneratedColumn<String>(
+    'display_name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _relationshipLabelMeta = const VerificationMeta(
+    'relationshipLabel',
+  );
+  @override
+  late final GeneratedColumn<String> relationshipLabel =
+      GeneratedColumn<String>(
+        'relationship_label',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _isSelfMeta = const VerificationMeta('isSelf');
+  @override
+  late final GeneratedColumn<bool> isSelf = GeneratedColumn<bool>(
+    'is_self',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_self" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _mayUseNcMeta = const VerificationMeta(
+    'mayUseNc',
+  );
+  @override
+  late final GeneratedColumn<bool> mayUseNc = GeneratedColumn<bool>(
+    'may_use_nc',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("may_use_nc" IN (0, 1))',
+    ),
+    defaultValue: const Constant(true),
+  );
+  static const VerificationMeta _effectiveFromMeta = const VerificationMeta(
+    'effectiveFrom',
+  );
+  @override
+  late final GeneratedColumn<String> effectiveFrom = GeneratedColumn<String>(
+    'effective_from',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _effectiveToMeta = const VerificationMeta(
+    'effectiveTo',
+  );
+  @override
+  late final GeneratedColumn<String> effectiveTo = GeneratedColumn<String>(
+    'effective_to',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _activeMeta = const VerificationMeta('active');
+  @override
+  late final GeneratedColumn<bool> active = GeneratedColumn<bool>(
+    'active',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("active" IN (0, 1))',
+    ),
+    defaultValue: const Constant(true),
+  );
+  static const VerificationMeta _rowVersionMeta = const VerificationMeta(
+    'rowVersion',
+  );
+  @override
+  late final GeneratedColumn<int> rowVersion = GeneratedColumn<int>(
+    'row_version',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(1),
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    orgId,
+    ownerId,
+    displayName,
+    relationshipLabel,
+    isSelf,
+    mayUseNc,
+    effectiveFrom,
+    effectiveTo,
+    active,
+    rowVersion,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'owner_family_members';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<OwnerFamilyMemberRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('org_id')) {
+      context.handle(
+        _orgIdMeta,
+        orgId.isAcceptableOrUnknown(data['org_id']!, _orgIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_orgIdMeta);
+    }
+    if (data.containsKey('owner_id')) {
+      context.handle(
+        _ownerIdMeta,
+        ownerId.isAcceptableOrUnknown(data['owner_id']!, _ownerIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_ownerIdMeta);
+    }
+    if (data.containsKey('display_name')) {
+      context.handle(
+        _displayNameMeta,
+        displayName.isAcceptableOrUnknown(
+          data['display_name']!,
+          _displayNameMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_displayNameMeta);
+    }
+    if (data.containsKey('relationship_label')) {
+      context.handle(
+        _relationshipLabelMeta,
+        relationshipLabel.isAcceptableOrUnknown(
+          data['relationship_label']!,
+          _relationshipLabelMeta,
+        ),
+      );
+    }
+    if (data.containsKey('is_self')) {
+      context.handle(
+        _isSelfMeta,
+        isSelf.isAcceptableOrUnknown(data['is_self']!, _isSelfMeta),
+      );
+    }
+    if (data.containsKey('may_use_nc')) {
+      context.handle(
+        _mayUseNcMeta,
+        mayUseNc.isAcceptableOrUnknown(data['may_use_nc']!, _mayUseNcMeta),
+      );
+    }
+    if (data.containsKey('effective_from')) {
+      context.handle(
+        _effectiveFromMeta,
+        effectiveFrom.isAcceptableOrUnknown(
+          data['effective_from']!,
+          _effectiveFromMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_effectiveFromMeta);
+    }
+    if (data.containsKey('effective_to')) {
+      context.handle(
+        _effectiveToMeta,
+        effectiveTo.isAcceptableOrUnknown(
+          data['effective_to']!,
+          _effectiveToMeta,
+        ),
+      );
+    }
+    if (data.containsKey('active')) {
+      context.handle(
+        _activeMeta,
+        active.isAcceptableOrUnknown(data['active']!, _activeMeta),
+      );
+    }
+    if (data.containsKey('row_version')) {
+      context.handle(
+        _rowVersionMeta,
+        rowVersion.isAcceptableOrUnknown(data['row_version']!, _rowVersionMeta),
+      );
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  OwnerFamilyMemberRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return OwnerFamilyMemberRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      orgId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}org_id'],
+      )!,
+      ownerId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}owner_id'],
+      )!,
+      displayName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}display_name'],
+      )!,
+      relationshipLabel: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}relationship_label'],
+      ),
+      isSelf: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_self'],
+      )!,
+      mayUseNc: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}may_use_nc'],
+      )!,
+      effectiveFrom: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}effective_from'],
+      )!,
+      effectiveTo: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}effective_to'],
+      ),
+      active: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}active'],
+      )!,
+      rowVersion: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}row_version'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $OwnerFamilyMembersTable createAlias(String alias) {
+    return $OwnerFamilyMembersTable(attachedDatabase, alias);
+  }
+}
+
+class OwnerFamilyMemberRow extends DataClass
+    implements Insertable<OwnerFamilyMemberRow> {
+  final String id;
+  final String orgId;
+
+  /// The owner this person's consumption is attributed to **for this interval**. Soft
+  /// pointer.
+  final String ownerId;
+  final String displayName;
+
+  /// A label. Nothing branches on it, and a guard asserts as much — a relationship that
+  /// decided an amount would be business logic nobody configured.
+  final String? relationshipLabel;
+  final bool isSelf;
+  final bool mayUseNc;
+  final String effectiveFrom;
+  final String? effectiveTo;
+  final bool active;
+  final int rowVersion;
+  final DateTime updatedAt;
+  const OwnerFamilyMemberRow({
+    required this.id,
+    required this.orgId,
+    required this.ownerId,
+    required this.displayName,
+    this.relationshipLabel,
+    required this.isSelf,
+    required this.mayUseNc,
+    required this.effectiveFrom,
+    this.effectiveTo,
+    required this.active,
+    required this.rowVersion,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['org_id'] = Variable<String>(orgId);
+    map['owner_id'] = Variable<String>(ownerId);
+    map['display_name'] = Variable<String>(displayName);
+    if (!nullToAbsent || relationshipLabel != null) {
+      map['relationship_label'] = Variable<String>(relationshipLabel);
+    }
+    map['is_self'] = Variable<bool>(isSelf);
+    map['may_use_nc'] = Variable<bool>(mayUseNc);
+    map['effective_from'] = Variable<String>(effectiveFrom);
+    if (!nullToAbsent || effectiveTo != null) {
+      map['effective_to'] = Variable<String>(effectiveTo);
+    }
+    map['active'] = Variable<bool>(active);
+    map['row_version'] = Variable<int>(rowVersion);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  OwnerFamilyMembersCompanion toCompanion(bool nullToAbsent) {
+    return OwnerFamilyMembersCompanion(
+      id: Value(id),
+      orgId: Value(orgId),
+      ownerId: Value(ownerId),
+      displayName: Value(displayName),
+      relationshipLabel: relationshipLabel == null && nullToAbsent
+          ? const Value.absent()
+          : Value(relationshipLabel),
+      isSelf: Value(isSelf),
+      mayUseNc: Value(mayUseNc),
+      effectiveFrom: Value(effectiveFrom),
+      effectiveTo: effectiveTo == null && nullToAbsent
+          ? const Value.absent()
+          : Value(effectiveTo),
+      active: Value(active),
+      rowVersion: Value(rowVersion),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory OwnerFamilyMemberRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return OwnerFamilyMemberRow(
+      id: serializer.fromJson<String>(json['id']),
+      orgId: serializer.fromJson<String>(json['orgId']),
+      ownerId: serializer.fromJson<String>(json['ownerId']),
+      displayName: serializer.fromJson<String>(json['displayName']),
+      relationshipLabel: serializer.fromJson<String?>(
+        json['relationshipLabel'],
+      ),
+      isSelf: serializer.fromJson<bool>(json['isSelf']),
+      mayUseNc: serializer.fromJson<bool>(json['mayUseNc']),
+      effectiveFrom: serializer.fromJson<String>(json['effectiveFrom']),
+      effectiveTo: serializer.fromJson<String?>(json['effectiveTo']),
+      active: serializer.fromJson<bool>(json['active']),
+      rowVersion: serializer.fromJson<int>(json['rowVersion']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'orgId': serializer.toJson<String>(orgId),
+      'ownerId': serializer.toJson<String>(ownerId),
+      'displayName': serializer.toJson<String>(displayName),
+      'relationshipLabel': serializer.toJson<String?>(relationshipLabel),
+      'isSelf': serializer.toJson<bool>(isSelf),
+      'mayUseNc': serializer.toJson<bool>(mayUseNc),
+      'effectiveFrom': serializer.toJson<String>(effectiveFrom),
+      'effectiveTo': serializer.toJson<String?>(effectiveTo),
+      'active': serializer.toJson<bool>(active),
+      'rowVersion': serializer.toJson<int>(rowVersion),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  OwnerFamilyMemberRow copyWith({
+    String? id,
+    String? orgId,
+    String? ownerId,
+    String? displayName,
+    Value<String?> relationshipLabel = const Value.absent(),
+    bool? isSelf,
+    bool? mayUseNc,
+    String? effectiveFrom,
+    Value<String?> effectiveTo = const Value.absent(),
+    bool? active,
+    int? rowVersion,
+    DateTime? updatedAt,
+  }) => OwnerFamilyMemberRow(
+    id: id ?? this.id,
+    orgId: orgId ?? this.orgId,
+    ownerId: ownerId ?? this.ownerId,
+    displayName: displayName ?? this.displayName,
+    relationshipLabel: relationshipLabel.present
+        ? relationshipLabel.value
+        : this.relationshipLabel,
+    isSelf: isSelf ?? this.isSelf,
+    mayUseNc: mayUseNc ?? this.mayUseNc,
+    effectiveFrom: effectiveFrom ?? this.effectiveFrom,
+    effectiveTo: effectiveTo.present ? effectiveTo.value : this.effectiveTo,
+    active: active ?? this.active,
+    rowVersion: rowVersion ?? this.rowVersion,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  OwnerFamilyMemberRow copyWithCompanion(OwnerFamilyMembersCompanion data) {
+    return OwnerFamilyMemberRow(
+      id: data.id.present ? data.id.value : this.id,
+      orgId: data.orgId.present ? data.orgId.value : this.orgId,
+      ownerId: data.ownerId.present ? data.ownerId.value : this.ownerId,
+      displayName: data.displayName.present
+          ? data.displayName.value
+          : this.displayName,
+      relationshipLabel: data.relationshipLabel.present
+          ? data.relationshipLabel.value
+          : this.relationshipLabel,
+      isSelf: data.isSelf.present ? data.isSelf.value : this.isSelf,
+      mayUseNc: data.mayUseNc.present ? data.mayUseNc.value : this.mayUseNc,
+      effectiveFrom: data.effectiveFrom.present
+          ? data.effectiveFrom.value
+          : this.effectiveFrom,
+      effectiveTo: data.effectiveTo.present
+          ? data.effectiveTo.value
+          : this.effectiveTo,
+      active: data.active.present ? data.active.value : this.active,
+      rowVersion: data.rowVersion.present
+          ? data.rowVersion.value
+          : this.rowVersion,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('OwnerFamilyMemberRow(')
+          ..write('id: $id, ')
+          ..write('orgId: $orgId, ')
+          ..write('ownerId: $ownerId, ')
+          ..write('displayName: $displayName, ')
+          ..write('relationshipLabel: $relationshipLabel, ')
+          ..write('isSelf: $isSelf, ')
+          ..write('mayUseNc: $mayUseNc, ')
+          ..write('effectiveFrom: $effectiveFrom, ')
+          ..write('effectiveTo: $effectiveTo, ')
+          ..write('active: $active, ')
+          ..write('rowVersion: $rowVersion, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    orgId,
+    ownerId,
+    displayName,
+    relationshipLabel,
+    isSelf,
+    mayUseNc,
+    effectiveFrom,
+    effectiveTo,
+    active,
+    rowVersion,
+    updatedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is OwnerFamilyMemberRow &&
+          other.id == this.id &&
+          other.orgId == this.orgId &&
+          other.ownerId == this.ownerId &&
+          other.displayName == this.displayName &&
+          other.relationshipLabel == this.relationshipLabel &&
+          other.isSelf == this.isSelf &&
+          other.mayUseNc == this.mayUseNc &&
+          other.effectiveFrom == this.effectiveFrom &&
+          other.effectiveTo == this.effectiveTo &&
+          other.active == this.active &&
+          other.rowVersion == this.rowVersion &&
+          other.updatedAt == this.updatedAt);
+}
+
+class OwnerFamilyMembersCompanion
+    extends UpdateCompanion<OwnerFamilyMemberRow> {
+  final Value<String> id;
+  final Value<String> orgId;
+  final Value<String> ownerId;
+  final Value<String> displayName;
+  final Value<String?> relationshipLabel;
+  final Value<bool> isSelf;
+  final Value<bool> mayUseNc;
+  final Value<String> effectiveFrom;
+  final Value<String?> effectiveTo;
+  final Value<bool> active;
+  final Value<int> rowVersion;
+  final Value<DateTime> updatedAt;
+  final Value<int> rowid;
+  const OwnerFamilyMembersCompanion({
+    this.id = const Value.absent(),
+    this.orgId = const Value.absent(),
+    this.ownerId = const Value.absent(),
+    this.displayName = const Value.absent(),
+    this.relationshipLabel = const Value.absent(),
+    this.isSelf = const Value.absent(),
+    this.mayUseNc = const Value.absent(),
+    this.effectiveFrom = const Value.absent(),
+    this.effectiveTo = const Value.absent(),
+    this.active = const Value.absent(),
+    this.rowVersion = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  OwnerFamilyMembersCompanion.insert({
+    required String id,
+    required String orgId,
+    required String ownerId,
+    required String displayName,
+    this.relationshipLabel = const Value.absent(),
+    this.isSelf = const Value.absent(),
+    this.mayUseNc = const Value.absent(),
+    required String effectiveFrom,
+    this.effectiveTo = const Value.absent(),
+    this.active = const Value.absent(),
+    this.rowVersion = const Value.absent(),
+    required DateTime updatedAt,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       orgId = Value(orgId),
+       ownerId = Value(ownerId),
+       displayName = Value(displayName),
+       effectiveFrom = Value(effectiveFrom),
+       updatedAt = Value(updatedAt);
+  static Insertable<OwnerFamilyMemberRow> custom({
+    Expression<String>? id,
+    Expression<String>? orgId,
+    Expression<String>? ownerId,
+    Expression<String>? displayName,
+    Expression<String>? relationshipLabel,
+    Expression<bool>? isSelf,
+    Expression<bool>? mayUseNc,
+    Expression<String>? effectiveFrom,
+    Expression<String>? effectiveTo,
+    Expression<bool>? active,
+    Expression<int>? rowVersion,
+    Expression<DateTime>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (orgId != null) 'org_id': orgId,
+      if (ownerId != null) 'owner_id': ownerId,
+      if (displayName != null) 'display_name': displayName,
+      if (relationshipLabel != null) 'relationship_label': relationshipLabel,
+      if (isSelf != null) 'is_self': isSelf,
+      if (mayUseNc != null) 'may_use_nc': mayUseNc,
+      if (effectiveFrom != null) 'effective_from': effectiveFrom,
+      if (effectiveTo != null) 'effective_to': effectiveTo,
+      if (active != null) 'active': active,
+      if (rowVersion != null) 'row_version': rowVersion,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  OwnerFamilyMembersCompanion copyWith({
+    Value<String>? id,
+    Value<String>? orgId,
+    Value<String>? ownerId,
+    Value<String>? displayName,
+    Value<String?>? relationshipLabel,
+    Value<bool>? isSelf,
+    Value<bool>? mayUseNc,
+    Value<String>? effectiveFrom,
+    Value<String?>? effectiveTo,
+    Value<bool>? active,
+    Value<int>? rowVersion,
+    Value<DateTime>? updatedAt,
+    Value<int>? rowid,
+  }) {
+    return OwnerFamilyMembersCompanion(
+      id: id ?? this.id,
+      orgId: orgId ?? this.orgId,
+      ownerId: ownerId ?? this.ownerId,
+      displayName: displayName ?? this.displayName,
+      relationshipLabel: relationshipLabel ?? this.relationshipLabel,
+      isSelf: isSelf ?? this.isSelf,
+      mayUseNc: mayUseNc ?? this.mayUseNc,
+      effectiveFrom: effectiveFrom ?? this.effectiveFrom,
+      effectiveTo: effectiveTo ?? this.effectiveTo,
+      active: active ?? this.active,
+      rowVersion: rowVersion ?? this.rowVersion,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (orgId.present) {
+      map['org_id'] = Variable<String>(orgId.value);
+    }
+    if (ownerId.present) {
+      map['owner_id'] = Variable<String>(ownerId.value);
+    }
+    if (displayName.present) {
+      map['display_name'] = Variable<String>(displayName.value);
+    }
+    if (relationshipLabel.present) {
+      map['relationship_label'] = Variable<String>(relationshipLabel.value);
+    }
+    if (isSelf.present) {
+      map['is_self'] = Variable<bool>(isSelf.value);
+    }
+    if (mayUseNc.present) {
+      map['may_use_nc'] = Variable<bool>(mayUseNc.value);
+    }
+    if (effectiveFrom.present) {
+      map['effective_from'] = Variable<String>(effectiveFrom.value);
+    }
+    if (effectiveTo.present) {
+      map['effective_to'] = Variable<String>(effectiveTo.value);
+    }
+    if (active.present) {
+      map['active'] = Variable<bool>(active.value);
+    }
+    if (rowVersion.present) {
+      map['row_version'] = Variable<int>(rowVersion.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('OwnerFamilyMembersCompanion(')
+          ..write('id: $id, ')
+          ..write('orgId: $orgId, ')
+          ..write('ownerId: $ownerId, ')
+          ..write('displayName: $displayName, ')
+          ..write('relationshipLabel: $relationshipLabel, ')
+          ..write('isSelf: $isSelf, ')
+          ..write('mayUseNc: $mayUseNc, ')
+          ..write('effectiveFrom: $effectiveFrom, ')
+          ..write('effectiveTo: $effectiveTo, ')
+          ..write('active: $active, ')
+          ..write('rowVersion: $rowVersion, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $OwnerLedgerEntriesTable extends OwnerLedgerEntries
+    with TableInfo<$OwnerLedgerEntriesTable, OwnerLedgerRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $OwnerLedgerEntriesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _orgIdMeta = const VerificationMeta('orgId');
+  @override
+  late final GeneratedColumn<String> orgId = GeneratedColumn<String>(
+    'org_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _txnNumberMeta = const VerificationMeta(
+    'txnNumber',
+  );
+  @override
+  late final GeneratedColumn<String> txnNumber = GeneratedColumn<String>(
+    'txn_number',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _financialYearMeta = const VerificationMeta(
+    'financialYear',
+  );
+  @override
+  late final GeneratedColumn<String> financialYear = GeneratedColumn<String>(
+    'financial_year',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _ownerIdMeta = const VerificationMeta(
+    'ownerId',
+  );
+  @override
+  late final GeneratedColumn<String> ownerId = GeneratedColumn<String>(
+    'owner_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _businessUnitIdMeta = const VerificationMeta(
+    'businessUnitId',
+  );
+  @override
+  late final GeneratedColumn<String> businessUnitId = GeneratedColumn<String>(
+    'business_unit_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _businessDateMeta = const VerificationMeta(
+    'businessDate',
+  );
+  @override
+  late final GeneratedColumn<String> businessDate = GeneratedColumn<String>(
+    'business_date',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _pnlPeriodKeyMeta = const VerificationMeta(
+    'pnlPeriodKey',
+  );
+  @override
+  late final GeneratedColumn<String> pnlPeriodKey = GeneratedColumn<String>(
+    'pnl_period_key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _businessDateSourceMeta =
+      const VerificationMeta('businessDateSource');
+  @override
+  late final GeneratedColumn<String> businessDateSource =
+      GeneratedColumn<String>(
+        'business_date_source',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+        defaultValue: const Constant('derived'),
+      );
+  static const VerificationMeta _movementTypeMeta = const VerificationMeta(
+    'movementType',
+  );
+  @override
+  late final GeneratedColumn<String> movementType = GeneratedColumn<String>(
+    'movement_type',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _directionMeta = const VerificationMeta(
+    'direction',
+  );
+  @override
+  late final GeneratedColumn<String> direction = GeneratedColumn<String>(
+    'direction',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _amountMinorMeta = const VerificationMeta(
+    'amountMinor',
+  );
+  @override
+  late final GeneratedColumn<int> amountMinor = GeneratedColumn<int>(
+    'amount_minor',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _familyMemberIdMeta = const VerificationMeta(
+    'familyMemberId',
+  );
+  @override
+  late final GeneratedColumn<String> familyMemberId = GeneratedColumn<String>(
+    'family_member_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _collectedByFamilyMemberIdMeta =
+      const VerificationMeta('collectedByFamilyMemberId');
+  @override
+  late final GeneratedColumn<String> collectedByFamilyMemberId =
+      GeneratedColumn<String>(
+        'collected_by_family_member_id',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _ncBillReferenceMeta = const VerificationMeta(
+    'ncBillReference',
+  );
+  @override
+  late final GeneratedColumn<String> ncBillReference = GeneratedColumn<String>(
+    'nc_bill_reference',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _paymentMethodIdMeta = const VerificationMeta(
+    'paymentMethodId',
+  );
+  @override
+  late final GeneratedColumn<String> paymentMethodId = GeneratedColumn<String>(
+    'payment_method_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _referenceNumberMeta = const VerificationMeta(
+    'referenceNumber',
+  );
+  @override
+  late final GeneratedColumn<String> referenceNumber = GeneratedColumn<String>(
+    'reference_number',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _remarksMeta = const VerificationMeta(
+    'remarks',
+  );
+  @override
+  late final GeneratedColumn<String> remarks = GeneratedColumn<String>(
+    'remarks',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _reasonMeta = const VerificationMeta('reason');
+  @override
+  late final GeneratedColumn<String> reason = GeneratedColumn<String>(
+    'reason',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdByMeta = const VerificationMeta(
+    'createdBy',
+  );
+  @override
+  late final GeneratedColumn<String> createdBy = GeneratedColumn<String>(
+    'created_by',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _capturedAtMeta = const VerificationMeta(
+    'capturedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> capturedAt = GeneratedColumn<DateTime>(
+    'captured_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _voidedAtMeta = const VerificationMeta(
+    'voidedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> voidedAt = GeneratedColumn<DateTime>(
+    'voided_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _voidedByMeta = const VerificationMeta(
+    'voidedBy',
+  );
+  @override
+  late final GeneratedColumn<String> voidedBy = GeneratedColumn<String>(
+    'voided_by',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _voidReasonMeta = const VerificationMeta(
+    'voidReason',
+  );
+  @override
+  late final GeneratedColumn<String> voidReason = GeneratedColumn<String>(
+    'void_reason',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _pendingMutationIdMeta = const VerificationMeta(
+    'pendingMutationId',
+  );
+  @override
+  late final GeneratedColumn<String> pendingMutationId =
+      GeneratedColumn<String>(
+        'pending_mutation_id',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _rowVersionMeta = const VerificationMeta(
+    'rowVersion',
+  );
+  @override
+  late final GeneratedColumn<int> rowVersion = GeneratedColumn<int>(
+    'row_version',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(1),
+  );
+  static const VerificationMeta _serverUpdatedAtMeta = const VerificationMeta(
+    'serverUpdatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> serverUpdatedAt =
+      GeneratedColumn<DateTime>(
+        'server_updated_at',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _scopeRevokedAtMeta = const VerificationMeta(
+    'scopeRevokedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> scopeRevokedAt =
+      GeneratedColumn<DateTime>(
+        'scope_revoked_at',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    orgId,
+    txnNumber,
+    financialYear,
+    ownerId,
+    businessUnitId,
+    businessDate,
+    pnlPeriodKey,
+    businessDateSource,
+    movementType,
+    direction,
+    amountMinor,
+    familyMemberId,
+    collectedByFamilyMemberId,
+    ncBillReference,
+    paymentMethodId,
+    referenceNumber,
+    remarks,
+    reason,
+    createdBy,
+    capturedAt,
+    voidedAt,
+    voidedBy,
+    voidReason,
+    pendingMutationId,
+    rowVersion,
+    serverUpdatedAt,
+    updatedAt,
+    scopeRevokedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'owner_ledger_entries';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<OwnerLedgerRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('org_id')) {
+      context.handle(
+        _orgIdMeta,
+        orgId.isAcceptableOrUnknown(data['org_id']!, _orgIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_orgIdMeta);
+    }
+    if (data.containsKey('txn_number')) {
+      context.handle(
+        _txnNumberMeta,
+        txnNumber.isAcceptableOrUnknown(data['txn_number']!, _txnNumberMeta),
+      );
+    }
+    if (data.containsKey('financial_year')) {
+      context.handle(
+        _financialYearMeta,
+        financialYear.isAcceptableOrUnknown(
+          data['financial_year']!,
+          _financialYearMeta,
+        ),
+      );
+    }
+    if (data.containsKey('owner_id')) {
+      context.handle(
+        _ownerIdMeta,
+        ownerId.isAcceptableOrUnknown(data['owner_id']!, _ownerIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_ownerIdMeta);
+    }
+    if (data.containsKey('business_unit_id')) {
+      context.handle(
+        _businessUnitIdMeta,
+        businessUnitId.isAcceptableOrUnknown(
+          data['business_unit_id']!,
+          _businessUnitIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_businessUnitIdMeta);
+    }
+    if (data.containsKey('business_date')) {
+      context.handle(
+        _businessDateMeta,
+        businessDate.isAcceptableOrUnknown(
+          data['business_date']!,
+          _businessDateMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_businessDateMeta);
+    }
+    if (data.containsKey('pnl_period_key')) {
+      context.handle(
+        _pnlPeriodKeyMeta,
+        pnlPeriodKey.isAcceptableOrUnknown(
+          data['pnl_period_key']!,
+          _pnlPeriodKeyMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_pnlPeriodKeyMeta);
+    }
+    if (data.containsKey('business_date_source')) {
+      context.handle(
+        _businessDateSourceMeta,
+        businessDateSource.isAcceptableOrUnknown(
+          data['business_date_source']!,
+          _businessDateSourceMeta,
+        ),
+      );
+    }
+    if (data.containsKey('movement_type')) {
+      context.handle(
+        _movementTypeMeta,
+        movementType.isAcceptableOrUnknown(
+          data['movement_type']!,
+          _movementTypeMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_movementTypeMeta);
+    }
+    if (data.containsKey('direction')) {
+      context.handle(
+        _directionMeta,
+        direction.isAcceptableOrUnknown(data['direction']!, _directionMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_directionMeta);
+    }
+    if (data.containsKey('amount_minor')) {
+      context.handle(
+        _amountMinorMeta,
+        amountMinor.isAcceptableOrUnknown(
+          data['amount_minor']!,
+          _amountMinorMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_amountMinorMeta);
+    }
+    if (data.containsKey('family_member_id')) {
+      context.handle(
+        _familyMemberIdMeta,
+        familyMemberId.isAcceptableOrUnknown(
+          data['family_member_id']!,
+          _familyMemberIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('collected_by_family_member_id')) {
+      context.handle(
+        _collectedByFamilyMemberIdMeta,
+        collectedByFamilyMemberId.isAcceptableOrUnknown(
+          data['collected_by_family_member_id']!,
+          _collectedByFamilyMemberIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('nc_bill_reference')) {
+      context.handle(
+        _ncBillReferenceMeta,
+        ncBillReference.isAcceptableOrUnknown(
+          data['nc_bill_reference']!,
+          _ncBillReferenceMeta,
+        ),
+      );
+    }
+    if (data.containsKey('payment_method_id')) {
+      context.handle(
+        _paymentMethodIdMeta,
+        paymentMethodId.isAcceptableOrUnknown(
+          data['payment_method_id']!,
+          _paymentMethodIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('reference_number')) {
+      context.handle(
+        _referenceNumberMeta,
+        referenceNumber.isAcceptableOrUnknown(
+          data['reference_number']!,
+          _referenceNumberMeta,
+        ),
+      );
+    }
+    if (data.containsKey('remarks')) {
+      context.handle(
+        _remarksMeta,
+        remarks.isAcceptableOrUnknown(data['remarks']!, _remarksMeta),
+      );
+    }
+    if (data.containsKey('reason')) {
+      context.handle(
+        _reasonMeta,
+        reason.isAcceptableOrUnknown(data['reason']!, _reasonMeta),
+      );
+    }
+    if (data.containsKey('created_by')) {
+      context.handle(
+        _createdByMeta,
+        createdBy.isAcceptableOrUnknown(data['created_by']!, _createdByMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdByMeta);
+    }
+    if (data.containsKey('captured_at')) {
+      context.handle(
+        _capturedAtMeta,
+        capturedAt.isAcceptableOrUnknown(data['captured_at']!, _capturedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_capturedAtMeta);
+    }
+    if (data.containsKey('voided_at')) {
+      context.handle(
+        _voidedAtMeta,
+        voidedAt.isAcceptableOrUnknown(data['voided_at']!, _voidedAtMeta),
+      );
+    }
+    if (data.containsKey('voided_by')) {
+      context.handle(
+        _voidedByMeta,
+        voidedBy.isAcceptableOrUnknown(data['voided_by']!, _voidedByMeta),
+      );
+    }
+    if (data.containsKey('void_reason')) {
+      context.handle(
+        _voidReasonMeta,
+        voidReason.isAcceptableOrUnknown(data['void_reason']!, _voidReasonMeta),
+      );
+    }
+    if (data.containsKey('pending_mutation_id')) {
+      context.handle(
+        _pendingMutationIdMeta,
+        pendingMutationId.isAcceptableOrUnknown(
+          data['pending_mutation_id']!,
+          _pendingMutationIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('row_version')) {
+      context.handle(
+        _rowVersionMeta,
+        rowVersion.isAcceptableOrUnknown(data['row_version']!, _rowVersionMeta),
+      );
+    }
+    if (data.containsKey('server_updated_at')) {
+      context.handle(
+        _serverUpdatedAtMeta,
+        serverUpdatedAt.isAcceptableOrUnknown(
+          data['server_updated_at']!,
+          _serverUpdatedAtMeta,
+        ),
+      );
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    if (data.containsKey('scope_revoked_at')) {
+      context.handle(
+        _scopeRevokedAtMeta,
+        scopeRevokedAt.isAcceptableOrUnknown(
+          data['scope_revoked_at']!,
+          _scopeRevokedAtMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  OwnerLedgerRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return OwnerLedgerRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      orgId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}org_id'],
+      )!,
+      txnNumber: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}txn_number'],
+      ),
+      financialYear: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}financial_year'],
+      ),
+      ownerId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}owner_id'],
+      )!,
+      businessUnitId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}business_unit_id'],
+      )!,
+      businessDate: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}business_date'],
+      )!,
+      pnlPeriodKey: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}pnl_period_key'],
+      )!,
+      businessDateSource: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}business_date_source'],
+      )!,
+      movementType: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}movement_type'],
+      )!,
+      direction: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}direction'],
+      )!,
+      amountMinor: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}amount_minor'],
+      )!,
+      familyMemberId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}family_member_id'],
+      ),
+      collectedByFamilyMemberId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}collected_by_family_member_id'],
+      ),
+      ncBillReference: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}nc_bill_reference'],
+      ),
+      paymentMethodId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}payment_method_id'],
+      ),
+      referenceNumber: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}reference_number'],
+      ),
+      remarks: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}remarks'],
+      ),
+      reason: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}reason'],
+      ),
+      createdBy: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}created_by'],
+      )!,
+      capturedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}captured_at'],
+      )!,
+      voidedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}voided_at'],
+      ),
+      voidedBy: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}voided_by'],
+      ),
+      voidReason: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}void_reason'],
+      ),
+      pendingMutationId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}pending_mutation_id'],
+      ),
+      rowVersion: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}row_version'],
+      )!,
+      serverUpdatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}server_updated_at'],
+      ),
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+      scopeRevokedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}scope_revoked_at'],
+      ),
+    );
+  }
+
+  @override
+  $OwnerLedgerEntriesTable createAlias(String alias) {
+    return $OwnerLedgerEntriesTable(attachedDatabase, alias);
+  }
+}
+
+class OwnerLedgerRow extends DataClass implements Insertable<OwnerLedgerRow> {
+  /// Client-generated UUID v7 (D-008).
+  final String id;
+  final String orgId;
+
+  /// `KI-OWN-26-27-000001`, issued by the server on acceptance.
+  ///
+  /// **Null until then, and never fabricated locally** — two devices offline for a week
+  /// would both invent the same number. Its own sequence, shared with neither the expense
+  /// nor the revenue one.
+  final String? txnNumber;
+  final String? financialYear;
+
+  /// The owner this movement debits or credits.
+  ///
+  /// **Resolved at acceptance and stored**, never re-derived through the family mapping at
+  /// read time. That is the whole of the guarantee that reassigning a family member later
+  /// cannot restate an accepted attribution (§12), and it is the same discipline that keeps
+  /// a revenue component explainable after its tax rule is superseded (D-080).
+  final String ownerId;
+
+  /// Where the movement happened (§10). Source attribution for audit and reporting; it
+  /// does **not** decide the profit share, which is organisation-wide.
+  final String businessUnitId;
+
+  /// Derived under the property's timezone and cut-off, then persisted (D-019, D-067).
+  final String businessDate;
+
+  /// `YYYY-MM` of [businessDate]. Period lookups and reporting read this.
+  final String pnlPeriodKey;
+
+  /// `derived` | `corrected`. Server-owned, exactly as revenue's is (D-143). There is no
+  /// `manual`: no owner surface offers a trading day at entry, so the value has no
+  /// producer and the CHECK does not admit it.
+  final String businessDateSource;
+
+  /// `opening_balance` | `withdrawal` | `nc_consumption` | `settlement_paid` |
+  /// `manual_adjustment`.
+  final String movementType;
+
+  /// `credit` | `debit`. Held to the type's fixed direction by a check constraint below,
+  /// so a withdrawal cannot be stored as a credit even by a direct write.
+  final String direction;
+
+  /// **Always positive.** The direction decides the effect (§43).
+  final int amountMinor;
+
+  /// Who consumed, for an NC movement.
+  final String? familyMemberId;
+
+  /// Who physically collected a withdrawal. **Metadata, never an attribution** — the
+  /// financial debit stays with [ownerId] and no aggregate groups by this (§13).
+  final String? collectedByFamilyMemberId;
+  final String? ncBillReference;
+  final String? paymentMethodId;
+  final String? referenceNumber;
+  final String? remarks;
+
+  /// Mandatory for a manual adjustment; optional otherwise.
+  final String? reason;
+  final String createdBy;
+
+  /// The device instant. Forensic metadata; never authoritative (spec §9).
+  final DateTime capturedAt;
+  final DateTime? voidedAt;
+  final String? voidedBy;
+  final String? voidReason;
+
+  /// The queued intent that will deliver this row, if one is outstanding. Sync state is
+  /// **derived** through this link rather than copied into a column that could disagree
+  /// with the outbox — the duplication D-131 had to remove from the revenue surfaces.
+  final String? pendingMutationId;
+  final int rowVersion;
+  final DateTime? serverUpdatedAt;
+  final DateTime updatedAt;
+
+  /// Set when a confirmed revocation kept this row because it still carries the actor's
+  /// own unsent work (D-070, D-074). Null on everything browsable.
+  final DateTime? scopeRevokedAt;
+  const OwnerLedgerRow({
+    required this.id,
+    required this.orgId,
+    this.txnNumber,
+    this.financialYear,
+    required this.ownerId,
+    required this.businessUnitId,
+    required this.businessDate,
+    required this.pnlPeriodKey,
+    required this.businessDateSource,
+    required this.movementType,
+    required this.direction,
+    required this.amountMinor,
+    this.familyMemberId,
+    this.collectedByFamilyMemberId,
+    this.ncBillReference,
+    this.paymentMethodId,
+    this.referenceNumber,
+    this.remarks,
+    this.reason,
+    required this.createdBy,
+    required this.capturedAt,
+    this.voidedAt,
+    this.voidedBy,
+    this.voidReason,
+    this.pendingMutationId,
+    required this.rowVersion,
+    this.serverUpdatedAt,
+    required this.updatedAt,
+    this.scopeRevokedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['org_id'] = Variable<String>(orgId);
+    if (!nullToAbsent || txnNumber != null) {
+      map['txn_number'] = Variable<String>(txnNumber);
+    }
+    if (!nullToAbsent || financialYear != null) {
+      map['financial_year'] = Variable<String>(financialYear);
+    }
+    map['owner_id'] = Variable<String>(ownerId);
+    map['business_unit_id'] = Variable<String>(businessUnitId);
+    map['business_date'] = Variable<String>(businessDate);
+    map['pnl_period_key'] = Variable<String>(pnlPeriodKey);
+    map['business_date_source'] = Variable<String>(businessDateSource);
+    map['movement_type'] = Variable<String>(movementType);
+    map['direction'] = Variable<String>(direction);
+    map['amount_minor'] = Variable<int>(amountMinor);
+    if (!nullToAbsent || familyMemberId != null) {
+      map['family_member_id'] = Variable<String>(familyMemberId);
+    }
+    if (!nullToAbsent || collectedByFamilyMemberId != null) {
+      map['collected_by_family_member_id'] = Variable<String>(
+        collectedByFamilyMemberId,
+      );
+    }
+    if (!nullToAbsent || ncBillReference != null) {
+      map['nc_bill_reference'] = Variable<String>(ncBillReference);
+    }
+    if (!nullToAbsent || paymentMethodId != null) {
+      map['payment_method_id'] = Variable<String>(paymentMethodId);
+    }
+    if (!nullToAbsent || referenceNumber != null) {
+      map['reference_number'] = Variable<String>(referenceNumber);
+    }
+    if (!nullToAbsent || remarks != null) {
+      map['remarks'] = Variable<String>(remarks);
+    }
+    if (!nullToAbsent || reason != null) {
+      map['reason'] = Variable<String>(reason);
+    }
+    map['created_by'] = Variable<String>(createdBy);
+    map['captured_at'] = Variable<DateTime>(capturedAt);
+    if (!nullToAbsent || voidedAt != null) {
+      map['voided_at'] = Variable<DateTime>(voidedAt);
+    }
+    if (!nullToAbsent || voidedBy != null) {
+      map['voided_by'] = Variable<String>(voidedBy);
+    }
+    if (!nullToAbsent || voidReason != null) {
+      map['void_reason'] = Variable<String>(voidReason);
+    }
+    if (!nullToAbsent || pendingMutationId != null) {
+      map['pending_mutation_id'] = Variable<String>(pendingMutationId);
+    }
+    map['row_version'] = Variable<int>(rowVersion);
+    if (!nullToAbsent || serverUpdatedAt != null) {
+      map['server_updated_at'] = Variable<DateTime>(serverUpdatedAt);
+    }
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    if (!nullToAbsent || scopeRevokedAt != null) {
+      map['scope_revoked_at'] = Variable<DateTime>(scopeRevokedAt);
+    }
+    return map;
+  }
+
+  OwnerLedgerEntriesCompanion toCompanion(bool nullToAbsent) {
+    return OwnerLedgerEntriesCompanion(
+      id: Value(id),
+      orgId: Value(orgId),
+      txnNumber: txnNumber == null && nullToAbsent
+          ? const Value.absent()
+          : Value(txnNumber),
+      financialYear: financialYear == null && nullToAbsent
+          ? const Value.absent()
+          : Value(financialYear),
+      ownerId: Value(ownerId),
+      businessUnitId: Value(businessUnitId),
+      businessDate: Value(businessDate),
+      pnlPeriodKey: Value(pnlPeriodKey),
+      businessDateSource: Value(businessDateSource),
+      movementType: Value(movementType),
+      direction: Value(direction),
+      amountMinor: Value(amountMinor),
+      familyMemberId: familyMemberId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(familyMemberId),
+      collectedByFamilyMemberId:
+          collectedByFamilyMemberId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(collectedByFamilyMemberId),
+      ncBillReference: ncBillReference == null && nullToAbsent
+          ? const Value.absent()
+          : Value(ncBillReference),
+      paymentMethodId: paymentMethodId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(paymentMethodId),
+      referenceNumber: referenceNumber == null && nullToAbsent
+          ? const Value.absent()
+          : Value(referenceNumber),
+      remarks: remarks == null && nullToAbsent
+          ? const Value.absent()
+          : Value(remarks),
+      reason: reason == null && nullToAbsent
+          ? const Value.absent()
+          : Value(reason),
+      createdBy: Value(createdBy),
+      capturedAt: Value(capturedAt),
+      voidedAt: voidedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(voidedAt),
+      voidedBy: voidedBy == null && nullToAbsent
+          ? const Value.absent()
+          : Value(voidedBy),
+      voidReason: voidReason == null && nullToAbsent
+          ? const Value.absent()
+          : Value(voidReason),
+      pendingMutationId: pendingMutationId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(pendingMutationId),
+      rowVersion: Value(rowVersion),
+      serverUpdatedAt: serverUpdatedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(serverUpdatedAt),
+      updatedAt: Value(updatedAt),
+      scopeRevokedAt: scopeRevokedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(scopeRevokedAt),
+    );
+  }
+
+  factory OwnerLedgerRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return OwnerLedgerRow(
+      id: serializer.fromJson<String>(json['id']),
+      orgId: serializer.fromJson<String>(json['orgId']),
+      txnNumber: serializer.fromJson<String?>(json['txnNumber']),
+      financialYear: serializer.fromJson<String?>(json['financialYear']),
+      ownerId: serializer.fromJson<String>(json['ownerId']),
+      businessUnitId: serializer.fromJson<String>(json['businessUnitId']),
+      businessDate: serializer.fromJson<String>(json['businessDate']),
+      pnlPeriodKey: serializer.fromJson<String>(json['pnlPeriodKey']),
+      businessDateSource: serializer.fromJson<String>(
+        json['businessDateSource'],
+      ),
+      movementType: serializer.fromJson<String>(json['movementType']),
+      direction: serializer.fromJson<String>(json['direction']),
+      amountMinor: serializer.fromJson<int>(json['amountMinor']),
+      familyMemberId: serializer.fromJson<String?>(json['familyMemberId']),
+      collectedByFamilyMemberId: serializer.fromJson<String?>(
+        json['collectedByFamilyMemberId'],
+      ),
+      ncBillReference: serializer.fromJson<String?>(json['ncBillReference']),
+      paymentMethodId: serializer.fromJson<String?>(json['paymentMethodId']),
+      referenceNumber: serializer.fromJson<String?>(json['referenceNumber']),
+      remarks: serializer.fromJson<String?>(json['remarks']),
+      reason: serializer.fromJson<String?>(json['reason']),
+      createdBy: serializer.fromJson<String>(json['createdBy']),
+      capturedAt: serializer.fromJson<DateTime>(json['capturedAt']),
+      voidedAt: serializer.fromJson<DateTime?>(json['voidedAt']),
+      voidedBy: serializer.fromJson<String?>(json['voidedBy']),
+      voidReason: serializer.fromJson<String?>(json['voidReason']),
+      pendingMutationId: serializer.fromJson<String?>(
+        json['pendingMutationId'],
+      ),
+      rowVersion: serializer.fromJson<int>(json['rowVersion']),
+      serverUpdatedAt: serializer.fromJson<DateTime?>(json['serverUpdatedAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+      scopeRevokedAt: serializer.fromJson<DateTime?>(json['scopeRevokedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'orgId': serializer.toJson<String>(orgId),
+      'txnNumber': serializer.toJson<String?>(txnNumber),
+      'financialYear': serializer.toJson<String?>(financialYear),
+      'ownerId': serializer.toJson<String>(ownerId),
+      'businessUnitId': serializer.toJson<String>(businessUnitId),
+      'businessDate': serializer.toJson<String>(businessDate),
+      'pnlPeriodKey': serializer.toJson<String>(pnlPeriodKey),
+      'businessDateSource': serializer.toJson<String>(businessDateSource),
+      'movementType': serializer.toJson<String>(movementType),
+      'direction': serializer.toJson<String>(direction),
+      'amountMinor': serializer.toJson<int>(amountMinor),
+      'familyMemberId': serializer.toJson<String?>(familyMemberId),
+      'collectedByFamilyMemberId': serializer.toJson<String?>(
+        collectedByFamilyMemberId,
+      ),
+      'ncBillReference': serializer.toJson<String?>(ncBillReference),
+      'paymentMethodId': serializer.toJson<String?>(paymentMethodId),
+      'referenceNumber': serializer.toJson<String?>(referenceNumber),
+      'remarks': serializer.toJson<String?>(remarks),
+      'reason': serializer.toJson<String?>(reason),
+      'createdBy': serializer.toJson<String>(createdBy),
+      'capturedAt': serializer.toJson<DateTime>(capturedAt),
+      'voidedAt': serializer.toJson<DateTime?>(voidedAt),
+      'voidedBy': serializer.toJson<String?>(voidedBy),
+      'voidReason': serializer.toJson<String?>(voidReason),
+      'pendingMutationId': serializer.toJson<String?>(pendingMutationId),
+      'rowVersion': serializer.toJson<int>(rowVersion),
+      'serverUpdatedAt': serializer.toJson<DateTime?>(serverUpdatedAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+      'scopeRevokedAt': serializer.toJson<DateTime?>(scopeRevokedAt),
+    };
+  }
+
+  OwnerLedgerRow copyWith({
+    String? id,
+    String? orgId,
+    Value<String?> txnNumber = const Value.absent(),
+    Value<String?> financialYear = const Value.absent(),
+    String? ownerId,
+    String? businessUnitId,
+    String? businessDate,
+    String? pnlPeriodKey,
+    String? businessDateSource,
+    String? movementType,
+    String? direction,
+    int? amountMinor,
+    Value<String?> familyMemberId = const Value.absent(),
+    Value<String?> collectedByFamilyMemberId = const Value.absent(),
+    Value<String?> ncBillReference = const Value.absent(),
+    Value<String?> paymentMethodId = const Value.absent(),
+    Value<String?> referenceNumber = const Value.absent(),
+    Value<String?> remarks = const Value.absent(),
+    Value<String?> reason = const Value.absent(),
+    String? createdBy,
+    DateTime? capturedAt,
+    Value<DateTime?> voidedAt = const Value.absent(),
+    Value<String?> voidedBy = const Value.absent(),
+    Value<String?> voidReason = const Value.absent(),
+    Value<String?> pendingMutationId = const Value.absent(),
+    int? rowVersion,
+    Value<DateTime?> serverUpdatedAt = const Value.absent(),
+    DateTime? updatedAt,
+    Value<DateTime?> scopeRevokedAt = const Value.absent(),
+  }) => OwnerLedgerRow(
+    id: id ?? this.id,
+    orgId: orgId ?? this.orgId,
+    txnNumber: txnNumber.present ? txnNumber.value : this.txnNumber,
+    financialYear: financialYear.present
+        ? financialYear.value
+        : this.financialYear,
+    ownerId: ownerId ?? this.ownerId,
+    businessUnitId: businessUnitId ?? this.businessUnitId,
+    businessDate: businessDate ?? this.businessDate,
+    pnlPeriodKey: pnlPeriodKey ?? this.pnlPeriodKey,
+    businessDateSource: businessDateSource ?? this.businessDateSource,
+    movementType: movementType ?? this.movementType,
+    direction: direction ?? this.direction,
+    amountMinor: amountMinor ?? this.amountMinor,
+    familyMemberId: familyMemberId.present
+        ? familyMemberId.value
+        : this.familyMemberId,
+    collectedByFamilyMemberId: collectedByFamilyMemberId.present
+        ? collectedByFamilyMemberId.value
+        : this.collectedByFamilyMemberId,
+    ncBillReference: ncBillReference.present
+        ? ncBillReference.value
+        : this.ncBillReference,
+    paymentMethodId: paymentMethodId.present
+        ? paymentMethodId.value
+        : this.paymentMethodId,
+    referenceNumber: referenceNumber.present
+        ? referenceNumber.value
+        : this.referenceNumber,
+    remarks: remarks.present ? remarks.value : this.remarks,
+    reason: reason.present ? reason.value : this.reason,
+    createdBy: createdBy ?? this.createdBy,
+    capturedAt: capturedAt ?? this.capturedAt,
+    voidedAt: voidedAt.present ? voidedAt.value : this.voidedAt,
+    voidedBy: voidedBy.present ? voidedBy.value : this.voidedBy,
+    voidReason: voidReason.present ? voidReason.value : this.voidReason,
+    pendingMutationId: pendingMutationId.present
+        ? pendingMutationId.value
+        : this.pendingMutationId,
+    rowVersion: rowVersion ?? this.rowVersion,
+    serverUpdatedAt: serverUpdatedAt.present
+        ? serverUpdatedAt.value
+        : this.serverUpdatedAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+    scopeRevokedAt: scopeRevokedAt.present
+        ? scopeRevokedAt.value
+        : this.scopeRevokedAt,
+  );
+  OwnerLedgerRow copyWithCompanion(OwnerLedgerEntriesCompanion data) {
+    return OwnerLedgerRow(
+      id: data.id.present ? data.id.value : this.id,
+      orgId: data.orgId.present ? data.orgId.value : this.orgId,
+      txnNumber: data.txnNumber.present ? data.txnNumber.value : this.txnNumber,
+      financialYear: data.financialYear.present
+          ? data.financialYear.value
+          : this.financialYear,
+      ownerId: data.ownerId.present ? data.ownerId.value : this.ownerId,
+      businessUnitId: data.businessUnitId.present
+          ? data.businessUnitId.value
+          : this.businessUnitId,
+      businessDate: data.businessDate.present
+          ? data.businessDate.value
+          : this.businessDate,
+      pnlPeriodKey: data.pnlPeriodKey.present
+          ? data.pnlPeriodKey.value
+          : this.pnlPeriodKey,
+      businessDateSource: data.businessDateSource.present
+          ? data.businessDateSource.value
+          : this.businessDateSource,
+      movementType: data.movementType.present
+          ? data.movementType.value
+          : this.movementType,
+      direction: data.direction.present ? data.direction.value : this.direction,
+      amountMinor: data.amountMinor.present
+          ? data.amountMinor.value
+          : this.amountMinor,
+      familyMemberId: data.familyMemberId.present
+          ? data.familyMemberId.value
+          : this.familyMemberId,
+      collectedByFamilyMemberId: data.collectedByFamilyMemberId.present
+          ? data.collectedByFamilyMemberId.value
+          : this.collectedByFamilyMemberId,
+      ncBillReference: data.ncBillReference.present
+          ? data.ncBillReference.value
+          : this.ncBillReference,
+      paymentMethodId: data.paymentMethodId.present
+          ? data.paymentMethodId.value
+          : this.paymentMethodId,
+      referenceNumber: data.referenceNumber.present
+          ? data.referenceNumber.value
+          : this.referenceNumber,
+      remarks: data.remarks.present ? data.remarks.value : this.remarks,
+      reason: data.reason.present ? data.reason.value : this.reason,
+      createdBy: data.createdBy.present ? data.createdBy.value : this.createdBy,
+      capturedAt: data.capturedAt.present
+          ? data.capturedAt.value
+          : this.capturedAt,
+      voidedAt: data.voidedAt.present ? data.voidedAt.value : this.voidedAt,
+      voidedBy: data.voidedBy.present ? data.voidedBy.value : this.voidedBy,
+      voidReason: data.voidReason.present
+          ? data.voidReason.value
+          : this.voidReason,
+      pendingMutationId: data.pendingMutationId.present
+          ? data.pendingMutationId.value
+          : this.pendingMutationId,
+      rowVersion: data.rowVersion.present
+          ? data.rowVersion.value
+          : this.rowVersion,
+      serverUpdatedAt: data.serverUpdatedAt.present
+          ? data.serverUpdatedAt.value
+          : this.serverUpdatedAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      scopeRevokedAt: data.scopeRevokedAt.present
+          ? data.scopeRevokedAt.value
+          : this.scopeRevokedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('OwnerLedgerRow(')
+          ..write('id: $id, ')
+          ..write('orgId: $orgId, ')
+          ..write('txnNumber: $txnNumber, ')
+          ..write('financialYear: $financialYear, ')
+          ..write('ownerId: $ownerId, ')
+          ..write('businessUnitId: $businessUnitId, ')
+          ..write('businessDate: $businessDate, ')
+          ..write('pnlPeriodKey: $pnlPeriodKey, ')
+          ..write('businessDateSource: $businessDateSource, ')
+          ..write('movementType: $movementType, ')
+          ..write('direction: $direction, ')
+          ..write('amountMinor: $amountMinor, ')
+          ..write('familyMemberId: $familyMemberId, ')
+          ..write('collectedByFamilyMemberId: $collectedByFamilyMemberId, ')
+          ..write('ncBillReference: $ncBillReference, ')
+          ..write('paymentMethodId: $paymentMethodId, ')
+          ..write('referenceNumber: $referenceNumber, ')
+          ..write('remarks: $remarks, ')
+          ..write('reason: $reason, ')
+          ..write('createdBy: $createdBy, ')
+          ..write('capturedAt: $capturedAt, ')
+          ..write('voidedAt: $voidedAt, ')
+          ..write('voidedBy: $voidedBy, ')
+          ..write('voidReason: $voidReason, ')
+          ..write('pendingMutationId: $pendingMutationId, ')
+          ..write('rowVersion: $rowVersion, ')
+          ..write('serverUpdatedAt: $serverUpdatedAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('scopeRevokedAt: $scopeRevokedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hashAll([
+    id,
+    orgId,
+    txnNumber,
+    financialYear,
+    ownerId,
+    businessUnitId,
+    businessDate,
+    pnlPeriodKey,
+    businessDateSource,
+    movementType,
+    direction,
+    amountMinor,
+    familyMemberId,
+    collectedByFamilyMemberId,
+    ncBillReference,
+    paymentMethodId,
+    referenceNumber,
+    remarks,
+    reason,
+    createdBy,
+    capturedAt,
+    voidedAt,
+    voidedBy,
+    voidReason,
+    pendingMutationId,
+    rowVersion,
+    serverUpdatedAt,
+    updatedAt,
+    scopeRevokedAt,
+  ]);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is OwnerLedgerRow &&
+          other.id == this.id &&
+          other.orgId == this.orgId &&
+          other.txnNumber == this.txnNumber &&
+          other.financialYear == this.financialYear &&
+          other.ownerId == this.ownerId &&
+          other.businessUnitId == this.businessUnitId &&
+          other.businessDate == this.businessDate &&
+          other.pnlPeriodKey == this.pnlPeriodKey &&
+          other.businessDateSource == this.businessDateSource &&
+          other.movementType == this.movementType &&
+          other.direction == this.direction &&
+          other.amountMinor == this.amountMinor &&
+          other.familyMemberId == this.familyMemberId &&
+          other.collectedByFamilyMemberId == this.collectedByFamilyMemberId &&
+          other.ncBillReference == this.ncBillReference &&
+          other.paymentMethodId == this.paymentMethodId &&
+          other.referenceNumber == this.referenceNumber &&
+          other.remarks == this.remarks &&
+          other.reason == this.reason &&
+          other.createdBy == this.createdBy &&
+          other.capturedAt == this.capturedAt &&
+          other.voidedAt == this.voidedAt &&
+          other.voidedBy == this.voidedBy &&
+          other.voidReason == this.voidReason &&
+          other.pendingMutationId == this.pendingMutationId &&
+          other.rowVersion == this.rowVersion &&
+          other.serverUpdatedAt == this.serverUpdatedAt &&
+          other.updatedAt == this.updatedAt &&
+          other.scopeRevokedAt == this.scopeRevokedAt);
+}
+
+class OwnerLedgerEntriesCompanion extends UpdateCompanion<OwnerLedgerRow> {
+  final Value<String> id;
+  final Value<String> orgId;
+  final Value<String?> txnNumber;
+  final Value<String?> financialYear;
+  final Value<String> ownerId;
+  final Value<String> businessUnitId;
+  final Value<String> businessDate;
+  final Value<String> pnlPeriodKey;
+  final Value<String> businessDateSource;
+  final Value<String> movementType;
+  final Value<String> direction;
+  final Value<int> amountMinor;
+  final Value<String?> familyMemberId;
+  final Value<String?> collectedByFamilyMemberId;
+  final Value<String?> ncBillReference;
+  final Value<String?> paymentMethodId;
+  final Value<String?> referenceNumber;
+  final Value<String?> remarks;
+  final Value<String?> reason;
+  final Value<String> createdBy;
+  final Value<DateTime> capturedAt;
+  final Value<DateTime?> voidedAt;
+  final Value<String?> voidedBy;
+  final Value<String?> voidReason;
+  final Value<String?> pendingMutationId;
+  final Value<int> rowVersion;
+  final Value<DateTime?> serverUpdatedAt;
+  final Value<DateTime> updatedAt;
+  final Value<DateTime?> scopeRevokedAt;
+  final Value<int> rowid;
+  const OwnerLedgerEntriesCompanion({
+    this.id = const Value.absent(),
+    this.orgId = const Value.absent(),
+    this.txnNumber = const Value.absent(),
+    this.financialYear = const Value.absent(),
+    this.ownerId = const Value.absent(),
+    this.businessUnitId = const Value.absent(),
+    this.businessDate = const Value.absent(),
+    this.pnlPeriodKey = const Value.absent(),
+    this.businessDateSource = const Value.absent(),
+    this.movementType = const Value.absent(),
+    this.direction = const Value.absent(),
+    this.amountMinor = const Value.absent(),
+    this.familyMemberId = const Value.absent(),
+    this.collectedByFamilyMemberId = const Value.absent(),
+    this.ncBillReference = const Value.absent(),
+    this.paymentMethodId = const Value.absent(),
+    this.referenceNumber = const Value.absent(),
+    this.remarks = const Value.absent(),
+    this.reason = const Value.absent(),
+    this.createdBy = const Value.absent(),
+    this.capturedAt = const Value.absent(),
+    this.voidedAt = const Value.absent(),
+    this.voidedBy = const Value.absent(),
+    this.voidReason = const Value.absent(),
+    this.pendingMutationId = const Value.absent(),
+    this.rowVersion = const Value.absent(),
+    this.serverUpdatedAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.scopeRevokedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  OwnerLedgerEntriesCompanion.insert({
+    required String id,
+    required String orgId,
+    this.txnNumber = const Value.absent(),
+    this.financialYear = const Value.absent(),
+    required String ownerId,
+    required String businessUnitId,
+    required String businessDate,
+    required String pnlPeriodKey,
+    this.businessDateSource = const Value.absent(),
+    required String movementType,
+    required String direction,
+    required int amountMinor,
+    this.familyMemberId = const Value.absent(),
+    this.collectedByFamilyMemberId = const Value.absent(),
+    this.ncBillReference = const Value.absent(),
+    this.paymentMethodId = const Value.absent(),
+    this.referenceNumber = const Value.absent(),
+    this.remarks = const Value.absent(),
+    this.reason = const Value.absent(),
+    required String createdBy,
+    required DateTime capturedAt,
+    this.voidedAt = const Value.absent(),
+    this.voidedBy = const Value.absent(),
+    this.voidReason = const Value.absent(),
+    this.pendingMutationId = const Value.absent(),
+    this.rowVersion = const Value.absent(),
+    this.serverUpdatedAt = const Value.absent(),
+    required DateTime updatedAt,
+    this.scopeRevokedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       orgId = Value(orgId),
+       ownerId = Value(ownerId),
+       businessUnitId = Value(businessUnitId),
+       businessDate = Value(businessDate),
+       pnlPeriodKey = Value(pnlPeriodKey),
+       movementType = Value(movementType),
+       direction = Value(direction),
+       amountMinor = Value(amountMinor),
+       createdBy = Value(createdBy),
+       capturedAt = Value(capturedAt),
+       updatedAt = Value(updatedAt);
+  static Insertable<OwnerLedgerRow> custom({
+    Expression<String>? id,
+    Expression<String>? orgId,
+    Expression<String>? txnNumber,
+    Expression<String>? financialYear,
+    Expression<String>? ownerId,
+    Expression<String>? businessUnitId,
+    Expression<String>? businessDate,
+    Expression<String>? pnlPeriodKey,
+    Expression<String>? businessDateSource,
+    Expression<String>? movementType,
+    Expression<String>? direction,
+    Expression<int>? amountMinor,
+    Expression<String>? familyMemberId,
+    Expression<String>? collectedByFamilyMemberId,
+    Expression<String>? ncBillReference,
+    Expression<String>? paymentMethodId,
+    Expression<String>? referenceNumber,
+    Expression<String>? remarks,
+    Expression<String>? reason,
+    Expression<String>? createdBy,
+    Expression<DateTime>? capturedAt,
+    Expression<DateTime>? voidedAt,
+    Expression<String>? voidedBy,
+    Expression<String>? voidReason,
+    Expression<String>? pendingMutationId,
+    Expression<int>? rowVersion,
+    Expression<DateTime>? serverUpdatedAt,
+    Expression<DateTime>? updatedAt,
+    Expression<DateTime>? scopeRevokedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (orgId != null) 'org_id': orgId,
+      if (txnNumber != null) 'txn_number': txnNumber,
+      if (financialYear != null) 'financial_year': financialYear,
+      if (ownerId != null) 'owner_id': ownerId,
+      if (businessUnitId != null) 'business_unit_id': businessUnitId,
+      if (businessDate != null) 'business_date': businessDate,
+      if (pnlPeriodKey != null) 'pnl_period_key': pnlPeriodKey,
+      if (businessDateSource != null)
+        'business_date_source': businessDateSource,
+      if (movementType != null) 'movement_type': movementType,
+      if (direction != null) 'direction': direction,
+      if (amountMinor != null) 'amount_minor': amountMinor,
+      if (familyMemberId != null) 'family_member_id': familyMemberId,
+      if (collectedByFamilyMemberId != null)
+        'collected_by_family_member_id': collectedByFamilyMemberId,
+      if (ncBillReference != null) 'nc_bill_reference': ncBillReference,
+      if (paymentMethodId != null) 'payment_method_id': paymentMethodId,
+      if (referenceNumber != null) 'reference_number': referenceNumber,
+      if (remarks != null) 'remarks': remarks,
+      if (reason != null) 'reason': reason,
+      if (createdBy != null) 'created_by': createdBy,
+      if (capturedAt != null) 'captured_at': capturedAt,
+      if (voidedAt != null) 'voided_at': voidedAt,
+      if (voidedBy != null) 'voided_by': voidedBy,
+      if (voidReason != null) 'void_reason': voidReason,
+      if (pendingMutationId != null) 'pending_mutation_id': pendingMutationId,
+      if (rowVersion != null) 'row_version': rowVersion,
+      if (serverUpdatedAt != null) 'server_updated_at': serverUpdatedAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (scopeRevokedAt != null) 'scope_revoked_at': scopeRevokedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  OwnerLedgerEntriesCompanion copyWith({
+    Value<String>? id,
+    Value<String>? orgId,
+    Value<String?>? txnNumber,
+    Value<String?>? financialYear,
+    Value<String>? ownerId,
+    Value<String>? businessUnitId,
+    Value<String>? businessDate,
+    Value<String>? pnlPeriodKey,
+    Value<String>? businessDateSource,
+    Value<String>? movementType,
+    Value<String>? direction,
+    Value<int>? amountMinor,
+    Value<String?>? familyMemberId,
+    Value<String?>? collectedByFamilyMemberId,
+    Value<String?>? ncBillReference,
+    Value<String?>? paymentMethodId,
+    Value<String?>? referenceNumber,
+    Value<String?>? remarks,
+    Value<String?>? reason,
+    Value<String>? createdBy,
+    Value<DateTime>? capturedAt,
+    Value<DateTime?>? voidedAt,
+    Value<String?>? voidedBy,
+    Value<String?>? voidReason,
+    Value<String?>? pendingMutationId,
+    Value<int>? rowVersion,
+    Value<DateTime?>? serverUpdatedAt,
+    Value<DateTime>? updatedAt,
+    Value<DateTime?>? scopeRevokedAt,
+    Value<int>? rowid,
+  }) {
+    return OwnerLedgerEntriesCompanion(
+      id: id ?? this.id,
+      orgId: orgId ?? this.orgId,
+      txnNumber: txnNumber ?? this.txnNumber,
+      financialYear: financialYear ?? this.financialYear,
+      ownerId: ownerId ?? this.ownerId,
+      businessUnitId: businessUnitId ?? this.businessUnitId,
+      businessDate: businessDate ?? this.businessDate,
+      pnlPeriodKey: pnlPeriodKey ?? this.pnlPeriodKey,
+      businessDateSource: businessDateSource ?? this.businessDateSource,
+      movementType: movementType ?? this.movementType,
+      direction: direction ?? this.direction,
+      amountMinor: amountMinor ?? this.amountMinor,
+      familyMemberId: familyMemberId ?? this.familyMemberId,
+      collectedByFamilyMemberId:
+          collectedByFamilyMemberId ?? this.collectedByFamilyMemberId,
+      ncBillReference: ncBillReference ?? this.ncBillReference,
+      paymentMethodId: paymentMethodId ?? this.paymentMethodId,
+      referenceNumber: referenceNumber ?? this.referenceNumber,
+      remarks: remarks ?? this.remarks,
+      reason: reason ?? this.reason,
+      createdBy: createdBy ?? this.createdBy,
+      capturedAt: capturedAt ?? this.capturedAt,
+      voidedAt: voidedAt ?? this.voidedAt,
+      voidedBy: voidedBy ?? this.voidedBy,
+      voidReason: voidReason ?? this.voidReason,
+      pendingMutationId: pendingMutationId ?? this.pendingMutationId,
+      rowVersion: rowVersion ?? this.rowVersion,
+      serverUpdatedAt: serverUpdatedAt ?? this.serverUpdatedAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      scopeRevokedAt: scopeRevokedAt ?? this.scopeRevokedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (orgId.present) {
+      map['org_id'] = Variable<String>(orgId.value);
+    }
+    if (txnNumber.present) {
+      map['txn_number'] = Variable<String>(txnNumber.value);
+    }
+    if (financialYear.present) {
+      map['financial_year'] = Variable<String>(financialYear.value);
+    }
+    if (ownerId.present) {
+      map['owner_id'] = Variable<String>(ownerId.value);
+    }
+    if (businessUnitId.present) {
+      map['business_unit_id'] = Variable<String>(businessUnitId.value);
+    }
+    if (businessDate.present) {
+      map['business_date'] = Variable<String>(businessDate.value);
+    }
+    if (pnlPeriodKey.present) {
+      map['pnl_period_key'] = Variable<String>(pnlPeriodKey.value);
+    }
+    if (businessDateSource.present) {
+      map['business_date_source'] = Variable<String>(businessDateSource.value);
+    }
+    if (movementType.present) {
+      map['movement_type'] = Variable<String>(movementType.value);
+    }
+    if (direction.present) {
+      map['direction'] = Variable<String>(direction.value);
+    }
+    if (amountMinor.present) {
+      map['amount_minor'] = Variable<int>(amountMinor.value);
+    }
+    if (familyMemberId.present) {
+      map['family_member_id'] = Variable<String>(familyMemberId.value);
+    }
+    if (collectedByFamilyMemberId.present) {
+      map['collected_by_family_member_id'] = Variable<String>(
+        collectedByFamilyMemberId.value,
+      );
+    }
+    if (ncBillReference.present) {
+      map['nc_bill_reference'] = Variable<String>(ncBillReference.value);
+    }
+    if (paymentMethodId.present) {
+      map['payment_method_id'] = Variable<String>(paymentMethodId.value);
+    }
+    if (referenceNumber.present) {
+      map['reference_number'] = Variable<String>(referenceNumber.value);
+    }
+    if (remarks.present) {
+      map['remarks'] = Variable<String>(remarks.value);
+    }
+    if (reason.present) {
+      map['reason'] = Variable<String>(reason.value);
+    }
+    if (createdBy.present) {
+      map['created_by'] = Variable<String>(createdBy.value);
+    }
+    if (capturedAt.present) {
+      map['captured_at'] = Variable<DateTime>(capturedAt.value);
+    }
+    if (voidedAt.present) {
+      map['voided_at'] = Variable<DateTime>(voidedAt.value);
+    }
+    if (voidedBy.present) {
+      map['voided_by'] = Variable<String>(voidedBy.value);
+    }
+    if (voidReason.present) {
+      map['void_reason'] = Variable<String>(voidReason.value);
+    }
+    if (pendingMutationId.present) {
+      map['pending_mutation_id'] = Variable<String>(pendingMutationId.value);
+    }
+    if (rowVersion.present) {
+      map['row_version'] = Variable<int>(rowVersion.value);
+    }
+    if (serverUpdatedAt.present) {
+      map['server_updated_at'] = Variable<DateTime>(serverUpdatedAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (scopeRevokedAt.present) {
+      map['scope_revoked_at'] = Variable<DateTime>(scopeRevokedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('OwnerLedgerEntriesCompanion(')
+          ..write('id: $id, ')
+          ..write('orgId: $orgId, ')
+          ..write('txnNumber: $txnNumber, ')
+          ..write('financialYear: $financialYear, ')
+          ..write('ownerId: $ownerId, ')
+          ..write('businessUnitId: $businessUnitId, ')
+          ..write('businessDate: $businessDate, ')
+          ..write('pnlPeriodKey: $pnlPeriodKey, ')
+          ..write('businessDateSource: $businessDateSource, ')
+          ..write('movementType: $movementType, ')
+          ..write('direction: $direction, ')
+          ..write('amountMinor: $amountMinor, ')
+          ..write('familyMemberId: $familyMemberId, ')
+          ..write('collectedByFamilyMemberId: $collectedByFamilyMemberId, ')
+          ..write('ncBillReference: $ncBillReference, ')
+          ..write('paymentMethodId: $paymentMethodId, ')
+          ..write('referenceNumber: $referenceNumber, ')
+          ..write('remarks: $remarks, ')
+          ..write('reason: $reason, ')
+          ..write('createdBy: $createdBy, ')
+          ..write('capturedAt: $capturedAt, ')
+          ..write('voidedAt: $voidedAt, ')
+          ..write('voidedBy: $voidedBy, ')
+          ..write('voidReason: $voidReason, ')
+          ..write('pendingMutationId: $pendingMutationId, ')
+          ..write('rowVersion: $rowVersion, ')
+          ..write('serverUpdatedAt: $serverUpdatedAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('scopeRevokedAt: $scopeRevokedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -20781,6 +24272,14 @@ abstract class _$AppDatabase extends GeneratedDatabase {
       $ReportingExpenseContributionsTable(this);
   late final $ReportingCoverageMarkersTable reportingCoverageMarkers =
       $ReportingCoverageMarkersTable(this);
+  late final $OwnersTable owners = $OwnersTable(this);
+  late final $OwnershipSharesTable ownershipShares = $OwnershipSharesTable(
+    this,
+  );
+  late final $OwnerFamilyMembersTable ownerFamilyMembers =
+      $OwnerFamilyMembersTable(this);
+  late final $OwnerLedgerEntriesTable ownerLedgerEntries =
+      $OwnerLedgerEntriesTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -20812,6 +24311,10 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     reportingRevenueContributions,
     reportingExpenseContributions,
     reportingCoverageMarkers,
+    owners,
+    ownershipShares,
+    ownerFamilyMembers,
+    ownerLedgerEntries,
   ];
   @override
   StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
@@ -33877,6 +37380,1591 @@ typedef $$ReportingCoverageMarkersTableProcessedTableManager =
       ReportingCoverageRow,
       PrefetchHooks Function()
     >;
+typedef $$OwnersTableCreateCompanionBuilder =
+    OwnersCompanion Function({
+      required String id,
+      required String orgId,
+      required String code,
+      required String displayName,
+      Value<bool> active,
+      Value<DateTime?> archivedAt,
+      Value<int> rowVersion,
+      required DateTime updatedAt,
+      Value<int> rowid,
+    });
+typedef $$OwnersTableUpdateCompanionBuilder =
+    OwnersCompanion Function({
+      Value<String> id,
+      Value<String> orgId,
+      Value<String> code,
+      Value<String> displayName,
+      Value<bool> active,
+      Value<DateTime?> archivedAt,
+      Value<int> rowVersion,
+      Value<DateTime> updatedAt,
+      Value<int> rowid,
+    });
+
+class $$OwnersTableFilterComposer
+    extends Composer<_$AppDatabase, $OwnersTable> {
+  $$OwnersTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get orgId => $composableBuilder(
+    column: $table.orgId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get code => $composableBuilder(
+    column: $table.code,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get displayName => $composableBuilder(
+    column: $table.displayName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get active => $composableBuilder(
+    column: $table.active,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get archivedAt => $composableBuilder(
+    column: $table.archivedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get rowVersion => $composableBuilder(
+    column: $table.rowVersion,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$OwnersTableOrderingComposer
+    extends Composer<_$AppDatabase, $OwnersTable> {
+  $$OwnersTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get orgId => $composableBuilder(
+    column: $table.orgId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get code => $composableBuilder(
+    column: $table.code,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get displayName => $composableBuilder(
+    column: $table.displayName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get active => $composableBuilder(
+    column: $table.active,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get archivedAt => $composableBuilder(
+    column: $table.archivedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get rowVersion => $composableBuilder(
+    column: $table.rowVersion,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$OwnersTableAnnotationComposer
+    extends Composer<_$AppDatabase, $OwnersTable> {
+  $$OwnersTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get orgId =>
+      $composableBuilder(column: $table.orgId, builder: (column) => column);
+
+  GeneratedColumn<String> get code =>
+      $composableBuilder(column: $table.code, builder: (column) => column);
+
+  GeneratedColumn<String> get displayName => $composableBuilder(
+    column: $table.displayName,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get active =>
+      $composableBuilder(column: $table.active, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get archivedAt => $composableBuilder(
+    column: $table.archivedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get rowVersion => $composableBuilder(
+    column: $table.rowVersion,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+}
+
+class $$OwnersTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $OwnersTable,
+          OwnerRow,
+          $$OwnersTableFilterComposer,
+          $$OwnersTableOrderingComposer,
+          $$OwnersTableAnnotationComposer,
+          $$OwnersTableCreateCompanionBuilder,
+          $$OwnersTableUpdateCompanionBuilder,
+          (OwnerRow, BaseReferences<_$AppDatabase, $OwnersTable, OwnerRow>),
+          OwnerRow,
+          PrefetchHooks Function()
+        > {
+  $$OwnersTableTableManager(_$AppDatabase db, $OwnersTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$OwnersTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$OwnersTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$OwnersTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> orgId = const Value.absent(),
+                Value<String> code = const Value.absent(),
+                Value<String> displayName = const Value.absent(),
+                Value<bool> active = const Value.absent(),
+                Value<DateTime?> archivedAt = const Value.absent(),
+                Value<int> rowVersion = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => OwnersCompanion(
+                id: id,
+                orgId: orgId,
+                code: code,
+                displayName: displayName,
+                active: active,
+                archivedAt: archivedAt,
+                rowVersion: rowVersion,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String orgId,
+                required String code,
+                required String displayName,
+                Value<bool> active = const Value.absent(),
+                Value<DateTime?> archivedAt = const Value.absent(),
+                Value<int> rowVersion = const Value.absent(),
+                required DateTime updatedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => OwnersCompanion.insert(
+                id: id,
+                orgId: orgId,
+                code: code,
+                displayName: displayName,
+                active: active,
+                archivedAt: archivedAt,
+                rowVersion: rowVersion,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$OwnersTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $OwnersTable,
+      OwnerRow,
+      $$OwnersTableFilterComposer,
+      $$OwnersTableOrderingComposer,
+      $$OwnersTableAnnotationComposer,
+      $$OwnersTableCreateCompanionBuilder,
+      $$OwnersTableUpdateCompanionBuilder,
+      (OwnerRow, BaseReferences<_$AppDatabase, $OwnersTable, OwnerRow>),
+      OwnerRow,
+      PrefetchHooks Function()
+    >;
+typedef $$OwnershipSharesTableCreateCompanionBuilder =
+    OwnershipSharesCompanion Function({
+      required String id,
+      required String orgId,
+      required String ownerId,
+      required int shareBasisPoints,
+      required String effectiveFrom,
+      Value<String?> effectiveTo,
+      Value<int> rowVersion,
+      required DateTime updatedAt,
+      Value<int> rowid,
+    });
+typedef $$OwnershipSharesTableUpdateCompanionBuilder =
+    OwnershipSharesCompanion Function({
+      Value<String> id,
+      Value<String> orgId,
+      Value<String> ownerId,
+      Value<int> shareBasisPoints,
+      Value<String> effectiveFrom,
+      Value<String?> effectiveTo,
+      Value<int> rowVersion,
+      Value<DateTime> updatedAt,
+      Value<int> rowid,
+    });
+
+class $$OwnershipSharesTableFilterComposer
+    extends Composer<_$AppDatabase, $OwnershipSharesTable> {
+  $$OwnershipSharesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get orgId => $composableBuilder(
+    column: $table.orgId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get ownerId => $composableBuilder(
+    column: $table.ownerId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get shareBasisPoints => $composableBuilder(
+    column: $table.shareBasisPoints,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get effectiveFrom => $composableBuilder(
+    column: $table.effectiveFrom,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get effectiveTo => $composableBuilder(
+    column: $table.effectiveTo,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get rowVersion => $composableBuilder(
+    column: $table.rowVersion,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$OwnershipSharesTableOrderingComposer
+    extends Composer<_$AppDatabase, $OwnershipSharesTable> {
+  $$OwnershipSharesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get orgId => $composableBuilder(
+    column: $table.orgId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get ownerId => $composableBuilder(
+    column: $table.ownerId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get shareBasisPoints => $composableBuilder(
+    column: $table.shareBasisPoints,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get effectiveFrom => $composableBuilder(
+    column: $table.effectiveFrom,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get effectiveTo => $composableBuilder(
+    column: $table.effectiveTo,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get rowVersion => $composableBuilder(
+    column: $table.rowVersion,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$OwnershipSharesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $OwnershipSharesTable> {
+  $$OwnershipSharesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get orgId =>
+      $composableBuilder(column: $table.orgId, builder: (column) => column);
+
+  GeneratedColumn<String> get ownerId =>
+      $composableBuilder(column: $table.ownerId, builder: (column) => column);
+
+  GeneratedColumn<int> get shareBasisPoints => $composableBuilder(
+    column: $table.shareBasisPoints,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get effectiveFrom => $composableBuilder(
+    column: $table.effectiveFrom,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get effectiveTo => $composableBuilder(
+    column: $table.effectiveTo,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get rowVersion => $composableBuilder(
+    column: $table.rowVersion,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+}
+
+class $$OwnershipSharesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $OwnershipSharesTable,
+          OwnershipShareRow,
+          $$OwnershipSharesTableFilterComposer,
+          $$OwnershipSharesTableOrderingComposer,
+          $$OwnershipSharesTableAnnotationComposer,
+          $$OwnershipSharesTableCreateCompanionBuilder,
+          $$OwnershipSharesTableUpdateCompanionBuilder,
+          (
+            OwnershipShareRow,
+            BaseReferences<
+              _$AppDatabase,
+              $OwnershipSharesTable,
+              OwnershipShareRow
+            >,
+          ),
+          OwnershipShareRow,
+          PrefetchHooks Function()
+        > {
+  $$OwnershipSharesTableTableManager(
+    _$AppDatabase db,
+    $OwnershipSharesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$OwnershipSharesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$OwnershipSharesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$OwnershipSharesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> orgId = const Value.absent(),
+                Value<String> ownerId = const Value.absent(),
+                Value<int> shareBasisPoints = const Value.absent(),
+                Value<String> effectiveFrom = const Value.absent(),
+                Value<String?> effectiveTo = const Value.absent(),
+                Value<int> rowVersion = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => OwnershipSharesCompanion(
+                id: id,
+                orgId: orgId,
+                ownerId: ownerId,
+                shareBasisPoints: shareBasisPoints,
+                effectiveFrom: effectiveFrom,
+                effectiveTo: effectiveTo,
+                rowVersion: rowVersion,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String orgId,
+                required String ownerId,
+                required int shareBasisPoints,
+                required String effectiveFrom,
+                Value<String?> effectiveTo = const Value.absent(),
+                Value<int> rowVersion = const Value.absent(),
+                required DateTime updatedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => OwnershipSharesCompanion.insert(
+                id: id,
+                orgId: orgId,
+                ownerId: ownerId,
+                shareBasisPoints: shareBasisPoints,
+                effectiveFrom: effectiveFrom,
+                effectiveTo: effectiveTo,
+                rowVersion: rowVersion,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$OwnershipSharesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $OwnershipSharesTable,
+      OwnershipShareRow,
+      $$OwnershipSharesTableFilterComposer,
+      $$OwnershipSharesTableOrderingComposer,
+      $$OwnershipSharesTableAnnotationComposer,
+      $$OwnershipSharesTableCreateCompanionBuilder,
+      $$OwnershipSharesTableUpdateCompanionBuilder,
+      (
+        OwnershipShareRow,
+        BaseReferences<_$AppDatabase, $OwnershipSharesTable, OwnershipShareRow>,
+      ),
+      OwnershipShareRow,
+      PrefetchHooks Function()
+    >;
+typedef $$OwnerFamilyMembersTableCreateCompanionBuilder =
+    OwnerFamilyMembersCompanion Function({
+      required String id,
+      required String orgId,
+      required String ownerId,
+      required String displayName,
+      Value<String?> relationshipLabel,
+      Value<bool> isSelf,
+      Value<bool> mayUseNc,
+      required String effectiveFrom,
+      Value<String?> effectiveTo,
+      Value<bool> active,
+      Value<int> rowVersion,
+      required DateTime updatedAt,
+      Value<int> rowid,
+    });
+typedef $$OwnerFamilyMembersTableUpdateCompanionBuilder =
+    OwnerFamilyMembersCompanion Function({
+      Value<String> id,
+      Value<String> orgId,
+      Value<String> ownerId,
+      Value<String> displayName,
+      Value<String?> relationshipLabel,
+      Value<bool> isSelf,
+      Value<bool> mayUseNc,
+      Value<String> effectiveFrom,
+      Value<String?> effectiveTo,
+      Value<bool> active,
+      Value<int> rowVersion,
+      Value<DateTime> updatedAt,
+      Value<int> rowid,
+    });
+
+class $$OwnerFamilyMembersTableFilterComposer
+    extends Composer<_$AppDatabase, $OwnerFamilyMembersTable> {
+  $$OwnerFamilyMembersTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get orgId => $composableBuilder(
+    column: $table.orgId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get ownerId => $composableBuilder(
+    column: $table.ownerId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get displayName => $composableBuilder(
+    column: $table.displayName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get relationshipLabel => $composableBuilder(
+    column: $table.relationshipLabel,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isSelf => $composableBuilder(
+    column: $table.isSelf,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get mayUseNc => $composableBuilder(
+    column: $table.mayUseNc,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get effectiveFrom => $composableBuilder(
+    column: $table.effectiveFrom,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get effectiveTo => $composableBuilder(
+    column: $table.effectiveTo,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get active => $composableBuilder(
+    column: $table.active,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get rowVersion => $composableBuilder(
+    column: $table.rowVersion,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$OwnerFamilyMembersTableOrderingComposer
+    extends Composer<_$AppDatabase, $OwnerFamilyMembersTable> {
+  $$OwnerFamilyMembersTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get orgId => $composableBuilder(
+    column: $table.orgId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get ownerId => $composableBuilder(
+    column: $table.ownerId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get displayName => $composableBuilder(
+    column: $table.displayName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get relationshipLabel => $composableBuilder(
+    column: $table.relationshipLabel,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get isSelf => $composableBuilder(
+    column: $table.isSelf,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get mayUseNc => $composableBuilder(
+    column: $table.mayUseNc,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get effectiveFrom => $composableBuilder(
+    column: $table.effectiveFrom,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get effectiveTo => $composableBuilder(
+    column: $table.effectiveTo,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get active => $composableBuilder(
+    column: $table.active,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get rowVersion => $composableBuilder(
+    column: $table.rowVersion,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$OwnerFamilyMembersTableAnnotationComposer
+    extends Composer<_$AppDatabase, $OwnerFamilyMembersTable> {
+  $$OwnerFamilyMembersTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get orgId =>
+      $composableBuilder(column: $table.orgId, builder: (column) => column);
+
+  GeneratedColumn<String> get ownerId =>
+      $composableBuilder(column: $table.ownerId, builder: (column) => column);
+
+  GeneratedColumn<String> get displayName => $composableBuilder(
+    column: $table.displayName,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get relationshipLabel => $composableBuilder(
+    column: $table.relationshipLabel,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get isSelf =>
+      $composableBuilder(column: $table.isSelf, builder: (column) => column);
+
+  GeneratedColumn<bool> get mayUseNc =>
+      $composableBuilder(column: $table.mayUseNc, builder: (column) => column);
+
+  GeneratedColumn<String> get effectiveFrom => $composableBuilder(
+    column: $table.effectiveFrom,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get effectiveTo => $composableBuilder(
+    column: $table.effectiveTo,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get active =>
+      $composableBuilder(column: $table.active, builder: (column) => column);
+
+  GeneratedColumn<int> get rowVersion => $composableBuilder(
+    column: $table.rowVersion,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+}
+
+class $$OwnerFamilyMembersTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $OwnerFamilyMembersTable,
+          OwnerFamilyMemberRow,
+          $$OwnerFamilyMembersTableFilterComposer,
+          $$OwnerFamilyMembersTableOrderingComposer,
+          $$OwnerFamilyMembersTableAnnotationComposer,
+          $$OwnerFamilyMembersTableCreateCompanionBuilder,
+          $$OwnerFamilyMembersTableUpdateCompanionBuilder,
+          (
+            OwnerFamilyMemberRow,
+            BaseReferences<
+              _$AppDatabase,
+              $OwnerFamilyMembersTable,
+              OwnerFamilyMemberRow
+            >,
+          ),
+          OwnerFamilyMemberRow,
+          PrefetchHooks Function()
+        > {
+  $$OwnerFamilyMembersTableTableManager(
+    _$AppDatabase db,
+    $OwnerFamilyMembersTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$OwnerFamilyMembersTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$OwnerFamilyMembersTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$OwnerFamilyMembersTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> orgId = const Value.absent(),
+                Value<String> ownerId = const Value.absent(),
+                Value<String> displayName = const Value.absent(),
+                Value<String?> relationshipLabel = const Value.absent(),
+                Value<bool> isSelf = const Value.absent(),
+                Value<bool> mayUseNc = const Value.absent(),
+                Value<String> effectiveFrom = const Value.absent(),
+                Value<String?> effectiveTo = const Value.absent(),
+                Value<bool> active = const Value.absent(),
+                Value<int> rowVersion = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => OwnerFamilyMembersCompanion(
+                id: id,
+                orgId: orgId,
+                ownerId: ownerId,
+                displayName: displayName,
+                relationshipLabel: relationshipLabel,
+                isSelf: isSelf,
+                mayUseNc: mayUseNc,
+                effectiveFrom: effectiveFrom,
+                effectiveTo: effectiveTo,
+                active: active,
+                rowVersion: rowVersion,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String orgId,
+                required String ownerId,
+                required String displayName,
+                Value<String?> relationshipLabel = const Value.absent(),
+                Value<bool> isSelf = const Value.absent(),
+                Value<bool> mayUseNc = const Value.absent(),
+                required String effectiveFrom,
+                Value<String?> effectiveTo = const Value.absent(),
+                Value<bool> active = const Value.absent(),
+                Value<int> rowVersion = const Value.absent(),
+                required DateTime updatedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => OwnerFamilyMembersCompanion.insert(
+                id: id,
+                orgId: orgId,
+                ownerId: ownerId,
+                displayName: displayName,
+                relationshipLabel: relationshipLabel,
+                isSelf: isSelf,
+                mayUseNc: mayUseNc,
+                effectiveFrom: effectiveFrom,
+                effectiveTo: effectiveTo,
+                active: active,
+                rowVersion: rowVersion,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$OwnerFamilyMembersTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $OwnerFamilyMembersTable,
+      OwnerFamilyMemberRow,
+      $$OwnerFamilyMembersTableFilterComposer,
+      $$OwnerFamilyMembersTableOrderingComposer,
+      $$OwnerFamilyMembersTableAnnotationComposer,
+      $$OwnerFamilyMembersTableCreateCompanionBuilder,
+      $$OwnerFamilyMembersTableUpdateCompanionBuilder,
+      (
+        OwnerFamilyMemberRow,
+        BaseReferences<
+          _$AppDatabase,
+          $OwnerFamilyMembersTable,
+          OwnerFamilyMemberRow
+        >,
+      ),
+      OwnerFamilyMemberRow,
+      PrefetchHooks Function()
+    >;
+typedef $$OwnerLedgerEntriesTableCreateCompanionBuilder =
+    OwnerLedgerEntriesCompanion Function({
+      required String id,
+      required String orgId,
+      Value<String?> txnNumber,
+      Value<String?> financialYear,
+      required String ownerId,
+      required String businessUnitId,
+      required String businessDate,
+      required String pnlPeriodKey,
+      Value<String> businessDateSource,
+      required String movementType,
+      required String direction,
+      required int amountMinor,
+      Value<String?> familyMemberId,
+      Value<String?> collectedByFamilyMemberId,
+      Value<String?> ncBillReference,
+      Value<String?> paymentMethodId,
+      Value<String?> referenceNumber,
+      Value<String?> remarks,
+      Value<String?> reason,
+      required String createdBy,
+      required DateTime capturedAt,
+      Value<DateTime?> voidedAt,
+      Value<String?> voidedBy,
+      Value<String?> voidReason,
+      Value<String?> pendingMutationId,
+      Value<int> rowVersion,
+      Value<DateTime?> serverUpdatedAt,
+      required DateTime updatedAt,
+      Value<DateTime?> scopeRevokedAt,
+      Value<int> rowid,
+    });
+typedef $$OwnerLedgerEntriesTableUpdateCompanionBuilder =
+    OwnerLedgerEntriesCompanion Function({
+      Value<String> id,
+      Value<String> orgId,
+      Value<String?> txnNumber,
+      Value<String?> financialYear,
+      Value<String> ownerId,
+      Value<String> businessUnitId,
+      Value<String> businessDate,
+      Value<String> pnlPeriodKey,
+      Value<String> businessDateSource,
+      Value<String> movementType,
+      Value<String> direction,
+      Value<int> amountMinor,
+      Value<String?> familyMemberId,
+      Value<String?> collectedByFamilyMemberId,
+      Value<String?> ncBillReference,
+      Value<String?> paymentMethodId,
+      Value<String?> referenceNumber,
+      Value<String?> remarks,
+      Value<String?> reason,
+      Value<String> createdBy,
+      Value<DateTime> capturedAt,
+      Value<DateTime?> voidedAt,
+      Value<String?> voidedBy,
+      Value<String?> voidReason,
+      Value<String?> pendingMutationId,
+      Value<int> rowVersion,
+      Value<DateTime?> serverUpdatedAt,
+      Value<DateTime> updatedAt,
+      Value<DateTime?> scopeRevokedAt,
+      Value<int> rowid,
+    });
+
+class $$OwnerLedgerEntriesTableFilterComposer
+    extends Composer<_$AppDatabase, $OwnerLedgerEntriesTable> {
+  $$OwnerLedgerEntriesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get orgId => $composableBuilder(
+    column: $table.orgId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get txnNumber => $composableBuilder(
+    column: $table.txnNumber,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get financialYear => $composableBuilder(
+    column: $table.financialYear,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get ownerId => $composableBuilder(
+    column: $table.ownerId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get businessUnitId => $composableBuilder(
+    column: $table.businessUnitId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get businessDate => $composableBuilder(
+    column: $table.businessDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get pnlPeriodKey => $composableBuilder(
+    column: $table.pnlPeriodKey,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get businessDateSource => $composableBuilder(
+    column: $table.businessDateSource,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get movementType => $composableBuilder(
+    column: $table.movementType,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get direction => $composableBuilder(
+    column: $table.direction,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get amountMinor => $composableBuilder(
+    column: $table.amountMinor,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get familyMemberId => $composableBuilder(
+    column: $table.familyMemberId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get collectedByFamilyMemberId => $composableBuilder(
+    column: $table.collectedByFamilyMemberId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get ncBillReference => $composableBuilder(
+    column: $table.ncBillReference,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get paymentMethodId => $composableBuilder(
+    column: $table.paymentMethodId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get referenceNumber => $composableBuilder(
+    column: $table.referenceNumber,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get remarks => $composableBuilder(
+    column: $table.remarks,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get reason => $composableBuilder(
+    column: $table.reason,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get createdBy => $composableBuilder(
+    column: $table.createdBy,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get capturedAt => $composableBuilder(
+    column: $table.capturedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get voidedAt => $composableBuilder(
+    column: $table.voidedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get voidedBy => $composableBuilder(
+    column: $table.voidedBy,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get voidReason => $composableBuilder(
+    column: $table.voidReason,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get pendingMutationId => $composableBuilder(
+    column: $table.pendingMutationId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get rowVersion => $composableBuilder(
+    column: $table.rowVersion,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get serverUpdatedAt => $composableBuilder(
+    column: $table.serverUpdatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get scopeRevokedAt => $composableBuilder(
+    column: $table.scopeRevokedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$OwnerLedgerEntriesTableOrderingComposer
+    extends Composer<_$AppDatabase, $OwnerLedgerEntriesTable> {
+  $$OwnerLedgerEntriesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get orgId => $composableBuilder(
+    column: $table.orgId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get txnNumber => $composableBuilder(
+    column: $table.txnNumber,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get financialYear => $composableBuilder(
+    column: $table.financialYear,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get ownerId => $composableBuilder(
+    column: $table.ownerId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get businessUnitId => $composableBuilder(
+    column: $table.businessUnitId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get businessDate => $composableBuilder(
+    column: $table.businessDate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get pnlPeriodKey => $composableBuilder(
+    column: $table.pnlPeriodKey,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get businessDateSource => $composableBuilder(
+    column: $table.businessDateSource,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get movementType => $composableBuilder(
+    column: $table.movementType,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get direction => $composableBuilder(
+    column: $table.direction,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get amountMinor => $composableBuilder(
+    column: $table.amountMinor,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get familyMemberId => $composableBuilder(
+    column: $table.familyMemberId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get collectedByFamilyMemberId => $composableBuilder(
+    column: $table.collectedByFamilyMemberId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get ncBillReference => $composableBuilder(
+    column: $table.ncBillReference,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get paymentMethodId => $composableBuilder(
+    column: $table.paymentMethodId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get referenceNumber => $composableBuilder(
+    column: $table.referenceNumber,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get remarks => $composableBuilder(
+    column: $table.remarks,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get reason => $composableBuilder(
+    column: $table.reason,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get createdBy => $composableBuilder(
+    column: $table.createdBy,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get capturedAt => $composableBuilder(
+    column: $table.capturedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get voidedAt => $composableBuilder(
+    column: $table.voidedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get voidedBy => $composableBuilder(
+    column: $table.voidedBy,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get voidReason => $composableBuilder(
+    column: $table.voidReason,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get pendingMutationId => $composableBuilder(
+    column: $table.pendingMutationId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get rowVersion => $composableBuilder(
+    column: $table.rowVersion,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get serverUpdatedAt => $composableBuilder(
+    column: $table.serverUpdatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get scopeRevokedAt => $composableBuilder(
+    column: $table.scopeRevokedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$OwnerLedgerEntriesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $OwnerLedgerEntriesTable> {
+  $$OwnerLedgerEntriesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get orgId =>
+      $composableBuilder(column: $table.orgId, builder: (column) => column);
+
+  GeneratedColumn<String> get txnNumber =>
+      $composableBuilder(column: $table.txnNumber, builder: (column) => column);
+
+  GeneratedColumn<String> get financialYear => $composableBuilder(
+    column: $table.financialYear,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get ownerId =>
+      $composableBuilder(column: $table.ownerId, builder: (column) => column);
+
+  GeneratedColumn<String> get businessUnitId => $composableBuilder(
+    column: $table.businessUnitId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get businessDate => $composableBuilder(
+    column: $table.businessDate,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get pnlPeriodKey => $composableBuilder(
+    column: $table.pnlPeriodKey,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get businessDateSource => $composableBuilder(
+    column: $table.businessDateSource,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get movementType => $composableBuilder(
+    column: $table.movementType,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get direction =>
+      $composableBuilder(column: $table.direction, builder: (column) => column);
+
+  GeneratedColumn<int> get amountMinor => $composableBuilder(
+    column: $table.amountMinor,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get familyMemberId => $composableBuilder(
+    column: $table.familyMemberId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get collectedByFamilyMemberId => $composableBuilder(
+    column: $table.collectedByFamilyMemberId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get ncBillReference => $composableBuilder(
+    column: $table.ncBillReference,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get paymentMethodId => $composableBuilder(
+    column: $table.paymentMethodId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get referenceNumber => $composableBuilder(
+    column: $table.referenceNumber,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get remarks =>
+      $composableBuilder(column: $table.remarks, builder: (column) => column);
+
+  GeneratedColumn<String> get reason =>
+      $composableBuilder(column: $table.reason, builder: (column) => column);
+
+  GeneratedColumn<String> get createdBy =>
+      $composableBuilder(column: $table.createdBy, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get capturedAt => $composableBuilder(
+    column: $table.capturedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get voidedAt =>
+      $composableBuilder(column: $table.voidedAt, builder: (column) => column);
+
+  GeneratedColumn<String> get voidedBy =>
+      $composableBuilder(column: $table.voidedBy, builder: (column) => column);
+
+  GeneratedColumn<String> get voidReason => $composableBuilder(
+    column: $table.voidReason,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get pendingMutationId => $composableBuilder(
+    column: $table.pendingMutationId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get rowVersion => $composableBuilder(
+    column: $table.rowVersion,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get serverUpdatedAt => $composableBuilder(
+    column: $table.serverUpdatedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get scopeRevokedAt => $composableBuilder(
+    column: $table.scopeRevokedAt,
+    builder: (column) => column,
+  );
+}
+
+class $$OwnerLedgerEntriesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $OwnerLedgerEntriesTable,
+          OwnerLedgerRow,
+          $$OwnerLedgerEntriesTableFilterComposer,
+          $$OwnerLedgerEntriesTableOrderingComposer,
+          $$OwnerLedgerEntriesTableAnnotationComposer,
+          $$OwnerLedgerEntriesTableCreateCompanionBuilder,
+          $$OwnerLedgerEntriesTableUpdateCompanionBuilder,
+          (
+            OwnerLedgerRow,
+            BaseReferences<
+              _$AppDatabase,
+              $OwnerLedgerEntriesTable,
+              OwnerLedgerRow
+            >,
+          ),
+          OwnerLedgerRow,
+          PrefetchHooks Function()
+        > {
+  $$OwnerLedgerEntriesTableTableManager(
+    _$AppDatabase db,
+    $OwnerLedgerEntriesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$OwnerLedgerEntriesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$OwnerLedgerEntriesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$OwnerLedgerEntriesTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> orgId = const Value.absent(),
+                Value<String?> txnNumber = const Value.absent(),
+                Value<String?> financialYear = const Value.absent(),
+                Value<String> ownerId = const Value.absent(),
+                Value<String> businessUnitId = const Value.absent(),
+                Value<String> businessDate = const Value.absent(),
+                Value<String> pnlPeriodKey = const Value.absent(),
+                Value<String> businessDateSource = const Value.absent(),
+                Value<String> movementType = const Value.absent(),
+                Value<String> direction = const Value.absent(),
+                Value<int> amountMinor = const Value.absent(),
+                Value<String?> familyMemberId = const Value.absent(),
+                Value<String?> collectedByFamilyMemberId = const Value.absent(),
+                Value<String?> ncBillReference = const Value.absent(),
+                Value<String?> paymentMethodId = const Value.absent(),
+                Value<String?> referenceNumber = const Value.absent(),
+                Value<String?> remarks = const Value.absent(),
+                Value<String?> reason = const Value.absent(),
+                Value<String> createdBy = const Value.absent(),
+                Value<DateTime> capturedAt = const Value.absent(),
+                Value<DateTime?> voidedAt = const Value.absent(),
+                Value<String?> voidedBy = const Value.absent(),
+                Value<String?> voidReason = const Value.absent(),
+                Value<String?> pendingMutationId = const Value.absent(),
+                Value<int> rowVersion = const Value.absent(),
+                Value<DateTime?> serverUpdatedAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<DateTime?> scopeRevokedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => OwnerLedgerEntriesCompanion(
+                id: id,
+                orgId: orgId,
+                txnNumber: txnNumber,
+                financialYear: financialYear,
+                ownerId: ownerId,
+                businessUnitId: businessUnitId,
+                businessDate: businessDate,
+                pnlPeriodKey: pnlPeriodKey,
+                businessDateSource: businessDateSource,
+                movementType: movementType,
+                direction: direction,
+                amountMinor: amountMinor,
+                familyMemberId: familyMemberId,
+                collectedByFamilyMemberId: collectedByFamilyMemberId,
+                ncBillReference: ncBillReference,
+                paymentMethodId: paymentMethodId,
+                referenceNumber: referenceNumber,
+                remarks: remarks,
+                reason: reason,
+                createdBy: createdBy,
+                capturedAt: capturedAt,
+                voidedAt: voidedAt,
+                voidedBy: voidedBy,
+                voidReason: voidReason,
+                pendingMutationId: pendingMutationId,
+                rowVersion: rowVersion,
+                serverUpdatedAt: serverUpdatedAt,
+                updatedAt: updatedAt,
+                scopeRevokedAt: scopeRevokedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String orgId,
+                Value<String?> txnNumber = const Value.absent(),
+                Value<String?> financialYear = const Value.absent(),
+                required String ownerId,
+                required String businessUnitId,
+                required String businessDate,
+                required String pnlPeriodKey,
+                Value<String> businessDateSource = const Value.absent(),
+                required String movementType,
+                required String direction,
+                required int amountMinor,
+                Value<String?> familyMemberId = const Value.absent(),
+                Value<String?> collectedByFamilyMemberId = const Value.absent(),
+                Value<String?> ncBillReference = const Value.absent(),
+                Value<String?> paymentMethodId = const Value.absent(),
+                Value<String?> referenceNumber = const Value.absent(),
+                Value<String?> remarks = const Value.absent(),
+                Value<String?> reason = const Value.absent(),
+                required String createdBy,
+                required DateTime capturedAt,
+                Value<DateTime?> voidedAt = const Value.absent(),
+                Value<String?> voidedBy = const Value.absent(),
+                Value<String?> voidReason = const Value.absent(),
+                Value<String?> pendingMutationId = const Value.absent(),
+                Value<int> rowVersion = const Value.absent(),
+                Value<DateTime?> serverUpdatedAt = const Value.absent(),
+                required DateTime updatedAt,
+                Value<DateTime?> scopeRevokedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => OwnerLedgerEntriesCompanion.insert(
+                id: id,
+                orgId: orgId,
+                txnNumber: txnNumber,
+                financialYear: financialYear,
+                ownerId: ownerId,
+                businessUnitId: businessUnitId,
+                businessDate: businessDate,
+                pnlPeriodKey: pnlPeriodKey,
+                businessDateSource: businessDateSource,
+                movementType: movementType,
+                direction: direction,
+                amountMinor: amountMinor,
+                familyMemberId: familyMemberId,
+                collectedByFamilyMemberId: collectedByFamilyMemberId,
+                ncBillReference: ncBillReference,
+                paymentMethodId: paymentMethodId,
+                referenceNumber: referenceNumber,
+                remarks: remarks,
+                reason: reason,
+                createdBy: createdBy,
+                capturedAt: capturedAt,
+                voidedAt: voidedAt,
+                voidedBy: voidedBy,
+                voidReason: voidReason,
+                pendingMutationId: pendingMutationId,
+                rowVersion: rowVersion,
+                serverUpdatedAt: serverUpdatedAt,
+                updatedAt: updatedAt,
+                scopeRevokedAt: scopeRevokedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$OwnerLedgerEntriesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $OwnerLedgerEntriesTable,
+      OwnerLedgerRow,
+      $$OwnerLedgerEntriesTableFilterComposer,
+      $$OwnerLedgerEntriesTableOrderingComposer,
+      $$OwnerLedgerEntriesTableAnnotationComposer,
+      $$OwnerLedgerEntriesTableCreateCompanionBuilder,
+      $$OwnerLedgerEntriesTableUpdateCompanionBuilder,
+      (
+        OwnerLedgerRow,
+        BaseReferences<_$AppDatabase, $OwnerLedgerEntriesTable, OwnerLedgerRow>,
+      ),
+      OwnerLedgerRow,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -33953,4 +39041,12 @@ class $AppDatabaseManager {
         _db,
         _db.reportingCoverageMarkers,
       );
+  $$OwnersTableTableManager get owners =>
+      $$OwnersTableTableManager(_db, _db.owners);
+  $$OwnershipSharesTableTableManager get ownershipShares =>
+      $$OwnershipSharesTableTableManager(_db, _db.ownershipShares);
+  $$OwnerFamilyMembersTableTableManager get ownerFamilyMembers =>
+      $$OwnerFamilyMembersTableTableManager(_db, _db.ownerFamilyMembers);
+  $$OwnerLedgerEntriesTableTableManager get ownerLedgerEntries =>
+      $$OwnerLedgerEntriesTableTableManager(_db, _db.ownerLedgerEntries);
 }

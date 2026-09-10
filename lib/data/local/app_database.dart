@@ -9,6 +9,7 @@ import 'package:krishna_mis/data/local/expense_tables.dart';
 import 'package:krishna_mis/data/local/reporting_tables.dart';
 import 'package:krishna_mis/data/local/revenue_tables.dart';
 import 'package:krishna_mis/data/local/master_tables.dart';
+import 'package:krishna_mis/data/local/owner_tables.dart';
 import 'package:krishna_mis/data/local/seed/master_seed.dart';
 import 'package:krishna_mis/data/local/tables.dart';
 
@@ -42,6 +43,10 @@ part 'app_database.g.dart';
     ReportingRevenueContributions,
     ReportingExpenseContributions,
     ReportingCoverageMarkers,
+    Owners,
+    OwnershipShares,
+    OwnerFamilyMembers,
+    OwnerLedgerEntries,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -100,7 +105,7 @@ class AppDatabase extends _$AppDatabase {
   /// Financial tables raise this number as they land, each with a migration step and a
   /// migration test (docs/RELEASE_CHECKLIST.md §C).
   @override
-  int get schemaVersion => 18;
+  int get schemaVersion => 19;
 
   /// Timestamps are stored as ISO-8601 **UTC text**, not as unix seconds.
   ///
@@ -131,6 +136,7 @@ class AppDatabase extends _$AppDatabase {
       await _createExpenseReportingIndex();
       await _createReportingCacheIndexes();
       await _createImmutableBandTrigger();
+      await _createOwnerLedgerIndexes();
     },
     onUpgrade: (m, from, to) async {
       if (from < 2) {
@@ -364,6 +370,30 @@ class AppDatabase extends _$AppDatabase {
           reportingCoverageMarkers,
           reportingCoverageMarkers.snapshotId,
         );
+      }
+      if (from < 19) {
+        // Phase 5 OA-1 — the Owner Accounts foundation.
+        //
+        // Four new tables and nothing else touched: the revenue, expense and reporting
+        // caches an upgrading device already holds are not read, not rewritten and not
+        // invalidated by this step.
+        //
+        // **No version floor, and that is a claim rather than an oversight.** All four
+        // are created whole from the current definition, so unlike the v13 and v18
+        // columns there is nothing an upgrading device could already have (D-144). They
+        // reference no table created by a later step, and their pointers to masters are
+        // deliberately soft, so no ordering against v2 is required either.
+        //
+        // They arrive **empty**, and stay empty until somebody configures an owner. A
+        // migration seeds no owner, no family member, no share and no opening balance:
+        // every one of those is a business fact, and inventing a `0 bp` share or a `Rs 0`
+        // opening balance would be a financial claim nobody made (OA-D3, D-043's rule
+        // applied to ownership).
+        await m.createTable(owners);
+        await m.createTable(ownershipShares);
+        await m.createTable(ownerFamilyMembers);
+        await m.createTable(ownerLedgerEntries);
+        await _createOwnerLedgerIndexes();
       }
     },
     beforeOpen: (details) async {
@@ -652,4 +682,39 @@ class AppDatabase extends _$AppDatabase {
     'CREATE UNIQUE INDEX IF NOT EXISTS ux_period_locks_scope '
     "ON period_locks (org_id, COALESCE(business_unit_id, ''), period_key)",
   );
+
+  /// Owner Ledger read paths (Phase 5 OA-1).
+  ///
+  /// One index per question the foundation actually asks, and no more. An index nothing
+  /// can use is the same family as a rule nothing evaluates, and Slice 3 already had to
+  /// record one of those (`ix_expense_contributions_reporting` leads with a column the
+  /// local queries never constrain).
+  ///
+  /// `org_id` is deliberately **not** the leading column: a device holds one
+  /// organisation, so no local query constrains it and leading with it would make the
+  /// index unusable on exactly the paths it exists for.
+  Future<void> _createOwnerLedgerIndexes() async {
+    // The owner statement: one owner's movements over a period, newest first.
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS ix_owner_ledger_owner_period '
+      'ON owner_ledger_entries (owner_id, pnl_period_key, business_date) '
+      'WHERE voided_at IS NULL AND scope_revoked_at IS NULL',
+    );
+    // The operational ledger surface: what happened at this property, in date order.
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS ix_owner_ledger_unit_date '
+      'ON owner_ledger_entries (business_unit_id, business_date)',
+    );
+    // Resolving a person's history, and the family-attribution assertions.
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS ix_owner_family_owner '
+      'ON owner_family_members (owner_id, effective_from)',
+    );
+    // Share resolution reads by owner and date; the set is tiny, but the uniqueness this
+    // supports is the point rather than the speed.
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS ix_ownership_shares_owner '
+      'ON ownership_shares (owner_id, effective_from)',
+    );
+  }
 }

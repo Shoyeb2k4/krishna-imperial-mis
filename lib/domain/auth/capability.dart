@@ -60,6 +60,62 @@ enum Capability {
   attachmentView('attachment.view'),
   attachmentUpload('attachment.upload'),
 
+  // ── Owner accounts (Phase 5 OA-1) ─────────────────────────────────────────
+  //
+  // **The first segment is underscored, and that is load-bearing rather than a style
+  // choice.** Three shipped reporting migrations carry a deploy-time guard that refuses
+  // any reporting-boundary body matching `\mowner\M` as a role-name branch. Postgres word
+  // characters include the underscore, so `owner_ledger` does not match — while
+  // `'owner.ledger.view'` **would**, because the bare word `owner` ends at the dot, and a
+  // legitimate capability literal would be refused as though it were `if role = 'owner'`.
+  //
+  // Recorded here so a later tidy-up does not rename these to dots and break a deploy for
+  // a reason that would take a long time to find (OA-D11).
+
+  /// Read the Owner and Family masters — the person list an NC entry surface offers.
+  ///
+  /// Deliberately **not** enough to read the ledger, the shares or any balance. An
+  /// operator who records a bill needs to know whose it is; they do not need to know what
+  /// the business earned or what anybody is owed (OA-1 §31).
+  ownerMastersView('owner_masters.view'),
+
+  /// Administer owners, family links and ownership shares. Owner-only in V1.
+  ownerMastersManage('owner_masters.manage'),
+
+  /// Record a non-chargeable consumption, for the property named on it.
+  ///
+  /// Unit-scoped: a Crystal Canopy manager records Crystal Canopy NC. Recording is an
+  /// operational act and grants no visibility of anything financial.
+  ownerLedgerCreateNc('owner_ledger.create.nc'),
+
+  /// Record an owner withdrawal, for the property it was drawn from. Unit-scoped.
+  ownerLedgerCreateWithdrawal('owner_ledger.create.withdrawal'),
+
+  /// Read the Owner Ledger — every movement, for every owner.
+  ///
+  /// **Unscoped by design.** An owner's current account spans both properties, so a
+  /// per-property slice of it is not a narrower view, it is a misleading one: a reader
+  /// would see part of an account with nothing saying so. Either the whole ledger is
+  /// visible or none of it is, which is D-163's argument applied to an owner position.
+  ///
+  /// This is also what OA-D8 grants — both owners see both sides — expressed as a
+  /// capability rather than as an identity comparison.
+  ownerLedgerView('owner_ledger.view'),
+
+  /// Correct any owner movement, under the ordinary window and period rules.
+  ownerLedgerEditAll('owner_ledger.edit.all'),
+
+  /// Void an owner movement, with a stated reason.
+  ownerLedgerVoid('owner_ledger.void'),
+
+  /// Record a manual adjustment (§16).
+  ///
+  /// Its own capability, stronger than recording a bill, because an adjustment is the one
+  /// movement whose meaning is not carried by its type. It states a direction and a
+  /// mandatory reason, and it is the type most easily misused as a way to make an account
+  /// say something convenient.
+  ownerLedgerAdjust('owner_ledger.adjust'),
+
   // ── Reporting ─────────────────────────────────────────────────────────────
   reportsView('reports.view'),
   reportsExport('reports.export'),
@@ -174,6 +230,12 @@ abstract final class RoleTemplates {
   static const Set<Capability> owner = {...Capability.values};
 
   /// Operational entry and permitted operational reporting, for assigned units only.
+  ///
+  /// **No Owner Ledger capability, deliberately.** Whether a Manager may record NC or a
+  /// withdrawal is a staff-authority question the project lead has not answered, and OA-1
+  /// was instructed to create no temporary broad access. Default deny is the safe end of
+  /// that decision: granting later is a migration, ungranting after somebody has recorded
+  /// against it is an argument. Recorded as an open decision.
   static const Set<Capability> manager = {
     Capability.expenseViewAll,
     Capability.expenseCreate,
@@ -209,6 +271,23 @@ abstract final class RoleTemplates {
     Capability.reportsPrint,
     Capability.mastersView,
     Capability.auditView,
+
+    // Owner accounts. The Accountant is the role that exists to record, correct and
+    // reconcile finance, so the operational and corrective half of the Owner Ledger sits
+    // here (OA-1 §33).
+    //
+    // **`owner_ledger.adjust` deliberately does not.** An adjustment is the one movement
+    // whose meaning the type does not carry, and it is the obvious route to making an
+    // account say something convenient. Correction and void already handle every ordinary
+    // mistake, so Owner-only costs nothing operationally and keeps the escape hatch behind
+    // the person whose money it is. Raised as an open decision rather than assumed
+    // permanent.
+    Capability.ownerMastersView,
+    Capability.ownerLedgerCreateNc,
+    Capability.ownerLedgerCreateWithdrawal,
+    Capability.ownerLedgerView,
+    Capability.ownerLedgerEditAll,
+    Capability.ownerLedgerVoid,
   };
 
   /// Restricted entry only.
