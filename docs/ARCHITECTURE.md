@@ -9,7 +9,7 @@ Status: **Sections 1–12 proposed (Phase 0, revised); sections 13–16 and 18�
 is built and verified; section 17 is the Phase 4 *plan*, since built — read §18–§26 for what
 shipped.** Sections 6, 5.3 and 8 carry the project lead's mandated corrections.
 Implementation status is tracked in `PROJECT_STATUS.md`.
-Last updated: 2026-09-10 — the Owner Ledger (section 33); Phase 5 Slice 6 corrective (section 32); Slice 5 in section 31; Slices 1-4 in sections 27-30
+Last updated: 2026-09-10 — the Owner Ledger (section 33), with the V1 ownership vector in §33.3; Phase 5 Slice 6 corrective (section 32); Slice 5 in section 31; Slices 1-4 in sections 27-30
 
 ---
 
@@ -3220,7 +3220,21 @@ each totalling exactly 10000 (D-189). Never a percentage, never a `double` — 5
 number of paise has to reconcile exactly, which is why `rate_bp` has had this shape since
 D-017.
 
-Two rules bound the timeline, and **both refuse with a sentence rather than with a
+**V1 fixes the vector at `[5000, 5000]` (D-204).** Ownership is 50:50 between exactly two
+owners, and 60/40, 70/30, a third owner, a single owner holding everything, a partial total
+and a total above 100% are all refused rather than allocated. It is enforced twice, because
+the two failures are different: `OwnershipShareSet.resolveV1For` refuses to **infer** a
+ratio nobody approved, and `owner_share_set` refuses to **accept** one, so the database
+never holds a configuration every settlement would later refuse. A host guard pins the two
+numbers to each other.
+
+The rule composes rather than replaces: `resolveFor` stays the general date-effective
+resolution — which is what keeps historical records readable, and history legitimately
+contains ratios V1 no longer configures — and `resolveV1For` adds the ruling on top. **The
+schema is untouched and the migration asserts it**: encoding a business rule on the column
+would make an authorised future ratio a migration of history.
+
+Two further rules bound the timeline, and **both refuse with a sentence rather than with a
 constraint**:
 
 | | |

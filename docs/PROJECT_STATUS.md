@@ -4652,7 +4652,43 @@ freshly passing.
 **`phase-a` … `multi-scope-b` — not rerun.** Nothing here touches authority caching, grants,
 scope resolution or purge semantics.
 
-## 10 · Next
+## 10 · The V1 ownership ruling (D-204), proven 2026-09-10
 
-**OA-2 is not started, and is not started automatically.** Neither is the old Phase 5
-Slice 7.
+The project lead ruled after OA-1 closed: **V1 ownership is fixed at 50:50 between exactly
+two owners**, and no general variable-ownership settlement logic is designed for V1. The
+authoritative vector must resolve to exactly `[5000, 5000]`; 60/40, 70/30, a third owner,
+unequal ownership, a partial total and a total above 100% are all refused.
+
+**Proven red first.** The shipped resolver accepted every one of those shapes, and each
+totals exactly 10000 — so the total check that existed could never have seen them.
+
+Enforced twice: `resolveV1For` refuses to **infer** a ratio nobody approved, and
+`owner_share_set` refuses to **accept** one (`KM033`). A host guard pins the two numbers to
+each other. `resolveFor` is untouched, so historical records stay readable, and the
+`ownership_shares` CHECK was **not** narrowed — the deploy asserts that, because encoding a
+business rule on the column would make an authorised future ratio a migration of history.
+
+| | Property | Result |
+|---|---|---|
+| 1 | exactly two active shares resolve for a settlement date | **PASS** — domain and live |
+| 2 | both equal 5000 bp | **PASS** — domain and live |
+| 3 | total equals 10000 bp | **PASS** — domain and live |
+| 4 | one missing owner refuses | **PASS** — both arms |
+| 5 | any non-5000 share refuses | **PASS** — five splits in the domain, five values live |
+| 6 | more than two active shares refuses | **PASS** — including 4000/3000/3000, which totals 10000 |
+| 7 | historical records remain readable | **PASS** — a 60/40 period still resolves under the general rule |
+| 8 | no P&L / Revenue / Expense semantics change | **PASS** — structural guards and the live contribution comparison |
+
+Migrations `20260910171751 owner_share_set_enforces_the_v1_vector` and
+`20260910172611 owner_share_refusal_promises_no_unavailable_act` — the second correcting a
+refusal that told an administrator to end an owner's share when **no API can do that**
+(D-205). Live owner-accounts suite **31 tests, run three times in succession**.
+
+**Still required before real settlement data is entered: the effective-from date of the
+50:50 ownership.** Not guessed.
+
+## 11 · Next
+
+**OA-2 is unblocked by the ruling's own terms** — the invariant it required to be proven
+before OA-2 is proven — and has **not** been started: its scope has never been briefed.
+The old Phase 5 Slice 7 is not started either.

@@ -283,6 +283,8 @@ Verified byte-for-byte against `supabase_migrations.schema_migrations.statements
 | 20260909111136 | `api_surface_invariant_owner_accounts` | `20260909111136_api_surface_invariant_owner_accounts.sql` |
 | 20260909112045 | `owner_ledger_view_is_grantable` | `20260909112045_owner_ledger_view_is_grantable.sql` |
 | 20260910161035 | `owner_share_set_refuses_backdating` | `20260910161035_owner_share_set_refuses_backdating.sql` |
+| 20260910171751 | `owner_share_set_enforces_the_v1_vector` | `20260910171751_owner_share_set_enforces_the_v1_vector.sql` |
+| 20260910172611 | `owner_share_refusal_promises_no_unavailable_act` | `20260910172611_owner_share_refusal_promises_no_unavailable_act.sql` |
 
 Five tables, all RLS-enabled and default-deny; the `KI-OWN` sequence; nine reviewed RPCs;
 the capability namespace under `owner_masters.*` and `owner_ledger.*`; and a trigger that
@@ -301,6 +303,18 @@ sentence rather than `23P01` and a constraint name.
 `owner_trigger_functions_revoked` is the third instance of D-044 / D-101: two new trigger
 functions were left `PUBLIC EXECUTE`, and the API-surface invariant refused the migration
 that would have shipped them.
+
+`owner_share_set_enforces_the_v1_vector` is the project lead's 2026-09-10 ruling (D-204) at
+the configuration boundary: exactly two owners, 5000 basis points each. **Its header names
+no ledger version**, deliberately — the version is assigned at apply time, so a file naming
+it cannot be the text submitted, which is what the note below had to record about every
+earlier OA-1 file. Its executable lines match the applied statement exactly (130 lines,
+`3870b23c…`).
+
+`owner_share_refusal_promises_no_unavailable_act` corrects a sentence that migration
+deployed: the third-owner refusal told an administrator to end an existing owner's share,
+and **no API can do that** (D-205). Executable lines match exactly (108 lines,
+`a03c565e…`).
 
 ### On "byte-for-byte", stated accurately rather than repeated
 
@@ -416,4 +430,6 @@ The divergences are confined to comments, blank lines, indentation and that head
 20260909111136 api_surface_invariant_owner_accounts
 20260909112045 owner_ledger_view_is_grantable
 20260910161035 owner_share_set_refuses_backdating
+20260910171751 owner_share_set_enforces_the_v1_vector
+20260910172611 owner_share_refusal_promises_no_unavailable_act
 ```

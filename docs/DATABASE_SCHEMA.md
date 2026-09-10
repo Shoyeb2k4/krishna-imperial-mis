@@ -1617,7 +1617,7 @@ unchanged. Owner movements belong here, not to a category label.
 
 | | |
 |---|---|
-| `share_basis_points` between 1 and 10000 | integer basis points; two owners at 5000 total exactly 10000, with no `double` anywhere near it |
+| `share_basis_points` between 1 and 10000 | integer basis points; two owners at 5000 total exactly 10000, with no `double` anywhere near it. **Deliberately not narrowed to 5000** (D-204): the V1 vector is a business rule enforced at the boundary and in the domain, and encoding it on the column would make an authorised future ratio a migration of history — the deploy asserts the CHECK still reads 1..10000 |
 | `effective_from` is the first of a month, `effective_to` the last | a settlement period is never split into two ratios |
 | the share exclusion constraint | one ratio per owner at a time — no gap, no overlap |
 | `amount_minor > 0` | the movement type decides the sign; a negative amount is refused rather than reinterpreted |
@@ -1640,6 +1640,15 @@ They were first written `has_unscoped_capability`, which D-025 makes satisfiable
 and by nobody else — so the Accountant could write and read nothing. That is D-110 and D-116
 a third time, closed by `20260909112045` and by a catalogue assertion covering policies and
 functions alike (D-200).
+
+### The V1 ownership vector (D-204)
+
+`owner_share_set` refuses a share that is not **5000 basis points** and refuses a **third
+owner** while two are configured, both `KM033`, both with a sentence. Stored rows are never
+rewritten: shares recorded before the ruling that are not 5000 stay exactly as recorded, and
+the migration reports how many rather than correcting them. A settlement over a period they
+govern refuses — which is the correct consequence of a version that does not do variable
+ownership, and not a reason to restate history.
 
 ### Numbering
 

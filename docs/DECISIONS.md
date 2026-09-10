@@ -7108,3 +7108,134 @@ executable SQL differs anywhere**, which is what D-056 and A0 exist to guarantee
 The wording in earlier ledger sections is not rewritten — this log and that ledger are
 append-only records of what was claimed when — and `LEDGER.md` now carries the accurate
 statement beside the OA-1 entries.
+
+## D-204 — V1 ownership is fixed at exactly two owners, 5000 basis points each (OA-D12)
+**Date:** 2026-09-10 · **Status:** Accepted (project-lead ruling) — **amends D-189**
+
+**The ruling.** For Krishna Imperial MIS V1, ownership is fixed at **50:50 between exactly
+two owners**. General variable ownership settlement logic is **not** designed for V1. The
+authoritative configured ownership vector for any settlement period must resolve to
+exactly `[5000, 5000]`, and the settlement engine must not accept or infer 60/40, 70/30, a
+three-owner allocation, unequal active ownership, a partial total, or a total above 100%.
+Future 60/40 transition workflows are **not** to be built in OA-1 or OA-2 unless separately
+authorised.
+
+**The date-effective schema stays.** The ruling says so explicitly, and it is the right
+call: `ownership_shares` keeps its effective dates, its `between 1 and 10000` CHECK and its
+exclusion constraint, so every historical row remains exactly as recorded and an authorised
+future ratio is a change to a business rule rather than a migration of history. **The
+migration asserts the CHECK was *not* narrowed**, because encoding a business rule on a
+column is the thing that would make lifting it expensive.
+
+### Proven red first, and the red was not subtle
+
+The shipped resolver accepted every shape the ruling forbids, and each one **totals exactly
+10000** — so a total-only check could never have seen them:
+
+```
+        [6000, 4000]        -> OwnershipResolved(2 owners)
+        [7000, 3000]        -> OwnershipResolved(2 owners)
+        [4000, 3000, 3000]  -> OwnershipResolved(3 owners)
+        [10000]             -> OwnershipResolved(1 owners)
+```
+
+That is why `shareIsNotHalf` is a **separate refusal** from
+`sharesDoNotTotalOneHundredPercent`. A refusal that said "the shares do not add up" for a
+60/40 configuration would be unhelpful *and false*.
+
+### Enforced twice, deliberately, and the two are pinned to each other
+
+| | |
+|---|---|
+| **must not infer** | `OwnershipShareSet.resolveV1For` — the call a settlement makes. Refuses everything the general rule refuses, then a vector that is not exactly two owners, then any share that is not 5000 bp, then a share belonging to an owner the caller says is inactive |
+| **must not accept** | `owner_share_set` — refuses `KM033 ownership_share_must_be_half` and `KM033 ownership_exceeds_two_owners`, with sentences rather than a constraint name |
+
+The domain rule alone would leave a database able to hold a configuration every settlement
+refuses, with the refusal arriving long after the act that caused it. The boundary rule
+alone would not stop an administrative write or a legacy row from being *inferred* into a
+ratio nobody approved. Both, and a host guard pins the two numbers to each other so one
+cannot be edited into disagreement with the other — the discipline D-104 established after
+a wire name was written and read through two different spellings.
+
+**`resolveFor` is untouched and composes rather than being replaced.** It stays the general
+date-effective rule, because that is what keeps historical records readable, and history
+legitimately contains ratios V1 no longer configures. `resolveV1For` calls it and adds the
+ruling on top, in one place, so lifting the ruling later is one deliberate change rather
+than an audit of every caller. A guard asserts both methods exist and that the second calls
+the first.
+
+### The eight properties, and where each is proven
+
+| | Property | Proof |
+|---|---|---|
+| 1 | exactly two active shares resolve for a settlement date | domain + **live**, through the same resolver a settlement will use |
+| 2 | both equal 5000 bp | domain + live |
+| 3 | total equals 10000 bp | domain + live |
+| 4 | one missing owner refuses | domain — both arms: a lone 5000 fails the total, a lone 10000 fails the count, and only the second needs this decision to exist |
+| 5 | any non-5000 share refuses | domain (five splits, including 5001/4999) + **live** (five values, refused `KM033`) |
+| 6 | more than two active shares refuses | domain (4000/3000/3000, which totals 10000) + **live** (a third owner refused at the boundary) |
+| 7 | historical records remain readable | domain (a 60/40 period still resolves under the general rule and refuses under V1) + live (closed rows unchanged) |
+| 8 | no P&L / Revenue / Expense semantics change | the existing structural guards and the live non-interference comparison, re-run |
+
+**Positive control, seen to fail:** with the two V1 conditions disabled, four domain tests
+turn red. With the boundary's literal changed to 6000, the pinning guard turns red.
+Restored and read back in both cases (D-142).
+
+### Two consequences worth stating
+
+**The live acceptance no longer configures a non-5000 share.** Its supersession test
+proved closing-without-overlap by moving Owner A to 6000; it now re-sets 5000 from a later
+month, which proves the same property without leaving the development database holding a
+vector no settlement could resolve. The suite was run **three times in succession**
+afterwards.
+
+**A third synthetic owner exists on `krishna-mis-dev`, holding no share.**
+`OA1_TEST_OWNER_C_REFUSAL_FIXTURE` exists so the third-owner refusal is proven against the
+real boundary rather than only in Dart — a rule nothing evaluates being the family this log
+keeps recording. The test asserts afterwards that it holds no ownership share, because a
+refusal test that left one would have broken the invariant it exists to protect.
+
+**Still required before real settlement data is entered: the effective-from date of the
+50:50 ownership.** Not guessed, not defaulted to the financial year, and not inferred from
+the tax configuration's 2026-04-01 — the same discipline D-043 applied to tax rates.
+
+## D-205 — A refusal must name a remedy that exists
+**Date:** 2026-09-10 · **Status:** Accepted — a defect in D-204's own new code, found by
+asking whether the action it recommended was available
+
+D-201 established that a refusal "ends in an action rather than in a complaint". The
+third-owner refusal D-204 deployed took that literally and got it wrong:
+
+>  "This version allocates profit between exactly two owners, and two are already
+>   configured. **End an existing owner's share** before configuring another."
+
+**Nothing can end an owner's share.** OA-1 exposes `owner_share_set` and nothing else — it
+closes the *same* owner's previous share as a side effect of setting a new one — and no
+`owner_share_end` exists in any migration or anywhere in `lib/`. Substituting one owner for
+another is an ownership-transition workflow, which D-204 explicitly defers.
+
+So the sentence sent an administrator looking for a control that is deliberately absent.
+**A refusal naming an unavailable remedy is worse than one naming none**: it reads like a
+missing button rather than like a decision somebody took, and the person spends their time
+hunting instead of asking for the decision to be revisited.
+
+Reworded to state the decision — *changing who the owners are is not part of this version*
+— which is both true and the actionable thing, because the action available is to ask for a
+different ownership model to be approved.
+
+**Two guards, and the second is the general one.** The deploy asserts the old phrase is
+gone; it also asserts that **no owner-share-end boundary exists**, so if one is ever added
+the deploy fails and whoever adds it decides what the refusal should then say. The rule
+this leaves behind: *the remedy a refusal names is part of the refusal, and it has to be
+checked like any other claim.*
+
+**And the host guard for it had to be narrowed twice**, which is now routine enough to be
+worth stating as a pattern rather than as an incident. A text search for the old phrase
+matched the migration's own deploy-time assertion — the assertion that exists to refuse it —
+so the guard read the check as the defect. It now extracts the refusal's **message** and
+tests that. Three times in this file, and the same shape every time (D-139, D-187, D-201):
+**a guard must look at the thing that acts, never at the text that mentions it.**
+
+Recorded beside it: writing that guard reintroduced **literal backspace bytes inside a
+regex** — `` mangled by the shell into `0x08` — which is D-159's finding exactly, and was
+caught the same way, by reading the file back rather than trusting the write.
