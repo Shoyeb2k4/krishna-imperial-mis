@@ -165,6 +165,216 @@ void main() {
   });
 
   // ═══════════════════════════════════════════════════════════════════════════
+  //
+  // **The V1 ownership vector is fixed at [5000, 5000]** — the project lead's ruling of
+  // 2026-09-10 (D-204), proven here as the eight properties it names.
+  //
+  // The general `resolveFor` is deliberately left alone and still resolves any
+  // date-effective ratio, because that is what keeps historical records readable
+  // (property 7). The ruling is applied on top of it, in one place, so an authorised
+  // future 60/40 lifts one rule rather than requiring an audit of every caller.
+  //
+  // Proven red before it was written: the shipped resolver accepted 60/40, 70/30, a
+  // three-owner split and a single owner holding 10000 — every shape the ruling forbids,
+  // each of which totals exactly 10000 and so passes a total-only check.
+  group('the V1 ownership vector is exactly two owners at 5000 bp (D-204)', () {
+    BusinessDate d(int y, int m, int day) => BusinessDate.of(y, m, day);
+
+    OwnershipShare share(
+      String owner,
+      int basisPoints, {
+      int fromYear = 2026,
+      int fromMonth = 4,
+      BusinessDate? to,
+    }) => OwnershipShare(
+      id: 'share-$owner-$fromYear-$fromMonth',
+      ownerId: owner,
+      shareBasisPoints: basisPoints,
+      effectiveFrom: d(fromYear, fromMonth, 1),
+      effectiveTo: to,
+    );
+
+    final june = (d(2026, 6, 1), d(2026, 6, 30));
+
+    OwnershipResolution resolve(List<OwnershipShare> shares) =>
+        OwnershipShareSet(shares).resolveV1For(june.$1, june.$2);
+
+    // ── 1, 2, 3 ──────────────────────────────────────────────────────────────
+    test('exactly two shares resolve, both 5000 bp, totalling 10000', () {
+      final resolved = resolve([share('a', 5000), share('b', 5000)]);
+
+      expect(resolved, isA<OwnershipResolved>());
+      final vector = (resolved as OwnershipResolved).shares;
+
+      expect(vector, hasLength(v1OwnerCount));
+      expect(
+        vector.map((s) => s.shareBasisPoints),
+        everyElement(v1ShareBasisPoints),
+      );
+      expect(resolved.totalBasisPoints, totalOwnershipBasisPoints);
+      expect(
+        vector.map((s) => s.ownerId),
+        ['a', 'b'],
+        reason:
+            'ordered by owner id, so two identical vectors compare identical',
+      );
+    });
+
+    // ── 4 ────────────────────────────────────────────────────────────────────
+    test('one missing owner refuses', () {
+      // A single 5000 share fails the total first, which is the older and stricter
+      // rule; a single 10000 share passes the total and is caught by the count. Both
+      // are asserted, because only the second needs D-204 to exist.
+      expect(
+        (resolve([share('a', 5000)]) as OwnershipRefused).refusal,
+        OwnershipRefusal.sharesDoNotTotalOneHundredPercent,
+      );
+      expect(
+        (resolve([share('a', 10000)]) as OwnershipRefused).refusal,
+        OwnershipRefusal.notExactlyTwoOwners,
+      );
+    });
+
+    // ── 5 ────────────────────────────────────────────────────────────────────
+    test('any non-5000 share refuses, including one that totals 10000', () {
+      // This is the case the shipped resolver accepted, and the reason a total-only
+      // check is not the rule: 60/40 adds up perfectly and is not the V1 model.
+      for (final split in [
+        (6000, 4000),
+        (4000, 6000),
+        (7000, 3000),
+        (9999, 1),
+        (5001, 4999),
+      ]) {
+        final refused = resolve([share('a', split.$1), share('b', split.$2)]);
+        expect(
+          (refused as OwnershipRefused).refusal,
+          OwnershipRefusal.shareIsNotHalf,
+          reason: '${split.$1}/${split.$2} is not the V1 vector',
+        );
+        expect(
+          refused.detail,
+          contains('not $v1ShareBasisPoints'),
+          reason:
+              'the refusal names the value it expected, not merely that it failed',
+        );
+      }
+    });
+
+    // ── 6 ────────────────────────────────────────────────────────────────────
+    test('more than two active shares refuses', () {
+      // 4000/3000/3000 totals exactly 10000 and is a three-owner allocation, which the
+      // ruling forbids outright — so the count is checked before the values.
+      final three = resolve([
+        share('a', 4000),
+        share('b', 3000),
+        share('c', 3000),
+      ]);
+      expect(
+        (three as OwnershipRefused).refusal,
+        OwnershipRefusal.notExactlyTwoOwners,
+      );
+      expect(three.detail, contains('3 of 2'));
+
+      // And a total above 100% is refused by the older rule rather than being scaled
+      // to fit — three owners at 5000 each is 150%, and normalising it would allocate
+      // profit by a ratio nobody approved.
+      expect(
+        (resolve([share('a', 5000), share('b', 5000), share('c', 5000)])
+                as OwnershipRefused)
+            .refusal,
+        OwnershipRefusal.sharesDoNotTotalOneHundredPercent,
+      );
+    });
+
+    test('an inactive owner does not satisfy the count, when the caller says so', () {
+      // The ruling says two **active** owners. A share set does not know which owners
+      // are archived, so this is enforced only when the caller supplies the fact —
+      // inferring it would be guessing, and defaulting to "all active" is what makes
+      // an open share left behind on an archived owner satisfy a bare count.
+      final shares = OwnershipShareSet([share('a', 5000), share('b', 5000)]);
+
+      expect(
+        shares.resolveV1For(june.$1, june.$2, activeOwnerIds: {'a', 'b'}),
+        isA<OwnershipResolved>(),
+      );
+      expect(
+        (shares.resolveV1For(june.$1, june.$2, activeOwnerIds: {'a'})
+                as OwnershipRefused)
+            .refusal,
+        OwnershipRefusal.shareBelongsToInactiveOwner,
+      );
+    });
+
+    // ── 7 ────────────────────────────────────────────────────────────────────
+    test('historical records stay readable, and stay what they were', () {
+      // A period that really was 60/40 is still stored, still readable, and still
+      // resolves under the general rule. What V1 refuses is *settling* it — which is
+      // the correct consequence of a ruling that says V1 does not do variable
+      // ownership, and is not the same as erasing or restating the record.
+      final set = OwnershipShareSet([
+        share('a', 6000, fromYear: 2025, fromMonth: 4, to: d(2026, 3, 31)),
+        share('b', 4000, fromYear: 2025, fromMonth: 4, to: d(2026, 3, 31)),
+        share('a', 5000),
+        share('b', 5000),
+      ]);
+
+      final historical = set.applicableOn(d(2025, 9, 15));
+      expect(historical, hasLength(2));
+      expect(historical.map((s) => s.shareBasisPoints), [6000, 4000]);
+
+      expect(
+        set.resolveFor(d(2025, 9, 1), d(2025, 9, 30)),
+        isA<OwnershipResolved>(),
+        reason:
+            'the general rule still reads history exactly as it was recorded',
+      );
+      expect(
+        (set.resolveV1For(d(2025, 9, 1), d(2025, 9, 30)) as OwnershipRefused)
+            .refusal,
+        OwnershipRefusal.shareIsNotHalf,
+        reason: 'V1 refuses to settle it rather than pretending it was 50:50',
+      );
+
+      // And the current period is unaffected by the presence of history.
+      expect(set.resolveV1For(june.$1, june.$2), isA<OwnershipResolved>());
+    });
+
+    test(
+      'a mid-range ratio change is still refused before the V1 rule is reached',
+      () {
+        // The §5 policy is not superseded by D-204: a ratio that moves inside a
+        // settlement range refuses for that reason, and saying "not 5000" instead would
+        // send somebody to look at the wrong thing.
+        final set = OwnershipShareSet([
+          share('a', 5000, to: d(2026, 6, 30)),
+          share('b', 5000, to: d(2026, 6, 30)),
+          share('a', 5000, fromMonth: 7),
+          share('b', 5000, fromMonth: 7),
+        ]);
+
+        expect(
+          (set.resolveV1For(d(2026, 6, 1), d(2026, 7, 31)) as OwnershipRefused)
+              .refusal,
+          OwnershipRefusal.ratioChangesWithinRange,
+        );
+      },
+    );
+
+    test('the V1 constants are stated, not derived from each other', () {
+      // If 5000 were computed as half of 10000, a future authorised change would be a
+      // change to an expression rather than to a value somebody chose.
+      expect(v1OwnerCount, 2);
+      expect(v1ShareBasisPoints, 5000);
+      expect(
+        v1OwnerCount * v1ShareBasisPoints,
+        totalOwnershipBasisPoints,
+        reason: 'the three agree, and each is written down',
+      );
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
   group('ownership shares · mid-period changes are refused (§5)', () {
     test('a ratio that lapses inside the range refuses rather than apportions', () {
       // A splits into two halves mid-June. Apportioning would need Operating Profit to

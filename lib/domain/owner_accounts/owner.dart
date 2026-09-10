@@ -32,6 +32,25 @@ import 'package:krishna_mis/domain/value_objects/business_date.dart';
 /// One hundred percent, in basis points. A valid share set totals exactly this.
 const int totalOwnershipBasisPoints = 10000;
 
+/// **The V1 ownership model: exactly two owners, 5000 basis points each.**
+///
+/// Ruled by the project lead on 2026-09-10 (OA-D12, D-204). V1 does not implement
+/// variable ownership: the authoritative configured vector for any settlement period must
+/// resolve to exactly `[5000, 5000]`, and 60/40, 70/30, a third owner, a single owner
+/// holding everything, a partial total and a total above 100% are all **refused** rather
+/// than allocated.
+///
+/// It is a business rule and not a schema limitation, which is why it lives here as a
+/// named constant pair and as [OwnershipShareSet.resolveV1For] rather than as a narrowed
+/// column. The date-effective schema is unchanged and still expresses any ratio; an
+/// authorised future 60/40 lifts this rule deliberately, in one place, with a decision
+/// behind it — it does not require a migration of history.
+const int v1OwnerCount = 2;
+
+/// Each V1 owner's share. Half of [totalOwnershipBasisPoints], stated rather than
+/// computed, so a future change is a change to a value somebody chose.
+const int v1ShareBasisPoints = 5000;
+
 /// A business owner: someone profit is allocated to.
 @immutable
 final class Owner {
@@ -138,6 +157,27 @@ enum OwnershipRefusal {
 
   /// An effective date that does not fall on a settlement-period boundary (§5).
   effectiveDateNotOnPeriodBoundary,
+
+  /// **V1:** the resolved vector does not hold exactly two owners (D-204).
+  ///
+  /// Covers both directions — one owner missing, and a third arriving — because both
+  /// mean the same thing to the person reading it: the configured ownership is not the
+  /// two-owner model V1 implements, and somebody has to look at the configuration
+  /// before a settlement can be produced.
+  notExactlyTwoOwners,
+
+  /// **V1:** an owner holds a share other than 5000 basis points (D-204).
+  ///
+  /// Distinct from [sharesDoNotTotalOneHundredPercent] on purpose: 60/40 totals exactly
+  /// 10000 and is still refused, so a refusal that only said "the shares do not add up"
+  /// would be false as well as unhelpful.
+  shareIsNotHalf,
+
+  /// **V1:** a resolved share belongs to an owner who is not active (D-204).
+  ///
+  /// Only checked when the caller supplies the active owner ids — the share set alone
+  /// does not know which owners are archived, and inferring it would be guessing.
+  shareBelongsToInactiveOwner,
 }
 
 /// The outcome of resolving ownership for a range.
@@ -258,6 +298,71 @@ final class OwnershipShareSet {
     }
 
     return OwnershipResolved(atStart);
+  }
+
+  /// Resolves the range **and** requires it to be the V1 50:50 vector (D-204).
+  ///
+  /// This is the call a settlement makes. [resolveFor] stays the general date-effective
+  /// rule — it is what makes historical records readable, and history legitimately
+  /// contains ratios V1 no longer configures — and this adds the V1 business ruling on
+  /// top of it, in one place, so lifting the ruling later is one deliberate change
+  /// rather than an audit of every caller.
+  ///
+  /// Refuses, in this order and for these separate reasons:
+  ///
+  /// * everything [resolveFor] refuses — nothing configured, overlapping shares, a
+  ///   ratio that moves inside the range, a total that is not 10000;
+  /// * a vector that is not exactly two owners — one missing, or a third arriving;
+  /// * any share that is not exactly 5000 basis points, **including one that totals
+  ///   10000**, which is the case a total-only check cannot see;
+  /// * a share belonging to an owner the caller says is not active, when it says.
+  ///
+  /// [activeOwnerIds] is optional because the share set does not know the owner masters.
+  /// A caller that does know them should pass them: the ruling says *two active owners*,
+  /// and an open share left behind on an archived owner is exactly the configuration
+  /// that would otherwise satisfy a count.
+  OwnershipResolution resolveV1For(
+    BusinessDate from,
+    BusinessDate to, {
+    Set<String>? activeOwnerIds,
+  }) {
+    final general = resolveFor(from, to);
+    if (general is! OwnershipResolved) return general;
+
+    final shares = general.shares;
+
+    if (shares.length != v1OwnerCount) {
+      return OwnershipRefused(
+        OwnershipRefusal.notExactlyTwoOwners,
+        detail:
+            ' (${shares.length} of $v1OwnerCount on ${from.iso}: '
+            '${shares.map((s) => s.ownerId).join(', ')})',
+      );
+    }
+
+    for (final share in shares) {
+      if (share.shareBasisPoints != v1ShareBasisPoints) {
+        return OwnershipRefused(
+          OwnershipRefusal.shareIsNotHalf,
+          detail:
+              ' (${share.ownerId} holds ${share.shareBasisPoints} bp, '
+              'not $v1ShareBasisPoints, on ${from.iso})',
+        );
+      }
+    }
+
+    if (activeOwnerIds != null) {
+      for (final share in shares) {
+        if (!activeOwnerIds.contains(share.ownerId)) {
+          return OwnershipRefused(
+            OwnershipRefusal.shareBelongsToInactiveOwner,
+            detail: ' (${share.ownerId} on ${from.iso})',
+          );
+        }
+      }
+    }
+
+    return general;
   }
 
   /// Whether a proposed effective date is legal under the §5 mid-period policy.
