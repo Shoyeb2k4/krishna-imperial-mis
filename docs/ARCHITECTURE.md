@@ -9,7 +9,7 @@ Status: **Sections 1–12 proposed (Phase 0, revised); sections 13–16 and 18�
 is built and verified; section 17 is the Phase 4 *plan*, since built — read §18–§26 for what
 shipped.** Sections 6, 5.3 and 8 carry the project lead's mandated corrections.
 Implementation status is tracked in `PROJECT_STATUS.md`.
-Last updated: 2026-09-10 — the Owner Ledger (section 33), with the V1 ownership vector in §33.3; Phase 5 Slice 6 corrective (section 32); Slice 5 in section 31; Slices 1-4 in sections 27-30
+Last updated: 2026-09-10 — the Owner Settlement Engine (section 34); the Owner Ledger (section 33), with the V1 ownership vector in §33.3; Phase 5 Slice 6 corrective (section 32); Slice 5 in section 31; Slices 1-4 in sections 27-30
 
 ---
 
@@ -3361,3 +3361,105 @@ reads it (D-197).
 
 **No Petpooja integration, and no claim that automatic POS reconciliation exists.**
 **Statutory GST treatment of a non-chargeable supply is not settled by this feature.**
+
+---
+
+## 34. The Owner Settlement Engine (2026-09-10)
+
+Phase 5 OA-2. §33 built the ledger; this computes what it means. Decisions D-206 … D-211.
+
+**It builds no surface.** No settlement screen, statement, export or payout control — OA-3
+owns presentation and its security boundary, and a guard asserts the feature tree names
+none of it.
+
+### 34.1 The audit that had to come first
+
+A settlement engine over device-local partial history reconciles against itself perfectly
+and is wrong by exactly the movements it never saw, so OA-2 opened by proving what a second
+device could actually obtain. Against the real backend, with a fresh device: **nothing**.
+Not the movements another device recorded, and not the owners, ownership shares or family
+links a settlement allocates by — `ownershipShares()` read a local table nothing in
+production writes, and the gateway's three master reads had no caller anywhere in `lib/`
+(the D-077 shape).
+
+**The gap was client-side.** The same session was handed everything by the server, so the
+fix is a caller rather than a boundary — D-173's finding, in a second domain.
+
+### 34.2 A full replace, and the machinery it removes
+
+```
+        owner_ledger_snapshot()        one SQL statement, security invoker
+          -> snapshot_id, server_time, movements, owners, ownership_shares
+          -> one local transaction: replace all, coverage evidence LAST
+```
+
+The ledger is small, so the pull takes everything every time. A correction arrives
+corrected, a void arrives carrying `voided_at`, and a withdrawn movement ceases to exist —
+because nothing is preserved across a run. That removes the watermark, the safety overlap,
+the document-grain replacement and the lowest-watermark rule the reporting delta needs
+(D-178, D-180), one of which took two attempts to control.
+
+**One statement, therefore one snapshot.** Four separate reads would be four MVCC snapshots
+and the settlement would describe a moment that never existed — the defect D-188 corrected
+for reporting. An invariant refuses a `plpgsql` rewrite or a second statement.
+
+**It calculates nothing.** No entitlement, no position, no balance, no P&L. So it needs no
+new capability: `security invoker` returns only rows the caller could already select under
+`owner_ledger.view`, and `owner_settlement.view` stays reserved for OA-3, asserted at
+deploy.
+
+### 34.3 Storage, and why the masters moved
+
+`canonical_owner_movements`, `canonical_ownership_shares`, `canonical_owners` and
+`owner_settlement_coverage`, all keyed by the **signed-in person** (D-074) and all purged
+whole on a confirmed revocation, coverage row first.
+
+They are a different authority class from `owner_ledger_entries` beside them: that table is
+this actor's attempt state, with an outbox pointer and a retention stamp, while these are
+server-owned facts that may belong to another actor entirely (D-171). Kept apart, the
+settlement query has nothing to filter — every row is canonical by construction.
+
+**The masters are owner-keyed for a reason the audit surfaced.** OA-1 classified them
+`organizationGlobal`, which survives a user switch. That was safe while nothing wrote them;
+filling them would leave the ownership ratio readable by whoever signs in next on a shared
+workstation, against OA-1 §33.7's staff-privacy line. The OA-1 tables therefore stay empty
+and the settlement reads an owner-keyed copy (D-208).
+
+### 34.4 The arithmetic
+
+```
+        closing = opening
+                + profit entitlement          (signed; a loss reduces it, never clamped)
+                - withdrawals - NC - settlement paid
+                + adjustment credits - adjustment debits
+```
+
+Positive means the business owes the owner; negative means the owner has overdrawn. One
+statement in code, because every movement knows its own direction — so a type added later
+cannot be forgotten by an arm of a `switch`.
+
+**Cumulative entitlement, not monthly.** Halving each month strands a paisa every odd month;
+the period figure is the difference of two cumulative splits, so two months of one paisa
+allocate both. The remainder belongs to neither owner, is never persisted as a movement, and
+resolves when cumulative profit becomes divisible. The split truncates toward zero, so
+neither owner is favoured in either direction.
+
+**Operating Profit is consumed, never recreated.** `Net Sales − Expenses` lives once, in
+`domain/finance` (D-020); a guard fails the build if the settlement directory names
+`netSales`, `grossSales` or `Pnl.compute`.
+
+**Nothing is stored.** The opening position is derived from history before the period, which
+is why a correction and a void need no propagation machinery at all: they recompute
+everything downstream on their own (OA-D2, D-190).
+
+**And a settlement is not cash.** A positive position claims nothing about a bank balance;
+paying it is a separate `settlement_paid` movement through OA-1, and calculating one writes
+nothing.
+
+### 34.5 What is deliberately absent
+
+No stored settlement snapshot. No provisional settlement — canonical accepted facts only.
+No treasury logic. And **no automatic trigger for the pull**: `ReferenceSync` runs for every
+signed-in person, and certifying complete canonical owner history to a principal entitled to
+read none of it would be a claim worse than none. The trigger belongs with the surface that
+holds the capability, which is OA-3's.

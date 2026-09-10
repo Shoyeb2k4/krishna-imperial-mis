@@ -6,7 +6,7 @@ Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
 Status: **Part proposal, part as-built.** Corrected at Phase 4 closure, 2026-09-07.
-Last updated: 2026-09-10 — the Owner Ledger section is at the end
+Last updated: 2026-09-10 — the Owner Ledger and the OA-2 canonical owner cache are at the end
 
 **How to read this document.** It began as a Phase 0 proposal and has grown as-built
 sections beneath it. That mixture is deliberate — the proposal is the record of what was
@@ -1670,3 +1670,60 @@ an unclassified one is a decision nobody made.
 
 The v19 step carries the D-144 range guard, and the fresh-database path creates the indexes
 too — the omission D-159 caught once already.
+
+---
+
+## Phase 5 OA-2 — the canonical owner cache, as built (2026-09-10)
+
+**One server function and no new table.** `public.owner_ledger_snapshot()` returns, in one
+`language sql` statement and therefore one MVCC snapshot: `pg_current_snapshot()`, `now()`,
+every canonical owner movement the caller may read, the owners and the ownership shares. It
+is `security invoker`, calculates nothing, and creates no capability — deploy assertions
+refuse a `plpgsql` rewrite, a second statement, a `security definer` version, a body naming
+an entitlement or a balance, and the appearance of `owner_settlement.view` (OA-3's).
+
+Only server-accepted movements leave the server (`txn_number is not null`), and `voided_at`
+is **carried rather than filtered** — a filtered read would make a voided movement vanish
+with nothing left to name it, and the client would keep a stale one for ever (D-179).
+
+### Local schema v20
+
+```
+canonical_owner_movements
+  owner_user_id + id  pk        -- the SIGNED-IN person, not the business owner
+  org_id · business_unit_id · owner_id
+  txn_number (NOT NULL) · financial_year
+  business_date · business_date_source · pnl_period_key
+  movement_type · direction · amount_minor    -- CHECK amount_minor > 0
+  family_member_id · collected_by_family_member_id
+  nc_bill_reference · reference_number · remarks · reason
+  created_by · captured_at · row_version · change_seq
+  voided_at · void_reason
+
+canonical_ownership_shares
+  owner_user_id + id  pk
+  owner_id · share_basis_points   -- CHECK BETWEEN 1 AND 10000, deliberately not 5000
+  effective_from · effective_to · note · row_version · change_seq
+
+canonical_owners
+  owner_user_id + id  pk
+  code · display_name · active · archived_at · row_version · change_seq
+
+owner_settlement_coverage
+  owner_user_id  pk
+  snapshot_id · server_confirmed_at · movement_count · updated_at
+```
+
+**No balance, no position, no entitlement and no settlement statement anywhere** — the
+position is derived from the movements every time it is asked for (OA-D2, D-190), and a
+guard asserts no column locally or on the server is named for one.
+
+Every table is classified `canonicalReportingCache` and purged whole on a confirmed
+revocation, **coverage row first** — a claim of complete history cannot outlive the history
+it certifies. There is no D-070 exception to make: nothing here is anybody's unsent work.
+
+**Why the masters are duplicated rather than reused.** `owners`, `ownership_shares` and
+`owner_family_members` are classified `organizationGlobal`, which survives a user switch.
+That was safe while nothing wrote them; a synchroniser filling them would leave the
+ownership ratio readable by whoever signs in next on a shared workstation. The OA-1 tables
+therefore stay empty and the settlement reads an owner-keyed copy (D-208).

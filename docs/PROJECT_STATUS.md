@@ -5,7 +5,8 @@ Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
-Last updated: **2026-09-10** — **PHASE 5 OA-1 — OWNER ACCOUNTS FOUNDATION: COMPLETE**, on
+Last updated: **2026-09-10** — **PHASE 5 OA-2 — OWNER SETTLEMENT ENGINE: COMPLETE**, on
+top of **OA-1 — OWNER ACCOUNTS FOUNDATION: COMPLETE**, and on
 top of **PHASE 5 — P&L / MIS REPORTING: SLICES 1–6 COMPLETE.**
 
 **Read the *end* of this file first.** Owner Accounts is a newly discovered real business
@@ -4689,6 +4690,115 @@ refusal that told an administrator to end an owner's share when **no API can do 
 
 ## 11 · Next
 
-**OA-2 is unblocked by the ruling's own terms** — the invariant it required to be proven
-before OA-2 is proven — and has **not** been started: its scope has never been briefed.
-The old Phase 5 Slice 7 is not started either.
+**OA-2 followed** — see *PHASE 5 OA-2 — OWNER SETTLEMENT ENGINE* at the end of this file.
+The old Phase 5 Slice 7 is still not started.
+
+---
+
+# PHASE 5 OA-2 — OWNER SETTLEMENT ENGINE: **COMPLETE**
+
+The calculation and reporting architecture for owner settlement. **No settlement screen, no
+card, no payout button, no export** — OA-3 owns presentation and its security boundary, and
+a guard asserts the feature tree names none of it (§45).
+
+Decisions **D-206 … D-211**.
+
+## 1 · The audit came first, and it found more than expected
+
+§18 required proving what canonical owner data another device can obtain **before** any
+settlement arithmetic was written. Run against `krishna-mis-dev` with a fresh device, it
+found **two** gaps:
+
+| | |
+|---|---|
+| **The ledger** | Device A recorded a withdrawal, the server accepted and numbered it. Device B — authorised, online, the same person — saw **nothing** |
+| **The masters** | Device B saw **no owners, no ownership shares, no family links**. `ownershipShares()` reads a local table nothing in production writes, so the V1 vector resolves to *no share configured* on every real device. OA-1 did not report this half |
+
+**The gap was entirely client-side.** The same session was handed the movement, and all
+three masters, by the server — so the fix is a caller, not a boundary (D-173's finding, in a
+second domain). The audit is a permanent test, and a later group in the same file runs the
+synchroniser and asks the same questions again.
+
+## 2 · The chosen data source (§19), and why
+
+**Option A — a full canonical Owner Ledger pull.** The ledger is small; a projection or
+cache would be a second financial truth (§19, §26) needing its own correction and void
+propagation, and a server settlement query would need the capability OA-3 reserves (§44).
+
+A full replace makes a correction arrive corrected, a void arrive carrying `voided_at`, and
+a withdrawn movement simply cease to exist — with no watermark, no safety overlap and no
+document-grain replacement (D-178, D-180). One `language sql` statement returns movements,
+owners and shares together with the server's snapshot identity and transaction time, so
+every dataset belongs to one MVCC snapshot (D-188). Local commit order puts the coverage
+evidence **last**, inside the transaction.
+
+## 3 · The engine
+
+```
+        closing = opening
+                + profit entitlement            (signed; a loss reduces it)
+                - withdrawals - NC - settlement paid
+                + adjustment credits - adjustment debits
+```
+
+**Nothing is stored.** No balance column, no settlement table. The opening position is
+derived from history before the period (§23), which is why corrections and voids need no
+propagation machinery. **Operating Profit is consumed, never recreated** (§33) — a guard
+fails the build if the settlement directory names `netSales`, `grossSales` or `Pnl.compute`.
+
+**Entitlement is cumulative** (§8, §38): two months of one paisa allocate both paise, where
+the naive monthly floor allocates neither. The remainder belongs to neither owner, resolves
+by itself, and is never persisted as a movement.
+
+## 4 · Verified
+
+| Item | Status | Evidence |
+|---|---|---|
+| Host suite | **Tested** | **1,605 tests, all passing** (1,543 + 62) |
+| `dart format --set-exit-if-changed` | **Tested** | clean, 249 files |
+| `flutter analyze` | **Tested** | **No issues found** |
+| Settlement domain — the brief's reference controls §34…§43 | **Tested** | 33 host tests, incl. a 2,001-value sweep against an independent oracle |
+| Settlement structural guards §26, §32, §33, §45 | **Tested** | 13 host tests, with a positive control seen to fail |
+| Canonical owner sync and cache §18…§20, §27, §28 | **Tested** | 16 host tests over real SQLite |
+| Remote completeness audit **and its closure** | **Tested** | **8 live tests** against `krishna-mis-dev` |
+| Local schema v19 → v20 | **Tested** | classification completeness guard green |
+| Migration ledger parity (A0 / D-056) | **Tested** | executable-SQL identity verified for both migrations |
+
+## 5 · Schema and migrations
+
+Local **Drift v20**: `canonical_owner_movements`, `canonical_ownership_shares`,
+`canonical_owners`, `owner_settlement_coverage` — all owner-keyed, all
+`canonicalReportingCache`, all purged on a confirmed revocation with the coverage row
+removed first.
+
+| Ledger version | Name |
+|---|---|
+| 20260910180630 | `owner_ledger_snapshot_transport` |
+| 20260910180836 | `api_surface_invariant_owner_snapshot` |
+
+**No `owner_settlement.view` capability was created** — OA-3's boundary, and a deploy
+assertion fails if it appears (§44).
+
+## 6 · A latent exposure the audit surfaced (D-208)
+
+OA-1 classified the owner masters `organizationGlobal`, which **survives a user switch**.
+That was safe only because nothing wrote them. Filling them would leave the ownership ratio
+readable by whoever signs in next on a shared workstation — against OA-1 §31.
+
+So the settlement reads an **owner-keyed** copy instead. The three OA-1 tables stay empty and
+stay as they are, so the exposure is latent rather than live; the consequence is that OA-1's
+client-side NC pre-check still cannot run on a real device, which is **stated rather than
+fixed here** (D-127). OA-3 owns the choice.
+
+## 7 · What OA-2 deliberately did not build
+
+No settlement screen, card, statement, export or payout control. No stored settlement
+snapshot. No provisional settlement (§17). No treasury or cash-availability logic (§15). No
+automatic trigger for the owner pull — and that is deliberate: `ReferenceSync` runs for every
+signed-in person, and certifying *complete canonical owner history* to a principal entitled
+to read none of it would be a claim worse than none. The trigger belongs with the surface
+that holds the capability, which is OA-3's.
+
+## 8 · Next
+
+**OA-3 is not started, and is not started automatically.**

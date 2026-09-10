@@ -7239,3 +7239,182 @@ tests that. Three times in this file, and the same shape every time (D-139, D-18
 Recorded beside it: writing that guard reintroduced **literal backspace bytes inside a
 regex** — `` mangled by the shell into `0x08` — which is D-159's finding exactly, and was
 caught the same way, by reading the file back rather than trusting the write.
+
+---
+
+# Phase 5 OA-2 — Owner Settlement Engine (2026-09-10)
+
+## D-206 — A device held no canonical owner data at all, and the settlement is built on the fix
+**Date:** 2026-09-10 · **Status:** Accepted — **the OA-2 §18/§20 audit, run before any
+settlement arithmetic was written**
+
+OA-2 required proving what canonical owner data another device can obtain **before**
+building a settlement engine, because an engine over partial local history reconciles
+against itself perfectly and is wrong by exactly the movements it never saw. Run against
+`krishna-mis-dev` with a fresh device, it found **two** gaps rather than the one OA-1
+reported.
+
+**One · no owner ledger reaches a second device.** Device A recorded a withdrawal, the
+server accepted it and issued a `KI-OWN` number. Device B — authorised, online, the same
+person, asking the most generous question its canonical ledger offers — saw **nothing**.
+
+**Two · no ownership masters reach any device.** `OwnerLedgerRepository.ownershipShares()`
+and `familyMapping()` read local tables that **nothing in production writes**. The
+gateway's `fetchOwners`, `fetchOwnershipShares` and `fetchFamilyMembers` are called by
+nothing anywhere in `lib/` — the D-077 shape. So on every real device the V1 vector
+resolves to *no share configured* and an NC bill has no mapping to attribute by. OA-1 did
+not report this half, and it is the more severe one.
+
+**The gap was entirely client-side**, which decided the shape of the fix: the same session
+that could not see the movement locally was handed it, and all three masters, by the
+server. A caller was missing, not a boundary — exactly what D-173 recorded for reporting.
+
+The audit is committed as a permanent test rather than described, and it still asserts the
+unsynchronised state; a later group in the same file runs the synchroniser and asks the
+same questions again.
+
+## D-207 — The canonical owner pull is a full replace, not a delta
+**Date:** 2026-09-10 · **Status:** Accepted — OA-2 §19's decision, documented
+
+Three options were named. **A — a full canonical Owner Ledger pull — was chosen.**
+
+| | |
+|---|---|
+| **A · full pull** | **chosen.** The ledger is small: a handful of movements a month |
+| B · a settlement projection/cache | rejected — an aggregated position is a **second financial truth**, which §19 and §26 forbid, and it would need its own correction and void propagation |
+| C · a server settlement query | rejected — a client-callable settlement RPC needs the capability OA-3 reserves, and §44 says to stop rather than ship it under-authorized |
+
+**What a full replace buys is the absence of machinery.** A correction arrives corrected, a
+void arrives carrying `voided_at`, and a movement the server no longer returns simply ceases
+to exist here — because nothing is preserved across a run. That removes the watermark, the
+safety overlap, the document-grain replacement and the lowest-watermark rule the reporting
+delta needs (D-178, D-180), one of which took two attempts to control. §19 asks for the
+simplest correct option and says not to copy the reporting cache mechanically; this is that.
+
+**It is not written into `owner_ledger_entries`.** That table is this actor's own attempt
+state, with an outbox pointer and a D-070 retention stamp. A pulled movement is a
+server-owned fact that may belong to **another actor entirely**, and writing one there would
+put somebody else's movement under this person's retention rules and make every settlement
+query re-derive which rows count — the arrangement that produced the E2 defect (D-168,
+D-171). Kept apart, the settlement query has nothing to filter.
+
+**One statement, one snapshot.** `public.owner_ledger_snapshot()` returns movements, owners
+and shares together with `pg_current_snapshot()` and `now()` from that same statement. Four
+separate reads are four MVCC snapshots, and a settlement assembled from them would be a
+position of a moment that never existed — the defect D-188 corrected for reporting, and
+repeating it knowingly would be worse than the first time. It calculates nothing, is
+`security invoker`, and needs no new capability.
+
+**The commit order is the rule:** one local transaction, coverage evidence **last**, so a
+run that fails anywhere leaves no claim and no half-replaced history.
+
+## D-208 — A profit ratio is not organisation-global reference data
+**Date:** 2026-09-10 · **Status:** Accepted — **a latent exposure the §20 audit surfaced**
+
+OA-1 classified `owners`, `ownership_shares` and `owner_family_members` as
+`organizationGlobal` — the treatment business units, departments and vendors get, which
+means they **survive a user switch**.
+
+That was safe only because **nothing ever wrote them**, which is precisely what the OA-2
+audit established. The moment a synchroniser fills them, a shared back-office workstation
+where the Owner synchronised first leaves the ownership ratio and the owner names readable
+by the Manager who signs in next — and OA-1 §31 is explicit that operational recording
+authority must not carry profit-share visibility.
+
+**So the settlement reads an owner-keyed copy instead.** `canonical_ownership_shares` and
+`canonical_owners` join `canonical_owner_movements` in the OA-2 cache: every row carries the
+**signed-in person**, every one is purged on a confirmed revocation, and User B inheriting
+User A's ownership data is structurally unavailable rather than something a query has to
+remember (D-074).
+
+**Recorded and deliberately not changed:** the three OA-1 master tables remain classified
+`organizationGlobal` and remain **empty**, so the exposure is latent rather than live. The
+consequence is that OA-1's client-side NC pre-check still cannot run on a real device — it
+reads those empty tables — and that is stated rather than fixed here, because filling them
+under their present classification is the exposure above, and reclassifying them is a
+schema change outside OA-2's reviewed scope (D-127). **OA-3 owns the choice**: fill the
+owner-keyed cache and read it from the ledger path too, or reclassify and add an owner key.
+
+## D-209 — The owner settlement position is derived, and the P&L is consumed
+**Date:** 2026-09-10 · **Status:** Accepted — the OA-2 engine, as built
+
+**Sign convention (§2), binding:** a positive position means the business owes the owner; a
+negative one means the owner has drawn more than their entitlement. Not to be reversed in
+storage or in a surface.
+
+```
+        closing = opening
+                + profit entitlement for the period    (signed; a loss reduces it)
+                - withdrawals - NC consumption - settlement paid
+                + adjustment credits - adjustment debits
+```
+
+written as one statement, because every movement already knows its own direction: the
+position is the cumulative entitlement plus the signed effect of every canonical movement to
+the cutoff. A movement type added later therefore cannot be forgotten by an arm of a
+`switch`.
+
+**Nothing is stored.** No balance column, no settlement table, no statement row. The opening
+position for a month is **derived from history before it** (§23), which is why a correction
+(§27) and a void (§28) need no propagation machinery at all — they recompute everything
+downstream on their own. Guards assert no such column exists locally or on the server.
+
+**Operating Profit is consumed, never recreated (§33).** `Net Sales − Expenses` lives once,
+in `domain/finance` (D-020). The settlement domain takes two cumulative figures and cannot
+derive either; a structural guard fails the build if the directory names `netSales`,
+`grossSales`, `RevenueTotals` or `Pnl.compute`, and a positive control confirms it turns red.
+
+**A settlement is not cash (§15).** There is no treasury model, and a positive position
+claims nothing about a bank balance. Calculating a position writes nothing; paying it is a
+separate `settlement_paid` movement through OA-1 (§41).
+
+## D-210 — Cumulative entitlement, and the paisa that belongs to neither owner
+**Date:** 2026-09-10 · **Status:** Accepted — OA-2 §8, §9, §37, §38
+
+**Halving each month's profit strands a paisa every odd month**, permanently, in a place
+nobody would ever look. So entitlement is cumulative from inception and a period's figure is
+the **difference of two cumulative splits**:
+
+```
+        month 1 profit = 1 paisa    cumulative 1  ->  each 0, remainder 1
+        month 2 profit = 1 paisa    cumulative 2  ->  each 1, remainder 0
+
+        allocated: 0 then 1, each = 2 paise exactly
+        the naive floor(profit / 2) each month allocates 0 and 0, and loses both
+```
+
+Both figures are asserted side by side, so the difference is a stated fact rather than a
+discovery.
+
+**The remainder is never given to anybody.** It is an organisation-level figure that resolves
+by itself the moment cumulative profit becomes divisible, and it is **never persisted as a
+ledger movement** (§9). §9's invariant — `A + B + remainder = cumulative Operating Profit`,
+exactly — is a property on the type and is checked across a 2,001-value sweep.
+
+**No owner bias, in either direction.** The split truncates toward zero, so a positive
+remainder follows a profit and a negative one follows a loss, and neither owner is ever the
+one who happens to receive it. Verified empirically before it was relied on, because getting
+it wrong silently favours one person by a paisa.
+
+**A loss is shared (§7)** and never clamped: −₹1,00,000 gives each owner −₹50,000, and
+overpayment produces a negative position rather than a floor at zero (§42).
+
+## D-211 — Two guards were wrong on first writing, and both are the same lesson
+**Date:** 2026-09-10 · **Status:** Recorded
+
+The oracle guard forbade the production type names in `test/support/owner_settlement_reference.dart`
+— and matched the oracle's **own doc comment**, which says it calls none of them. That is
+D-139's failure, committed in a guard written while quoting D-139. Fixed by stripping
+comments first, using the helper already in the file for exactly that.
+
+The no-mutable-state guard forbade a local accumulator inside a fold — a rule about style
+wearing the costume of a rule about money. Narrowed to what actually matters: no static
+**field** and no mutable top-level variable, distinguished from a static method by refusing
+to cross a parenthesis.
+
+**And the mechanical hazard recurred three times in one session.** Backslash escapes passed
+through a shell heredoc into a file arrived as literal backspace bytes inside a regex
+(D-159), as an empty raw string, and as a mangled path separator. Each was caught the same
+way — by reading the file back rather than trusting the write — which is the only reason
+none of them shipped. It is recorded again because it is now clearly a property of the
+tooling rather than an accident.

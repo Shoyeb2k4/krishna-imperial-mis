@@ -285,6 +285,8 @@ Verified byte-for-byte against `supabase_migrations.schema_migrations.statements
 | 20260910161035 | `owner_share_set_refuses_backdating` | `20260910161035_owner_share_set_refuses_backdating.sql` |
 | 20260910171751 | `owner_share_set_enforces_the_v1_vector` | `20260910171751_owner_share_set_enforces_the_v1_vector.sql` |
 | 20260910172611 | `owner_share_refusal_promises_no_unavailable_act` | `20260910172611_owner_share_refusal_promises_no_unavailable_act.sql` |
+| 20260910180630 | `owner_ledger_snapshot_transport` | `20260910180630_owner_ledger_snapshot_transport.sql` |
+| 20260910180836 | `api_surface_invariant_owner_snapshot` | `20260910180836_api_surface_invariant_owner_snapshot.sql` |
 
 Five tables, all RLS-enabled and default-deny; the `KI-OWN` sequence; nine reviewed RPCs;
 the capability namespace under `owner_masters.*` and `owner_ledger.*`; and a trigger that
@@ -315,6 +317,33 @@ earlier OA-1 file. Its executable lines match the applied statement exactly (130
 deployed: the third-owner refusal told an administrator to end an existing owner's share,
 and **no API can do that** (D-205). Executable lines match exactly (108 lines,
 `a03c565e…`).
+
+## Phase 5 OA-2 - the canonical owner data a settlement reads
+
+`owner_ledger_snapshot_transport` closes the gap the OA-2 completeness audit proved: a
+second device saw **no** owner movements another device had recorded, and **no** ownership
+masters at all. The gap was entirely client-side — the same session was handed everything
+by the server — so this adds a caller's read rather than a boundary (D-173's finding, in a
+second domain).
+
+**One `language sql` statement**, returning movements, owners and ownership shares together
+with `pg_current_snapshot()` and `now()` from that same statement. Four separate reads would
+be four MVCC snapshots, and a settlement assembled from them would be a position of a moment
+that never existed — the defect D-188 corrected for reporting, which it would be worse to
+repeat knowingly. An invariant refuses a `plpgsql` rewrite or a second statement.
+
+It **calculates nothing** — no entitlement, no position, no balance — and is
+`security invoker`, so it returns only rows the caller could already have selected under
+`owner_ledger.view`. No new capability: `owner_settlement.view` stays reserved for OA-3, and
+a deploy assertion fails if it appears (OA-2 §44).
+
+`api_surface_invariant_owner_snapshot` restates the reviewed surface at 58. **One assertion
+from the OA-1 restatement is deliberately not copied forward**: it required the two owner
+read policies to use the *unscoped* capability, which `20260909112045` replaced (D-200).
+Copying it would have restated a rule the database no longer satisfies, from the migration
+that first defined the policy rather than the one that last replaced it — D-174 exactly.
+
+Executable lines match exactly: 134 lines `79fe63e3…`, and 167 lines `f2c12219…`.
 
 ### On "byte-for-byte", stated accurately rather than repeated
 
@@ -432,4 +461,6 @@ The divergences are confined to comments, blank lines, indentation and that head
 20260910161035 owner_share_set_refuses_backdating
 20260910171751 owner_share_set_enforces_the_v1_vector
 20260910172611 owner_share_refusal_promises_no_unavailable_act
+20260910180630 owner_ledger_snapshot_transport
+20260910180836 api_surface_invariant_owner_snapshot
 ```
