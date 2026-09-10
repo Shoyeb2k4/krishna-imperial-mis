@@ -17,6 +17,7 @@ library;
 import 'package:krishna_mis/data/remote/expense_gateway.dart';
 import 'package:krishna_mis/data/remote/remote_outcome.dart';
 import 'package:krishna_mis/data/repositories/expense_repository.dart';
+import 'package:krishna_mis/data/sync/owner_ledger_mutation_endpoint.dart';
 import 'package:krishna_mis/data/sync/revenue_mutation_endpoint.dart';
 import 'package:krishna_mis/domain/sync/pending_mutation.dart';
 import 'package:krishna_mis/domain/sync/server_refusal.dart';
@@ -178,6 +179,7 @@ class RoutingMutationEndpoint implements RemoteMutationEndpoint {
     required this.masters,
     required this.expenses,
     this.revenue,
+    this.ownerLedger,
   });
 
   final RemoteMutationEndpoint masters;
@@ -188,10 +190,18 @@ class RoutingMutationEndpoint implements RemoteMutationEndpoint {
   /// terminal "this version cannot send it" result — kept, never silently dropped.
   final RemoteMutationEndpoint? revenue;
 
+  /// The Owner Ledger, on the same terms and for the same reason (Phase 5 OA-1).
+  ///
+  /// A fourth arm rather than a second transport: one outbox, one worker, one backoff
+  /// clock, one actor filter. An owner movement in a build without this endpoint falls to
+  /// `masters` and is answered terminally — kept for a person to see, never dropped.
+  final RemoteMutationEndpoint? ownerLedger;
+
   @override
   Future<List<MutationResult>> push(List<PendingMutation> mutations) async {
     final expenseIntents = <PendingMutation>[];
     final revenueIntents = <PendingMutation>[];
+    final ownerIntents = <PendingMutation>[];
     final masterIntents = <PendingMutation>[];
 
     for (final m in mutations) {
@@ -200,6 +210,9 @@ class RoutingMutationEndpoint implements RemoteMutationEndpoint {
       } else if (revenue != null &&
           RevenueMutationEndpoint.handles(m.entityType)) {
         revenueIntents.add(m);
+      } else if (ownerLedger != null &&
+          OwnerLedgerMutationEndpoint.handles(m.entityType)) {
+        ownerIntents.add(m);
       } else {
         masterIntents.add(m);
       }
@@ -209,6 +222,7 @@ class RoutingMutationEndpoint implements RemoteMutationEndpoint {
       if (masterIntents.isNotEmpty) ...await masters.push(masterIntents),
       if (expenseIntents.isNotEmpty) ...await expenses.push(expenseIntents),
       if (revenueIntents.isNotEmpty) ...await revenue!.push(revenueIntents),
+      if (ownerIntents.isNotEmpty) ...await ownerLedger!.push(ownerIntents),
     ];
   }
 }
