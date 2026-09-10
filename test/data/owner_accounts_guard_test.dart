@@ -13,6 +13,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:krishna_mis/domain/auth/capability.dart';
+import 'package:krishna_mis/domain/owner_accounts/owner.dart';
 
 String _read(String path) => File(path).readAsStringSync();
 
@@ -428,6 +429,136 @@ void main() {
         reason: 'the sentence ends in an action rather than in a complaint',
       );
     });
+  });
+
+  // ════════════════════════════════════════════════════════════════════════════
+  group('the V1 ownership vector is stated in one place (D-204)', () {
+    // The ruling is enforced twice on purpose — the domain refuses to *resolve* anything
+    // but [5000, 5000], the server refuses to *accept* it — and two enforcement points
+    // naming the same two numbers is exactly the arrangement that drifts. This pins them
+    // to each other, which is what D-104 had to do after a wire name was written and read
+    // through two different spellings.
+    // The **latest** replacement of the function, not the one that introduced the rule:
+    // `owner_share_set` has been replaced three times, and a guard reading the migration
+    // that first stated a rule is exactly D-174's failure — a body rebuilt from a
+    // superseded version of itself.
+    final boundary = _sqlCode(
+      _migrationNamed('owner_share_refusal_promises_no_unavailable_act'),
+    );
+
+    test('the server refuses any share that is not the domain constant', () {
+      expect(v1ShareBasisPoints, 5000);
+      expect(v1OwnerCount, 2);
+      expect(
+        boundary,
+        contains('p_share_basis_points <> $v1ShareBasisPoints'),
+        reason:
+            'the boundary refuses exactly the value the domain requires; if one is '
+            'changed without the other, a configuration the server accepts becomes one '
+            'no settlement can resolve',
+      );
+      expect(
+        boundary,
+        contains('v_other_owners >= $v1OwnerCount'),
+        reason: 'and the same for the owner count',
+      );
+    });
+
+    test('the refusal sites exist, not merely the words', () {
+      // The migration's own deploy-time assertion contains both detail codes, so a
+      // check for the bare name would pass against a body whose refusals had been
+      // renamed — D-139's failure, which this file has already had to correct once.
+      expect(
+        boundary,
+        contains("app.refuse('KM033', 'ownership_share_must_be_half'"),
+      );
+      expect(
+        boundary,
+        contains("app.refuse('KM033', 'ownership_exceeds_two_owners'"),
+      );
+    });
+
+    test('the schema was not narrowed to the ruling', () {
+      // The ruling says to keep the date-effective model. Narrowing the column would
+      // make an authorised future ratio a migration of history rather than a change to
+      // a business rule, so a migration asserts at deploy time that the CHECK still
+      // reads 1..10000 — and this asserts that assertion is somewhere in the applied
+      // set, rather than naming the one file that happens to carry it today.
+      final applied = Directory('supabase/migrations')
+          .listSync()
+          .whereType<File>()
+          .where((f) => f.path.endsWith('.sql'))
+          .map((f) => _sqlCode(f.readAsStringSync()))
+          .join('\n');
+
+      expect(applied, contains('ownership_shares_basis_points_valid'));
+      expect(
+        applied,
+        contains('has been narrowed to the V1 vector'),
+        reason: 'the deploy refuses a schema that encoded the business rule',
+      );
+      expect(
+        applied,
+        contains('check (share_basis_points between 1 and 10000)'),
+        reason: 'and the CHECK itself still spans the full range',
+      );
+    });
+
+    test('no refusal recommends an act the API cannot perform', () {
+      // The third-owner refusal first told an administrator to end an existing owner's
+      // share. Nothing can: OA-1 exposes `owner_share_set` alone, which closes the same
+      // owner's previous share as a side effect, and substituting one owner for another
+      // is the ownership-transition workflow D-204 defers.
+      //
+      // A refusal that names an unavailable remedy is worse than one that names none —
+      // it reads like a missing button rather than a decision somebody took.
+      // The **refusal's own message**, extracted, not the word appearing anywhere in
+      // the migration: its deploy-time assertion names the old phrase in order to
+      // refuse it, and a bare text search would read that as the defect. Third time
+      // in this file (D-139).
+      final message = RegExp(
+        "'ownership_exceeds_two_owners',{0,1}\\s*'([^']*)'",
+      ).firstMatch(boundary)?.group(1);
+      expect(message, isNotNull);
+      expect(message, isNot(contains('End an existing owner')));
+      expect(
+        message,
+        contains('Changing who the owners are is not part of this version'),
+      );
+
+      final migrations = Directory('supabase/migrations')
+          .listSync()
+          .whereType<File>()
+          .where((f) => f.path.endsWith('.sql'))
+          .map((f) => _sqlCode(f.readAsStringSync()))
+          .join('\n');
+      expect(
+        RegExp(
+          r'function public\.owner_share_(end|close|revoke)\b',
+        ).hasMatch(migrations),
+        isFalse,
+        reason:
+            'if one is ever added, the reworded refusal should be revisited — the '
+            'deploy asserts the same thing against the live catalogue',
+      );
+    });
+
+    test(
+      'the domain applies the ruling on top of the general rule, not instead',
+      () {
+        // `resolveFor` must survive: it is what keeps historical records readable, and
+        // history legitimately contains ratios V1 no longer configures.
+        final domain = _read('lib/domain/owner_accounts/owner.dart');
+        expect(domain, contains('OwnershipResolution resolveFor('));
+        expect(domain, contains('OwnershipResolution resolveV1For('));
+        expect(
+          _code(domain),
+          contains('final general = resolveFor(from, to);'),
+          reason:
+              'the V1 rule composes with the general one rather than replacing it',
+        );
+      },
+    );
   });
 
   // ═══════════════════════════════════════════════════════════════════════════

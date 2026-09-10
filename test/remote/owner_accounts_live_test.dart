@@ -25,6 +25,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:krishna_mis/domain/owner_accounts/owner.dart';
+import 'package:krishna_mis/domain/value_objects/business_date.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
@@ -415,11 +417,16 @@ void main() {
       final before = await sharesOfOwnerA();
       final previous = before.last;
 
+      // 5000 again rather than a different ratio: under D-204 the V1 vector is fixed,
+      // so a test that configured 6000 to prove supersession would be configuring
+      // something the boundary now refuses — and would leave the development database
+      // holding a vector no settlement could resolve. Re-setting the same share from a
+      // later month proves the closing behaviour just as exactly.
       await client.rpc<dynamic>(
         'owner_share_set',
         params: {
           'p_owner_id': ownerAId,
-          'p_share_basis_points': 6000,
+          'p_share_basis_points': 5000,
           'p_effective_from': next,
           'p_mutation_id': const Uuid().v4(),
         },
@@ -436,7 +443,7 @@ void main() {
 
       expect(added['effective_from'], next);
       expect(added['effective_to'], isNull);
-      expect(added['share_basis_points'], 6000);
+      expect(added['share_basis_points'], 5000);
 
       expect(
         closed['effective_to'],
@@ -497,6 +504,175 @@ void main() {
           reason: 'the sentence ends in an action rather than in a complaint',
         );
       }
+    });
+    // ── The V1 ownership vector, at the configuration boundary (D-204) ──────
+    //
+    // The domain refuses to *resolve* anything but `[5000, 5000]`; these prove the other
+    // half — that the server refuses to *accept* it, so the database never holds a
+    // configuration every settlement would later refuse.
+
+    test(
+      'a share that is not 5000 basis points is refused, with a sentence',
+      () async {
+        await signInAs('giridhar@hki.com');
+        for (final bp in [6000, 4000, 7000, 10000, 1]) {
+          try {
+            await client.rpc<dynamic>(
+              'owner_share_set',
+              params: {
+                'p_owner_id': ownerAId,
+                'p_share_basis_points': bp,
+                'p_effective_from': _firstOfNextMonth(next),
+                'p_mutation_id': const Uuid().v4(),
+              },
+            );
+            fail('an ownership share of $bp basis points was accepted');
+          } catch (e) {
+            expect(refusalOf(e), 'KM033', reason: '$bp bp must be refused');
+            final message = e is PostgrestException ? e.message : '$e';
+            expect(
+              message,
+              isNot(
+                anyOf(
+                  contains('ownership_shares'),
+                  contains('constraint'),
+                  contains('23514'),
+                ),
+              ),
+              reason:
+                  'a refusal never carries a table or constraint name (spec §13.1)',
+            );
+            expect(message, contains('5000'));
+          }
+        }
+      },
+    );
+
+    test('a third owner is refused while two are configured', () async {
+      // Owner C exists only to be refused. It is created once, holds no ownership share,
+      // and never will — which is exactly what this asserts afterwards, because a
+      // refusal test that left a third owner holding a share would have broken the very
+      // invariant it exists to protect.
+      await signInAs('giridhar@hki.com');
+
+      final existing = await client
+          .from('owners')
+          .select('id')
+          .eq('code', 'OA1_TEST_OWNER_C_REFUSAL_FIXTURE')
+          .maybeSingle();
+      final ownerCId = existing != null
+          ? existing['id'] as String
+          : await () async {
+              final id = const Uuid().v4();
+              await client.rpc<dynamic>(
+                'owner_create',
+                params: {
+                  'p_id': id,
+                  'p_code': 'OA1_TEST_OWNER_C_REFUSAL_FIXTURE',
+                  'p_display_name': 'OA-1 Test Owner C (refusal fixture)',
+                  'p_mutation_id': const Uuid().v4(),
+                },
+              );
+              return id;
+            }();
+
+      try {
+        await client.rpc<dynamic>(
+          'owner_share_set',
+          params: {
+            'p_owner_id': ownerCId,
+            'p_share_basis_points': 5000,
+            'p_effective_from': _firstOfNextMonth(next),
+            'p_mutation_id': const Uuid().v4(),
+          },
+        );
+        fail('a third owner was given an ownership share');
+      } catch (e) {
+        expect(refusalOf(e), 'KM033');
+        final message = e is PostgrestException ? e.message : '$e';
+        expect(message.toLowerCase(), contains('two owners'));
+      }
+
+      final cShares = await client
+          .from('ownership_shares')
+          .select('id')
+          .eq('owner_id', ownerCId);
+      expect(cShares, isEmpty, reason: 'the refusal fixture holds no share');
+    });
+
+    test(
+      'the configured vector resolves to exactly [5000, 5000] (1, 2, 3)',
+      () async {
+        // End to end: the rows the server holds, read through the projection, handed to
+        // the same domain resolver a settlement will use. Not a re-implementation of the
+        // rule in the test — `resolveV1For` is the rule.
+        await signInAs('giridhar@hki.com');
+        final rows = await client
+            .from('ownership_shares')
+            .select(
+              'id, owner_id, share_basis_points, effective_from, effective_to',
+            );
+
+        final set = OwnershipShareSet([
+          for (final r in rows.cast<Map<String, dynamic>>())
+            OwnershipShare(
+              id: r['id'] as String,
+              ownerId: r['owner_id'] as String,
+              shareBasisPoints: r['share_basis_points'] as int,
+              effectiveFrom: BusinessDate.tryParse(
+                r['effective_from'] as String,
+              )!,
+              effectiveTo: r['effective_to'] == null
+                  ? null
+                  : BusinessDate.tryParse(r['effective_to'] as String)!,
+            ),
+        ]);
+
+        final from = BusinessDate.tryParse(next)!;
+        final to = BusinessDate.tryParse(_dayBefore(_firstOfNextMonth(next)))!;
+
+        final resolved = set.resolveV1For(from, to);
+        expect(
+          resolved,
+          isA<OwnershipResolved>(),
+          reason: 'the live configuration is the V1 vector: $resolved',
+        );
+
+        final vector = (resolved as OwnershipResolved).shares;
+        expect(vector, hasLength(v1OwnerCount));
+        expect(
+          vector.map((s) => s.shareBasisPoints),
+          everyElement(v1ShareBasisPoints),
+        );
+        expect(resolved.totalBasisPoints, totalOwnershipBasisPoints);
+      },
+    );
+
+    test('historical share records remain readable, and unchanged (7)', () async {
+      // The development database holds shares recorded before this ruling that are not
+      // 5000 basis points. Nothing rewrote them, and nothing should have: a settlement
+      // over a period they govern refuses, which is the correct consequence of a
+      // version that does not do variable ownership — not a reason to restate history.
+      await signInAs('giridhar@hki.com');
+      final rows = await client
+          .from('ownership_shares')
+          .select('share_basis_points, effective_from, effective_to');
+      final all = rows.cast<Map<String, dynamic>>();
+
+      expect(all, isNotEmpty);
+      for (final r in all) {
+        expect(r['effective_from'], isNotNull);
+        expect(r['share_basis_points'], isA<int>());
+      }
+
+      // Every closed historical row is still exactly as recorded, whatever its value.
+      final historical = all.where((r) => r['effective_to'] != null).toList();
+      expect(
+        historical,
+        isNotEmpty,
+        reason:
+            'supersession has produced closed rows, and they are still here',
+      );
     });
   });
 
