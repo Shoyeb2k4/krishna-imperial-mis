@@ -409,6 +409,45 @@ class ScopeCachePurge {
     );
   }
 
+  /// The canonical owner cache (OA-2), on the same terms and for the same reason.
+  ///
+  /// **Nothing here is anybody's unsent work**, unlike `owner_ledger_entries` beside it —
+  /// every row is a server-owned fact the server hands straight back when authority
+  /// returns. So there is no exception to make and it goes whole, which is the simpler
+  /// half of D-070 rather than a weaker one.
+  ///
+  /// The **coverage row first**, and it is removed unconditionally rather than by unit: a
+  /// claim of complete canonical owner history cannot survive the removal of part of that
+  /// history, and an owner position spans every property by construction (D-196). Leaving
+  /// it would tell a settlement the history is complete while it is being emptied
+  /// underneath — precisely what the reporting marker ordering exists to prevent.
+  ///
+  /// The ownership shares and owner masters go with it: they carry no business unit, they
+  /// are what an entitlement is computed *from*, and a device that has lost the ledger has
+  /// no business retaining the ratio.
+  Future<void> _purgeOwnerSettlementCache(
+    Set<String> units,
+    Map<String, int> removed,
+  ) async {
+    removed['owner_settlement_coverage'] = await _delete(
+      'DELETE FROM owner_settlement_coverage',
+      const {},
+    );
+    removed['canonical_owner_movements'] = await _delete(
+      'DELETE FROM canonical_owner_movements WHERE business_unit_id IN '
+      '${_in(units)}',
+      units,
+    );
+    removed['canonical_ownership_shares'] = await _delete(
+      'DELETE FROM canonical_ownership_shares',
+      const {},
+    );
+    removed['canonical_owners'] = await _delete(
+      'DELETE FROM canonical_owners',
+      const {},
+    );
+  }
+
   /// The deletion itself, for a set of units already established as revoked.
   ///
   /// Separate from [applyTo] so it can be exercised directly, but deliberately not the
@@ -442,6 +481,7 @@ class ScopeCachePurge {
       financial = await _purgeFinancialDocuments(units, removed);
       revenue = await _purgeRevenue(units, removed);
       await _purgeReportingCache(units, removed);
+      await _purgeOwnerSettlementCache(units, removed);
 
       // Then reference data, bottom-up. Each step deletes only rows reachable from the
       // revoked units, and the order guarantees a parent is never removed before its

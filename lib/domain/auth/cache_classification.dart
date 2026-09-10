@@ -322,6 +322,30 @@ abstract final class CacheClassification {
       unitColumn: 'business_unit_id',
     ),
 
+    // ── Phase 5 OA-2: the canonical owner cache ──────────────────────────────
+    //
+    // `canonicalReportingCache`, and for the same reason the reporting caches are: these
+    // are **server-owned canonical facts**, not this actor's work. Unlike the OA-1 ledger
+    // beside them there is no exception to make — nothing here is anybody's unsent
+    // attempt, and the server hands it all back when authority returns — so a confirmed
+    // revocation removes them outright, and the coverage row goes **first**, because a
+    // claim standing over rows that are about to disappear would tell a settlement the
+    // history is complete while it is being removed underneath (D-171, D-070).
+    CachedTable(
+      'canonical_owner_movements',
+      CacheOwnership.canonicalReportingCache,
+      unitColumn: 'business_unit_id',
+    ),
+    CachedTable(
+      'canonical_ownership_shares',
+      CacheOwnership.canonicalReportingCache,
+    ),
+    CachedTable('canonical_owners', CacheOwnership.canonicalReportingCache),
+    CachedTable(
+      'owner_settlement_coverage',
+      CacheOwnership.canonicalReportingCache,
+    ),
+
     // ── User-local: never purged for any authority reason ────────────────────
     CachedTable('sync_outbox', CacheOwnership.userLocal),
     CachedTable('app_meta', CacheOwnership.userLocal),

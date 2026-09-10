@@ -10,6 +10,7 @@ import 'package:krishna_mis/data/local/reporting_tables.dart';
 import 'package:krishna_mis/data/local/revenue_tables.dart';
 import 'package:krishna_mis/data/local/master_tables.dart';
 import 'package:krishna_mis/data/local/owner_tables.dart';
+import 'package:krishna_mis/data/local/owner_settlement_tables.dart';
 import 'package:krishna_mis/data/local/seed/master_seed.dart';
 import 'package:krishna_mis/data/local/tables.dart';
 
@@ -46,6 +47,10 @@ part 'app_database.g.dart';
     Owners,
     OwnershipShares,
     OwnerFamilyMembers,
+    CanonicalOwnerMovements,
+    CanonicalOwnershipShares,
+    CanonicalOwners,
+    OwnerSettlementCoverage,
     OwnerLedgerEntries,
   ],
 )
@@ -105,7 +110,7 @@ class AppDatabase extends _$AppDatabase {
   /// Financial tables raise this number as they land, each with a migration step and a
   /// migration test (docs/RELEASE_CHECKLIST.md §C).
   @override
-  int get schemaVersion => 19;
+  int get schemaVersion => 20;
 
   /// Timestamps are stored as ISO-8601 **UTC text**, not as unix seconds.
   ///
@@ -137,6 +142,7 @@ class AppDatabase extends _$AppDatabase {
       await _createReportingCacheIndexes();
       await _createImmutableBandTrigger();
       await _createOwnerLedgerIndexes();
+      await _createOwnerSettlementIndexes();
     },
     onUpgrade: (m, from, to) async {
       if (from < 2) {
@@ -394,6 +400,28 @@ class AppDatabase extends _$AppDatabase {
         await m.createTable(ownerFamilyMembers);
         await m.createTable(ownerLedgerEntries);
         await _createOwnerLedgerIndexes();
+      }
+      if (from < 20) {
+        // Phase 5 OA-2 — the canonical owner-account cache a settlement reads.
+        //
+        // Two new tables, and nothing that exists is read or rewritten. They are a
+        // **different authority class** from the OA-1 ledger beside them: server-owned
+        // canonical facts that may belong to another actor, rather than this actor's own
+        // attempt state (D-171, OA-2 section 19).
+        //
+        // No version floor is required: both are created whole from the current
+        // definition, so there is nothing an upgrading device could already have (D-144),
+        // and neither references a table a later step creates.
+        //
+        // They arrive **empty and uncertified**. A migration synchronises nothing, and a
+        // device that upgrades holds no coverage row until it has actually asked the
+        // server — so a settlement refuses rather than computing over partial history,
+        // which is the whole point of the OA-2 completeness audit (D-108's discipline).
+        await m.createTable(canonicalOwnerMovements);
+        await m.createTable(canonicalOwnershipShares);
+        await m.createTable(canonicalOwners);
+        await m.createTable(ownerSettlementCoverage);
+        await _createOwnerSettlementIndexes();
       }
     },
     beforeOpen: (details) async {
@@ -693,6 +721,25 @@ class AppDatabase extends _$AppDatabase {
   /// `org_id` is deliberately **not** the leading column: a device holds one
   /// organisation, so no local query constrains it and leading with it would make the
   /// index unusable on exactly the paths it exists for.
+  /// Indexes for the canonical owner cache.
+  ///
+  /// Every one leads with `owner_user_id`, because every query does: a cache row belongs
+  /// to a signed-in person, and an index that did not lead with them would be unusable on
+  /// exactly the paths it exists for — the finding recorded against
+  /// `ix_expense_contributions_reporting`, avoided here rather than repeated.
+  Future<void> _createOwnerSettlementIndexes() async {
+    // The settlement read: one person's cache, one business owner, in date order.
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS ix_canonical_owner_movements_owner '
+      'ON canonical_owner_movements (owner_user_id, owner_id, business_date)',
+    );
+    // And by period, for a monthly statement.
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS ix_canonical_owner_movements_period '
+      'ON canonical_owner_movements (owner_user_id, pnl_period_key)',
+    );
+  }
+
   Future<void> _createOwnerLedgerIndexes() async {
     // The owner statement: one owner's movements over a period, newest first.
     await customStatement(

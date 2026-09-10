@@ -22531,6 +22531,3075 @@ class OwnerFamilyMembersCompanion
   }
 }
 
+class $CanonicalOwnerMovementsTable extends CanonicalOwnerMovements
+    with TableInfo<$CanonicalOwnerMovementsTable, CanonicalOwnerMovementRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $CanonicalOwnerMovementsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _ownerUserIdMeta = const VerificationMeta(
+    'ownerUserId',
+  );
+  @override
+  late final GeneratedColumn<String> ownerUserId = GeneratedColumn<String>(
+    'owner_user_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _orgIdMeta = const VerificationMeta('orgId');
+  @override
+  late final GeneratedColumn<String> orgId = GeneratedColumn<String>(
+    'org_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _businessUnitIdMeta = const VerificationMeta(
+    'businessUnitId',
+  );
+  @override
+  late final GeneratedColumn<String> businessUnitId = GeneratedColumn<String>(
+    'business_unit_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _ownerIdMeta = const VerificationMeta(
+    'ownerId',
+  );
+  @override
+  late final GeneratedColumn<String> ownerId = GeneratedColumn<String>(
+    'owner_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _txnNumberMeta = const VerificationMeta(
+    'txnNumber',
+  );
+  @override
+  late final GeneratedColumn<String> txnNumber = GeneratedColumn<String>(
+    'txn_number',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _financialYearMeta = const VerificationMeta(
+    'financialYear',
+  );
+  @override
+  late final GeneratedColumn<String> financialYear = GeneratedColumn<String>(
+    'financial_year',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _businessDateMeta = const VerificationMeta(
+    'businessDate',
+  );
+  @override
+  late final GeneratedColumn<String> businessDate = GeneratedColumn<String>(
+    'business_date',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _businessDateSourceMeta =
+      const VerificationMeta('businessDateSource');
+  @override
+  late final GeneratedColumn<String> businessDateSource =
+      GeneratedColumn<String>(
+        'business_date_source',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: true,
+      );
+  static const VerificationMeta _pnlPeriodKeyMeta = const VerificationMeta(
+    'pnlPeriodKey',
+  );
+  @override
+  late final GeneratedColumn<String> pnlPeriodKey = GeneratedColumn<String>(
+    'pnl_period_key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _movementTypeMeta = const VerificationMeta(
+    'movementType',
+  );
+  @override
+  late final GeneratedColumn<String> movementType = GeneratedColumn<String>(
+    'movement_type',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _directionMeta = const VerificationMeta(
+    'direction',
+  );
+  @override
+  late final GeneratedColumn<String> direction = GeneratedColumn<String>(
+    'direction',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _amountMinorMeta = const VerificationMeta(
+    'amountMinor',
+  );
+  @override
+  late final GeneratedColumn<int> amountMinor = GeneratedColumn<int>(
+    'amount_minor',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _familyMemberIdMeta = const VerificationMeta(
+    'familyMemberId',
+  );
+  @override
+  late final GeneratedColumn<String> familyMemberId = GeneratedColumn<String>(
+    'family_member_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _collectedByFamilyMemberIdMeta =
+      const VerificationMeta('collectedByFamilyMemberId');
+  @override
+  late final GeneratedColumn<String> collectedByFamilyMemberId =
+      GeneratedColumn<String>(
+        'collected_by_family_member_id',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _ncBillReferenceMeta = const VerificationMeta(
+    'ncBillReference',
+  );
+  @override
+  late final GeneratedColumn<String> ncBillReference = GeneratedColumn<String>(
+    'nc_bill_reference',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _referenceNumberMeta = const VerificationMeta(
+    'referenceNumber',
+  );
+  @override
+  late final GeneratedColumn<String> referenceNumber = GeneratedColumn<String>(
+    'reference_number',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _remarksMeta = const VerificationMeta(
+    'remarks',
+  );
+  @override
+  late final GeneratedColumn<String> remarks = GeneratedColumn<String>(
+    'remarks',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _reasonMeta = const VerificationMeta('reason');
+  @override
+  late final GeneratedColumn<String> reason = GeneratedColumn<String>(
+    'reason',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdByMeta = const VerificationMeta(
+    'createdBy',
+  );
+  @override
+  late final GeneratedColumn<String> createdBy = GeneratedColumn<String>(
+    'created_by',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _capturedAtMeta = const VerificationMeta(
+    'capturedAt',
+  );
+  @override
+  late final GeneratedColumn<String> capturedAt = GeneratedColumn<String>(
+    'captured_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _rowVersionMeta = const VerificationMeta(
+    'rowVersion',
+  );
+  @override
+  late final GeneratedColumn<int> rowVersion = GeneratedColumn<int>(
+    'row_version',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _changeSeqMeta = const VerificationMeta(
+    'changeSeq',
+  );
+  @override
+  late final GeneratedColumn<int> changeSeq = GeneratedColumn<int>(
+    'change_seq',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _voidedAtMeta = const VerificationMeta(
+    'voidedAt',
+  );
+  @override
+  late final GeneratedColumn<String> voidedAt = GeneratedColumn<String>(
+    'voided_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _voidReasonMeta = const VerificationMeta(
+    'voidReason',
+  );
+  @override
+  late final GeneratedColumn<String> voidReason = GeneratedColumn<String>(
+    'void_reason',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    ownerUserId,
+    id,
+    orgId,
+    businessUnitId,
+    ownerId,
+    txnNumber,
+    financialYear,
+    businessDate,
+    businessDateSource,
+    pnlPeriodKey,
+    movementType,
+    direction,
+    amountMinor,
+    familyMemberId,
+    collectedByFamilyMemberId,
+    ncBillReference,
+    referenceNumber,
+    remarks,
+    reason,
+    createdBy,
+    capturedAt,
+    rowVersion,
+    changeSeq,
+    voidedAt,
+    voidReason,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'canonical_owner_movements';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<CanonicalOwnerMovementRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('owner_user_id')) {
+      context.handle(
+        _ownerUserIdMeta,
+        ownerUserId.isAcceptableOrUnknown(
+          data['owner_user_id']!,
+          _ownerUserIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_ownerUserIdMeta);
+    }
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('org_id')) {
+      context.handle(
+        _orgIdMeta,
+        orgId.isAcceptableOrUnknown(data['org_id']!, _orgIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_orgIdMeta);
+    }
+    if (data.containsKey('business_unit_id')) {
+      context.handle(
+        _businessUnitIdMeta,
+        businessUnitId.isAcceptableOrUnknown(
+          data['business_unit_id']!,
+          _businessUnitIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_businessUnitIdMeta);
+    }
+    if (data.containsKey('owner_id')) {
+      context.handle(
+        _ownerIdMeta,
+        ownerId.isAcceptableOrUnknown(data['owner_id']!, _ownerIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_ownerIdMeta);
+    }
+    if (data.containsKey('txn_number')) {
+      context.handle(
+        _txnNumberMeta,
+        txnNumber.isAcceptableOrUnknown(data['txn_number']!, _txnNumberMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_txnNumberMeta);
+    }
+    if (data.containsKey('financial_year')) {
+      context.handle(
+        _financialYearMeta,
+        financialYear.isAcceptableOrUnknown(
+          data['financial_year']!,
+          _financialYearMeta,
+        ),
+      );
+    }
+    if (data.containsKey('business_date')) {
+      context.handle(
+        _businessDateMeta,
+        businessDate.isAcceptableOrUnknown(
+          data['business_date']!,
+          _businessDateMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_businessDateMeta);
+    }
+    if (data.containsKey('business_date_source')) {
+      context.handle(
+        _businessDateSourceMeta,
+        businessDateSource.isAcceptableOrUnknown(
+          data['business_date_source']!,
+          _businessDateSourceMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_businessDateSourceMeta);
+    }
+    if (data.containsKey('pnl_period_key')) {
+      context.handle(
+        _pnlPeriodKeyMeta,
+        pnlPeriodKey.isAcceptableOrUnknown(
+          data['pnl_period_key']!,
+          _pnlPeriodKeyMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_pnlPeriodKeyMeta);
+    }
+    if (data.containsKey('movement_type')) {
+      context.handle(
+        _movementTypeMeta,
+        movementType.isAcceptableOrUnknown(
+          data['movement_type']!,
+          _movementTypeMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_movementTypeMeta);
+    }
+    if (data.containsKey('direction')) {
+      context.handle(
+        _directionMeta,
+        direction.isAcceptableOrUnknown(data['direction']!, _directionMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_directionMeta);
+    }
+    if (data.containsKey('amount_minor')) {
+      context.handle(
+        _amountMinorMeta,
+        amountMinor.isAcceptableOrUnknown(
+          data['amount_minor']!,
+          _amountMinorMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_amountMinorMeta);
+    }
+    if (data.containsKey('family_member_id')) {
+      context.handle(
+        _familyMemberIdMeta,
+        familyMemberId.isAcceptableOrUnknown(
+          data['family_member_id']!,
+          _familyMemberIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('collected_by_family_member_id')) {
+      context.handle(
+        _collectedByFamilyMemberIdMeta,
+        collectedByFamilyMemberId.isAcceptableOrUnknown(
+          data['collected_by_family_member_id']!,
+          _collectedByFamilyMemberIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('nc_bill_reference')) {
+      context.handle(
+        _ncBillReferenceMeta,
+        ncBillReference.isAcceptableOrUnknown(
+          data['nc_bill_reference']!,
+          _ncBillReferenceMeta,
+        ),
+      );
+    }
+    if (data.containsKey('reference_number')) {
+      context.handle(
+        _referenceNumberMeta,
+        referenceNumber.isAcceptableOrUnknown(
+          data['reference_number']!,
+          _referenceNumberMeta,
+        ),
+      );
+    }
+    if (data.containsKey('remarks')) {
+      context.handle(
+        _remarksMeta,
+        remarks.isAcceptableOrUnknown(data['remarks']!, _remarksMeta),
+      );
+    }
+    if (data.containsKey('reason')) {
+      context.handle(
+        _reasonMeta,
+        reason.isAcceptableOrUnknown(data['reason']!, _reasonMeta),
+      );
+    }
+    if (data.containsKey('created_by')) {
+      context.handle(
+        _createdByMeta,
+        createdBy.isAcceptableOrUnknown(data['created_by']!, _createdByMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdByMeta);
+    }
+    if (data.containsKey('captured_at')) {
+      context.handle(
+        _capturedAtMeta,
+        capturedAt.isAcceptableOrUnknown(data['captured_at']!, _capturedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_capturedAtMeta);
+    }
+    if (data.containsKey('row_version')) {
+      context.handle(
+        _rowVersionMeta,
+        rowVersion.isAcceptableOrUnknown(data['row_version']!, _rowVersionMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_rowVersionMeta);
+    }
+    if (data.containsKey('change_seq')) {
+      context.handle(
+        _changeSeqMeta,
+        changeSeq.isAcceptableOrUnknown(data['change_seq']!, _changeSeqMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_changeSeqMeta);
+    }
+    if (data.containsKey('voided_at')) {
+      context.handle(
+        _voidedAtMeta,
+        voidedAt.isAcceptableOrUnknown(data['voided_at']!, _voidedAtMeta),
+      );
+    }
+    if (data.containsKey('void_reason')) {
+      context.handle(
+        _voidReasonMeta,
+        voidReason.isAcceptableOrUnknown(data['void_reason']!, _voidReasonMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {ownerUserId, id};
+  @override
+  CanonicalOwnerMovementRow map(
+    Map<String, dynamic> data, {
+    String? tablePrefix,
+  }) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return CanonicalOwnerMovementRow(
+      ownerUserId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}owner_user_id'],
+      )!,
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      orgId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}org_id'],
+      )!,
+      businessUnitId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}business_unit_id'],
+      )!,
+      ownerId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}owner_id'],
+      )!,
+      txnNumber: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}txn_number'],
+      )!,
+      financialYear: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}financial_year'],
+      ),
+      businessDate: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}business_date'],
+      )!,
+      businessDateSource: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}business_date_source'],
+      )!,
+      pnlPeriodKey: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}pnl_period_key'],
+      )!,
+      movementType: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}movement_type'],
+      )!,
+      direction: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}direction'],
+      )!,
+      amountMinor: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}amount_minor'],
+      )!,
+      familyMemberId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}family_member_id'],
+      ),
+      collectedByFamilyMemberId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}collected_by_family_member_id'],
+      ),
+      ncBillReference: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}nc_bill_reference'],
+      ),
+      referenceNumber: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}reference_number'],
+      ),
+      remarks: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}remarks'],
+      ),
+      reason: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}reason'],
+      ),
+      createdBy: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}created_by'],
+      )!,
+      capturedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}captured_at'],
+      )!,
+      rowVersion: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}row_version'],
+      )!,
+      changeSeq: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}change_seq'],
+      )!,
+      voidedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}voided_at'],
+      ),
+      voidReason: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}void_reason'],
+      ),
+    );
+  }
+
+  @override
+  $CanonicalOwnerMovementsTable createAlias(String alias) {
+    return $CanonicalOwnerMovementsTable(attachedDatabase, alias);
+  }
+}
+
+class CanonicalOwnerMovementRow extends DataClass
+    implements Insertable<CanonicalOwnerMovementRow> {
+  /// The signed-in person this cache belongs to (D-074).
+  final String ownerUserId;
+
+  /// The movement's own id, as the server holds it.
+  final String id;
+  final String orgId;
+  final String businessUnitId;
+
+  /// The business owner the movement debits or credits — the owner the **server**
+  /// resolved and snapshotted, never re-derived here from the family link (§40).
+  final String ownerId;
+
+  /// `KI-OWN-…`. Never null in this table: only server-accepted movements are cached, and
+  /// the column is kept so a statement can name the movement a figure came from.
+  final String txnNumber;
+  final String? financialYear;
+
+  /// Derived under the property's timezone and cut-off, then persisted (D-019, D-067).
+  final String businessDate;
+  final String businessDateSource;
+
+  /// `YYYY-MM`, tied to [businessDate] by a server CHECK — the same grain every other
+  /// reporting period uses (§21).
+  final String pnlPeriodKey;
+  final String movementType;
+  final String direction;
+
+  /// Always positive; the movement type decides the sign (§43 of OA-1).
+  final int amountMinor;
+  final String? familyMemberId;
+  final String? collectedByFamilyMemberId;
+  final String? ncBillReference;
+  final String? referenceNumber;
+  final String? remarks;
+  final String? reason;
+  final String createdBy;
+  final String capturedAt;
+  final int rowVersion;
+  final int changeSeq;
+  final String? voidedAt;
+  final String? voidReason;
+  const CanonicalOwnerMovementRow({
+    required this.ownerUserId,
+    required this.id,
+    required this.orgId,
+    required this.businessUnitId,
+    required this.ownerId,
+    required this.txnNumber,
+    this.financialYear,
+    required this.businessDate,
+    required this.businessDateSource,
+    required this.pnlPeriodKey,
+    required this.movementType,
+    required this.direction,
+    required this.amountMinor,
+    this.familyMemberId,
+    this.collectedByFamilyMemberId,
+    this.ncBillReference,
+    this.referenceNumber,
+    this.remarks,
+    this.reason,
+    required this.createdBy,
+    required this.capturedAt,
+    required this.rowVersion,
+    required this.changeSeq,
+    this.voidedAt,
+    this.voidReason,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['owner_user_id'] = Variable<String>(ownerUserId);
+    map['id'] = Variable<String>(id);
+    map['org_id'] = Variable<String>(orgId);
+    map['business_unit_id'] = Variable<String>(businessUnitId);
+    map['owner_id'] = Variable<String>(ownerId);
+    map['txn_number'] = Variable<String>(txnNumber);
+    if (!nullToAbsent || financialYear != null) {
+      map['financial_year'] = Variable<String>(financialYear);
+    }
+    map['business_date'] = Variable<String>(businessDate);
+    map['business_date_source'] = Variable<String>(businessDateSource);
+    map['pnl_period_key'] = Variable<String>(pnlPeriodKey);
+    map['movement_type'] = Variable<String>(movementType);
+    map['direction'] = Variable<String>(direction);
+    map['amount_minor'] = Variable<int>(amountMinor);
+    if (!nullToAbsent || familyMemberId != null) {
+      map['family_member_id'] = Variable<String>(familyMemberId);
+    }
+    if (!nullToAbsent || collectedByFamilyMemberId != null) {
+      map['collected_by_family_member_id'] = Variable<String>(
+        collectedByFamilyMemberId,
+      );
+    }
+    if (!nullToAbsent || ncBillReference != null) {
+      map['nc_bill_reference'] = Variable<String>(ncBillReference);
+    }
+    if (!nullToAbsent || referenceNumber != null) {
+      map['reference_number'] = Variable<String>(referenceNumber);
+    }
+    if (!nullToAbsent || remarks != null) {
+      map['remarks'] = Variable<String>(remarks);
+    }
+    if (!nullToAbsent || reason != null) {
+      map['reason'] = Variable<String>(reason);
+    }
+    map['created_by'] = Variable<String>(createdBy);
+    map['captured_at'] = Variable<String>(capturedAt);
+    map['row_version'] = Variable<int>(rowVersion);
+    map['change_seq'] = Variable<int>(changeSeq);
+    if (!nullToAbsent || voidedAt != null) {
+      map['voided_at'] = Variable<String>(voidedAt);
+    }
+    if (!nullToAbsent || voidReason != null) {
+      map['void_reason'] = Variable<String>(voidReason);
+    }
+    return map;
+  }
+
+  CanonicalOwnerMovementsCompanion toCompanion(bool nullToAbsent) {
+    return CanonicalOwnerMovementsCompanion(
+      ownerUserId: Value(ownerUserId),
+      id: Value(id),
+      orgId: Value(orgId),
+      businessUnitId: Value(businessUnitId),
+      ownerId: Value(ownerId),
+      txnNumber: Value(txnNumber),
+      financialYear: financialYear == null && nullToAbsent
+          ? const Value.absent()
+          : Value(financialYear),
+      businessDate: Value(businessDate),
+      businessDateSource: Value(businessDateSource),
+      pnlPeriodKey: Value(pnlPeriodKey),
+      movementType: Value(movementType),
+      direction: Value(direction),
+      amountMinor: Value(amountMinor),
+      familyMemberId: familyMemberId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(familyMemberId),
+      collectedByFamilyMemberId:
+          collectedByFamilyMemberId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(collectedByFamilyMemberId),
+      ncBillReference: ncBillReference == null && nullToAbsent
+          ? const Value.absent()
+          : Value(ncBillReference),
+      referenceNumber: referenceNumber == null && nullToAbsent
+          ? const Value.absent()
+          : Value(referenceNumber),
+      remarks: remarks == null && nullToAbsent
+          ? const Value.absent()
+          : Value(remarks),
+      reason: reason == null && nullToAbsent
+          ? const Value.absent()
+          : Value(reason),
+      createdBy: Value(createdBy),
+      capturedAt: Value(capturedAt),
+      rowVersion: Value(rowVersion),
+      changeSeq: Value(changeSeq),
+      voidedAt: voidedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(voidedAt),
+      voidReason: voidReason == null && nullToAbsent
+          ? const Value.absent()
+          : Value(voidReason),
+    );
+  }
+
+  factory CanonicalOwnerMovementRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return CanonicalOwnerMovementRow(
+      ownerUserId: serializer.fromJson<String>(json['ownerUserId']),
+      id: serializer.fromJson<String>(json['id']),
+      orgId: serializer.fromJson<String>(json['orgId']),
+      businessUnitId: serializer.fromJson<String>(json['businessUnitId']),
+      ownerId: serializer.fromJson<String>(json['ownerId']),
+      txnNumber: serializer.fromJson<String>(json['txnNumber']),
+      financialYear: serializer.fromJson<String?>(json['financialYear']),
+      businessDate: serializer.fromJson<String>(json['businessDate']),
+      businessDateSource: serializer.fromJson<String>(
+        json['businessDateSource'],
+      ),
+      pnlPeriodKey: serializer.fromJson<String>(json['pnlPeriodKey']),
+      movementType: serializer.fromJson<String>(json['movementType']),
+      direction: serializer.fromJson<String>(json['direction']),
+      amountMinor: serializer.fromJson<int>(json['amountMinor']),
+      familyMemberId: serializer.fromJson<String?>(json['familyMemberId']),
+      collectedByFamilyMemberId: serializer.fromJson<String?>(
+        json['collectedByFamilyMemberId'],
+      ),
+      ncBillReference: serializer.fromJson<String?>(json['ncBillReference']),
+      referenceNumber: serializer.fromJson<String?>(json['referenceNumber']),
+      remarks: serializer.fromJson<String?>(json['remarks']),
+      reason: serializer.fromJson<String?>(json['reason']),
+      createdBy: serializer.fromJson<String>(json['createdBy']),
+      capturedAt: serializer.fromJson<String>(json['capturedAt']),
+      rowVersion: serializer.fromJson<int>(json['rowVersion']),
+      changeSeq: serializer.fromJson<int>(json['changeSeq']),
+      voidedAt: serializer.fromJson<String?>(json['voidedAt']),
+      voidReason: serializer.fromJson<String?>(json['voidReason']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'ownerUserId': serializer.toJson<String>(ownerUserId),
+      'id': serializer.toJson<String>(id),
+      'orgId': serializer.toJson<String>(orgId),
+      'businessUnitId': serializer.toJson<String>(businessUnitId),
+      'ownerId': serializer.toJson<String>(ownerId),
+      'txnNumber': serializer.toJson<String>(txnNumber),
+      'financialYear': serializer.toJson<String?>(financialYear),
+      'businessDate': serializer.toJson<String>(businessDate),
+      'businessDateSource': serializer.toJson<String>(businessDateSource),
+      'pnlPeriodKey': serializer.toJson<String>(pnlPeriodKey),
+      'movementType': serializer.toJson<String>(movementType),
+      'direction': serializer.toJson<String>(direction),
+      'amountMinor': serializer.toJson<int>(amountMinor),
+      'familyMemberId': serializer.toJson<String?>(familyMemberId),
+      'collectedByFamilyMemberId': serializer.toJson<String?>(
+        collectedByFamilyMemberId,
+      ),
+      'ncBillReference': serializer.toJson<String?>(ncBillReference),
+      'referenceNumber': serializer.toJson<String?>(referenceNumber),
+      'remarks': serializer.toJson<String?>(remarks),
+      'reason': serializer.toJson<String?>(reason),
+      'createdBy': serializer.toJson<String>(createdBy),
+      'capturedAt': serializer.toJson<String>(capturedAt),
+      'rowVersion': serializer.toJson<int>(rowVersion),
+      'changeSeq': serializer.toJson<int>(changeSeq),
+      'voidedAt': serializer.toJson<String?>(voidedAt),
+      'voidReason': serializer.toJson<String?>(voidReason),
+    };
+  }
+
+  CanonicalOwnerMovementRow copyWith({
+    String? ownerUserId,
+    String? id,
+    String? orgId,
+    String? businessUnitId,
+    String? ownerId,
+    String? txnNumber,
+    Value<String?> financialYear = const Value.absent(),
+    String? businessDate,
+    String? businessDateSource,
+    String? pnlPeriodKey,
+    String? movementType,
+    String? direction,
+    int? amountMinor,
+    Value<String?> familyMemberId = const Value.absent(),
+    Value<String?> collectedByFamilyMemberId = const Value.absent(),
+    Value<String?> ncBillReference = const Value.absent(),
+    Value<String?> referenceNumber = const Value.absent(),
+    Value<String?> remarks = const Value.absent(),
+    Value<String?> reason = const Value.absent(),
+    String? createdBy,
+    String? capturedAt,
+    int? rowVersion,
+    int? changeSeq,
+    Value<String?> voidedAt = const Value.absent(),
+    Value<String?> voidReason = const Value.absent(),
+  }) => CanonicalOwnerMovementRow(
+    ownerUserId: ownerUserId ?? this.ownerUserId,
+    id: id ?? this.id,
+    orgId: orgId ?? this.orgId,
+    businessUnitId: businessUnitId ?? this.businessUnitId,
+    ownerId: ownerId ?? this.ownerId,
+    txnNumber: txnNumber ?? this.txnNumber,
+    financialYear: financialYear.present
+        ? financialYear.value
+        : this.financialYear,
+    businessDate: businessDate ?? this.businessDate,
+    businessDateSource: businessDateSource ?? this.businessDateSource,
+    pnlPeriodKey: pnlPeriodKey ?? this.pnlPeriodKey,
+    movementType: movementType ?? this.movementType,
+    direction: direction ?? this.direction,
+    amountMinor: amountMinor ?? this.amountMinor,
+    familyMemberId: familyMemberId.present
+        ? familyMemberId.value
+        : this.familyMemberId,
+    collectedByFamilyMemberId: collectedByFamilyMemberId.present
+        ? collectedByFamilyMemberId.value
+        : this.collectedByFamilyMemberId,
+    ncBillReference: ncBillReference.present
+        ? ncBillReference.value
+        : this.ncBillReference,
+    referenceNumber: referenceNumber.present
+        ? referenceNumber.value
+        : this.referenceNumber,
+    remarks: remarks.present ? remarks.value : this.remarks,
+    reason: reason.present ? reason.value : this.reason,
+    createdBy: createdBy ?? this.createdBy,
+    capturedAt: capturedAt ?? this.capturedAt,
+    rowVersion: rowVersion ?? this.rowVersion,
+    changeSeq: changeSeq ?? this.changeSeq,
+    voidedAt: voidedAt.present ? voidedAt.value : this.voidedAt,
+    voidReason: voidReason.present ? voidReason.value : this.voidReason,
+  );
+  CanonicalOwnerMovementRow copyWithCompanion(
+    CanonicalOwnerMovementsCompanion data,
+  ) {
+    return CanonicalOwnerMovementRow(
+      ownerUserId: data.ownerUserId.present
+          ? data.ownerUserId.value
+          : this.ownerUserId,
+      id: data.id.present ? data.id.value : this.id,
+      orgId: data.orgId.present ? data.orgId.value : this.orgId,
+      businessUnitId: data.businessUnitId.present
+          ? data.businessUnitId.value
+          : this.businessUnitId,
+      ownerId: data.ownerId.present ? data.ownerId.value : this.ownerId,
+      txnNumber: data.txnNumber.present ? data.txnNumber.value : this.txnNumber,
+      financialYear: data.financialYear.present
+          ? data.financialYear.value
+          : this.financialYear,
+      businessDate: data.businessDate.present
+          ? data.businessDate.value
+          : this.businessDate,
+      businessDateSource: data.businessDateSource.present
+          ? data.businessDateSource.value
+          : this.businessDateSource,
+      pnlPeriodKey: data.pnlPeriodKey.present
+          ? data.pnlPeriodKey.value
+          : this.pnlPeriodKey,
+      movementType: data.movementType.present
+          ? data.movementType.value
+          : this.movementType,
+      direction: data.direction.present ? data.direction.value : this.direction,
+      amountMinor: data.amountMinor.present
+          ? data.amountMinor.value
+          : this.amountMinor,
+      familyMemberId: data.familyMemberId.present
+          ? data.familyMemberId.value
+          : this.familyMemberId,
+      collectedByFamilyMemberId: data.collectedByFamilyMemberId.present
+          ? data.collectedByFamilyMemberId.value
+          : this.collectedByFamilyMemberId,
+      ncBillReference: data.ncBillReference.present
+          ? data.ncBillReference.value
+          : this.ncBillReference,
+      referenceNumber: data.referenceNumber.present
+          ? data.referenceNumber.value
+          : this.referenceNumber,
+      remarks: data.remarks.present ? data.remarks.value : this.remarks,
+      reason: data.reason.present ? data.reason.value : this.reason,
+      createdBy: data.createdBy.present ? data.createdBy.value : this.createdBy,
+      capturedAt: data.capturedAt.present
+          ? data.capturedAt.value
+          : this.capturedAt,
+      rowVersion: data.rowVersion.present
+          ? data.rowVersion.value
+          : this.rowVersion,
+      changeSeq: data.changeSeq.present ? data.changeSeq.value : this.changeSeq,
+      voidedAt: data.voidedAt.present ? data.voidedAt.value : this.voidedAt,
+      voidReason: data.voidReason.present
+          ? data.voidReason.value
+          : this.voidReason,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CanonicalOwnerMovementRow(')
+          ..write('ownerUserId: $ownerUserId, ')
+          ..write('id: $id, ')
+          ..write('orgId: $orgId, ')
+          ..write('businessUnitId: $businessUnitId, ')
+          ..write('ownerId: $ownerId, ')
+          ..write('txnNumber: $txnNumber, ')
+          ..write('financialYear: $financialYear, ')
+          ..write('businessDate: $businessDate, ')
+          ..write('businessDateSource: $businessDateSource, ')
+          ..write('pnlPeriodKey: $pnlPeriodKey, ')
+          ..write('movementType: $movementType, ')
+          ..write('direction: $direction, ')
+          ..write('amountMinor: $amountMinor, ')
+          ..write('familyMemberId: $familyMemberId, ')
+          ..write('collectedByFamilyMemberId: $collectedByFamilyMemberId, ')
+          ..write('ncBillReference: $ncBillReference, ')
+          ..write('referenceNumber: $referenceNumber, ')
+          ..write('remarks: $remarks, ')
+          ..write('reason: $reason, ')
+          ..write('createdBy: $createdBy, ')
+          ..write('capturedAt: $capturedAt, ')
+          ..write('rowVersion: $rowVersion, ')
+          ..write('changeSeq: $changeSeq, ')
+          ..write('voidedAt: $voidedAt, ')
+          ..write('voidReason: $voidReason')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hashAll([
+    ownerUserId,
+    id,
+    orgId,
+    businessUnitId,
+    ownerId,
+    txnNumber,
+    financialYear,
+    businessDate,
+    businessDateSource,
+    pnlPeriodKey,
+    movementType,
+    direction,
+    amountMinor,
+    familyMemberId,
+    collectedByFamilyMemberId,
+    ncBillReference,
+    referenceNumber,
+    remarks,
+    reason,
+    createdBy,
+    capturedAt,
+    rowVersion,
+    changeSeq,
+    voidedAt,
+    voidReason,
+  ]);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is CanonicalOwnerMovementRow &&
+          other.ownerUserId == this.ownerUserId &&
+          other.id == this.id &&
+          other.orgId == this.orgId &&
+          other.businessUnitId == this.businessUnitId &&
+          other.ownerId == this.ownerId &&
+          other.txnNumber == this.txnNumber &&
+          other.financialYear == this.financialYear &&
+          other.businessDate == this.businessDate &&
+          other.businessDateSource == this.businessDateSource &&
+          other.pnlPeriodKey == this.pnlPeriodKey &&
+          other.movementType == this.movementType &&
+          other.direction == this.direction &&
+          other.amountMinor == this.amountMinor &&
+          other.familyMemberId == this.familyMemberId &&
+          other.collectedByFamilyMemberId == this.collectedByFamilyMemberId &&
+          other.ncBillReference == this.ncBillReference &&
+          other.referenceNumber == this.referenceNumber &&
+          other.remarks == this.remarks &&
+          other.reason == this.reason &&
+          other.createdBy == this.createdBy &&
+          other.capturedAt == this.capturedAt &&
+          other.rowVersion == this.rowVersion &&
+          other.changeSeq == this.changeSeq &&
+          other.voidedAt == this.voidedAt &&
+          other.voidReason == this.voidReason);
+}
+
+class CanonicalOwnerMovementsCompanion
+    extends UpdateCompanion<CanonicalOwnerMovementRow> {
+  final Value<String> ownerUserId;
+  final Value<String> id;
+  final Value<String> orgId;
+  final Value<String> businessUnitId;
+  final Value<String> ownerId;
+  final Value<String> txnNumber;
+  final Value<String?> financialYear;
+  final Value<String> businessDate;
+  final Value<String> businessDateSource;
+  final Value<String> pnlPeriodKey;
+  final Value<String> movementType;
+  final Value<String> direction;
+  final Value<int> amountMinor;
+  final Value<String?> familyMemberId;
+  final Value<String?> collectedByFamilyMemberId;
+  final Value<String?> ncBillReference;
+  final Value<String?> referenceNumber;
+  final Value<String?> remarks;
+  final Value<String?> reason;
+  final Value<String> createdBy;
+  final Value<String> capturedAt;
+  final Value<int> rowVersion;
+  final Value<int> changeSeq;
+  final Value<String?> voidedAt;
+  final Value<String?> voidReason;
+  final Value<int> rowid;
+  const CanonicalOwnerMovementsCompanion({
+    this.ownerUserId = const Value.absent(),
+    this.id = const Value.absent(),
+    this.orgId = const Value.absent(),
+    this.businessUnitId = const Value.absent(),
+    this.ownerId = const Value.absent(),
+    this.txnNumber = const Value.absent(),
+    this.financialYear = const Value.absent(),
+    this.businessDate = const Value.absent(),
+    this.businessDateSource = const Value.absent(),
+    this.pnlPeriodKey = const Value.absent(),
+    this.movementType = const Value.absent(),
+    this.direction = const Value.absent(),
+    this.amountMinor = const Value.absent(),
+    this.familyMemberId = const Value.absent(),
+    this.collectedByFamilyMemberId = const Value.absent(),
+    this.ncBillReference = const Value.absent(),
+    this.referenceNumber = const Value.absent(),
+    this.remarks = const Value.absent(),
+    this.reason = const Value.absent(),
+    this.createdBy = const Value.absent(),
+    this.capturedAt = const Value.absent(),
+    this.rowVersion = const Value.absent(),
+    this.changeSeq = const Value.absent(),
+    this.voidedAt = const Value.absent(),
+    this.voidReason = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  CanonicalOwnerMovementsCompanion.insert({
+    required String ownerUserId,
+    required String id,
+    required String orgId,
+    required String businessUnitId,
+    required String ownerId,
+    required String txnNumber,
+    this.financialYear = const Value.absent(),
+    required String businessDate,
+    required String businessDateSource,
+    required String pnlPeriodKey,
+    required String movementType,
+    required String direction,
+    required int amountMinor,
+    this.familyMemberId = const Value.absent(),
+    this.collectedByFamilyMemberId = const Value.absent(),
+    this.ncBillReference = const Value.absent(),
+    this.referenceNumber = const Value.absent(),
+    this.remarks = const Value.absent(),
+    this.reason = const Value.absent(),
+    required String createdBy,
+    required String capturedAt,
+    required int rowVersion,
+    required int changeSeq,
+    this.voidedAt = const Value.absent(),
+    this.voidReason = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : ownerUserId = Value(ownerUserId),
+       id = Value(id),
+       orgId = Value(orgId),
+       businessUnitId = Value(businessUnitId),
+       ownerId = Value(ownerId),
+       txnNumber = Value(txnNumber),
+       businessDate = Value(businessDate),
+       businessDateSource = Value(businessDateSource),
+       pnlPeriodKey = Value(pnlPeriodKey),
+       movementType = Value(movementType),
+       direction = Value(direction),
+       amountMinor = Value(amountMinor),
+       createdBy = Value(createdBy),
+       capturedAt = Value(capturedAt),
+       rowVersion = Value(rowVersion),
+       changeSeq = Value(changeSeq);
+  static Insertable<CanonicalOwnerMovementRow> custom({
+    Expression<String>? ownerUserId,
+    Expression<String>? id,
+    Expression<String>? orgId,
+    Expression<String>? businessUnitId,
+    Expression<String>? ownerId,
+    Expression<String>? txnNumber,
+    Expression<String>? financialYear,
+    Expression<String>? businessDate,
+    Expression<String>? businessDateSource,
+    Expression<String>? pnlPeriodKey,
+    Expression<String>? movementType,
+    Expression<String>? direction,
+    Expression<int>? amountMinor,
+    Expression<String>? familyMemberId,
+    Expression<String>? collectedByFamilyMemberId,
+    Expression<String>? ncBillReference,
+    Expression<String>? referenceNumber,
+    Expression<String>? remarks,
+    Expression<String>? reason,
+    Expression<String>? createdBy,
+    Expression<String>? capturedAt,
+    Expression<int>? rowVersion,
+    Expression<int>? changeSeq,
+    Expression<String>? voidedAt,
+    Expression<String>? voidReason,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (ownerUserId != null) 'owner_user_id': ownerUserId,
+      if (id != null) 'id': id,
+      if (orgId != null) 'org_id': orgId,
+      if (businessUnitId != null) 'business_unit_id': businessUnitId,
+      if (ownerId != null) 'owner_id': ownerId,
+      if (txnNumber != null) 'txn_number': txnNumber,
+      if (financialYear != null) 'financial_year': financialYear,
+      if (businessDate != null) 'business_date': businessDate,
+      if (businessDateSource != null)
+        'business_date_source': businessDateSource,
+      if (pnlPeriodKey != null) 'pnl_period_key': pnlPeriodKey,
+      if (movementType != null) 'movement_type': movementType,
+      if (direction != null) 'direction': direction,
+      if (amountMinor != null) 'amount_minor': amountMinor,
+      if (familyMemberId != null) 'family_member_id': familyMemberId,
+      if (collectedByFamilyMemberId != null)
+        'collected_by_family_member_id': collectedByFamilyMemberId,
+      if (ncBillReference != null) 'nc_bill_reference': ncBillReference,
+      if (referenceNumber != null) 'reference_number': referenceNumber,
+      if (remarks != null) 'remarks': remarks,
+      if (reason != null) 'reason': reason,
+      if (createdBy != null) 'created_by': createdBy,
+      if (capturedAt != null) 'captured_at': capturedAt,
+      if (rowVersion != null) 'row_version': rowVersion,
+      if (changeSeq != null) 'change_seq': changeSeq,
+      if (voidedAt != null) 'voided_at': voidedAt,
+      if (voidReason != null) 'void_reason': voidReason,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  CanonicalOwnerMovementsCompanion copyWith({
+    Value<String>? ownerUserId,
+    Value<String>? id,
+    Value<String>? orgId,
+    Value<String>? businessUnitId,
+    Value<String>? ownerId,
+    Value<String>? txnNumber,
+    Value<String?>? financialYear,
+    Value<String>? businessDate,
+    Value<String>? businessDateSource,
+    Value<String>? pnlPeriodKey,
+    Value<String>? movementType,
+    Value<String>? direction,
+    Value<int>? amountMinor,
+    Value<String?>? familyMemberId,
+    Value<String?>? collectedByFamilyMemberId,
+    Value<String?>? ncBillReference,
+    Value<String?>? referenceNumber,
+    Value<String?>? remarks,
+    Value<String?>? reason,
+    Value<String>? createdBy,
+    Value<String>? capturedAt,
+    Value<int>? rowVersion,
+    Value<int>? changeSeq,
+    Value<String?>? voidedAt,
+    Value<String?>? voidReason,
+    Value<int>? rowid,
+  }) {
+    return CanonicalOwnerMovementsCompanion(
+      ownerUserId: ownerUserId ?? this.ownerUserId,
+      id: id ?? this.id,
+      orgId: orgId ?? this.orgId,
+      businessUnitId: businessUnitId ?? this.businessUnitId,
+      ownerId: ownerId ?? this.ownerId,
+      txnNumber: txnNumber ?? this.txnNumber,
+      financialYear: financialYear ?? this.financialYear,
+      businessDate: businessDate ?? this.businessDate,
+      businessDateSource: businessDateSource ?? this.businessDateSource,
+      pnlPeriodKey: pnlPeriodKey ?? this.pnlPeriodKey,
+      movementType: movementType ?? this.movementType,
+      direction: direction ?? this.direction,
+      amountMinor: amountMinor ?? this.amountMinor,
+      familyMemberId: familyMemberId ?? this.familyMemberId,
+      collectedByFamilyMemberId:
+          collectedByFamilyMemberId ?? this.collectedByFamilyMemberId,
+      ncBillReference: ncBillReference ?? this.ncBillReference,
+      referenceNumber: referenceNumber ?? this.referenceNumber,
+      remarks: remarks ?? this.remarks,
+      reason: reason ?? this.reason,
+      createdBy: createdBy ?? this.createdBy,
+      capturedAt: capturedAt ?? this.capturedAt,
+      rowVersion: rowVersion ?? this.rowVersion,
+      changeSeq: changeSeq ?? this.changeSeq,
+      voidedAt: voidedAt ?? this.voidedAt,
+      voidReason: voidReason ?? this.voidReason,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (ownerUserId.present) {
+      map['owner_user_id'] = Variable<String>(ownerUserId.value);
+    }
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (orgId.present) {
+      map['org_id'] = Variable<String>(orgId.value);
+    }
+    if (businessUnitId.present) {
+      map['business_unit_id'] = Variable<String>(businessUnitId.value);
+    }
+    if (ownerId.present) {
+      map['owner_id'] = Variable<String>(ownerId.value);
+    }
+    if (txnNumber.present) {
+      map['txn_number'] = Variable<String>(txnNumber.value);
+    }
+    if (financialYear.present) {
+      map['financial_year'] = Variable<String>(financialYear.value);
+    }
+    if (businessDate.present) {
+      map['business_date'] = Variable<String>(businessDate.value);
+    }
+    if (businessDateSource.present) {
+      map['business_date_source'] = Variable<String>(businessDateSource.value);
+    }
+    if (pnlPeriodKey.present) {
+      map['pnl_period_key'] = Variable<String>(pnlPeriodKey.value);
+    }
+    if (movementType.present) {
+      map['movement_type'] = Variable<String>(movementType.value);
+    }
+    if (direction.present) {
+      map['direction'] = Variable<String>(direction.value);
+    }
+    if (amountMinor.present) {
+      map['amount_minor'] = Variable<int>(amountMinor.value);
+    }
+    if (familyMemberId.present) {
+      map['family_member_id'] = Variable<String>(familyMemberId.value);
+    }
+    if (collectedByFamilyMemberId.present) {
+      map['collected_by_family_member_id'] = Variable<String>(
+        collectedByFamilyMemberId.value,
+      );
+    }
+    if (ncBillReference.present) {
+      map['nc_bill_reference'] = Variable<String>(ncBillReference.value);
+    }
+    if (referenceNumber.present) {
+      map['reference_number'] = Variable<String>(referenceNumber.value);
+    }
+    if (remarks.present) {
+      map['remarks'] = Variable<String>(remarks.value);
+    }
+    if (reason.present) {
+      map['reason'] = Variable<String>(reason.value);
+    }
+    if (createdBy.present) {
+      map['created_by'] = Variable<String>(createdBy.value);
+    }
+    if (capturedAt.present) {
+      map['captured_at'] = Variable<String>(capturedAt.value);
+    }
+    if (rowVersion.present) {
+      map['row_version'] = Variable<int>(rowVersion.value);
+    }
+    if (changeSeq.present) {
+      map['change_seq'] = Variable<int>(changeSeq.value);
+    }
+    if (voidedAt.present) {
+      map['voided_at'] = Variable<String>(voidedAt.value);
+    }
+    if (voidReason.present) {
+      map['void_reason'] = Variable<String>(voidReason.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CanonicalOwnerMovementsCompanion(')
+          ..write('ownerUserId: $ownerUserId, ')
+          ..write('id: $id, ')
+          ..write('orgId: $orgId, ')
+          ..write('businessUnitId: $businessUnitId, ')
+          ..write('ownerId: $ownerId, ')
+          ..write('txnNumber: $txnNumber, ')
+          ..write('financialYear: $financialYear, ')
+          ..write('businessDate: $businessDate, ')
+          ..write('businessDateSource: $businessDateSource, ')
+          ..write('pnlPeriodKey: $pnlPeriodKey, ')
+          ..write('movementType: $movementType, ')
+          ..write('direction: $direction, ')
+          ..write('amountMinor: $amountMinor, ')
+          ..write('familyMemberId: $familyMemberId, ')
+          ..write('collectedByFamilyMemberId: $collectedByFamilyMemberId, ')
+          ..write('ncBillReference: $ncBillReference, ')
+          ..write('referenceNumber: $referenceNumber, ')
+          ..write('remarks: $remarks, ')
+          ..write('reason: $reason, ')
+          ..write('createdBy: $createdBy, ')
+          ..write('capturedAt: $capturedAt, ')
+          ..write('rowVersion: $rowVersion, ')
+          ..write('changeSeq: $changeSeq, ')
+          ..write('voidedAt: $voidedAt, ')
+          ..write('voidReason: $voidReason, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $CanonicalOwnershipSharesTable extends CanonicalOwnershipShares
+    with TableInfo<$CanonicalOwnershipSharesTable, CanonicalOwnershipShareRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $CanonicalOwnershipSharesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _ownerUserIdMeta = const VerificationMeta(
+    'ownerUserId',
+  );
+  @override
+  late final GeneratedColumn<String> ownerUserId = GeneratedColumn<String>(
+    'owner_user_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _orgIdMeta = const VerificationMeta('orgId');
+  @override
+  late final GeneratedColumn<String> orgId = GeneratedColumn<String>(
+    'org_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _ownerIdMeta = const VerificationMeta(
+    'ownerId',
+  );
+  @override
+  late final GeneratedColumn<String> ownerId = GeneratedColumn<String>(
+    'owner_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _shareBasisPointsMeta = const VerificationMeta(
+    'shareBasisPoints',
+  );
+  @override
+  late final GeneratedColumn<int> shareBasisPoints = GeneratedColumn<int>(
+    'share_basis_points',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _effectiveFromMeta = const VerificationMeta(
+    'effectiveFrom',
+  );
+  @override
+  late final GeneratedColumn<String> effectiveFrom = GeneratedColumn<String>(
+    'effective_from',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _effectiveToMeta = const VerificationMeta(
+    'effectiveTo',
+  );
+  @override
+  late final GeneratedColumn<String> effectiveTo = GeneratedColumn<String>(
+    'effective_to',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _noteMeta = const VerificationMeta('note');
+  @override
+  late final GeneratedColumn<String> note = GeneratedColumn<String>(
+    'note',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _rowVersionMeta = const VerificationMeta(
+    'rowVersion',
+  );
+  @override
+  late final GeneratedColumn<int> rowVersion = GeneratedColumn<int>(
+    'row_version',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _changeSeqMeta = const VerificationMeta(
+    'changeSeq',
+  );
+  @override
+  late final GeneratedColumn<int> changeSeq = GeneratedColumn<int>(
+    'change_seq',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    ownerUserId,
+    id,
+    orgId,
+    ownerId,
+    shareBasisPoints,
+    effectiveFrom,
+    effectiveTo,
+    note,
+    rowVersion,
+    changeSeq,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'canonical_ownership_shares';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<CanonicalOwnershipShareRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('owner_user_id')) {
+      context.handle(
+        _ownerUserIdMeta,
+        ownerUserId.isAcceptableOrUnknown(
+          data['owner_user_id']!,
+          _ownerUserIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_ownerUserIdMeta);
+    }
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('org_id')) {
+      context.handle(
+        _orgIdMeta,
+        orgId.isAcceptableOrUnknown(data['org_id']!, _orgIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_orgIdMeta);
+    }
+    if (data.containsKey('owner_id')) {
+      context.handle(
+        _ownerIdMeta,
+        ownerId.isAcceptableOrUnknown(data['owner_id']!, _ownerIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_ownerIdMeta);
+    }
+    if (data.containsKey('share_basis_points')) {
+      context.handle(
+        _shareBasisPointsMeta,
+        shareBasisPoints.isAcceptableOrUnknown(
+          data['share_basis_points']!,
+          _shareBasisPointsMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_shareBasisPointsMeta);
+    }
+    if (data.containsKey('effective_from')) {
+      context.handle(
+        _effectiveFromMeta,
+        effectiveFrom.isAcceptableOrUnknown(
+          data['effective_from']!,
+          _effectiveFromMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_effectiveFromMeta);
+    }
+    if (data.containsKey('effective_to')) {
+      context.handle(
+        _effectiveToMeta,
+        effectiveTo.isAcceptableOrUnknown(
+          data['effective_to']!,
+          _effectiveToMeta,
+        ),
+      );
+    }
+    if (data.containsKey('note')) {
+      context.handle(
+        _noteMeta,
+        note.isAcceptableOrUnknown(data['note']!, _noteMeta),
+      );
+    }
+    if (data.containsKey('row_version')) {
+      context.handle(
+        _rowVersionMeta,
+        rowVersion.isAcceptableOrUnknown(data['row_version']!, _rowVersionMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_rowVersionMeta);
+    }
+    if (data.containsKey('change_seq')) {
+      context.handle(
+        _changeSeqMeta,
+        changeSeq.isAcceptableOrUnknown(data['change_seq']!, _changeSeqMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_changeSeqMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {ownerUserId, id};
+  @override
+  CanonicalOwnershipShareRow map(
+    Map<String, dynamic> data, {
+    String? tablePrefix,
+  }) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return CanonicalOwnershipShareRow(
+      ownerUserId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}owner_user_id'],
+      )!,
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      orgId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}org_id'],
+      )!,
+      ownerId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}owner_id'],
+      )!,
+      shareBasisPoints: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}share_basis_points'],
+      )!,
+      effectiveFrom: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}effective_from'],
+      )!,
+      effectiveTo: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}effective_to'],
+      ),
+      note: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}note'],
+      ),
+      rowVersion: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}row_version'],
+      )!,
+      changeSeq: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}change_seq'],
+      )!,
+    );
+  }
+
+  @override
+  $CanonicalOwnershipSharesTable createAlias(String alias) {
+    return $CanonicalOwnershipSharesTable(attachedDatabase, alias);
+  }
+}
+
+class CanonicalOwnershipShareRow extends DataClass
+    implements Insertable<CanonicalOwnershipShareRow> {
+  /// The signed-in person this cache belongs to (D-074).
+  final String ownerUserId;
+  final String id;
+  final String orgId;
+
+  /// The business owner the share belongs to.
+  final String ownerId;
+
+  /// 1..10000. Not narrowed to the V1 5000 here: the ruling is a business rule enforced
+  /// at the boundary and in the domain, and encoding it in a cache would make an
+  /// authorised future ratio unable to synchronise at all (D-204).
+  final int shareBasisPoints;
+  final String effectiveFrom;
+  final String? effectiveTo;
+  final String? note;
+  final int rowVersion;
+  final int changeSeq;
+  const CanonicalOwnershipShareRow({
+    required this.ownerUserId,
+    required this.id,
+    required this.orgId,
+    required this.ownerId,
+    required this.shareBasisPoints,
+    required this.effectiveFrom,
+    this.effectiveTo,
+    this.note,
+    required this.rowVersion,
+    required this.changeSeq,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['owner_user_id'] = Variable<String>(ownerUserId);
+    map['id'] = Variable<String>(id);
+    map['org_id'] = Variable<String>(orgId);
+    map['owner_id'] = Variable<String>(ownerId);
+    map['share_basis_points'] = Variable<int>(shareBasisPoints);
+    map['effective_from'] = Variable<String>(effectiveFrom);
+    if (!nullToAbsent || effectiveTo != null) {
+      map['effective_to'] = Variable<String>(effectiveTo);
+    }
+    if (!nullToAbsent || note != null) {
+      map['note'] = Variable<String>(note);
+    }
+    map['row_version'] = Variable<int>(rowVersion);
+    map['change_seq'] = Variable<int>(changeSeq);
+    return map;
+  }
+
+  CanonicalOwnershipSharesCompanion toCompanion(bool nullToAbsent) {
+    return CanonicalOwnershipSharesCompanion(
+      ownerUserId: Value(ownerUserId),
+      id: Value(id),
+      orgId: Value(orgId),
+      ownerId: Value(ownerId),
+      shareBasisPoints: Value(shareBasisPoints),
+      effectiveFrom: Value(effectiveFrom),
+      effectiveTo: effectiveTo == null && nullToAbsent
+          ? const Value.absent()
+          : Value(effectiveTo),
+      note: note == null && nullToAbsent ? const Value.absent() : Value(note),
+      rowVersion: Value(rowVersion),
+      changeSeq: Value(changeSeq),
+    );
+  }
+
+  factory CanonicalOwnershipShareRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return CanonicalOwnershipShareRow(
+      ownerUserId: serializer.fromJson<String>(json['ownerUserId']),
+      id: serializer.fromJson<String>(json['id']),
+      orgId: serializer.fromJson<String>(json['orgId']),
+      ownerId: serializer.fromJson<String>(json['ownerId']),
+      shareBasisPoints: serializer.fromJson<int>(json['shareBasisPoints']),
+      effectiveFrom: serializer.fromJson<String>(json['effectiveFrom']),
+      effectiveTo: serializer.fromJson<String?>(json['effectiveTo']),
+      note: serializer.fromJson<String?>(json['note']),
+      rowVersion: serializer.fromJson<int>(json['rowVersion']),
+      changeSeq: serializer.fromJson<int>(json['changeSeq']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'ownerUserId': serializer.toJson<String>(ownerUserId),
+      'id': serializer.toJson<String>(id),
+      'orgId': serializer.toJson<String>(orgId),
+      'ownerId': serializer.toJson<String>(ownerId),
+      'shareBasisPoints': serializer.toJson<int>(shareBasisPoints),
+      'effectiveFrom': serializer.toJson<String>(effectiveFrom),
+      'effectiveTo': serializer.toJson<String?>(effectiveTo),
+      'note': serializer.toJson<String?>(note),
+      'rowVersion': serializer.toJson<int>(rowVersion),
+      'changeSeq': serializer.toJson<int>(changeSeq),
+    };
+  }
+
+  CanonicalOwnershipShareRow copyWith({
+    String? ownerUserId,
+    String? id,
+    String? orgId,
+    String? ownerId,
+    int? shareBasisPoints,
+    String? effectiveFrom,
+    Value<String?> effectiveTo = const Value.absent(),
+    Value<String?> note = const Value.absent(),
+    int? rowVersion,
+    int? changeSeq,
+  }) => CanonicalOwnershipShareRow(
+    ownerUserId: ownerUserId ?? this.ownerUserId,
+    id: id ?? this.id,
+    orgId: orgId ?? this.orgId,
+    ownerId: ownerId ?? this.ownerId,
+    shareBasisPoints: shareBasisPoints ?? this.shareBasisPoints,
+    effectiveFrom: effectiveFrom ?? this.effectiveFrom,
+    effectiveTo: effectiveTo.present ? effectiveTo.value : this.effectiveTo,
+    note: note.present ? note.value : this.note,
+    rowVersion: rowVersion ?? this.rowVersion,
+    changeSeq: changeSeq ?? this.changeSeq,
+  );
+  CanonicalOwnershipShareRow copyWithCompanion(
+    CanonicalOwnershipSharesCompanion data,
+  ) {
+    return CanonicalOwnershipShareRow(
+      ownerUserId: data.ownerUserId.present
+          ? data.ownerUserId.value
+          : this.ownerUserId,
+      id: data.id.present ? data.id.value : this.id,
+      orgId: data.orgId.present ? data.orgId.value : this.orgId,
+      ownerId: data.ownerId.present ? data.ownerId.value : this.ownerId,
+      shareBasisPoints: data.shareBasisPoints.present
+          ? data.shareBasisPoints.value
+          : this.shareBasisPoints,
+      effectiveFrom: data.effectiveFrom.present
+          ? data.effectiveFrom.value
+          : this.effectiveFrom,
+      effectiveTo: data.effectiveTo.present
+          ? data.effectiveTo.value
+          : this.effectiveTo,
+      note: data.note.present ? data.note.value : this.note,
+      rowVersion: data.rowVersion.present
+          ? data.rowVersion.value
+          : this.rowVersion,
+      changeSeq: data.changeSeq.present ? data.changeSeq.value : this.changeSeq,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CanonicalOwnershipShareRow(')
+          ..write('ownerUserId: $ownerUserId, ')
+          ..write('id: $id, ')
+          ..write('orgId: $orgId, ')
+          ..write('ownerId: $ownerId, ')
+          ..write('shareBasisPoints: $shareBasisPoints, ')
+          ..write('effectiveFrom: $effectiveFrom, ')
+          ..write('effectiveTo: $effectiveTo, ')
+          ..write('note: $note, ')
+          ..write('rowVersion: $rowVersion, ')
+          ..write('changeSeq: $changeSeq')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    ownerUserId,
+    id,
+    orgId,
+    ownerId,
+    shareBasisPoints,
+    effectiveFrom,
+    effectiveTo,
+    note,
+    rowVersion,
+    changeSeq,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is CanonicalOwnershipShareRow &&
+          other.ownerUserId == this.ownerUserId &&
+          other.id == this.id &&
+          other.orgId == this.orgId &&
+          other.ownerId == this.ownerId &&
+          other.shareBasisPoints == this.shareBasisPoints &&
+          other.effectiveFrom == this.effectiveFrom &&
+          other.effectiveTo == this.effectiveTo &&
+          other.note == this.note &&
+          other.rowVersion == this.rowVersion &&
+          other.changeSeq == this.changeSeq);
+}
+
+class CanonicalOwnershipSharesCompanion
+    extends UpdateCompanion<CanonicalOwnershipShareRow> {
+  final Value<String> ownerUserId;
+  final Value<String> id;
+  final Value<String> orgId;
+  final Value<String> ownerId;
+  final Value<int> shareBasisPoints;
+  final Value<String> effectiveFrom;
+  final Value<String?> effectiveTo;
+  final Value<String?> note;
+  final Value<int> rowVersion;
+  final Value<int> changeSeq;
+  final Value<int> rowid;
+  const CanonicalOwnershipSharesCompanion({
+    this.ownerUserId = const Value.absent(),
+    this.id = const Value.absent(),
+    this.orgId = const Value.absent(),
+    this.ownerId = const Value.absent(),
+    this.shareBasisPoints = const Value.absent(),
+    this.effectiveFrom = const Value.absent(),
+    this.effectiveTo = const Value.absent(),
+    this.note = const Value.absent(),
+    this.rowVersion = const Value.absent(),
+    this.changeSeq = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  CanonicalOwnershipSharesCompanion.insert({
+    required String ownerUserId,
+    required String id,
+    required String orgId,
+    required String ownerId,
+    required int shareBasisPoints,
+    required String effectiveFrom,
+    this.effectiveTo = const Value.absent(),
+    this.note = const Value.absent(),
+    required int rowVersion,
+    required int changeSeq,
+    this.rowid = const Value.absent(),
+  }) : ownerUserId = Value(ownerUserId),
+       id = Value(id),
+       orgId = Value(orgId),
+       ownerId = Value(ownerId),
+       shareBasisPoints = Value(shareBasisPoints),
+       effectiveFrom = Value(effectiveFrom),
+       rowVersion = Value(rowVersion),
+       changeSeq = Value(changeSeq);
+  static Insertable<CanonicalOwnershipShareRow> custom({
+    Expression<String>? ownerUserId,
+    Expression<String>? id,
+    Expression<String>? orgId,
+    Expression<String>? ownerId,
+    Expression<int>? shareBasisPoints,
+    Expression<String>? effectiveFrom,
+    Expression<String>? effectiveTo,
+    Expression<String>? note,
+    Expression<int>? rowVersion,
+    Expression<int>? changeSeq,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (ownerUserId != null) 'owner_user_id': ownerUserId,
+      if (id != null) 'id': id,
+      if (orgId != null) 'org_id': orgId,
+      if (ownerId != null) 'owner_id': ownerId,
+      if (shareBasisPoints != null) 'share_basis_points': shareBasisPoints,
+      if (effectiveFrom != null) 'effective_from': effectiveFrom,
+      if (effectiveTo != null) 'effective_to': effectiveTo,
+      if (note != null) 'note': note,
+      if (rowVersion != null) 'row_version': rowVersion,
+      if (changeSeq != null) 'change_seq': changeSeq,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  CanonicalOwnershipSharesCompanion copyWith({
+    Value<String>? ownerUserId,
+    Value<String>? id,
+    Value<String>? orgId,
+    Value<String>? ownerId,
+    Value<int>? shareBasisPoints,
+    Value<String>? effectiveFrom,
+    Value<String?>? effectiveTo,
+    Value<String?>? note,
+    Value<int>? rowVersion,
+    Value<int>? changeSeq,
+    Value<int>? rowid,
+  }) {
+    return CanonicalOwnershipSharesCompanion(
+      ownerUserId: ownerUserId ?? this.ownerUserId,
+      id: id ?? this.id,
+      orgId: orgId ?? this.orgId,
+      ownerId: ownerId ?? this.ownerId,
+      shareBasisPoints: shareBasisPoints ?? this.shareBasisPoints,
+      effectiveFrom: effectiveFrom ?? this.effectiveFrom,
+      effectiveTo: effectiveTo ?? this.effectiveTo,
+      note: note ?? this.note,
+      rowVersion: rowVersion ?? this.rowVersion,
+      changeSeq: changeSeq ?? this.changeSeq,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (ownerUserId.present) {
+      map['owner_user_id'] = Variable<String>(ownerUserId.value);
+    }
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (orgId.present) {
+      map['org_id'] = Variable<String>(orgId.value);
+    }
+    if (ownerId.present) {
+      map['owner_id'] = Variable<String>(ownerId.value);
+    }
+    if (shareBasisPoints.present) {
+      map['share_basis_points'] = Variable<int>(shareBasisPoints.value);
+    }
+    if (effectiveFrom.present) {
+      map['effective_from'] = Variable<String>(effectiveFrom.value);
+    }
+    if (effectiveTo.present) {
+      map['effective_to'] = Variable<String>(effectiveTo.value);
+    }
+    if (note.present) {
+      map['note'] = Variable<String>(note.value);
+    }
+    if (rowVersion.present) {
+      map['row_version'] = Variable<int>(rowVersion.value);
+    }
+    if (changeSeq.present) {
+      map['change_seq'] = Variable<int>(changeSeq.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CanonicalOwnershipSharesCompanion(')
+          ..write('ownerUserId: $ownerUserId, ')
+          ..write('id: $id, ')
+          ..write('orgId: $orgId, ')
+          ..write('ownerId: $ownerId, ')
+          ..write('shareBasisPoints: $shareBasisPoints, ')
+          ..write('effectiveFrom: $effectiveFrom, ')
+          ..write('effectiveTo: $effectiveTo, ')
+          ..write('note: $note, ')
+          ..write('rowVersion: $rowVersion, ')
+          ..write('changeSeq: $changeSeq, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $CanonicalOwnersTable extends CanonicalOwners
+    with TableInfo<$CanonicalOwnersTable, CanonicalOwnerRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $CanonicalOwnersTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _ownerUserIdMeta = const VerificationMeta(
+    'ownerUserId',
+  );
+  @override
+  late final GeneratedColumn<String> ownerUserId = GeneratedColumn<String>(
+    'owner_user_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _orgIdMeta = const VerificationMeta('orgId');
+  @override
+  late final GeneratedColumn<String> orgId = GeneratedColumn<String>(
+    'org_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _codeMeta = const VerificationMeta('code');
+  @override
+  late final GeneratedColumn<String> code = GeneratedColumn<String>(
+    'code',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _displayNameMeta = const VerificationMeta(
+    'displayName',
+  );
+  @override
+  late final GeneratedColumn<String> displayName = GeneratedColumn<String>(
+    'display_name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _activeMeta = const VerificationMeta('active');
+  @override
+  late final GeneratedColumn<bool> active = GeneratedColumn<bool>(
+    'active',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("active" IN (0, 1))',
+    ),
+  );
+  static const VerificationMeta _archivedAtMeta = const VerificationMeta(
+    'archivedAt',
+  );
+  @override
+  late final GeneratedColumn<String> archivedAt = GeneratedColumn<String>(
+    'archived_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _rowVersionMeta = const VerificationMeta(
+    'rowVersion',
+  );
+  @override
+  late final GeneratedColumn<int> rowVersion = GeneratedColumn<int>(
+    'row_version',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _changeSeqMeta = const VerificationMeta(
+    'changeSeq',
+  );
+  @override
+  late final GeneratedColumn<int> changeSeq = GeneratedColumn<int>(
+    'change_seq',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    ownerUserId,
+    id,
+    orgId,
+    code,
+    displayName,
+    active,
+    archivedAt,
+    rowVersion,
+    changeSeq,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'canonical_owners';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<CanonicalOwnerRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('owner_user_id')) {
+      context.handle(
+        _ownerUserIdMeta,
+        ownerUserId.isAcceptableOrUnknown(
+          data['owner_user_id']!,
+          _ownerUserIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_ownerUserIdMeta);
+    }
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('org_id')) {
+      context.handle(
+        _orgIdMeta,
+        orgId.isAcceptableOrUnknown(data['org_id']!, _orgIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_orgIdMeta);
+    }
+    if (data.containsKey('code')) {
+      context.handle(
+        _codeMeta,
+        code.isAcceptableOrUnknown(data['code']!, _codeMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_codeMeta);
+    }
+    if (data.containsKey('display_name')) {
+      context.handle(
+        _displayNameMeta,
+        displayName.isAcceptableOrUnknown(
+          data['display_name']!,
+          _displayNameMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_displayNameMeta);
+    }
+    if (data.containsKey('active')) {
+      context.handle(
+        _activeMeta,
+        active.isAcceptableOrUnknown(data['active']!, _activeMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_activeMeta);
+    }
+    if (data.containsKey('archived_at')) {
+      context.handle(
+        _archivedAtMeta,
+        archivedAt.isAcceptableOrUnknown(data['archived_at']!, _archivedAtMeta),
+      );
+    }
+    if (data.containsKey('row_version')) {
+      context.handle(
+        _rowVersionMeta,
+        rowVersion.isAcceptableOrUnknown(data['row_version']!, _rowVersionMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_rowVersionMeta);
+    }
+    if (data.containsKey('change_seq')) {
+      context.handle(
+        _changeSeqMeta,
+        changeSeq.isAcceptableOrUnknown(data['change_seq']!, _changeSeqMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_changeSeqMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {ownerUserId, id};
+  @override
+  CanonicalOwnerRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return CanonicalOwnerRow(
+      ownerUserId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}owner_user_id'],
+      )!,
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      orgId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}org_id'],
+      )!,
+      code: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}code'],
+      )!,
+      displayName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}display_name'],
+      )!,
+      active: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}active'],
+      )!,
+      archivedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}archived_at'],
+      ),
+      rowVersion: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}row_version'],
+      )!,
+      changeSeq: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}change_seq'],
+      )!,
+    );
+  }
+
+  @override
+  $CanonicalOwnersTable createAlias(String alias) {
+    return $CanonicalOwnersTable(attachedDatabase, alias);
+  }
+}
+
+class CanonicalOwnerRow extends DataClass
+    implements Insertable<CanonicalOwnerRow> {
+  final String ownerUserId;
+  final String id;
+  final String orgId;
+  final String code;
+  final String displayName;
+  final bool active;
+  final String? archivedAt;
+  final int rowVersion;
+  final int changeSeq;
+  const CanonicalOwnerRow({
+    required this.ownerUserId,
+    required this.id,
+    required this.orgId,
+    required this.code,
+    required this.displayName,
+    required this.active,
+    this.archivedAt,
+    required this.rowVersion,
+    required this.changeSeq,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['owner_user_id'] = Variable<String>(ownerUserId);
+    map['id'] = Variable<String>(id);
+    map['org_id'] = Variable<String>(orgId);
+    map['code'] = Variable<String>(code);
+    map['display_name'] = Variable<String>(displayName);
+    map['active'] = Variable<bool>(active);
+    if (!nullToAbsent || archivedAt != null) {
+      map['archived_at'] = Variable<String>(archivedAt);
+    }
+    map['row_version'] = Variable<int>(rowVersion);
+    map['change_seq'] = Variable<int>(changeSeq);
+    return map;
+  }
+
+  CanonicalOwnersCompanion toCompanion(bool nullToAbsent) {
+    return CanonicalOwnersCompanion(
+      ownerUserId: Value(ownerUserId),
+      id: Value(id),
+      orgId: Value(orgId),
+      code: Value(code),
+      displayName: Value(displayName),
+      active: Value(active),
+      archivedAt: archivedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(archivedAt),
+      rowVersion: Value(rowVersion),
+      changeSeq: Value(changeSeq),
+    );
+  }
+
+  factory CanonicalOwnerRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return CanonicalOwnerRow(
+      ownerUserId: serializer.fromJson<String>(json['ownerUserId']),
+      id: serializer.fromJson<String>(json['id']),
+      orgId: serializer.fromJson<String>(json['orgId']),
+      code: serializer.fromJson<String>(json['code']),
+      displayName: serializer.fromJson<String>(json['displayName']),
+      active: serializer.fromJson<bool>(json['active']),
+      archivedAt: serializer.fromJson<String?>(json['archivedAt']),
+      rowVersion: serializer.fromJson<int>(json['rowVersion']),
+      changeSeq: serializer.fromJson<int>(json['changeSeq']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'ownerUserId': serializer.toJson<String>(ownerUserId),
+      'id': serializer.toJson<String>(id),
+      'orgId': serializer.toJson<String>(orgId),
+      'code': serializer.toJson<String>(code),
+      'displayName': serializer.toJson<String>(displayName),
+      'active': serializer.toJson<bool>(active),
+      'archivedAt': serializer.toJson<String?>(archivedAt),
+      'rowVersion': serializer.toJson<int>(rowVersion),
+      'changeSeq': serializer.toJson<int>(changeSeq),
+    };
+  }
+
+  CanonicalOwnerRow copyWith({
+    String? ownerUserId,
+    String? id,
+    String? orgId,
+    String? code,
+    String? displayName,
+    bool? active,
+    Value<String?> archivedAt = const Value.absent(),
+    int? rowVersion,
+    int? changeSeq,
+  }) => CanonicalOwnerRow(
+    ownerUserId: ownerUserId ?? this.ownerUserId,
+    id: id ?? this.id,
+    orgId: orgId ?? this.orgId,
+    code: code ?? this.code,
+    displayName: displayName ?? this.displayName,
+    active: active ?? this.active,
+    archivedAt: archivedAt.present ? archivedAt.value : this.archivedAt,
+    rowVersion: rowVersion ?? this.rowVersion,
+    changeSeq: changeSeq ?? this.changeSeq,
+  );
+  CanonicalOwnerRow copyWithCompanion(CanonicalOwnersCompanion data) {
+    return CanonicalOwnerRow(
+      ownerUserId: data.ownerUserId.present
+          ? data.ownerUserId.value
+          : this.ownerUserId,
+      id: data.id.present ? data.id.value : this.id,
+      orgId: data.orgId.present ? data.orgId.value : this.orgId,
+      code: data.code.present ? data.code.value : this.code,
+      displayName: data.displayName.present
+          ? data.displayName.value
+          : this.displayName,
+      active: data.active.present ? data.active.value : this.active,
+      archivedAt: data.archivedAt.present
+          ? data.archivedAt.value
+          : this.archivedAt,
+      rowVersion: data.rowVersion.present
+          ? data.rowVersion.value
+          : this.rowVersion,
+      changeSeq: data.changeSeq.present ? data.changeSeq.value : this.changeSeq,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CanonicalOwnerRow(')
+          ..write('ownerUserId: $ownerUserId, ')
+          ..write('id: $id, ')
+          ..write('orgId: $orgId, ')
+          ..write('code: $code, ')
+          ..write('displayName: $displayName, ')
+          ..write('active: $active, ')
+          ..write('archivedAt: $archivedAt, ')
+          ..write('rowVersion: $rowVersion, ')
+          ..write('changeSeq: $changeSeq')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    ownerUserId,
+    id,
+    orgId,
+    code,
+    displayName,
+    active,
+    archivedAt,
+    rowVersion,
+    changeSeq,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is CanonicalOwnerRow &&
+          other.ownerUserId == this.ownerUserId &&
+          other.id == this.id &&
+          other.orgId == this.orgId &&
+          other.code == this.code &&
+          other.displayName == this.displayName &&
+          other.active == this.active &&
+          other.archivedAt == this.archivedAt &&
+          other.rowVersion == this.rowVersion &&
+          other.changeSeq == this.changeSeq);
+}
+
+class CanonicalOwnersCompanion extends UpdateCompanion<CanonicalOwnerRow> {
+  final Value<String> ownerUserId;
+  final Value<String> id;
+  final Value<String> orgId;
+  final Value<String> code;
+  final Value<String> displayName;
+  final Value<bool> active;
+  final Value<String?> archivedAt;
+  final Value<int> rowVersion;
+  final Value<int> changeSeq;
+  final Value<int> rowid;
+  const CanonicalOwnersCompanion({
+    this.ownerUserId = const Value.absent(),
+    this.id = const Value.absent(),
+    this.orgId = const Value.absent(),
+    this.code = const Value.absent(),
+    this.displayName = const Value.absent(),
+    this.active = const Value.absent(),
+    this.archivedAt = const Value.absent(),
+    this.rowVersion = const Value.absent(),
+    this.changeSeq = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  CanonicalOwnersCompanion.insert({
+    required String ownerUserId,
+    required String id,
+    required String orgId,
+    required String code,
+    required String displayName,
+    required bool active,
+    this.archivedAt = const Value.absent(),
+    required int rowVersion,
+    required int changeSeq,
+    this.rowid = const Value.absent(),
+  }) : ownerUserId = Value(ownerUserId),
+       id = Value(id),
+       orgId = Value(orgId),
+       code = Value(code),
+       displayName = Value(displayName),
+       active = Value(active),
+       rowVersion = Value(rowVersion),
+       changeSeq = Value(changeSeq);
+  static Insertable<CanonicalOwnerRow> custom({
+    Expression<String>? ownerUserId,
+    Expression<String>? id,
+    Expression<String>? orgId,
+    Expression<String>? code,
+    Expression<String>? displayName,
+    Expression<bool>? active,
+    Expression<String>? archivedAt,
+    Expression<int>? rowVersion,
+    Expression<int>? changeSeq,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (ownerUserId != null) 'owner_user_id': ownerUserId,
+      if (id != null) 'id': id,
+      if (orgId != null) 'org_id': orgId,
+      if (code != null) 'code': code,
+      if (displayName != null) 'display_name': displayName,
+      if (active != null) 'active': active,
+      if (archivedAt != null) 'archived_at': archivedAt,
+      if (rowVersion != null) 'row_version': rowVersion,
+      if (changeSeq != null) 'change_seq': changeSeq,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  CanonicalOwnersCompanion copyWith({
+    Value<String>? ownerUserId,
+    Value<String>? id,
+    Value<String>? orgId,
+    Value<String>? code,
+    Value<String>? displayName,
+    Value<bool>? active,
+    Value<String?>? archivedAt,
+    Value<int>? rowVersion,
+    Value<int>? changeSeq,
+    Value<int>? rowid,
+  }) {
+    return CanonicalOwnersCompanion(
+      ownerUserId: ownerUserId ?? this.ownerUserId,
+      id: id ?? this.id,
+      orgId: orgId ?? this.orgId,
+      code: code ?? this.code,
+      displayName: displayName ?? this.displayName,
+      active: active ?? this.active,
+      archivedAt: archivedAt ?? this.archivedAt,
+      rowVersion: rowVersion ?? this.rowVersion,
+      changeSeq: changeSeq ?? this.changeSeq,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (ownerUserId.present) {
+      map['owner_user_id'] = Variable<String>(ownerUserId.value);
+    }
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (orgId.present) {
+      map['org_id'] = Variable<String>(orgId.value);
+    }
+    if (code.present) {
+      map['code'] = Variable<String>(code.value);
+    }
+    if (displayName.present) {
+      map['display_name'] = Variable<String>(displayName.value);
+    }
+    if (active.present) {
+      map['active'] = Variable<bool>(active.value);
+    }
+    if (archivedAt.present) {
+      map['archived_at'] = Variable<String>(archivedAt.value);
+    }
+    if (rowVersion.present) {
+      map['row_version'] = Variable<int>(rowVersion.value);
+    }
+    if (changeSeq.present) {
+      map['change_seq'] = Variable<int>(changeSeq.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CanonicalOwnersCompanion(')
+          ..write('ownerUserId: $ownerUserId, ')
+          ..write('id: $id, ')
+          ..write('orgId: $orgId, ')
+          ..write('code: $code, ')
+          ..write('displayName: $displayName, ')
+          ..write('active: $active, ')
+          ..write('archivedAt: $archivedAt, ')
+          ..write('rowVersion: $rowVersion, ')
+          ..write('changeSeq: $changeSeq, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $OwnerSettlementCoverageTable extends OwnerSettlementCoverage
+    with TableInfo<$OwnerSettlementCoverageTable, OwnerSettlementCoverageRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $OwnerSettlementCoverageTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _ownerUserIdMeta = const VerificationMeta(
+    'ownerUserId',
+  );
+  @override
+  late final GeneratedColumn<String> ownerUserId = GeneratedColumn<String>(
+    'owner_user_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _snapshotIdMeta = const VerificationMeta(
+    'snapshotId',
+  );
+  @override
+  late final GeneratedColumn<String> snapshotId = GeneratedColumn<String>(
+    'snapshot_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _serverConfirmedAtMeta = const VerificationMeta(
+    'serverConfirmedAt',
+  );
+  @override
+  late final GeneratedColumn<String> serverConfirmedAt =
+      GeneratedColumn<String>(
+        'server_confirmed_at',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: true,
+      );
+  static const VerificationMeta _movementCountMeta = const VerificationMeta(
+    'movementCount',
+  );
+  @override
+  late final GeneratedColumn<int> movementCount = GeneratedColumn<int>(
+    'movement_count',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<String> updatedAt = GeneratedColumn<String>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    ownerUserId,
+    snapshotId,
+    serverConfirmedAt,
+    movementCount,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'owner_settlement_coverage';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<OwnerSettlementCoverageRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('owner_user_id')) {
+      context.handle(
+        _ownerUserIdMeta,
+        ownerUserId.isAcceptableOrUnknown(
+          data['owner_user_id']!,
+          _ownerUserIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_ownerUserIdMeta);
+    }
+    if (data.containsKey('snapshot_id')) {
+      context.handle(
+        _snapshotIdMeta,
+        snapshotId.isAcceptableOrUnknown(data['snapshot_id']!, _snapshotIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_snapshotIdMeta);
+    }
+    if (data.containsKey('server_confirmed_at')) {
+      context.handle(
+        _serverConfirmedAtMeta,
+        serverConfirmedAt.isAcceptableOrUnknown(
+          data['server_confirmed_at']!,
+          _serverConfirmedAtMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_serverConfirmedAtMeta);
+    }
+    if (data.containsKey('movement_count')) {
+      context.handle(
+        _movementCountMeta,
+        movementCount.isAcceptableOrUnknown(
+          data['movement_count']!,
+          _movementCountMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_movementCountMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {ownerUserId};
+  @override
+  OwnerSettlementCoverageRow map(
+    Map<String, dynamic> data, {
+    String? tablePrefix,
+  }) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return OwnerSettlementCoverageRow(
+      ownerUserId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}owner_user_id'],
+      )!,
+      snapshotId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}snapshot_id'],
+      )!,
+      serverConfirmedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}server_confirmed_at'],
+      )!,
+      movementCount: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}movement_count'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $OwnerSettlementCoverageTable createAlias(String alias) {
+    return $OwnerSettlementCoverageTable(attachedDatabase, alias);
+  }
+}
+
+class OwnerSettlementCoverageRow extends DataClass
+    implements Insertable<OwnerSettlementCoverageRow> {
+  final String ownerUserId;
+
+  /// The server's opaque MVCC snapshot identity. Meaningful under equality: two reads that
+  /// saw the same view really do describe one moment.
+  final String snapshotId;
+
+  /// The server's own transaction timestamp, from that same statement. Never a device
+  /// clock reading, which is not evidence about a server (spec §9).
+  final String serverConfirmedAt;
+
+  /// How many canonical movements the snapshot carried. Stored so "synchronised and there
+  /// are none" stays distinguishable from "never asked" without counting rows — the
+  /// distinction D-106 and D-108 exist for.
+  final int movementCount;
+
+  /// Device clock, diagnostics only. Decides nothing.
+  final String updatedAt;
+  const OwnerSettlementCoverageRow({
+    required this.ownerUserId,
+    required this.snapshotId,
+    required this.serverConfirmedAt,
+    required this.movementCount,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['owner_user_id'] = Variable<String>(ownerUserId);
+    map['snapshot_id'] = Variable<String>(snapshotId);
+    map['server_confirmed_at'] = Variable<String>(serverConfirmedAt);
+    map['movement_count'] = Variable<int>(movementCount);
+    map['updated_at'] = Variable<String>(updatedAt);
+    return map;
+  }
+
+  OwnerSettlementCoverageCompanion toCompanion(bool nullToAbsent) {
+    return OwnerSettlementCoverageCompanion(
+      ownerUserId: Value(ownerUserId),
+      snapshotId: Value(snapshotId),
+      serverConfirmedAt: Value(serverConfirmedAt),
+      movementCount: Value(movementCount),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory OwnerSettlementCoverageRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return OwnerSettlementCoverageRow(
+      ownerUserId: serializer.fromJson<String>(json['ownerUserId']),
+      snapshotId: serializer.fromJson<String>(json['snapshotId']),
+      serverConfirmedAt: serializer.fromJson<String>(json['serverConfirmedAt']),
+      movementCount: serializer.fromJson<int>(json['movementCount']),
+      updatedAt: serializer.fromJson<String>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'ownerUserId': serializer.toJson<String>(ownerUserId),
+      'snapshotId': serializer.toJson<String>(snapshotId),
+      'serverConfirmedAt': serializer.toJson<String>(serverConfirmedAt),
+      'movementCount': serializer.toJson<int>(movementCount),
+      'updatedAt': serializer.toJson<String>(updatedAt),
+    };
+  }
+
+  OwnerSettlementCoverageRow copyWith({
+    String? ownerUserId,
+    String? snapshotId,
+    String? serverConfirmedAt,
+    int? movementCount,
+    String? updatedAt,
+  }) => OwnerSettlementCoverageRow(
+    ownerUserId: ownerUserId ?? this.ownerUserId,
+    snapshotId: snapshotId ?? this.snapshotId,
+    serverConfirmedAt: serverConfirmedAt ?? this.serverConfirmedAt,
+    movementCount: movementCount ?? this.movementCount,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  OwnerSettlementCoverageRow copyWithCompanion(
+    OwnerSettlementCoverageCompanion data,
+  ) {
+    return OwnerSettlementCoverageRow(
+      ownerUserId: data.ownerUserId.present
+          ? data.ownerUserId.value
+          : this.ownerUserId,
+      snapshotId: data.snapshotId.present
+          ? data.snapshotId.value
+          : this.snapshotId,
+      serverConfirmedAt: data.serverConfirmedAt.present
+          ? data.serverConfirmedAt.value
+          : this.serverConfirmedAt,
+      movementCount: data.movementCount.present
+          ? data.movementCount.value
+          : this.movementCount,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('OwnerSettlementCoverageRow(')
+          ..write('ownerUserId: $ownerUserId, ')
+          ..write('snapshotId: $snapshotId, ')
+          ..write('serverConfirmedAt: $serverConfirmedAt, ')
+          ..write('movementCount: $movementCount, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    ownerUserId,
+    snapshotId,
+    serverConfirmedAt,
+    movementCount,
+    updatedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is OwnerSettlementCoverageRow &&
+          other.ownerUserId == this.ownerUserId &&
+          other.snapshotId == this.snapshotId &&
+          other.serverConfirmedAt == this.serverConfirmedAt &&
+          other.movementCount == this.movementCount &&
+          other.updatedAt == this.updatedAt);
+}
+
+class OwnerSettlementCoverageCompanion
+    extends UpdateCompanion<OwnerSettlementCoverageRow> {
+  final Value<String> ownerUserId;
+  final Value<String> snapshotId;
+  final Value<String> serverConfirmedAt;
+  final Value<int> movementCount;
+  final Value<String> updatedAt;
+  final Value<int> rowid;
+  const OwnerSettlementCoverageCompanion({
+    this.ownerUserId = const Value.absent(),
+    this.snapshotId = const Value.absent(),
+    this.serverConfirmedAt = const Value.absent(),
+    this.movementCount = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  OwnerSettlementCoverageCompanion.insert({
+    required String ownerUserId,
+    required String snapshotId,
+    required String serverConfirmedAt,
+    required int movementCount,
+    required String updatedAt,
+    this.rowid = const Value.absent(),
+  }) : ownerUserId = Value(ownerUserId),
+       snapshotId = Value(snapshotId),
+       serverConfirmedAt = Value(serverConfirmedAt),
+       movementCount = Value(movementCount),
+       updatedAt = Value(updatedAt);
+  static Insertable<OwnerSettlementCoverageRow> custom({
+    Expression<String>? ownerUserId,
+    Expression<String>? snapshotId,
+    Expression<String>? serverConfirmedAt,
+    Expression<int>? movementCount,
+    Expression<String>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (ownerUserId != null) 'owner_user_id': ownerUserId,
+      if (snapshotId != null) 'snapshot_id': snapshotId,
+      if (serverConfirmedAt != null) 'server_confirmed_at': serverConfirmedAt,
+      if (movementCount != null) 'movement_count': movementCount,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  OwnerSettlementCoverageCompanion copyWith({
+    Value<String>? ownerUserId,
+    Value<String>? snapshotId,
+    Value<String>? serverConfirmedAt,
+    Value<int>? movementCount,
+    Value<String>? updatedAt,
+    Value<int>? rowid,
+  }) {
+    return OwnerSettlementCoverageCompanion(
+      ownerUserId: ownerUserId ?? this.ownerUserId,
+      snapshotId: snapshotId ?? this.snapshotId,
+      serverConfirmedAt: serverConfirmedAt ?? this.serverConfirmedAt,
+      movementCount: movementCount ?? this.movementCount,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (ownerUserId.present) {
+      map['owner_user_id'] = Variable<String>(ownerUserId.value);
+    }
+    if (snapshotId.present) {
+      map['snapshot_id'] = Variable<String>(snapshotId.value);
+    }
+    if (serverConfirmedAt.present) {
+      map['server_confirmed_at'] = Variable<String>(serverConfirmedAt.value);
+    }
+    if (movementCount.present) {
+      map['movement_count'] = Variable<int>(movementCount.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<String>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('OwnerSettlementCoverageCompanion(')
+          ..write('ownerUserId: $ownerUserId, ')
+          ..write('snapshotId: $snapshotId, ')
+          ..write('serverConfirmedAt: $serverConfirmedAt, ')
+          ..write('movementCount: $movementCount, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $OwnerLedgerEntriesTable extends OwnerLedgerEntries
     with TableInfo<$OwnerLedgerEntriesTable, OwnerLedgerRow> {
   @override
@@ -24278,6 +27347,15 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   );
   late final $OwnerFamilyMembersTable ownerFamilyMembers =
       $OwnerFamilyMembersTable(this);
+  late final $CanonicalOwnerMovementsTable canonicalOwnerMovements =
+      $CanonicalOwnerMovementsTable(this);
+  late final $CanonicalOwnershipSharesTable canonicalOwnershipShares =
+      $CanonicalOwnershipSharesTable(this);
+  late final $CanonicalOwnersTable canonicalOwners = $CanonicalOwnersTable(
+    this,
+  );
+  late final $OwnerSettlementCoverageTable ownerSettlementCoverage =
+      $OwnerSettlementCoverageTable(this);
   late final $OwnerLedgerEntriesTable ownerLedgerEntries =
       $OwnerLedgerEntriesTable(this);
   @override
@@ -24314,6 +27392,10 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     owners,
     ownershipShares,
     ownerFamilyMembers,
+    canonicalOwnerMovements,
+    canonicalOwnershipShares,
+    canonicalOwners,
+    ownerSettlementCoverage,
     ownerLedgerEntries,
   ];
   @override
@@ -38264,6 +41346,1476 @@ typedef $$OwnerFamilyMembersTableProcessedTableManager =
       OwnerFamilyMemberRow,
       PrefetchHooks Function()
     >;
+typedef $$CanonicalOwnerMovementsTableCreateCompanionBuilder =
+    CanonicalOwnerMovementsCompanion Function({
+      required String ownerUserId,
+      required String id,
+      required String orgId,
+      required String businessUnitId,
+      required String ownerId,
+      required String txnNumber,
+      Value<String?> financialYear,
+      required String businessDate,
+      required String businessDateSource,
+      required String pnlPeriodKey,
+      required String movementType,
+      required String direction,
+      required int amountMinor,
+      Value<String?> familyMemberId,
+      Value<String?> collectedByFamilyMemberId,
+      Value<String?> ncBillReference,
+      Value<String?> referenceNumber,
+      Value<String?> remarks,
+      Value<String?> reason,
+      required String createdBy,
+      required String capturedAt,
+      required int rowVersion,
+      required int changeSeq,
+      Value<String?> voidedAt,
+      Value<String?> voidReason,
+      Value<int> rowid,
+    });
+typedef $$CanonicalOwnerMovementsTableUpdateCompanionBuilder =
+    CanonicalOwnerMovementsCompanion Function({
+      Value<String> ownerUserId,
+      Value<String> id,
+      Value<String> orgId,
+      Value<String> businessUnitId,
+      Value<String> ownerId,
+      Value<String> txnNumber,
+      Value<String?> financialYear,
+      Value<String> businessDate,
+      Value<String> businessDateSource,
+      Value<String> pnlPeriodKey,
+      Value<String> movementType,
+      Value<String> direction,
+      Value<int> amountMinor,
+      Value<String?> familyMemberId,
+      Value<String?> collectedByFamilyMemberId,
+      Value<String?> ncBillReference,
+      Value<String?> referenceNumber,
+      Value<String?> remarks,
+      Value<String?> reason,
+      Value<String> createdBy,
+      Value<String> capturedAt,
+      Value<int> rowVersion,
+      Value<int> changeSeq,
+      Value<String?> voidedAt,
+      Value<String?> voidReason,
+      Value<int> rowid,
+    });
+
+class $$CanonicalOwnerMovementsTableFilterComposer
+    extends Composer<_$AppDatabase, $CanonicalOwnerMovementsTable> {
+  $$CanonicalOwnerMovementsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get ownerUserId => $composableBuilder(
+    column: $table.ownerUserId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get orgId => $composableBuilder(
+    column: $table.orgId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get businessUnitId => $composableBuilder(
+    column: $table.businessUnitId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get ownerId => $composableBuilder(
+    column: $table.ownerId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get txnNumber => $composableBuilder(
+    column: $table.txnNumber,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get financialYear => $composableBuilder(
+    column: $table.financialYear,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get businessDate => $composableBuilder(
+    column: $table.businessDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get businessDateSource => $composableBuilder(
+    column: $table.businessDateSource,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get pnlPeriodKey => $composableBuilder(
+    column: $table.pnlPeriodKey,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get movementType => $composableBuilder(
+    column: $table.movementType,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get direction => $composableBuilder(
+    column: $table.direction,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get amountMinor => $composableBuilder(
+    column: $table.amountMinor,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get familyMemberId => $composableBuilder(
+    column: $table.familyMemberId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get collectedByFamilyMemberId => $composableBuilder(
+    column: $table.collectedByFamilyMemberId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get ncBillReference => $composableBuilder(
+    column: $table.ncBillReference,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get referenceNumber => $composableBuilder(
+    column: $table.referenceNumber,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get remarks => $composableBuilder(
+    column: $table.remarks,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get reason => $composableBuilder(
+    column: $table.reason,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get createdBy => $composableBuilder(
+    column: $table.createdBy,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get capturedAt => $composableBuilder(
+    column: $table.capturedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get rowVersion => $composableBuilder(
+    column: $table.rowVersion,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get changeSeq => $composableBuilder(
+    column: $table.changeSeq,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get voidedAt => $composableBuilder(
+    column: $table.voidedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get voidReason => $composableBuilder(
+    column: $table.voidReason,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$CanonicalOwnerMovementsTableOrderingComposer
+    extends Composer<_$AppDatabase, $CanonicalOwnerMovementsTable> {
+  $$CanonicalOwnerMovementsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get ownerUserId => $composableBuilder(
+    column: $table.ownerUserId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get orgId => $composableBuilder(
+    column: $table.orgId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get businessUnitId => $composableBuilder(
+    column: $table.businessUnitId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get ownerId => $composableBuilder(
+    column: $table.ownerId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get txnNumber => $composableBuilder(
+    column: $table.txnNumber,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get financialYear => $composableBuilder(
+    column: $table.financialYear,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get businessDate => $composableBuilder(
+    column: $table.businessDate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get businessDateSource => $composableBuilder(
+    column: $table.businessDateSource,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get pnlPeriodKey => $composableBuilder(
+    column: $table.pnlPeriodKey,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get movementType => $composableBuilder(
+    column: $table.movementType,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get direction => $composableBuilder(
+    column: $table.direction,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get amountMinor => $composableBuilder(
+    column: $table.amountMinor,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get familyMemberId => $composableBuilder(
+    column: $table.familyMemberId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get collectedByFamilyMemberId => $composableBuilder(
+    column: $table.collectedByFamilyMemberId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get ncBillReference => $composableBuilder(
+    column: $table.ncBillReference,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get referenceNumber => $composableBuilder(
+    column: $table.referenceNumber,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get remarks => $composableBuilder(
+    column: $table.remarks,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get reason => $composableBuilder(
+    column: $table.reason,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get createdBy => $composableBuilder(
+    column: $table.createdBy,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get capturedAt => $composableBuilder(
+    column: $table.capturedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get rowVersion => $composableBuilder(
+    column: $table.rowVersion,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get changeSeq => $composableBuilder(
+    column: $table.changeSeq,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get voidedAt => $composableBuilder(
+    column: $table.voidedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get voidReason => $composableBuilder(
+    column: $table.voidReason,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$CanonicalOwnerMovementsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $CanonicalOwnerMovementsTable> {
+  $$CanonicalOwnerMovementsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get ownerUserId => $composableBuilder(
+    column: $table.ownerUserId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get orgId =>
+      $composableBuilder(column: $table.orgId, builder: (column) => column);
+
+  GeneratedColumn<String> get businessUnitId => $composableBuilder(
+    column: $table.businessUnitId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get ownerId =>
+      $composableBuilder(column: $table.ownerId, builder: (column) => column);
+
+  GeneratedColumn<String> get txnNumber =>
+      $composableBuilder(column: $table.txnNumber, builder: (column) => column);
+
+  GeneratedColumn<String> get financialYear => $composableBuilder(
+    column: $table.financialYear,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get businessDate => $composableBuilder(
+    column: $table.businessDate,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get businessDateSource => $composableBuilder(
+    column: $table.businessDateSource,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get pnlPeriodKey => $composableBuilder(
+    column: $table.pnlPeriodKey,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get movementType => $composableBuilder(
+    column: $table.movementType,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get direction =>
+      $composableBuilder(column: $table.direction, builder: (column) => column);
+
+  GeneratedColumn<int> get amountMinor => $composableBuilder(
+    column: $table.amountMinor,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get familyMemberId => $composableBuilder(
+    column: $table.familyMemberId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get collectedByFamilyMemberId => $composableBuilder(
+    column: $table.collectedByFamilyMemberId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get ncBillReference => $composableBuilder(
+    column: $table.ncBillReference,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get referenceNumber => $composableBuilder(
+    column: $table.referenceNumber,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get remarks =>
+      $composableBuilder(column: $table.remarks, builder: (column) => column);
+
+  GeneratedColumn<String> get reason =>
+      $composableBuilder(column: $table.reason, builder: (column) => column);
+
+  GeneratedColumn<String> get createdBy =>
+      $composableBuilder(column: $table.createdBy, builder: (column) => column);
+
+  GeneratedColumn<String> get capturedAt => $composableBuilder(
+    column: $table.capturedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get rowVersion => $composableBuilder(
+    column: $table.rowVersion,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get changeSeq =>
+      $composableBuilder(column: $table.changeSeq, builder: (column) => column);
+
+  GeneratedColumn<String> get voidedAt =>
+      $composableBuilder(column: $table.voidedAt, builder: (column) => column);
+
+  GeneratedColumn<String> get voidReason => $composableBuilder(
+    column: $table.voidReason,
+    builder: (column) => column,
+  );
+}
+
+class $$CanonicalOwnerMovementsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $CanonicalOwnerMovementsTable,
+          CanonicalOwnerMovementRow,
+          $$CanonicalOwnerMovementsTableFilterComposer,
+          $$CanonicalOwnerMovementsTableOrderingComposer,
+          $$CanonicalOwnerMovementsTableAnnotationComposer,
+          $$CanonicalOwnerMovementsTableCreateCompanionBuilder,
+          $$CanonicalOwnerMovementsTableUpdateCompanionBuilder,
+          (
+            CanonicalOwnerMovementRow,
+            BaseReferences<
+              _$AppDatabase,
+              $CanonicalOwnerMovementsTable,
+              CanonicalOwnerMovementRow
+            >,
+          ),
+          CanonicalOwnerMovementRow,
+          PrefetchHooks Function()
+        > {
+  $$CanonicalOwnerMovementsTableTableManager(
+    _$AppDatabase db,
+    $CanonicalOwnerMovementsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$CanonicalOwnerMovementsTableFilterComposer(
+                $db: db,
+                $table: table,
+              ),
+          createOrderingComposer: () =>
+              $$CanonicalOwnerMovementsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$CanonicalOwnerMovementsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> ownerUserId = const Value.absent(),
+                Value<String> id = const Value.absent(),
+                Value<String> orgId = const Value.absent(),
+                Value<String> businessUnitId = const Value.absent(),
+                Value<String> ownerId = const Value.absent(),
+                Value<String> txnNumber = const Value.absent(),
+                Value<String?> financialYear = const Value.absent(),
+                Value<String> businessDate = const Value.absent(),
+                Value<String> businessDateSource = const Value.absent(),
+                Value<String> pnlPeriodKey = const Value.absent(),
+                Value<String> movementType = const Value.absent(),
+                Value<String> direction = const Value.absent(),
+                Value<int> amountMinor = const Value.absent(),
+                Value<String?> familyMemberId = const Value.absent(),
+                Value<String?> collectedByFamilyMemberId = const Value.absent(),
+                Value<String?> ncBillReference = const Value.absent(),
+                Value<String?> referenceNumber = const Value.absent(),
+                Value<String?> remarks = const Value.absent(),
+                Value<String?> reason = const Value.absent(),
+                Value<String> createdBy = const Value.absent(),
+                Value<String> capturedAt = const Value.absent(),
+                Value<int> rowVersion = const Value.absent(),
+                Value<int> changeSeq = const Value.absent(),
+                Value<String?> voidedAt = const Value.absent(),
+                Value<String?> voidReason = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => CanonicalOwnerMovementsCompanion(
+                ownerUserId: ownerUserId,
+                id: id,
+                orgId: orgId,
+                businessUnitId: businessUnitId,
+                ownerId: ownerId,
+                txnNumber: txnNumber,
+                financialYear: financialYear,
+                businessDate: businessDate,
+                businessDateSource: businessDateSource,
+                pnlPeriodKey: pnlPeriodKey,
+                movementType: movementType,
+                direction: direction,
+                amountMinor: amountMinor,
+                familyMemberId: familyMemberId,
+                collectedByFamilyMemberId: collectedByFamilyMemberId,
+                ncBillReference: ncBillReference,
+                referenceNumber: referenceNumber,
+                remarks: remarks,
+                reason: reason,
+                createdBy: createdBy,
+                capturedAt: capturedAt,
+                rowVersion: rowVersion,
+                changeSeq: changeSeq,
+                voidedAt: voidedAt,
+                voidReason: voidReason,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String ownerUserId,
+                required String id,
+                required String orgId,
+                required String businessUnitId,
+                required String ownerId,
+                required String txnNumber,
+                Value<String?> financialYear = const Value.absent(),
+                required String businessDate,
+                required String businessDateSource,
+                required String pnlPeriodKey,
+                required String movementType,
+                required String direction,
+                required int amountMinor,
+                Value<String?> familyMemberId = const Value.absent(),
+                Value<String?> collectedByFamilyMemberId = const Value.absent(),
+                Value<String?> ncBillReference = const Value.absent(),
+                Value<String?> referenceNumber = const Value.absent(),
+                Value<String?> remarks = const Value.absent(),
+                Value<String?> reason = const Value.absent(),
+                required String createdBy,
+                required String capturedAt,
+                required int rowVersion,
+                required int changeSeq,
+                Value<String?> voidedAt = const Value.absent(),
+                Value<String?> voidReason = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => CanonicalOwnerMovementsCompanion.insert(
+                ownerUserId: ownerUserId,
+                id: id,
+                orgId: orgId,
+                businessUnitId: businessUnitId,
+                ownerId: ownerId,
+                txnNumber: txnNumber,
+                financialYear: financialYear,
+                businessDate: businessDate,
+                businessDateSource: businessDateSource,
+                pnlPeriodKey: pnlPeriodKey,
+                movementType: movementType,
+                direction: direction,
+                amountMinor: amountMinor,
+                familyMemberId: familyMemberId,
+                collectedByFamilyMemberId: collectedByFamilyMemberId,
+                ncBillReference: ncBillReference,
+                referenceNumber: referenceNumber,
+                remarks: remarks,
+                reason: reason,
+                createdBy: createdBy,
+                capturedAt: capturedAt,
+                rowVersion: rowVersion,
+                changeSeq: changeSeq,
+                voidedAt: voidedAt,
+                voidReason: voidReason,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$CanonicalOwnerMovementsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $CanonicalOwnerMovementsTable,
+      CanonicalOwnerMovementRow,
+      $$CanonicalOwnerMovementsTableFilterComposer,
+      $$CanonicalOwnerMovementsTableOrderingComposer,
+      $$CanonicalOwnerMovementsTableAnnotationComposer,
+      $$CanonicalOwnerMovementsTableCreateCompanionBuilder,
+      $$CanonicalOwnerMovementsTableUpdateCompanionBuilder,
+      (
+        CanonicalOwnerMovementRow,
+        BaseReferences<
+          _$AppDatabase,
+          $CanonicalOwnerMovementsTable,
+          CanonicalOwnerMovementRow
+        >,
+      ),
+      CanonicalOwnerMovementRow,
+      PrefetchHooks Function()
+    >;
+typedef $$CanonicalOwnershipSharesTableCreateCompanionBuilder =
+    CanonicalOwnershipSharesCompanion Function({
+      required String ownerUserId,
+      required String id,
+      required String orgId,
+      required String ownerId,
+      required int shareBasisPoints,
+      required String effectiveFrom,
+      Value<String?> effectiveTo,
+      Value<String?> note,
+      required int rowVersion,
+      required int changeSeq,
+      Value<int> rowid,
+    });
+typedef $$CanonicalOwnershipSharesTableUpdateCompanionBuilder =
+    CanonicalOwnershipSharesCompanion Function({
+      Value<String> ownerUserId,
+      Value<String> id,
+      Value<String> orgId,
+      Value<String> ownerId,
+      Value<int> shareBasisPoints,
+      Value<String> effectiveFrom,
+      Value<String?> effectiveTo,
+      Value<String?> note,
+      Value<int> rowVersion,
+      Value<int> changeSeq,
+      Value<int> rowid,
+    });
+
+class $$CanonicalOwnershipSharesTableFilterComposer
+    extends Composer<_$AppDatabase, $CanonicalOwnershipSharesTable> {
+  $$CanonicalOwnershipSharesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get ownerUserId => $composableBuilder(
+    column: $table.ownerUserId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get orgId => $composableBuilder(
+    column: $table.orgId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get ownerId => $composableBuilder(
+    column: $table.ownerId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get shareBasisPoints => $composableBuilder(
+    column: $table.shareBasisPoints,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get effectiveFrom => $composableBuilder(
+    column: $table.effectiveFrom,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get effectiveTo => $composableBuilder(
+    column: $table.effectiveTo,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get note => $composableBuilder(
+    column: $table.note,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get rowVersion => $composableBuilder(
+    column: $table.rowVersion,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get changeSeq => $composableBuilder(
+    column: $table.changeSeq,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$CanonicalOwnershipSharesTableOrderingComposer
+    extends Composer<_$AppDatabase, $CanonicalOwnershipSharesTable> {
+  $$CanonicalOwnershipSharesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get ownerUserId => $composableBuilder(
+    column: $table.ownerUserId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get orgId => $composableBuilder(
+    column: $table.orgId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get ownerId => $composableBuilder(
+    column: $table.ownerId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get shareBasisPoints => $composableBuilder(
+    column: $table.shareBasisPoints,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get effectiveFrom => $composableBuilder(
+    column: $table.effectiveFrom,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get effectiveTo => $composableBuilder(
+    column: $table.effectiveTo,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get note => $composableBuilder(
+    column: $table.note,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get rowVersion => $composableBuilder(
+    column: $table.rowVersion,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get changeSeq => $composableBuilder(
+    column: $table.changeSeq,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$CanonicalOwnershipSharesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $CanonicalOwnershipSharesTable> {
+  $$CanonicalOwnershipSharesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get ownerUserId => $composableBuilder(
+    column: $table.ownerUserId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get orgId =>
+      $composableBuilder(column: $table.orgId, builder: (column) => column);
+
+  GeneratedColumn<String> get ownerId =>
+      $composableBuilder(column: $table.ownerId, builder: (column) => column);
+
+  GeneratedColumn<int> get shareBasisPoints => $composableBuilder(
+    column: $table.shareBasisPoints,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get effectiveFrom => $composableBuilder(
+    column: $table.effectiveFrom,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get effectiveTo => $composableBuilder(
+    column: $table.effectiveTo,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get note =>
+      $composableBuilder(column: $table.note, builder: (column) => column);
+
+  GeneratedColumn<int> get rowVersion => $composableBuilder(
+    column: $table.rowVersion,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get changeSeq =>
+      $composableBuilder(column: $table.changeSeq, builder: (column) => column);
+}
+
+class $$CanonicalOwnershipSharesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $CanonicalOwnershipSharesTable,
+          CanonicalOwnershipShareRow,
+          $$CanonicalOwnershipSharesTableFilterComposer,
+          $$CanonicalOwnershipSharesTableOrderingComposer,
+          $$CanonicalOwnershipSharesTableAnnotationComposer,
+          $$CanonicalOwnershipSharesTableCreateCompanionBuilder,
+          $$CanonicalOwnershipSharesTableUpdateCompanionBuilder,
+          (
+            CanonicalOwnershipShareRow,
+            BaseReferences<
+              _$AppDatabase,
+              $CanonicalOwnershipSharesTable,
+              CanonicalOwnershipShareRow
+            >,
+          ),
+          CanonicalOwnershipShareRow,
+          PrefetchHooks Function()
+        > {
+  $$CanonicalOwnershipSharesTableTableManager(
+    _$AppDatabase db,
+    $CanonicalOwnershipSharesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$CanonicalOwnershipSharesTableFilterComposer(
+                $db: db,
+                $table: table,
+              ),
+          createOrderingComposer: () =>
+              $$CanonicalOwnershipSharesTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$CanonicalOwnershipSharesTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> ownerUserId = const Value.absent(),
+                Value<String> id = const Value.absent(),
+                Value<String> orgId = const Value.absent(),
+                Value<String> ownerId = const Value.absent(),
+                Value<int> shareBasisPoints = const Value.absent(),
+                Value<String> effectiveFrom = const Value.absent(),
+                Value<String?> effectiveTo = const Value.absent(),
+                Value<String?> note = const Value.absent(),
+                Value<int> rowVersion = const Value.absent(),
+                Value<int> changeSeq = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => CanonicalOwnershipSharesCompanion(
+                ownerUserId: ownerUserId,
+                id: id,
+                orgId: orgId,
+                ownerId: ownerId,
+                shareBasisPoints: shareBasisPoints,
+                effectiveFrom: effectiveFrom,
+                effectiveTo: effectiveTo,
+                note: note,
+                rowVersion: rowVersion,
+                changeSeq: changeSeq,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String ownerUserId,
+                required String id,
+                required String orgId,
+                required String ownerId,
+                required int shareBasisPoints,
+                required String effectiveFrom,
+                Value<String?> effectiveTo = const Value.absent(),
+                Value<String?> note = const Value.absent(),
+                required int rowVersion,
+                required int changeSeq,
+                Value<int> rowid = const Value.absent(),
+              }) => CanonicalOwnershipSharesCompanion.insert(
+                ownerUserId: ownerUserId,
+                id: id,
+                orgId: orgId,
+                ownerId: ownerId,
+                shareBasisPoints: shareBasisPoints,
+                effectiveFrom: effectiveFrom,
+                effectiveTo: effectiveTo,
+                note: note,
+                rowVersion: rowVersion,
+                changeSeq: changeSeq,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$CanonicalOwnershipSharesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $CanonicalOwnershipSharesTable,
+      CanonicalOwnershipShareRow,
+      $$CanonicalOwnershipSharesTableFilterComposer,
+      $$CanonicalOwnershipSharesTableOrderingComposer,
+      $$CanonicalOwnershipSharesTableAnnotationComposer,
+      $$CanonicalOwnershipSharesTableCreateCompanionBuilder,
+      $$CanonicalOwnershipSharesTableUpdateCompanionBuilder,
+      (
+        CanonicalOwnershipShareRow,
+        BaseReferences<
+          _$AppDatabase,
+          $CanonicalOwnershipSharesTable,
+          CanonicalOwnershipShareRow
+        >,
+      ),
+      CanonicalOwnershipShareRow,
+      PrefetchHooks Function()
+    >;
+typedef $$CanonicalOwnersTableCreateCompanionBuilder =
+    CanonicalOwnersCompanion Function({
+      required String ownerUserId,
+      required String id,
+      required String orgId,
+      required String code,
+      required String displayName,
+      required bool active,
+      Value<String?> archivedAt,
+      required int rowVersion,
+      required int changeSeq,
+      Value<int> rowid,
+    });
+typedef $$CanonicalOwnersTableUpdateCompanionBuilder =
+    CanonicalOwnersCompanion Function({
+      Value<String> ownerUserId,
+      Value<String> id,
+      Value<String> orgId,
+      Value<String> code,
+      Value<String> displayName,
+      Value<bool> active,
+      Value<String?> archivedAt,
+      Value<int> rowVersion,
+      Value<int> changeSeq,
+      Value<int> rowid,
+    });
+
+class $$CanonicalOwnersTableFilterComposer
+    extends Composer<_$AppDatabase, $CanonicalOwnersTable> {
+  $$CanonicalOwnersTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get ownerUserId => $composableBuilder(
+    column: $table.ownerUserId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get orgId => $composableBuilder(
+    column: $table.orgId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get code => $composableBuilder(
+    column: $table.code,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get displayName => $composableBuilder(
+    column: $table.displayName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get active => $composableBuilder(
+    column: $table.active,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get archivedAt => $composableBuilder(
+    column: $table.archivedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get rowVersion => $composableBuilder(
+    column: $table.rowVersion,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get changeSeq => $composableBuilder(
+    column: $table.changeSeq,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$CanonicalOwnersTableOrderingComposer
+    extends Composer<_$AppDatabase, $CanonicalOwnersTable> {
+  $$CanonicalOwnersTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get ownerUserId => $composableBuilder(
+    column: $table.ownerUserId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get orgId => $composableBuilder(
+    column: $table.orgId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get code => $composableBuilder(
+    column: $table.code,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get displayName => $composableBuilder(
+    column: $table.displayName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get active => $composableBuilder(
+    column: $table.active,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get archivedAt => $composableBuilder(
+    column: $table.archivedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get rowVersion => $composableBuilder(
+    column: $table.rowVersion,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get changeSeq => $composableBuilder(
+    column: $table.changeSeq,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$CanonicalOwnersTableAnnotationComposer
+    extends Composer<_$AppDatabase, $CanonicalOwnersTable> {
+  $$CanonicalOwnersTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get ownerUserId => $composableBuilder(
+    column: $table.ownerUserId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get orgId =>
+      $composableBuilder(column: $table.orgId, builder: (column) => column);
+
+  GeneratedColumn<String> get code =>
+      $composableBuilder(column: $table.code, builder: (column) => column);
+
+  GeneratedColumn<String> get displayName => $composableBuilder(
+    column: $table.displayName,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get active =>
+      $composableBuilder(column: $table.active, builder: (column) => column);
+
+  GeneratedColumn<String> get archivedAt => $composableBuilder(
+    column: $table.archivedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get rowVersion => $composableBuilder(
+    column: $table.rowVersion,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get changeSeq =>
+      $composableBuilder(column: $table.changeSeq, builder: (column) => column);
+}
+
+class $$CanonicalOwnersTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $CanonicalOwnersTable,
+          CanonicalOwnerRow,
+          $$CanonicalOwnersTableFilterComposer,
+          $$CanonicalOwnersTableOrderingComposer,
+          $$CanonicalOwnersTableAnnotationComposer,
+          $$CanonicalOwnersTableCreateCompanionBuilder,
+          $$CanonicalOwnersTableUpdateCompanionBuilder,
+          (
+            CanonicalOwnerRow,
+            BaseReferences<
+              _$AppDatabase,
+              $CanonicalOwnersTable,
+              CanonicalOwnerRow
+            >,
+          ),
+          CanonicalOwnerRow,
+          PrefetchHooks Function()
+        > {
+  $$CanonicalOwnersTableTableManager(
+    _$AppDatabase db,
+    $CanonicalOwnersTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$CanonicalOwnersTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$CanonicalOwnersTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$CanonicalOwnersTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> ownerUserId = const Value.absent(),
+                Value<String> id = const Value.absent(),
+                Value<String> orgId = const Value.absent(),
+                Value<String> code = const Value.absent(),
+                Value<String> displayName = const Value.absent(),
+                Value<bool> active = const Value.absent(),
+                Value<String?> archivedAt = const Value.absent(),
+                Value<int> rowVersion = const Value.absent(),
+                Value<int> changeSeq = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => CanonicalOwnersCompanion(
+                ownerUserId: ownerUserId,
+                id: id,
+                orgId: orgId,
+                code: code,
+                displayName: displayName,
+                active: active,
+                archivedAt: archivedAt,
+                rowVersion: rowVersion,
+                changeSeq: changeSeq,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String ownerUserId,
+                required String id,
+                required String orgId,
+                required String code,
+                required String displayName,
+                required bool active,
+                Value<String?> archivedAt = const Value.absent(),
+                required int rowVersion,
+                required int changeSeq,
+                Value<int> rowid = const Value.absent(),
+              }) => CanonicalOwnersCompanion.insert(
+                ownerUserId: ownerUserId,
+                id: id,
+                orgId: orgId,
+                code: code,
+                displayName: displayName,
+                active: active,
+                archivedAt: archivedAt,
+                rowVersion: rowVersion,
+                changeSeq: changeSeq,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$CanonicalOwnersTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $CanonicalOwnersTable,
+      CanonicalOwnerRow,
+      $$CanonicalOwnersTableFilterComposer,
+      $$CanonicalOwnersTableOrderingComposer,
+      $$CanonicalOwnersTableAnnotationComposer,
+      $$CanonicalOwnersTableCreateCompanionBuilder,
+      $$CanonicalOwnersTableUpdateCompanionBuilder,
+      (
+        CanonicalOwnerRow,
+        BaseReferences<_$AppDatabase, $CanonicalOwnersTable, CanonicalOwnerRow>,
+      ),
+      CanonicalOwnerRow,
+      PrefetchHooks Function()
+    >;
+typedef $$OwnerSettlementCoverageTableCreateCompanionBuilder =
+    OwnerSettlementCoverageCompanion Function({
+      required String ownerUserId,
+      required String snapshotId,
+      required String serverConfirmedAt,
+      required int movementCount,
+      required String updatedAt,
+      Value<int> rowid,
+    });
+typedef $$OwnerSettlementCoverageTableUpdateCompanionBuilder =
+    OwnerSettlementCoverageCompanion Function({
+      Value<String> ownerUserId,
+      Value<String> snapshotId,
+      Value<String> serverConfirmedAt,
+      Value<int> movementCount,
+      Value<String> updatedAt,
+      Value<int> rowid,
+    });
+
+class $$OwnerSettlementCoverageTableFilterComposer
+    extends Composer<_$AppDatabase, $OwnerSettlementCoverageTable> {
+  $$OwnerSettlementCoverageTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get ownerUserId => $composableBuilder(
+    column: $table.ownerUserId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get snapshotId => $composableBuilder(
+    column: $table.snapshotId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get serverConfirmedAt => $composableBuilder(
+    column: $table.serverConfirmedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get movementCount => $composableBuilder(
+    column: $table.movementCount,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$OwnerSettlementCoverageTableOrderingComposer
+    extends Composer<_$AppDatabase, $OwnerSettlementCoverageTable> {
+  $$OwnerSettlementCoverageTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get ownerUserId => $composableBuilder(
+    column: $table.ownerUserId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get snapshotId => $composableBuilder(
+    column: $table.snapshotId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get serverConfirmedAt => $composableBuilder(
+    column: $table.serverConfirmedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get movementCount => $composableBuilder(
+    column: $table.movementCount,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$OwnerSettlementCoverageTableAnnotationComposer
+    extends Composer<_$AppDatabase, $OwnerSettlementCoverageTable> {
+  $$OwnerSettlementCoverageTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get ownerUserId => $composableBuilder(
+    column: $table.ownerUserId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get snapshotId => $composableBuilder(
+    column: $table.snapshotId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get serverConfirmedAt => $composableBuilder(
+    column: $table.serverConfirmedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get movementCount => $composableBuilder(
+    column: $table.movementCount,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+}
+
+class $$OwnerSettlementCoverageTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $OwnerSettlementCoverageTable,
+          OwnerSettlementCoverageRow,
+          $$OwnerSettlementCoverageTableFilterComposer,
+          $$OwnerSettlementCoverageTableOrderingComposer,
+          $$OwnerSettlementCoverageTableAnnotationComposer,
+          $$OwnerSettlementCoverageTableCreateCompanionBuilder,
+          $$OwnerSettlementCoverageTableUpdateCompanionBuilder,
+          (
+            OwnerSettlementCoverageRow,
+            BaseReferences<
+              _$AppDatabase,
+              $OwnerSettlementCoverageTable,
+              OwnerSettlementCoverageRow
+            >,
+          ),
+          OwnerSettlementCoverageRow,
+          PrefetchHooks Function()
+        > {
+  $$OwnerSettlementCoverageTableTableManager(
+    _$AppDatabase db,
+    $OwnerSettlementCoverageTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$OwnerSettlementCoverageTableFilterComposer(
+                $db: db,
+                $table: table,
+              ),
+          createOrderingComposer: () =>
+              $$OwnerSettlementCoverageTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$OwnerSettlementCoverageTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> ownerUserId = const Value.absent(),
+                Value<String> snapshotId = const Value.absent(),
+                Value<String> serverConfirmedAt = const Value.absent(),
+                Value<int> movementCount = const Value.absent(),
+                Value<String> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => OwnerSettlementCoverageCompanion(
+                ownerUserId: ownerUserId,
+                snapshotId: snapshotId,
+                serverConfirmedAt: serverConfirmedAt,
+                movementCount: movementCount,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String ownerUserId,
+                required String snapshotId,
+                required String serverConfirmedAt,
+                required int movementCount,
+                required String updatedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => OwnerSettlementCoverageCompanion.insert(
+                ownerUserId: ownerUserId,
+                snapshotId: snapshotId,
+                serverConfirmedAt: serverConfirmedAt,
+                movementCount: movementCount,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$OwnerSettlementCoverageTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $OwnerSettlementCoverageTable,
+      OwnerSettlementCoverageRow,
+      $$OwnerSettlementCoverageTableFilterComposer,
+      $$OwnerSettlementCoverageTableOrderingComposer,
+      $$OwnerSettlementCoverageTableAnnotationComposer,
+      $$OwnerSettlementCoverageTableCreateCompanionBuilder,
+      $$OwnerSettlementCoverageTableUpdateCompanionBuilder,
+      (
+        OwnerSettlementCoverageRow,
+        BaseReferences<
+          _$AppDatabase,
+          $OwnerSettlementCoverageTable,
+          OwnerSettlementCoverageRow
+        >,
+      ),
+      OwnerSettlementCoverageRow,
+      PrefetchHooks Function()
+    >;
 typedef $$OwnerLedgerEntriesTableCreateCompanionBuilder =
     OwnerLedgerEntriesCompanion Function({
       required String id,
@@ -39047,6 +43599,23 @@ class $AppDatabaseManager {
       $$OwnershipSharesTableTableManager(_db, _db.ownershipShares);
   $$OwnerFamilyMembersTableTableManager get ownerFamilyMembers =>
       $$OwnerFamilyMembersTableTableManager(_db, _db.ownerFamilyMembers);
+  $$CanonicalOwnerMovementsTableTableManager get canonicalOwnerMovements =>
+      $$CanonicalOwnerMovementsTableTableManager(
+        _db,
+        _db.canonicalOwnerMovements,
+      );
+  $$CanonicalOwnershipSharesTableTableManager get canonicalOwnershipShares =>
+      $$CanonicalOwnershipSharesTableTableManager(
+        _db,
+        _db.canonicalOwnershipShares,
+      );
+  $$CanonicalOwnersTableTableManager get canonicalOwners =>
+      $$CanonicalOwnersTableTableManager(_db, _db.canonicalOwners);
+  $$OwnerSettlementCoverageTableTableManager get ownerSettlementCoverage =>
+      $$OwnerSettlementCoverageTableTableManager(
+        _db,
+        _db.ownerSettlementCoverage,
+      );
   $$OwnerLedgerEntriesTableTableManager get ownerLedgerEntries =>
       $$OwnerLedgerEntriesTableTableManager(_db, _db.ownerLedgerEntries);
 }

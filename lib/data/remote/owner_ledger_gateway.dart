@@ -15,7 +15,18 @@ library;
 import 'package:krishna_mis/data/remote/remote_outcome.dart';
 import 'package:krishna_mis/data/remote/supabase_gateway.dart';
 
-class OwnerLedgerGateway extends SupabaseGateway with RpcCalls {
+/// The one canonical-owner read a settlement needs.
+///
+/// A narrow interface rather than the whole gateway, so the synchroniser depends on the
+/// single call it makes and a test can supply one without a Supabase client — the shape
+/// D-121 established for the ledger query.
+abstract interface class OwnerSnapshotSource {
+  Future<RemoteOutcome<Map<String, dynamic>>> fetchSettlementSnapshot();
+}
+
+class OwnerLedgerGateway extends SupabaseGateway
+    with RpcCalls
+    implements OwnerSnapshotSource {
   OwnerLedgerGateway(super.client);
 
   // ── The ledger ────────────────────────────────────────────────────────────
@@ -82,11 +93,29 @@ class OwnerLedgerGateway extends SupabaseGateway with RpcCalls {
         return list.isEmpty ? null : list.first;
       });
 
+  /// **The canonical owner data a settlement is computed from, in one coherent read.**
+  ///
+  /// Phase 5 OA-2 §18, §19. One RPC returning movements, owners and ownership shares
+  /// together with the server's own MVCC snapshot identity and transaction time — because
+  /// four separate reads are four snapshots under READ COMMITTED, and a settlement
+  /// assembled from them would be a position of a moment that never existed. That is the
+  /// defect D-188 corrected for reporting, and repeating it knowingly would be worse than
+  /// the first time.
+  ///
+  /// It calculates nothing. The arithmetic is the client domain's, and a client-callable
+  /// settlement boundary would need the capability OA-3 owns (§44).
+  @override
+  Future<RemoteOutcome<Map<String, dynamic>>> fetchSettlementSnapshot() =>
+      guard(() async {
+        final result = await client.rpc<dynamic>('owner_ledger_snapshot');
+        return (result as Map).cast<String, dynamic>();
+      });
+
   // ── The masters ───────────────────────────────────────────────────────────
   //
-  // Reads, for the reference sync a later slice will wire. They are here rather than in a
-  // second gateway because they share the boundary's error translation and there is no
-  // sense in which owner masters are a different remote system.
+  // Individual reads, retained for administration and diagnostics. **The settlement path
+  // does not use them** — it takes `fetchSettlementSnapshot`, precisely so its datasets
+  // come from one snapshot rather than three.
 
   Future<RemoteOutcome<List<Map<String, dynamic>>>> fetchOwners() =>
       guard(() async {
