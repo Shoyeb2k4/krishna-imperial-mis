@@ -5,7 +5,15 @@ Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
-Last updated: **2026-09-08** — **PHASE 5 — P&L / MIS REPORTING: SLICES 1–6 COMPLETE.**
+Last updated: **2026-09-10** — **PHASE 5 OA-1 — OWNER ACCOUNTS FOUNDATION: COMPLETE**, on
+top of **PHASE 5 — P&L / MIS REPORTING: SLICES 1–6 COMPLETE.**
+
+**Read the *end* of this file first.** Owner Accounts is a newly discovered real business
+requirement that arrived between Slice 6 and Slice 7: it was audited, approved with eleven
+binding decisions (**OA-D1 … OA-D11**, recorded as **D-189 … D-199**), and its foundation is
+built. It is **additive** — it corrects nothing that was accepted, edits no P&L semantics and
+builds no client screen. **The old Phase 5 Slice 7 is still not started**, and neither is
+OA-2.
 Phase 4 closed at `96fc4ed`; the project lead's Phase 5 decisions are ratified and recorded
 as **D-163 … D-173**, and five slices of twelve are closed — source parity, the canonical
 calculation specification, `LocalReportingEngine`, the canonical reporting cache with its
@@ -4479,3 +4487,172 @@ grants, scope resolution or purge semantics.
 **PHASE 5 SLICE 6 — COMPLETE.** **Slice 7 is not started**, and is not started
 automatically.
 
+
+---
+
+# PHASE 5 OA-1 — OWNER ACCOUNTS FOUNDATION: **COMPLETE**
+
+A newly discovered real business requirement, audited before it was built and approved with
+eleven binding decisions — **OA-D1 … OA-D11**, recorded as **D-189 … D-199**. OA-1 is the
+foundation: owners, ownership shares, family members, the owner ledger and its movements,
+the capability namespace, the server boundary and the local schema.
+
+**It builds no settlement calculation, no statement, no owner reporting surface and no
+client screen.** Those are OA-2 and OA-3, and a structural guard asserts the owner layer
+computes no balance and no entitlement, because a slice boundary nothing evaluates is a
+comment.
+
+**And it corrects nothing that was accepted.** `Pnl.compute` is not edited, no contribution
+projection changes, and the accepted P&L, Revenue, Expense and reporting semantics of
+Phases 3 to 5 are untouched — proven behaviourally rather than argued (§40, §41 below).
+
+## 1 · What shipped
+
+| | |
+|---|---|
+| Local schema | **Drift v19** — `owners`, `ownership_shares`, `owner_family_members`, `owner_ledger_entries`, plus four indexes |
+| Server schema | five tables, all RLS-enabled and **default deny**; exclusion constraints on share and family-link ranges; the `KI-OWN` sequence |
+| Boundary | nine reviewed `SECURITY DEFINER` RPCs — `owner_create`, `owner_share_set`, `owner_family_member_create`, `owner_family_member_end`, `owner_movement_create`, `owner_movement_update`, `owner_movement_void`, and the two read helpers |
+| Capabilities | eight, under `owner_masters.*` and `owner_ledger.*` (OA-D11 / D-199) |
+| Domain | `Owner`, `OwnershipShareSet`, `FamilyOwnerMapping`, `OwnerLedgerEntry`, `OwnerLedgerTotals` — pure Dart, integer paise, basis points |
+| Data layer | `OwnerLedgerRepository`, `OwnerLedgerGateway`, `OwnerLedgerMutationEndpoint`, wired into the existing outbox as a fourth routing arm |
+| Expense guard | a trigger refusing an expense category named for an owner movement, `KM032`, proven at deploy time against real rows with a positive control beside it |
+
+**Nothing is seeded.** No owner, no ownership share, no opening balance and no family
+member exists in production data, and the live suite asserts that no ownership share exists
+for any owner outside its own two synthetic fixtures. The 50:50 ratio is a business fact;
+the real identities and the inception date are bootstrap data nobody has supplied (D-189).
+
+## 2 · The five movement types, and what each one is
+
+| Type | Direction | |
+|---|---|---|
+| `opening_balance` | **stated** | the one type that may be either, because an owner's opening position can be (D-191) |
+| `withdrawal` | debit | money an owner took; a family member may be recorded as who collected it, and the debit stays with the owner |
+| `nc_consumption` | debit | non-chargeable consumption at the **full printed bill value** (D-194); never revenue, and it cannot become revenue |
+| `settlement_paid` | debit | discharge of a computed entitlement, kept distinct from a withdrawal (D-192) |
+| `manual_adjustment` | **stated** | requires a non-whitespace reason, and is the one type the Accountant bundle does **not** hold |
+
+Amounts are positive integers and **the type decides the sign** — a negative amount is
+refused rather than reinterpreted. `KI-OWN` numbers are server-issued on acceptance; a
+replayed `mutation_id` returns the same number rather than a second movement.
+
+## 3 · Verified
+
+| Item | Status | Evidence |
+|---|---|---|
+| `dart format --set-exit-if-changed` | **Tested** | clean, 239 files |
+| `flutter analyze` | **Tested** | **No issues found** |
+| Host suite | **Tested** | **1,530 tests, all passing** (1,415 + 115 for the addendum) |
+| Owner-accounts domain | **Tested** | 43 host tests |
+| Local schema v19, constraints, v18 → v19 upgrade, cache classification | **Tested** | 22 host tests |
+| `OwnerLedgerRepository` — evaluate, create, correct, void, coalescing, D-130 base version | **Tested** | 32 host tests |
+| Structural guards — capability namespace, purity, slice boundary, non-interference, the Expense guard, the forward-only timeline | **Tested** | 18 host tests, with a positive control seen to fail |
+| Live owner-accounts suite against `krishna-mis-dev` | **Tested** | **27 tests**, run **three times in succession, green each time** |
+| Migration audit and backend schema parity | **Tested** | 38 host tests |
+| Migration ledger parity (A0 / D-056) | **Tested** | every applied version has a committed file; executable-SQL identity checked mechanically (D-203) |
+| Secret scan — tree and git history | **Tested** | clean, controls passing |
+
+## 4 · The live matrix, against `krishna-mis-dev`
+
+| Case | Result |
+|---|---|
+| Both synthetic owners created through the real RPC | **PASS** |
+| No ownership share exists for any real owner | **PASS** |
+| A mid-month ownership date is refused with a sentence | **PASS** — `KM031` |
+| 5000 + 5000 configures and totals exactly 10000 | **PASS** |
+| Re-setting a share closes the open one — no gap, no overlap, history not restated | **PASS** |
+| A backdated share is refused with a sentence, not a constraint name | **PASS** — the defect the second run found (D-201) |
+| A withdrawal is numbered on its own `KI-OWN` sequence | **PASS** |
+| A replayed mutation id returns the same number, not a second movement | **PASS** |
+| An NC bill derives its owner from the family link | **PASS** |
+| A declared owner that disagrees is refused, never re-attributed | **PASS** |
+| An agreeing declared owner is accepted | **PASS** — the control that separates "the comparison binds" from "declaration never works" |
+| An opening balance and an adjustment must state a direction | **PASS** |
+| An adjustment with a whitespace-only reason is refused | **PASS** |
+| A negative amount is refused; the type decides the sign | **PASS** |
+| An unknown movement type is refused rather than defaulted | **PASS** |
+| A stale `base_row_version` is a conflict, and nothing is applied | **PASS** |
+| A correction moves the amount by exactly the difference | **PASS** |
+| A void with a whitespace-only reason is refused, in every shape | **PASS** |
+| A voided movement accepts no correction | **PASS** |
+| `change_seq` advances on every mutation | **PASS** — D-177's invariant, exercised |
+| Anonymous reads nothing and calls nothing | **PASS** |
+| Data Entry sees no owner ledger and cannot record one | **PASS** |
+| A unit-scoped Manager holds nothing in this domain in V1 | **PASS** |
+| The Accountant records and reads, and cannot adjust | **PASS** — and this is what found D-200 |
+| The base tables are never writable by any client role | **PASS** |
+| An expense category named for an owner movement is refused, with `KM032` | **PASS** |
+| Recording owner movements moves **no** expense or revenue contribution | **PASS** |
+
+## 5 · Non-interference, proven twice (§40, §41)
+
+**Behaviourally**, on the real server: the expense and revenue contribution totals are read
+before and after a run that records ten owner movements, and compared exactly. **No paisa
+moves.**
+
+**Structurally**, over the tree: the finance domain names no owner concept, the reporting
+engines are untouched by this slice, the owner write path names no expense or revenue table,
+and nothing in the owner layer computes a balance or an entitlement. Each is a scan, so it
+holds for files nobody has written yet.
+
+## 6 · Defects found, each recorded
+
+| | |
+|---|---|
+| **D-200** | `owner_ledger.view` was gated on `has_unscoped_capability`, which D-025 makes satisfiable by the Owner alone — so the Accountant could record, correct and void a movement and read nothing. **The third instance of D-110 / D-116**, found by the live authorization matrix |
+| **D-201** | `owner_share_set` left a backdated or duplicate ownership date to the exclusion constraint, so a caller met `23P01` and a constraint name. **Found by the suite's second run**, which is the only run that could have found it (D-076) |
+| **D-202** | the local manual-adjustment reason CHECK used one-argument `trim()`, which strips spaces only, so a tab satisfied it — **D-138 and D-142's defect in SQLite** |
+| D-044 / D-101, third instance | two new trigger functions were left `PUBLIC EXECUTE`; the API-surface invariant refused the migration |
+| **D-203** | the ledger's "verified byte-for-byte" wording has never been literally true, for any migration; the executable-SQL identity that *is* true is now checked mechanically |
+
+**Recorded and deliberately not fixed:** the shipped local revenue and expense void CHECKs
+carry D-202's weakness. Outside OA-1's reviewed scope (D-127), and the server refuses a
+whitespace reason before either constraint is reached.
+
+## 7 · Migration ledger
+
+| Ledger version | Name |
+|---|---|
+| 20260909105555 | `owner_accounts_capabilities` |
+| 20260909110038 | `owner_accounts_schema` |
+| 20260909110608 | `owner_ledger_rpcs` |
+| 20260909110912 | `expense_categories_refuse_owner_drawings` |
+| 20260909111051 | `owner_trigger_functions_revoked` |
+| 20260909111136 | `api_surface_invariant_owner_accounts` |
+| 20260909112045 | `owner_ledger_view_is_grantable` |
+| 20260910161035 | `owner_share_set_refuses_backdating` |
+
+Executable-SQL identity verified against `supabase_migrations.schema_migrations.statements`
+for all eight (D-203).
+
+## 8 · What OA-1 deliberately did not build
+
+No settlement calculation and no entitlement. No settlement statement, no Draft/Finalized
+state machine, no recalculation. No owner reporting surface, no P&L change, no export, no
+chart. **No client screen on either platform** — no Android surface, no Windows surface, no
+provider wiring beyond the repository and the sync endpoint. No `owner_settlement.view`
+capability, because a capability granted and evaluated by nothing is the family this log
+keeps recording (D-197).
+
+**No Petpooja integration, and no claim that automatic POS reconciliation exists.** A guard
+asserts the repository still contains no POS integration. Whether a non-chargeable bill can
+be distinguished from a paid one in the POS is an operational question, answered today by
+the operator workflow and recorded as an open question rather than pretended away with a
+rule that cannot see it.
+
+**Statutory GST treatment of a non-chargeable supply is NOT settled by this feature.**
+
+## 9 · Not rerun, and why
+
+**The Android and Windows device acceptance suites — not rerun.** OA-1 adds no controller,
+no widget and no screen, and a guard asserts it stays that way. They are **not** claimed as
+freshly passing.
+
+**`phase-a` … `multi-scope-b` — not rerun.** Nothing here touches authority caching, grants,
+scope resolution or purge semantics.
+
+## 10 · Next
+
+**OA-2 is not started, and is not started automatically.** Neither is the old Phase 5
+Slice 7.

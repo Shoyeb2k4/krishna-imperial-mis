@@ -6,7 +6,7 @@ Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
 Status: **Part proposal, part as-built.** Corrected at Phase 4 closure, 2026-09-07.
-Last updated: 2026-09-07
+Last updated: 2026-09-10 — the Owner Ledger section is at the end
 
 **How to read this document.** It began as a Phase 0 proposal and has grown as-built
 sections beneath it. That mixture is deliberate — the proposal is the record of what was
@@ -1551,3 +1551,113 @@ because a schema step ran is exactly the false claim the marker exists to preven
 
 The step is written *before* the `from < 16` step in source order and both still run — the
 ordering hazard D-144 records, pinned by a v15 fixture rather than argued.
+
+---
+
+## Phase 5 OA-1 — the Owner Ledger, as built (2026-09-10)
+
+Five server tables — four of them the domain, plus `owner_number_counters` behind the
+KI-OWN sequence — and four local ones. A **second financial subsystem**, beside the P&L
+rather than inside it: nothing here reaches `expense_period_contributions` or
+`revenue_period_contributions`, and there is no path from one to the other (D-190 … D-203,
+`ARCHITECTURE.md` §33).
+
+### The tables
+
+```
+owners
+  id uuid pk (client UUID) · org_id · code (immutable, unique per org) · display_name
+  active bool · archived_at
+  created_by · created_at · updated_by · updated_at · row_version · change_seq
+
+ownership_shares
+  id uuid pk · org_id · owner_id -> owners
+  share_basis_points int        -- CHECK between 1 and 10000
+  effective_from date           -- CHECK: the FIRST of a month
+  effective_to   date null      -- inclusive; CHECK: the LAST of a month
+  note text · audit + row_version + change_seq
+  EXCLUDE USING gist (org_id =, owner_id =, daterange(from, to, '[]') &&)
+
+owner_family_members
+  id uuid pk (client UUID) · org_id · owner_id -> owners
+  display_name · relationship_label · is_self bool · may_use_nc bool
+  effective_from date · effective_to date null · active bool
+  audit + row_version + change_seq
+  UNIQUE (org_id, owner_id) WHERE is_self AND active   -- one 'self' per owner
+  TRIGGER app.refuse_family_owner_reassignment  -- owner_id is immutable
+
+owner_ledger_entries
+  id uuid pk (client UUID v7) · org_id
+  txn_number text null · financial_year text null   -- KI-OWN-26-27-000001, server-issued
+  owner_id -> owners                 -- the owner the SERVER resolved, snapshotted
+  business_unit_id                   -- composite FK to business_units(org_id, id)
+  business_date date                 -- derived under D-067, persisted
+  pnl_period_key text                -- CHECK: agrees with business_date
+  business_date_source text          -- derived | corrected
+  captured_at timestamptz            -- device instant, forensic only
+  movement_type text                 -- opening_balance | withdrawal | nc_consumption
+                                     --  | settlement_paid | manual_adjustment
+  direction text                     -- credit | debit
+  amount_minor bigint                -- CHECK > 0; the TYPE decides the sign
+  family_member_id null              -- who consumed
+  collected_by_family_member_id null -- who collected, when that is not the owner
+  nc_bill_reference · payment_method_id · reference_number · remarks · reason
+  voided_at · voided_by · void_reason
+  audit + row_version + change_seq
+  UNIQUE (org_id, txn_number)
+```
+
+**No balance column anywhere**, on either side. The position is derived from the movements
+(D-190), and a structural guard asserts the owner layer computes none.
+
+**No `nature`-style label was added to `expense_categories`**, and its four values are
+unchanged. Owner movements belong here, not to a category label.
+
+### The constraints that carry a rule
+
+| | |
+|---|---|
+| `share_basis_points` between 1 and 10000 | integer basis points; two owners at 5000 total exactly 10000, with no `double` anywhere near it |
+| `effective_from` is the first of a month, `effective_to` the last | a settlement period is never split into two ratios |
+| the share exclusion constraint | one ratio per owner at a time — no gap, no overlap |
+| `amount_minor > 0` | the movement type decides the sign; a negative amount is refused rather than reinterpreted |
+| `movement_type <> 'manual_adjustment' OR length(trim(coalesce(reason,''), char(32,9,10,13))) > 0` | an adjustment states why, and **a tab is not a reason** — the explicit whitespace set, because SQLite's one-argument `trim()` strips spaces alone (D-202) |
+| `voided_at IS NULL OR (voided_by IS NOT NULL AND` the same trimmed-reason test `)` | a void states why, under the canonical rule (spec §14.1) |
+| `pnl_period_key` agrees with `business_date` | the same tie the expense and revenue tables carry |
+
+### RLS and the boundary
+
+Every table is RLS-enabled and **default deny**. No client role holds INSERT, UPDATE, DELETE
+or TRUNCATE on any of them — all four privileges, restated rather than the three that let
+TRUNCATE through in D-162 — and the only way in is the reviewed RPC set.
+
+Reads are gated on `has_capability_anywhere('owner_ledger.view')` for the two sensitive
+tables and are **all-or-nothing**: the policies carry no `business_unit_id` predicate, and a
+deploy-time assertion refuses one that acquires it, because an owner's current account spans
+both properties and a per-property slice is misleading rather than narrower (D-196).
+
+They were first written `has_unscoped_capability`, which D-025 makes satisfiable by the Owner
+and by nobody else — so the Accountant could write and read nothing. That is D-110 and D-116
+a third time, closed by `20260909112045` and by a catalogue assertion covering policies and
+functions alike (D-200).
+
+### Numbering
+
+`KI-OWN-…` on its own organisation-wide sequence, issued by the server on canonical
+acceptance and shared with neither the expense nor the revenue sequence. Offline movements
+carry their client-generated UUID v7 until the server accepts them, exactly as expenses and
+sales do (D-008, D-085).
+
+### The local half — Drift v19
+
+The same four tables, minus the server-only columns, plus four indexes:
+`ix_owner_ledger_owner_period`, `ix_owner_ledger_unit_date`, `ix_owner_family_owner`,
+`ix_ownership_shares_owner`.
+
+Classified explicitly (D-070, D-074): the three masters are `organizationGlobal`;
+`owner_ledger_entries` is `scopedFinancialHistory` keyed on `business_unit_id` — purged on a
+confirmed revocation, sparing the actor's own unsent work. Every table is classified, because
+an unclassified one is a decision nobody made.
+
+The v19 step carries the D-144 range guard, and the fresh-database path creates the indexes
+too — the omission D-159 caught once already.

@@ -9,7 +9,7 @@ Status: **Sections 1–12 proposed (Phase 0, revised); sections 13–16 and 18�
 is built and verified; section 17 is the Phase 4 *plan*, since built — read §18–§26 for what
 shipped.** Sections 6, 5.3 and 8 carry the project lead's mandated corrections.
 Implementation status is tracked in `PROJECT_STATUS.md`.
-Last updated: 2026-09-08 — Phase 5 Slice 6 corrective (section 32); Slice 5 in section 31; Slices 1-4 in sections 27-30
+Last updated: 2026-09-10 — the Owner Ledger (section 33); Phase 5 Slice 6 corrective (section 32); Slice 5 in section 31; Slices 1-4 in sections 27-30
 
 ---
 
@@ -3164,3 +3164,186 @@ freshness state.
 A transport failure changes none of it — no purge, no coverage downgrade, no destroyed
 marker, no zeroed figure (D-070) — and an authorisation refusal is not staleness.
 
+
+---
+
+## 33. The Owner Ledger (2026-09-10)
+
+Phase 5 OA-1. A **second financial subsystem**, deliberately beside the P&L rather than
+inside it: owners take money out of the business and consume without paying, and neither act
+is an operating expense or a sale. Decisions D-189 … D-203.
+
+**OA-1 is the foundation only.** No settlement calculation, no statement, no owner reporting
+surface, no client screen. Those are OA-2 and OA-3, and a structural guard asserts the owner
+layer computes no balance and no entitlement.
+
+### 33.1 Why it is a separate ledger rather than a category
+
+The cheapest-looking implementation is an expense category called "Owner Withdrawal". It
+would be wrong in the one direction nobody notices: an owner drawing ₹50,000 would flow
+through `expense_period_contributions`, reduce Operating Profit by ₹50,000, and the
+management P&L would report that the business performed worse than it did. A distribution to
+an owner is not a cost of running the hotel.
+
+So the Owner Ledger writes to `owner_ledger_entries` and to nothing else, and **there is no
+path from it to either contribution projection.** That is asserted two ways — a scan
+requiring the owner write path to name no expense or revenue table, and a live comparison of
+both contribution totals before and after a run that records ten movements.
+
+The reachable mistake that remains is a person creating that category by hand, and that is
+what the `KM032` trigger refuses (§33.6).
+
+### 33.2 The current account, and why its balance is derived
+
+An owner's position is a carry-forward current account. **The closing balance is derived
+from the movements and never stored** (D-190).
+
+A stored balance is a second copy of a figure the movements already determine, and every
+hazard of one is the hazard of maintaining it — a correction that forgets it, a void that
+leaves it, a replay that applies twice, a device that recomputes it differently. It is
+D-157's argument for the revenue contribution projection, in the one place where being wrong
+is invisible: a wrong balance reconciles against itself perfectly.
+
+```
+        owner position  =  Σ credits − Σ debits   over canonical movements
+        stored anywhere =  nothing
+```
+
+An opening position that predates the system is an `opening_balance` **movement** — dated,
+audited, correctable, voidable — rather than a column on the owner master with no date, no
+reason and no author (D-191).
+
+### 33.3 The share is basis points, and its timeline moves forward only
+
+`ownership_shares` carries `share_basis_points integer`, date-effective, two owners at 5000
+each totalling exactly 10000 (D-189). Never a percentage, never a `double` — 50% of an odd
+number of paise has to reconcile exactly, which is why `rate_bp` has had this shape since
+D-017.
+
+Two rules bound the timeline, and **both refuse with a sentence rather than with a
+constraint**:
+
+| | |
+|---|---|
+| a change takes effect on the **first of a month** | a mid-period change would split a settlement period into two ratios, and OA-1 builds no apportionment for that |
+| a change may only be **later** than every share the owner already has | rewriting a historical ratio would silently restate every settlement computed under it (D-201) |
+
+Setting a share closes the one still open on the day before the new one begins, so a ratio
+change is a single business act rather than a window in which the shares do not total 10000.
+
+### 33.4 Attribution is the server's, and the client's opinion is compared
+
+A family member is linked to exactly one owner with effective dates. Non-chargeable
+consumption by that person is attributed to that owner; family members receive no profit
+share, and a family member may be recorded as who *collected* a withdrawal while the debit
+stays with the owner (D-195).
+
+```
+        client sends   the person, and optionally a declared owner
+        server does    resolve the link at the movement's business date
+        on agreement   record, snapshotting the owner it resolved
+        on difference  refuse — never re-attribute silently
+```
+
+The declaration is **compared, never used**, which is D-114's contract applied to attribution
+instead of to tax: two defensible answers exist and neither may overwrite the other silently.
+
+**The link is immutable.** Re-pointing a family member at a different owner would restate
+every movement already attributed through them, so the row is the identity — ending a link
+and creating a new one is the supported act, and a trigger refuses the reassignment. Each
+movement snapshots the resolved owner, so history explains itself with no mapping lookup, the
+discipline D-080 established for the tax snapshot.
+
+### 33.5 Movements, and what the boundary refuses
+
+Five types, one table, one write path. Amounts are **positive integers and the type decides
+the sign**, so a negative amount is refused rather than reinterpreted; `opening_balance` and
+`manual_adjustment` state their direction because either is legitimate for them.
+
+Everything the rest of the project's financial write path already guarantees is reused
+rather than rebuilt: `mutation_id` idempotency (D-004), `base_row_version` on update and void
+with a mismatch surfacing as a **conflict** (D-021), the property's business date under the
+unit cut-off (D-067), period locks, the edit window, one queued intent per document with a
+correction rewriting it in place (D-125), and a rewritten update carrying the base version it
+was made against (D-130). `KI-OWN` numbers are server-issued on acceptance and a replay
+returns the same one.
+
+A **manual adjustment** requires a stated reason, and so does a void — under the canonical
+whitespace rule, so a tab is not a reason (spec §14.1, D-142). The local mirror of that
+CHECK had to be written `trim(x, char(32,9,10,13))`, because SQLite's one-argument `trim()`
+strips spaces alone — D-138's server-side defect, in SQLite (D-202).
+
+### 33.6 The Expense guard, and what it is not
+
+A trigger refuses an expense category whose name could only mean an owner movement — an
+owner, partner or proprietor qualifier followed by a drawing, a withdrawal or a settlement —
+with `KM032` and a sentence naming the Owner Ledger, so the person meets the right workflow
+rather than a wall.
+
+**"Drawings" alone is not refused**: a hotel's building expenses may legitimately involve
+architectural drawings. The migration proves both directions at deploy time against real
+rows — the refusal, and that an ordinary category still inserts — because a guard that
+refused everything would satisfy its own negative test perfectly and would have broken master
+administration entirely.
+
+**No fifth `nature` value was invented.** Adding `owner_drawings` to the CHECK would be a
+label nothing evaluates unless something did, and if something did the expense engine would
+have acquired a concept of owner movements — which is what this design says it must not.
+
+**The revenue side needs no trigger, and that is not an omission.** There is no path from the
+Owner Ledger to `revenue_period_contributions`. What *would* be a defect is a non-chargeable
+bill typed into the Restaurant revenue screen, and no database trigger can tell that from a
+real sale — the amounts and the category are identical. That is an operator-workflow
+question, recorded as one rather than pretended away with a rule that cannot see it.
+
+### 33.7 Authority
+
+Eight capabilities under **`owner_masters.*`** and **`owner_ledger.*`**. The underscore is
+mechanical rather than aesthetic: three shipped reporting migrations refuse any boundary body
+matching `\mowner\M` as a role-name branch, Postgres word characters exclude `_`, so
+`owner.ledger.view` would have failed a deploy-time invariant with a message about role-name
+branching three migrations from the file being edited (D-199).
+
+| | |
+|---|---|
+| Owner | everything, unscoped |
+| Accountant | six — records, reads, corrects, voids; **not** `owner_masters.manage`, **not** `owner_ledger.adjust` |
+| Manager, Data Entry | **nothing in this domain in V1** |
+
+Reading the ledger is **all-or-nothing and never sliced by property**: an owner's current
+account spans both business units, so a per-property slice is not a narrower view but a
+misleading one, and the read policies are asserted to carry no `business_unit_id` predicate
+at all (D-196).
+
+That assertion is what exposed D-200. The reads were first gated on
+`has_unscoped_capability('owner_ledger.view')` — and D-025 forces every non-Owner grant to
+name a business unit, so an unscoped requirement is satisfiable by the Owner and by nobody
+else, for ever. The Accountant could record, correct and void a movement and then read
+nothing. **That is D-110 and D-116 a third time**, and it is invisible to a test that only
+checks a scoped user sees *less* than the Owner, because both see zero. `has_capability_anywhere`
+keeps the all-or-nothing principle exactly while making the grant satisfiable, and the class
+is now closed by a catalogue search over policies **and** over functions.
+
+### 33.8 The local half
+
+Drift **v19** adds the four tables. The three masters are `organizationGlobal`; the ledger is
+`scopedFinancialHistory` — purged on a confirmed revocation, sparing the actor's own unsent
+work (D-070, D-074) — and every table is classified, because an unclassified one is a
+decision nobody made.
+
+Revenue is a registered mutation type in the existing transport rather than a second sync
+engine: the same outbox, worker, backoff clock and actor filter, with
+`RoutingMutationEndpoint` gaining a fourth arm. A build with no owner endpoint routes the
+intent to one that does not recognise it and answers terminally, so the entry is kept for a
+person to see rather than discarded.
+
+### 33.9 What is deliberately absent
+
+No settlement calculation, no entitlement, no statement and no state machine. No owner
+reporting surface, no P&L change, no export. **No client screen on either platform.** No
+`owner_settlement.view` capability, because a capability granted and evaluated by nothing is
+the family this document keeps recording — OA-3 creates it together with the boundary that
+reads it (D-197).
+
+**No Petpooja integration, and no claim that automatic POS reconciliation exists.**
+**Statutory GST treatment of a non-chargeable supply is not settled by this feature.**

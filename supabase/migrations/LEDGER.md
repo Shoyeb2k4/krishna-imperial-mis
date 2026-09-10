@@ -271,6 +271,56 @@ nobody.
 
 Verified byte-for-byte against `supabase_migrations.schema_migrations.statements` (D-056).
 
+## Phase 5 OA-1 - Owner Accounts Foundation
+
+| Ledger version | Ledger name | Committed file |
+|---|---|---|
+| 20260909105555 | `owner_accounts_capabilities` | `20260909105555_owner_accounts_capabilities.sql` |
+| 20260909110038 | `owner_accounts_schema` | `20260909110038_owner_accounts_schema.sql` |
+| 20260909110608 | `owner_ledger_rpcs` | `20260909110608_owner_ledger_rpcs.sql` |
+| 20260909110912 | `expense_categories_refuse_owner_drawings` | `20260909110912_expense_categories_refuse_owner_drawings.sql` |
+| 20260909111051 | `owner_trigger_functions_revoked` | `20260909111051_owner_trigger_functions_revoked.sql` |
+| 20260909111136 | `api_surface_invariant_owner_accounts` | `20260909111136_api_surface_invariant_owner_accounts.sql` |
+| 20260909112045 | `owner_ledger_view_is_grantable` | `20260909112045_owner_ledger_view_is_grantable.sql` |
+| 20260910161035 | `owner_share_set_refuses_backdating` | `20260910161035_owner_share_set_refuses_backdating.sql` |
+
+Five tables, all RLS-enabled and default-deny; the `KI-OWN` sequence; nine reviewed RPCs;
+the capability namespace under `owner_masters.*` and `owner_ledger.*`; and a trigger that
+refuses an expense category named for an owner movement, proven at deploy time against
+real rows with a positive control beside it.
+
+**Two of the eight are correctives, and both are the same family the log keeps recording.**
+`owner_ledger_view_is_grantable` replaces `has_unscoped_capability('owner_ledger.view')`
+with `has_capability_anywhere`: D-025 forces every non-Owner grant to name a business unit,
+so the unscoped form could be satisfied by the Owner and by nobody else, and the Accountant
+could record, correct and void a movement and then read nothing. That is D-110 and D-116, a
+third time. `owner_share_set_refuses_backdating` gives the forward-only ownership timeline
+a refusal of its own, so configuring a ratio at or before one already configured meets a
+sentence rather than `23P01` and a constraint name.
+
+`owner_trigger_functions_revoked` is the third instance of D-044 / D-101: two new trigger
+functions were left `PUBLIC EXECUTE`, and the API-surface invariant refused the migration
+that would have shipped them.
+
+### On "byte-for-byte", stated accurately rather than repeated
+
+Earlier sections of this ledger say each migration was "verified byte-for-byte against
+`supabase_migrations.schema_migrations.statements`". Measured rather than asserted, that
+has never been literally true of any migration in this repository, and it is worth stating
+once rather than repeating a claim that does not hold:
+
+* Supabase stores the submitted text **without its trailing newline**, so every committed
+  file is one byte longer than the statement it is accounted for by;
+* an OA-1 file's header names its own ledger version, and the version is assigned by the
+  server *at apply time* - so a file that names it cannot have been the text submitted.
+  These headers were corrected after the versions came back.
+
+What **is** true, and is checked mechanically rather than claimed: for all eight OA-1
+versions, the committed file and the applied statement are **identical in every executable
+line**. Comparing both sides with blank lines and `--` comment lines removed and each
+remaining line trimmed gives an exact match, line count and digest, for each of the eight.
+The divergences are confined to comments, blank lines, indentation and that header line.
+
 ## The full applied ledger, in order
 
 ```
@@ -358,4 +408,12 @@ Verified byte-for-byte against `supabase_migrations.schema_migrations.statements
 20260908122910 reporting_snapshot_transport
 20260908123059 api_surface_invariant_reporting_snapshot
 20260908124127 reporting_primitives_states_server_time
+20260909105555 owner_accounts_capabilities
+20260909110038 owner_accounts_schema
+20260909110608 owner_ledger_rpcs
+20260909110912 expense_categories_refuse_owner_drawings
+20260909111051 owner_trigger_functions_revoked
+20260909111136 api_surface_invariant_owner_accounts
+20260909112045 owner_ledger_view_is_grantable
+20260910161035 owner_share_set_refuses_backdating
 ```

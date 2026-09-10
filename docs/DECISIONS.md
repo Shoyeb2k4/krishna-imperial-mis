@@ -6803,3 +6803,308 @@ Null is **not** a third freshness state and must never be rendered as one.
   (D-179) and the lowest-watermark rule (D-180) are all unchanged.
 * The local consolidated-unscoped reporting rule is still unenforced on the device and is
   still Slice 7's.
+
+---
+
+# Phase 5 OA-1 — Owner Accounts Foundation: the project lead's ratified decisions (2026-09-09)
+
+Owner Accounts is a **newly discovered real business requirement**, audited before it was
+built and approved with eleven binding decisions, **OA-D1 … OA-D11**. They are recorded
+here as **D-189 … D-199**, in the order they were given, so a later reader needs the
+decision log rather than a brief.
+
+**What OA-1 builds, and what it deliberately does not.** OA-1 is the *foundation*: owners,
+ownership shares, family members, the owner ledger and its movements, the capability
+namespace, the server boundary and the local schema. It builds **no settlement
+calculation, no statement, no owner reporting surface and no client screen** — those are
+OA-2 and OA-3. Where a decision below governs something OA-1 does not build, it says so
+in as many words, in the shape D-078 … D-087 used for the Phase 4 planning baseline.
+
+**And it corrects nothing that was accepted.** The P&L, Revenue, Expense and reporting
+semantics closed in Phases 3 to 5 are untouched: `Pnl.compute` is not edited, no
+contribution projection changes, and a host test compares the expense and revenue
+contribution totals before and after owner movements are recorded and requires them equal.
+
+## D-189 — The profit share is 50:50, in integer basis points (OA-D1)
+**Date:** 2026-09-09 · **Status:** Accepted (project-lead decision)
+**Decision:** Two owners, **5000 basis points each, totalling exactly 10000**. Held as
+`ownership_shares` rows carrying `share_basis_points integer`, date-effective, never a
+percentage and never a `double` — the same representation `rate_bp` has carried since
+D-017, for the same reason: 50% of an odd number of paise has to reconcile exactly.
+**No share is seeded.** The ratio is a business fact and the real owner identities and the
+inception date are bootstrap data nobody has supplied; a migration writing `5000` against
+a real owner would be a financial claim the project lead never made (D-043's rule, applied
+to a second kind of configuration). The live suite asserts that **no ownership share exists
+for any owner outside its own two synthetic fixtures.**
+**A ratio change takes effect at the start of a month**, refused otherwise with a sentence,
+because a mid-period change would split a settlement period into two ratios and OA-1 builds
+no apportionment for that. See D-190 for what a share is *not* allowed to do.
+
+## D-190 — The owner account is a carry-forward current account, and its balance is derived (OA-D2)
+**Date:** 2026-09-09 · **Status:** Accepted (project-lead decision)
+**Decision:** An owner's position is a **current account** that carries forward between
+periods, and **the closing balance is derived from the movements — never stored.**
+**Why derived.** A stored balance is a second copy of a figure the movements already
+determine, and every hazard of one is the hazard of maintaining it: a correction that
+forgets to adjust it, a void that leaves it, a replay that applies twice, and a device that
+recomputes it differently from the server. That is D-157's argument for the revenue
+contribution projection, in the one place where getting it wrong is invisible — a wrong
+balance reconciles against itself perfectly.
+**Consequence for OA-1:** `owner_ledger_entries` holds movements and nothing aggregated.
+A structural guard asserts the owner layer computes **no** balance and **no** entitlement,
+because that is OA-3's and a balance computed in two places is a balance that will differ.
+
+## D-191 — An opening balance is an explicit movement, not a column (OA-D3)
+**Date:** 2026-09-09 · **Status:** Accepted (project-lead decision)
+**Decision:** Where an owner's account starts from a position that predates the system, it
+is recorded as an `opening_balance` **movement** carrying its own direction, date, actor
+and audit row — not as a field on the owner master.
+**Why.** A column would be a figure with no date, no reason and no author, sitting outside
+the ledger that every other figure lives in, and it would have to be excluded by hand from
+every aggregate. As a movement it is dated, audited, correctable by the ordinary path,
+voidable with a stated reason, and included by the same rule as everything else.
+**It is the one movement type that may be either a credit or a debit**, because an owner's
+opening position can be either, and the direction is therefore stated rather than implied
+by the type. **No opening balance is seeded**, for D-189's reason.
+
+## D-192 — `settlement_paid` is a V1 movement type (OA-D4)
+**Date:** 2026-09-09 · **Status:** Accepted (project-lead decision)
+**Decision:** Paying an owner their settled share is a first-class movement type in V1,
+alongside withdrawal, NC consumption, opening balance and manual adjustment.
+**Why it is not "just a withdrawal".** A withdrawal is money an owner took during a period;
+a settlement payment is the discharge of a computed entitlement. Collapsing them would make
+*"how much has been settled against last year?"* unanswerable from the ledger, and the
+question is the whole point of a settlement statement.
+**OA-1 records the type and computes no entitlement.** What a settlement *is* — the
+calculation, the statement, its states — is OA-3, and OA-1 deliberately builds none of it.
+
+## D-193 — A settlement statement is Draft or Finalized, and "needs recalculation" is derived (OA-D5)
+**Date:** 2026-09-09 · **Status:** **Accepted (project-lead decision). NOT implemented in
+OA-1.**
+**Decision:** A settlement statement carries two stored states — **Draft** and
+**Finalized** — and a third condition, **Needs Recalculation**, which is **derived** by
+comparing the statement against the facts it was computed from rather than stored as a flag.
+**Why derived.** A stored "stale" flag has to be set by every path that could invalidate a
+statement, and the path that forgets is the one that matters. Derived, a correction to a
+movement inside a finalized period makes the statement *say* it needs recalculating without
+anything having to remember — which is D-157's argument again, and D-188's.
+**Recorded now, built in OA-3.** OA-1 creates no statement table, no state machine and no
+recalculation. It is recorded here so OA-3 does not have to re-ask.
+
+## D-194 — Non-chargeable consumption is valued at the full printed bill (OA-D6)
+**Date:** 2026-09-09 · **Status:** Accepted (project-lead decision)
+**Decision:** When an owner or a linked family member consumes without paying, the movement
+is recorded at the **full printed / menu bill value** — what a paying guest would have been
+charged — and not at cost, not at a discount, and not at a negotiated internal rate.
+**Why.** The figure is a distribution to an owner, and its size is what the business gave
+up. Cost would understate it by the margin, which is exactly the amount the other owner is
+entitled to see; and a rate nobody has defined would be a business fact the software
+invented (`CLAUDE.md`'s rule).
+**It is a debit against the owner's account and is not revenue.** It never enters
+`revenue_period_contributions`, and it cannot: the Owner Ledger writes to
+`owner_ledger_entries` and to nothing else, there is no path from one to the other, and a
+host test compares the revenue and expense contribution totals before and after.
+**Statutory GST treatment of a non-chargeable supply is NOT settled by this feature** and
+is not claimed to be.
+
+## D-195 — Family consumption is attributed to the linked owner, and the server derives the link (OA-D7)
+**Date:** 2026-09-09 · **Status:** Accepted (project-lead decision)
+**Decision:** A family member is linked to exactly one owner, with effective dates. Their
+non-chargeable consumption is attributed to that owner. **Family members receive no profit
+share** — they are consumers, not owners — and a family member may be recorded as the
+person who *collected* a withdrawal while the debit stays with the owner.
+**The server derives the owner from the link and refuses a client that disagrees.** A
+caller may declare an owner; the declaration is **compared, never used**, and a mismatch is
+refused rather than silently re-attributed. That is D-114's contract applied to attribution
+instead of to tax, and for the same reason: two defensible answers exist and neither may
+overwrite the other silently.
+**The link is immutable.** Re-pointing a family member at a different owner would restate
+every movement already attributed through them, so the row is the identity: ending a link
+and creating a new one is the supported act, and a trigger refuses the reassignment. Each
+movement also snapshots the owner the server resolved, so history explains itself without
+consulting a mapping that may since have changed (D-080's discipline).
+
+## D-196 — Both owners see both owners' settlement data in full (OA-D8)
+**Date:** 2026-09-09 · **Status:** Accepted (project-lead decision)
+**Decision:** Owner visibility is **symmetric and complete**: each owner sees the other's
+withdrawals, non-chargeable consumption, opening balance, adjustments and settlement
+position, in full.
+**Why it is stated rather than assumed.** The opposite arrangement is the one software
+usually implements — each principal sees their own — and it would be wrong here. Two
+partners settling a shared profit have to be able to check the same figures; a per-owner
+view would make the arithmetic unauditable by the person it most affects.
+**It is therefore all-or-nothing, and never sliced by property.** An owner's current
+account spans both business units, so a per-property slice is not a narrower view but a
+misleading one — it shows part of a position with nothing saying so. The read policies are
+asserted to carry no `business_unit_id` predicate at all (see D-200 for the defect that
+assertion found).
+**Staff see none of it.** Manager and Data Entry hold no owner-account capability in V1, so
+an operator who records a bill learns nothing about an owner's finances.
+
+## D-197 — The settlement report requires `reports.view` **and** `owner_settlement.view` (OA-D9)
+**Date:** 2026-09-09 · **Status:** **Accepted (project-lead decision). NOT implemented in
+OA-1** — no settlement report exists yet.
+**Decision:** Reading an Owner Profit & Settlement Statement requires the intersection of
+`reports.view` and `owner_settlement.view`. Holding the reporting capability is not enough,
+because owner settlement is a category of information a finance reader may legitimately be
+excluded from; and holding the owner capability is not enough, because the statement is a
+report and reporting authority is its own privilege (D-164).
+**OA-1 introduces neither capability and no evaluator for them.** `owner_settlement.view`
+does not exist in the catalogue, deliberately: a capability granted and evaluated by nothing
+is the family D-068, D-071, D-077, D-116 and D-139 record, and OA-3 creates it together
+with the boundary that reads it.
+
+## D-198 — The report is called the Owner Profit & Settlement Statement (OA-D10)
+**Date:** 2026-09-09 · **Status:** Accepted (project-lead decision) — naming only
+**Decision:** The canonical name is **"Owner Profit & Settlement Statement"**. Not "Owner
+P&L": the management P&L is a defined artefact with a defined meaning (spec §10), and a
+second document sharing its name would make *"what does the P&L say?"* ambiguous in exactly
+the conversation where it must not be. Owner settlement consumes `PnlResult`; it is not a
+second P&L.
+
+## D-199 — Owner-account capabilities use underscored first segments (OA-D11)
+**Date:** 2026-09-09 · **Status:** Accepted (project-lead decision) — and it prevents a
+deploy failure that would have read like a security finding
+**Decision:** The namespaces are **`owner_masters.*`** and **`owner_ledger.*`**. **No
+capability literal may begin with a bare `owner.`**
+**Why, and it is mechanical rather than aesthetic.** Three shipped reporting migrations
+assert that no boundary body matches `\mowner\M` — a guard against a **role-name** branch,
+because `owner` is an RBAC role code (D-057) and financial logic must never test one
+(spec §13.1). Postgres word characters do not include `_`, so `owner_ledger.view` does not
+match while `owner.ledger.view` would. A capability named the natural way would therefore
+have failed a deploy-time invariant with a message about role-name branching, three
+migrations away from the file being edited.
+Eight capabilities are created: `owner_masters.view`, `owner_masters.manage`,
+`owner_ledger.view`, `owner_ledger.create.nc`, `owner_ledger.create.withdrawal`,
+`owner_ledger.edit.all`, `owner_ledger.void`, `owner_ledger.adjust`. The Accountant bundle
+receives six — not `owner_masters.manage`, which is master administration, and not
+`owner_ledger.adjust`, because a manual adjustment moves an owner's position without a
+business event behind it. A host guard asserts the rule over the capability enum, so the
+next capability added to this domain is covered by it.
+
+---
+
+# Phase 5 OA-1 — what building it found
+
+## D-200 — A capability granted scoped can never satisfy an unscoped gate
+**Date:** 2026-09-09 · **Status:** Accepted — **the third instance of D-110 and D-116**
+
+**The defect.** The two sensitive reads — `ownership_shares` and `owner_ledger_entries` —
+were gated on `public.has_unscoped_capability('owner_ledger.view')`, reasoning that an
+owner's current account spans both properties and a per-property slice is misleading rather
+than narrower (D-196). **The reasoning is right and the mechanism was wrong.** D-025 forces
+every non-Owner grant to name a business unit, and a database trigger enforces it, so an
+unscoped requirement is satisfiable by the Owner and by nobody else, for ever.
+
+Measured on this project: `owner` unscoped ×1, `accountant` scoped ×1, `manager` scoped ×4,
+`data_entry` scoped ×1. So the Accountant — granted `owner_ledger.view` deliberately, and
+able to record, correct and void a movement — read **nothing**. The live authorization
+matrix caught it: a withdrawal recorded as the Accountant came back to an empty ledger.
+
+**D-110 found a policy requiring a capability no role held; D-116 found three read rules
+gated on `revenue.view.all`, which does not exist, so the only sanctioned way to read
+revenue returned nothing to anybody including the Owner. This is the same shape a third
+time**, and it is invisible to a test that only checks a scoped user sees *less* than the
+Owner, because both see zero.
+
+**The fix is `has_capability_anywhere`, and the principle survives intact.** The rule was
+never *"the reader holds an organisation-wide grant"* — it was *"either the whole ledger is
+visible or none of it is"*. The capability is not used to filter rows, so a holder sees
+every movement of every owner or no row at all. What changes is that the business unit named
+on the grant does not narrow this one capability, which is **stated in the migration** rather
+than left to be discovered from a helper name.
+
+**The class is closed by assertion rather than by care**, in both places it can appear: no
+owner-account *policy* may require an unscoped capability no holder can satisfy, and — added
+with D-201's corrective — no owner-account *RPC* may either. Both are searches over the
+catalogue, so the next policy or function added to this domain is covered.
+
+## D-201 — An ownership timeline moves forward only, and a refusal is a sentence
+**Date:** 2026-09-10 · **Status:** Accepted — **found by the live suite's second run**
+
+`owner_share_set` closed an open share that started *earlier* and inserted the new one, and
+that was the whole of what it did about the timeline. Asked to configure a share at a date
+at or before one already configured, it fell through to the exclusion constraint and handed
+the caller `23P01`, a table name, a constraint name and a raw daterange — which spec §13.1
+has forbidden in a refusal since Phase 2, and which the same function already avoids for the
+mid-period rule by refusing with a sentence "rather than only by the CHECK".
+
+**It was invisible to a suite that runs once.** The first run configured 5000 + 5000 from
+2026-04-01 and moved Owner A to 6000 from 2026-07-01, green throughout. The second met its
+own residue — permanent residue, because no client role holds DELETE on `ownership_shares`
+(D-006) and OA-1 deliberately builds no share-removal RPC, since withdrawing an ownership
+ratio is a governance act nobody has specified.
+
+**That is D-076 exactly**, in a new shape: a fixture *date* must survive everything the test
+does to the fixture, and in this project financial fixtures cannot be removed. The live
+group now computes its base month from where the timeline currently stands and walks it
+forward, and it was run **three times in succession, green each time**, because a phase that
+can only pass once is not a regression test.
+
+**The rule the refusal states** is §37's, which the suite already asserted from the other
+side: *a later change does not restate a historical ratio.* Rewriting a historical ownership
+ratio would silently restate every settlement computed under it. It is refused as `KM031`
+under its own detail code, `ownership_change_backdated`, and the sentence names the next
+month that would work.
+
+**On `KM031` carrying two detail codes**, because it looks like a collision and is not: the
+**errcode is the class and the detail code is the reason**. `KM001` has carried
+`missing_capability` and `not_permitted` since Phase 2, `KM002` carries three names, `KM015`
+carries three, and `ServerRefusal._kinds` maps on the **detail code**, never on the errcode.
+Checked against the live catalogue rather than assumed, which is what stopped a "corrective"
+that would have been a change to a working convention.
+
+**And the guard for it had to be narrowed before it was trusted.** Its first version
+asserted the migration body contains `ownership_change_backdated` — which the migration's
+own deploy-time assertion satisfies, so a body whose refusal had been renamed still passed.
+It now requires the **refusal site**, `app.refuse('KM031', 'ownership_change_backdated'`.
+That is D-139's failure for the third time in this project's own machinery (D-139, D-187,
+this), found the way the others were: by expecting red and getting green.
+
+## D-202 — SQLite `trim()` strips spaces only, and a tab is not a reason
+**Date:** 2026-09-09 · **Status:** Accepted — **the local mirror of D-138 and D-142**
+
+The local `owner_ledger_entries` CHECK requiring a manual adjustment to state a reason was
+written `length(trim(coalesce(reason, ''))) > 0`. **SQLite's one-argument `trim()` removes
+spaces and nothing else**, so a single tab satisfied it — the identical defect D-138 found
+in `btrim(text)` on the server and D-142 closed across all five mandatory financial reasons.
+
+Fixed here with the explicit whitespace set, `trim(x, char(32,9,10,13))`, on the adjustment
+reason and on the void reason, and caught by a test written for the case rather than by
+review.
+
+**Recorded and deliberately not fixed: the shipped local revenue and expense void CHECKs
+carry the same weakness.** They are outside OA-1's reviewed scope, and widening a scope
+because the fix would be small is how a scope stops being reviewable (D-127). The server
+boundary refuses a whitespace reason before either constraint is reached, so the exposure is
+a local CHECK that is weaker than the rule it backs rather than a reachable path.
+
+## D-203 — What "byte-for-byte" has actually meant, stated once
+**Date:** 2026-09-10 · **Status:** Accepted — a correction to this repository's own ledger
+wording
+
+`LEDGER.md` has said since Phase 3 that each migration is *"verified byte-for-byte against
+`supabase_migrations.schema_migrations.statements`"*. Measured rather than repeated, that has
+**never been literally true of any migration in this repository**:
+
+* Supabase stores the submitted text **without its trailing newline**, so every committed
+  file is one byte longer than the statement accounting for it;
+* an OA-1 file's header names its own ledger version, and the version is assigned by the
+  server *at apply time* — so a file naming it cannot be the text that was submitted. Those
+  headers were corrected after the versions came back, and one file was additionally renamed
+  when the assigned version turned out not to be the predicted one (`20260909120000` →
+  `20260909112045`), which is D-102's finding happening again.
+
+**What is true is checked mechanically and is the property that matters**: for all eight OA-1
+versions, the committed file and the applied statement are identical in **every executable
+line**. Comparing both with blank lines and `--` comment lines removed and each remaining
+line trimmed gives an exact match — line count and digest — for each of the eight. The
+divergences are confined to comments, blank lines, indentation and that header line.
+
+Two files diverged by more than the header and were checked line by line before this was
+written: one by a reworded sentence, one by four expanded comment paragraphs. **No
+executable SQL differs anywhere**, which is what D-056 and A0 exist to guarantee.
+
+The wording in earlier ledger sections is not rewritten — this log and that ledger are
+append-only records of what was claimed when — and `LEDGER.md` now carries the accurate
+statement beside the OA-1 entries.
