@@ -279,6 +279,45 @@ void main() {
   });
 
   // ═══════════════════════════════════════════════════════════════════════════
+  group('§19, §45 · the sync exists, and nothing runs it automatically', () {
+    test(
+      'the real gateway satisfies the interface the synchroniser depends on',
+      () {
+        // The D-077 shape, checked at the type level: `OwnerLedgerGateway` — the class
+        // production builds — implements `OwnerSnapshotSource`, so the synchroniser cannot
+        // be wired to something that only looks like it.
+        final gateway = File(
+          'lib/data/remote/owner_ledger_gateway.dart',
+        ).readAsStringSync();
+        expect(gateway, contains('implements OwnerSnapshotSource'));
+        expect(gateway, contains("rpc<dynamic>('owner_ledger_snapshot')"));
+      },
+    );
+
+    test('no automatic trigger pulls owner data, and that is deliberate', () {
+      // **Not an oversight.** `ReferenceSync` runs for every signed-in person, and a
+      // principal with no owner capability legitimately reads zero owner rows — so
+      // triggering the pull there would write a coverage row certifying *complete*
+      // canonical owner history to somebody entitled to see none of it. A claim that
+      // means "complete for a reader who may read nothing" is worse than no claim.
+      //
+      // The trigger therefore belongs with the surface that holds the capability, which
+      // is OA-3's. OA-2 ships the mechanism and states the gap rather than inventing a
+      // caller for it.
+      final syncEngine = File(
+        'lib/data/sync/reference_sync.dart',
+      ).readAsStringSync();
+      expect(
+        syncEngine,
+        isNot(contains('OwnerSettlementSync')),
+        reason:
+            'if this ever changes, the coverage row must first learn to say whether the '
+            'reader was entitled to the rows it certifies',
+      );
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
   test('§31 · the reference oracle is independent and does not ship', () {
     // Comments stripped first. The oracle's own header says it calls none of these, and
     // the first version of this guard read that sentence as the violation — D-139's

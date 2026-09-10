@@ -26,6 +26,10 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:krishna_mis/data/local/app_database.dart';
 import 'package:krishna_mis/data/repositories/owner_ledger_repository.dart';
+import 'package:krishna_mis/data/remote/owner_ledger_gateway.dart';
+import 'package:krishna_mis/data/repositories/owner_settlement_repository.dart';
+import 'package:krishna_mis/data/sync/owner_settlement_sync.dart';
+import 'package:krishna_mis/domain/owner_accounts/owner.dart';
 import 'package:krishna_mis/domain/owner_accounts/owner_ledger.dart';
 import 'package:krishna_mis/domain/value_objects/business_date.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -274,5 +278,109 @@ void main() {
             'in the owner-accounts domain',
       );
     }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  //
+  // **And the gap, closed.** Everything above describes an unsynchronised Device B and
+  // stays true of one; this runs the OA-2 synchroniser on that same device and asks the
+  // same questions again.
+  group('§19 · the canonical owner pull closes it', () {
+    late OwnerSettlementRepository settlement;
+
+    setUpAll(() async {
+      settlement = OwnerSettlementRepository(
+        deviceBLocal,
+        ownerUserId: deviceB.auth.currentUser!.id,
+      );
+    });
+
+    test('one pull, and Device B holds what Device A recorded', () async {
+      final sync = OwnerSettlementSync(
+        database: deviceBLocal,
+        gateway: OwnerLedgerGateway(deviceB),
+        ownerUserId: deviceB.auth.currentUser!.id,
+      );
+
+      final result = await sync.synchronise();
+      expect(
+        result,
+        isA<OwnerSettlementSynchronised>(),
+        reason: 'the run reports what it established: $result',
+      );
+
+      final established = result as OwnerSettlementSynchronised;
+      expect(established.movements, greaterThan(0));
+      expect(
+        established.snapshotId,
+        isNotEmpty,
+        reason: 'the server issued the snapshot identity, not the device',
+      );
+
+      final movement = await settlement.canonicalMovements(
+        through: BusinessDate.of(2030, 12, 31),
+      );
+      final mine = movement.where((m) => m.id == created.single.id).toList();
+      expect(
+        mine,
+        hasLength(1),
+        reason:
+            'the movement Device A recorded and Device B never opened is now here, '
+            'which is the whole of what the audit found missing',
+      );
+      expect(mine.single.amount.paise, 1234500);
+      expect(mine.single.isCanonical, isTrue);
+    });
+
+    test('and the ownership vector it must allocate by', () async {
+      final shares = await settlement.ownershipShares();
+      expect(shares.shares, isNotEmpty);
+      expect(await settlement.activeOwnerIds(), isNotEmpty);
+
+      // The live configuration is the approved V1 pair, resolved through the same call a
+      // settlement makes (D-204).
+      final open = shares.shares.where((s) => s.effectiveTo == null).toList();
+      expect(open, hasLength(v1OwnerCount));
+      expect(
+        open.map((s) => s.shareBasisPoints),
+        everyElement(v1ShareBasisPoints),
+      );
+    });
+
+    test(
+      'coverage is the server own evidence, and only the server can issue it',
+      () async {
+        final coverage = await settlement.coverage();
+        expect(coverage, isNotNull);
+        expect(coverage!.movementCount, greaterThan(0));
+        expect(
+          coverage.serverConfirmedAt.isAfter(DateTime.utc(2026)),
+          isTrue,
+          reason:
+              'the server transaction time, from the statement that returned the facts — '
+              'never a device clock reading (D-188)',
+        );
+      },
+    );
+
+    test('a second pull is idempotent: replaced, never appended', () async {
+      final before = (await settlement.canonicalMovements(
+        through: BusinessDate.of(2030, 12, 31),
+      )).length;
+
+      await OwnerSettlementSync(
+        database: deviceBLocal,
+        gateway: OwnerLedgerGateway(deviceB),
+        ownerUserId: deviceB.auth.currentUser!.id,
+      ).synchronise();
+
+      expect(
+        (await settlement.canonicalMovements(
+          through: BusinessDate.of(2030, 12, 31),
+        )).length,
+        before,
+        reason: 'a full replace cannot double-count what it re-reads',
+      );
+    });
   });
 }

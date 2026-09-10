@@ -196,16 +196,37 @@ void main() {
 
   // ═══════════════════════════════════════════════════════════════════════════
   group('OA-1 stops where OA-3 begins (§37, §42)', () {
-    test('nothing in the owner layer computes a balance or an entitlement', () {
-      // Owner Settlement needs a PnlResult and the shares together, and that calculator is
-      // OA-3's. A repository or a domain file that quietly produced a closing balance
-      // would be the second definition of one — which is what OA-D2 exists to prevent.
+    test('nothing in the LEDGER layer computes a balance or an entitlement', () {
+      // **The boundary this protects moved by instruction, and the rule did not.**
+      //
+      // When OA-1 wrote this, settlement arithmetic did not exist anywhere and the whole
+      // owner tree was covered. OA-2 created `domain/owner_accounts/settlement/` as the
+      // one sanctioned home for it, with its own guards — a purity scan, a no-P&L-formula
+      // scan and a no-stored-balance scan (`owner_settlement_guard_test.dart`).
+      //
+      // So the exclusion below is narrow and deliberate: **only** that directory, and
+      // everything else in the owner tree still may not produce a position. The ledger,
+      // the masters, the repository, the gateway and the transport are exactly as
+      // forbidden as they were, which is the half OA-D2 is really about — a second place
+      // that computes a balance is a second answer.
       final files = [
-        ..._dartFiles('lib/domain/owner_accounts'),
+        ..._dartFiles('lib/domain/owner_accounts').where(
+          (f) => !f.path
+              .replaceAll('\\', '/')
+              .contains('owner_accounts/settlement/'),
+        ),
         File('lib/data/repositories/owner_ledger_repository.dart'),
         File('lib/data/remote/owner_ledger_gateway.dart'),
         File('lib/data/sync/owner_ledger_mutation_endpoint.dart'),
       ];
+
+      expect(
+        files.length,
+        greaterThanOrEqualTo(6),
+        reason:
+            'a scan that excluded everything would pass perfectly. The ledger files are '
+            'still being checked',
+      );
 
       for (final file in files) {
         final source = _code(file.readAsStringSync());
@@ -221,8 +242,9 @@ void main() {
             source,
             isNot(contains(forbidden)),
             reason:
-                '${file.path} names $forbidden — settlement arithmetic is OA-3, and '
-                'a second place that computes it is a second answer',
+                '${file.path} names $forbidden — settlement arithmetic lives in '
+                'domain/owner_accounts/settlement/ and nowhere else, and a second place '
+                'that computes it is a second answer (OA-D2, D-190)',
           );
         }
       }
