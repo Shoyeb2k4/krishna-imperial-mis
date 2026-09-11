@@ -364,23 +364,28 @@ void main() {
     );
 
     test('a second pull is idempotent: replaced, never appended', () async {
-      final before = (await settlement.canonicalMovements(
-        through: BusinessDate.of(2030, 12, 31),
-      )).length;
-
       await OwnerSettlementSync(
         database: deviceBLocal,
         gateway: OwnerLedgerGateway(deviceB),
         ownerUserId: deviceB.auth.currentUser!.id,
       ).synchronise();
 
-      expect(
-        (await settlement.canonicalMovements(
+      // The property, not a count compared across two live reads: another suite writing
+      // the same ledger between the two pulls legitimately changes the count, and did
+      // (OA-3, run beside the OA-1 suite). What a full replace must never do is hold one
+      // movement twice.
+      final ids = [
+        for (final m in await settlement.canonicalMovements(
           through: BusinessDate.of(2030, 12, 31),
-        )).length,
-        before,
+        ))
+          m.id,
+      ];
+      expect(
+        ids.toSet(),
+        hasLength(ids.length),
         reason: 'a full replace cannot double-count what it re-reads',
       );
+      expect(ids.where((id) => id == created.single.id), hasLength(1));
     });
   });
 }
