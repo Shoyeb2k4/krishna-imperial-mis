@@ -24,6 +24,7 @@ Future<void> main() async {
           expensePullProvider.overrideWithValue(boot.expensePull),
           revenueGatewayProvider.overrideWithValue(boot.revenueGateway),
           reportingGatewayProvider.overrideWithValue(boot.reportingGateway),
+          ownerLedgerGatewayProvider.overrideWithValue(boot.ownerLedgerGateway),
           attachmentUploadWorkerProvider.overrideWithValue(
             boot.attachmentUploads,
           ),

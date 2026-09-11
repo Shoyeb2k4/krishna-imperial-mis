@@ -470,6 +470,9 @@ void main() {
           // against `main()`'s rather than trusting either.
           revenueGatewayProvider.overrideWithValue(boot.revenueGateway),
           reportingGatewayProvider.overrideWithValue(boot.reportingGateway),
+          // OA-3: the settlement surface's owner pull. Without it the acceptance would
+          // show "owner history not downloaded" for ever while the shipped build pulls it.
+          ownerLedgerGatewayProvider.overrideWithValue(boot.ownerLedgerGateway),
           attachmentUploadWorkerProvider.overrideWithValue(
             boot.attachmentUploads,
           ),

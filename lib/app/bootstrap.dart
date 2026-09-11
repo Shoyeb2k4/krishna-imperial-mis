@@ -25,6 +25,7 @@ import 'package:krishna_mis/data/remote/authority_gateway.dart';
 import 'package:krishna_mis/data/remote/master_gateway.dart';
 import 'package:krishna_mis/data/remote/vendor_tax_period_gateways.dart';
 import 'package:krishna_mis/data/remote/expense_gateway.dart';
+import 'package:krishna_mis/data/remote/owner_ledger_gateway.dart';
 import 'package:krishna_mis/data/remote/reporting_gateway.dart';
 import 'package:krishna_mis/data/remote/revenue_gateway.dart';
 import 'package:krishna_mis/data/repositories/expense_repository.dart';
@@ -72,6 +73,7 @@ class BootstrapResult {
     required this.expensePull,
     required this.revenueGateway,
     required this.reportingGateway,
+    required this.ownerLedgerGateway,
     required this.attachmentUploads,
   });
 
@@ -114,6 +116,11 @@ class BootstrapResult {
   /// reconcilers gives: a production path that "will be wired later" is a production path
   /// that is not (D-077).
   final ReportingGateway? reportingGateway;
+
+  /// The owner-accounts boundary, for the settlement surface's canonical owner pull
+  /// (Phase 5 OA-3). Null with no backend. Constructed here beside every other gateway,
+  /// for D-077's reason: a production path that "will be wired later" is one that is not.
+  final OwnerLedgerGateway? ownerLedgerGateway;
 
   /// Uploads bills, out of band from the financial records they belong to (D-073).
   ///
@@ -183,6 +190,7 @@ Future<BootstrapResult> bootstrap({http.Client? transport}) async {
   ExpensePull? expensePull;
   RevenueGateway? gatewayForRevenue;
   ReportingGateway? gatewayForReporting;
+  OwnerLedgerGateway? gatewayForOwners;
   AttachmentUploadWorker? attachmentUploads;
   if (config.hasBackend) {
     await Supabase.initialize(
@@ -201,6 +209,7 @@ Future<BootstrapResult> bootstrap({http.Client? transport}) async {
     final revenueGateway = RevenueGateway(client);
     gatewayForRevenue = revenueGateway;
     gatewayForReporting = ReportingGateway(client);
+    gatewayForOwners = OwnerLedgerGateway(client);
     mutationEndpoint = RoutingMutationEndpoint(
       masters: MasterMutationEndpoint(
         masters: masterGateway,
@@ -261,6 +270,7 @@ Future<BootstrapResult> bootstrap({http.Client? transport}) async {
     expensePull: expensePull,
     revenueGateway: gatewayForRevenue,
     reportingGateway: gatewayForReporting,
+    ownerLedgerGateway: gatewayForOwners,
     attachmentUploads: attachmentUploads,
     recoveredInFlightEntries: recovered,
     session: session,

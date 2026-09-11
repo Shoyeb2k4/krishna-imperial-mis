@@ -28,7 +28,12 @@ import 'package:krishna_mis/domain/auth/authorizer.dart';
 import 'package:krishna_mis/app/session/session_controller.dart';
 import 'package:krishna_mis/domain/auth/capability.dart';
 import 'package:krishna_mis/domain/auth/session_state.dart';
+import 'package:krishna_mis/data/remote/owner_ledger_gateway.dart';
 import 'package:krishna_mis/data/remote/reporting_gateway.dart';
+import 'package:krishna_mis/data/repositories/owner_settlement_preview.dart';
+import 'package:krishna_mis/data/repositories/owner_settlement_repository.dart';
+import 'package:krishna_mis/data/sync/owner_settlement_refresh.dart';
+import 'package:krishna_mis/data/sync/owner_settlement_sync.dart';
 import 'package:krishna_mis/data/reporting/cached_reporting_source.dart';
 import 'package:krishna_mis/data/reporting/local_reporting_engine.dart';
 import 'package:krishna_mis/data/repositories/reporting_cache.dart';
@@ -304,3 +309,51 @@ final localReportingEngineProvider = FutureProvider<LocalReportingEngine>(
     await ref.watch(localReportingSourceProvider.future),
   ),
 );
+
+// ── Owner settlement (Phase 5 OA-3) ─────────────────────────────────────────
+
+/// The owner-accounts half of the remote boundary. Null with no backend.
+///
+/// Overridden in `main()` from the same Supabase client every other gateway uses, and a
+/// test asserts that — because D-077 is what happens when a null default is left standing
+/// and every test supplies its own replacement.
+final ownerLedgerGatewayProvider = Provider<OwnerLedgerGateway?>((ref) => null);
+
+/// The owner-keyed canonical cache, **for the signed-in person**.
+///
+/// Rebuilt on every session change. The repository reads only rows carrying this person's
+/// id, so a user switch can never hand the previous person's owners, ownership ratio or
+/// start date to the next one (D-074, D-208). Before sign-in it names the anonymous
+/// principal, who owns no rows by construction.
+final ownerSettlementRepositoryProvider = Provider<OwnerSettlementRepository>(
+  (ref) => OwnerSettlementRepository(
+    ref.watch(databaseProvider),
+    ownerUserId: ref.watch(sessionProvider).principal.userId,
+  ),
+);
+
+/// Starts the two pulls a settlement preview needs. Null offline, with no session, or for
+/// a reader who may not see a settlement at all — there is no reason to fetch the owners'
+/// private position for somebody who is not permitted to look at it (OA-3).
+final ownerSettlementRefresherProvider = Provider<OwnerSettlementRefresher?>((
+  ref,
+) {
+  final gateway = ref.watch(ownerLedgerGatewayProvider);
+  final reportingSync = ref.watch(reportingSyncProvider);
+  final session = ref.watch(sessionProvider);
+  if (gateway == null || reportingSync == null || session is! SessionReady) {
+    return null;
+  }
+  if (!OwnerSettlementPreviewService.mayReadSettlement(session.principal)) {
+    return null;
+  }
+  return OwnerSettlementRefresher(
+    ownerSync: OwnerSettlementSync(
+      database: ref.watch(databaseProvider),
+      gateway: gateway,
+      ownerUserId: session.authority.userId,
+    ),
+    reportingSync: reportingSync,
+    repository: ref.watch(ownerSettlementRepositoryProvider),
+  );
+});
