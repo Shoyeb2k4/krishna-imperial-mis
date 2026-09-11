@@ -116,6 +116,19 @@ enum Capability {
   /// say something convenient.
   ownerLedgerAdjust('owner_ledger.adjust'),
 
+  /// Read the Owner Profit & Settlement Statement preview (Phase 5 OA-3, D-197).
+  ///
+  /// **Owner bundle only, in V1.** The settlement allocates the consolidated Operating
+  /// Profit of both properties, so a unit-scoped reader must never receive a partial one —
+  /// and under D-025 only the Owner role holds unscoped grants. The Accountant, the
+  /// Manager and Data Entry hold nothing here, by the project lead's ruling.
+  ///
+  /// It is **not** authority over the underlying financial data, and it grants none:
+  /// `owner_ledger.view` still decides who reads ledger rows, and the P&L capabilities
+  /// still decide who reads Operating Profit. This decides who may be shown a settlement,
+  /// and the settlement transport on the server refuses anybody without it.
+  ownerSettlementView('owner_settlement.view'),
+
   // ── Reporting ─────────────────────────────────────────────────────────────
   reportsView('reports.view'),
   reportsExport('reports.export'),

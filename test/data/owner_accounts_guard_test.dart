@@ -79,7 +79,12 @@ void main() {
       }
     });
 
-    test('the owner-account capabilities use the two agreed namespaces', () {
+    test('the owner-account capabilities use the three agreed namespaces', () {
+      // OA-1 agreed two. The third, `owner_settlement`, is the decision this test said a
+      // third namespace would have to be: D-197 named it, and the project lead's OA-3
+      // ruling created it. It admits exactly one capability — a second one under that
+      // prefix (a finalize, a reopen) is the later Finalized Statement slice's decision,
+      // and this fails until somebody takes it deliberately.
       final ownerCapabilities = Capability.values
           .where((c) => c.code.contains('owner'))
           .map((c) => c.code)
@@ -88,11 +93,37 @@ void main() {
       expect(ownerCapabilities, isNotEmpty);
       for (final code in ownerCapabilities) {
         expect(
-          code.startsWith('owner_ledger.') || code.startsWith('owner_masters.'),
+          code.startsWith('owner_ledger.') ||
+              code.startsWith('owner_masters.') ||
+              code == 'owner_settlement.view',
           isTrue,
           reason:
-              '$code is outside the reviewed namespaces; a third one is a decision, '
+              '$code is outside the reviewed namespaces; a new one is a decision, '
               'not a naming choice',
+        );
+      }
+      expect(
+        ownerCapabilities.where((c) => c.startsWith('owner_settlement.')),
+        ['owner_settlement.view'],
+        reason:
+            'OA-3 is preview only: no finalize, reopen, lock or approval capability '
+            'exists until the Finalized Statement slice defines one',
+      );
+    });
+
+    test('owner_settlement.view belongs to the Owner bundle and no other (OA-3 Q2)', () {
+      expect(RoleTemplates.owner, contains(Capability.ownerSettlementView));
+      for (final bundle in [
+        RoleTemplates.accountant,
+        RoleTemplates.manager,
+        RoleTemplates.dataEntry,
+      ]) {
+        expect(
+          bundle,
+          isNot(contains(Capability.ownerSettlementView)),
+          reason:
+              'the settlement is organisation-wide; a scoped reader must never '
+              'receive a partial one, and V1 grants it to the Owner bundle only',
         );
       }
     });

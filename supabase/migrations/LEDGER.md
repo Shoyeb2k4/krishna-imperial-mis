@@ -345,6 +345,37 @@ that first defined the policy rather than the one that last replaced it — D-17
 
 Executable lines match exactly: 134 lines `79fe63e3…`, and 167 lines `f2c12219…`.
 
+## Phase 5 OA-3 - the settlement permission, the start date, and a closed transport
+
+| Ledger version | Ledger name | Committed file |
+|---|---|---|
+| 20260911130948 | `owner_settlement_view_capability` | `20260911130948_owner_settlement_view_capability.sql` |
+| 20260911131042 | `owner_settlement_start_date` | `20260911131042_owner_settlement_start_date.sql` |
+| 20260911131130 | `owner_ledger_snapshot_requires_settlement_view` | `20260911131130_owner_ledger_snapshot_requires_settlement_view.sql` |
+| 20260911131228 | `api_surface_invariant_owner_settlement` | `20260911131228_api_surface_invariant_owner_settlement.sql` |
+
+`owner_settlement_view_capability` creates the capability D-197 reserved, granted to the
+Owner bundle only by the project lead's OA-3 ruling, with a deploy assertion that no other
+bundle holds it.
+
+`owner_settlement_start_date` adds the one server setting from which 50:50 ownership and
+owner settlement begin (OA-3 Q1): one row per organisation, first of a month, **no row
+seeded** because the production date is outstanding, written only by
+`owner_settlement_start_set` under `owner_masters.manage`, audited, with explicit
+`base_row_version` concurrency.
+
+`owner_ledger_snapshot_requires_settlement_view` closes a gap **proven RED first**: signed in
+as the Accountant — who holds `owner_ledger.view` and by ruling has no settlement access —
+the OA-2 transport returned 159 movements, 3 owners, 34 ownership-share rows and 2 family
+links. It now returns `settlement_authorised: false` and null datasets to that principal,
+while the Accountant still reads the same 159 ledger rows through RLS: the settlement
+transport is gated, the underlying ledger right is not.
+
+`api_surface_invariant_owner_settlement` restates the reviewed surface at 59.
+
+Executable lines match the applied statements exactly: 27 `820020c1`, 179 `7a9243c2`,
+123 `14bcd622`, 194 `e65bd1e2`.
+
 ### On "byte-for-byte", stated accurately rather than repeated
 
 Earlier sections of this ledger say each migration was "verified byte-for-byte against
@@ -463,4 +494,8 @@ The divergences are confined to comments, blank lines, indentation and that head
 20260910172611 owner_share_refusal_promises_no_unavailable_act
 20260910180630 owner_ledger_snapshot_transport
 20260910180836 api_surface_invariant_owner_snapshot
+20260911130948 owner_settlement_view_capability
+20260911131042 owner_settlement_start_date
+20260911131130 owner_ledger_snapshot_requires_settlement_view
+20260911131228 api_surface_invariant_owner_settlement
 ```
