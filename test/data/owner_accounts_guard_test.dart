@@ -111,22 +111,25 @@ void main() {
       );
     });
 
-    test('owner_settlement.view belongs to the Owner bundle and no other (OA-3 Q2)', () {
-      expect(RoleTemplates.owner, contains(Capability.ownerSettlementView));
-      for (final bundle in [
-        RoleTemplates.accountant,
-        RoleTemplates.manager,
-        RoleTemplates.dataEntry,
-      ]) {
-        expect(
-          bundle,
-          isNot(contains(Capability.ownerSettlementView)),
-          reason:
-              'the settlement is organisation-wide; a scoped reader must never '
-              'receive a partial one, and V1 grants it to the Owner bundle only',
-        );
-      }
-    });
+    test(
+      'owner_settlement.view belongs to the Owner bundle and no other (OA-3 Q2)',
+      () {
+        expect(RoleTemplates.owner, contains(Capability.ownerSettlementView));
+        for (final bundle in [
+          RoleTemplates.accountant,
+          RoleTemplates.manager,
+          RoleTemplates.dataEntry,
+        ]) {
+          expect(
+            bundle,
+            isNot(contains(Capability.ownerSettlementView)),
+            reason:
+                'the settlement is organisation-wide; a scoped reader must never '
+                'receive a partial one, and V1 grants it to the Owner bundle only',
+          );
+        }
+      },
+    );
 
     test(
       'the migrations agree, and none of them writes a dotted owner capability',

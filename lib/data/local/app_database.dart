@@ -110,7 +110,7 @@ class AppDatabase extends _$AppDatabase {
   /// Financial tables raise this number as they land, each with a migration step and a
   /// migration test (docs/RELEASE_CHECKLIST.md §C).
   @override
-  int get schemaVersion => 20;
+  int get schemaVersion => 21;
 
   /// Timestamps are stored as ISO-8601 **UTC text**, not as unix seconds.
   ///
@@ -422,6 +422,23 @@ class AppDatabase extends _$AppDatabase {
         await m.createTable(canonicalOwners);
         await m.createTable(ownerSettlementCoverage);
         await _createOwnerSettlementIndexes();
+      }
+      if (from >= 20 && from < 21) {
+        // Phase 5 OA-3 — the settlement start date, on the coverage row that certified it.
+        //
+        // **`from >= 20` is the D-144 guard.** The coverage table is created by the
+        // `from < 20` step from the *current* definition, which already carries this
+        // column, so a device arriving from v19 or earlier has it before this step is
+        // reached and adding it again would fail with `duplicate column`.
+        //
+        // Existing coverage rows get a null start date, which reads as "not configured"
+        // and makes a settlement refuse. That is the honest value: they were certified by
+        // a transport that did not carry the date, and a migration certifies nothing. The
+        // next synchronisation states it (D-108).
+        await m.addColumn(
+          ownerSettlementCoverage,
+          ownerSettlementCoverage.ownershipStartDate,
+        );
       }
     },
     beforeOpen: (details) async {

@@ -133,6 +133,17 @@ class OwnerSettlementCoverage extends Table {
   /// distinction D-106 and D-108 exist for.
   IntColumn get movementCount => integer()();
 
+  /// The date from which 50:50 ownership and owner settlement begin, as the **same**
+  /// snapshot stated it (OA-3 Q1). `YYYY-MM-DD`, always the first of a month.
+  ///
+  /// **Null means not configured**, and a settlement refuses on it — never "the start of
+  /// the financial year", never the tax configuration's date, never the earliest share.
+  /// The production date is outstanding and a device does not get to guess it (D-043).
+  ///
+  /// It lives on the coverage row rather than in a table of its own because it came from
+  /// the statement that certified the rest: one snapshot, one row (D-188).
+  TextColumn get ownershipStartDate => text().nullable()();
+
   /// Device clock, diagnostics only. Decides nothing.
   TextColumn get updatedAt => text()();
 

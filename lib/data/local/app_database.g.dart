@@ -25241,6 +25241,17 @@ class $OwnerSettlementCoverageTable extends OwnerSettlementCoverage
     type: DriftSqlType.int,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _ownershipStartDateMeta =
+      const VerificationMeta('ownershipStartDate');
+  @override
+  late final GeneratedColumn<String> ownershipStartDate =
+      GeneratedColumn<String>(
+        'ownership_start_date',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
   static const VerificationMeta _updatedAtMeta = const VerificationMeta(
     'updatedAt',
   );
@@ -25258,6 +25269,7 @@ class $OwnerSettlementCoverageTable extends OwnerSettlementCoverage
     snapshotId,
     serverConfirmedAt,
     movementCount,
+    ownershipStartDate,
     updatedAt,
   ];
   @override
@@ -25313,6 +25325,15 @@ class $OwnerSettlementCoverageTable extends OwnerSettlementCoverage
     } else if (isInserting) {
       context.missing(_movementCountMeta);
     }
+    if (data.containsKey('ownership_start_date')) {
+      context.handle(
+        _ownershipStartDateMeta,
+        ownershipStartDate.isAcceptableOrUnknown(
+          data['ownership_start_date']!,
+          _ownershipStartDateMeta,
+        ),
+      );
+    }
     if (data.containsKey('updated_at')) {
       context.handle(
         _updatedAtMeta,
@@ -25349,6 +25370,10 @@ class $OwnerSettlementCoverageTable extends OwnerSettlementCoverage
         DriftSqlType.int,
         data['${effectivePrefix}movement_count'],
       )!,
+      ownershipStartDate: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}ownership_start_date'],
+      ),
       updatedAt: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}updated_at'],
@@ -25379,6 +25404,17 @@ class OwnerSettlementCoverageRow extends DataClass
   /// distinction D-106 and D-108 exist for.
   final int movementCount;
 
+  /// The date from which 50:50 ownership and owner settlement begin, as the **same**
+  /// snapshot stated it (OA-3 Q1). `YYYY-MM-DD`, always the first of a month.
+  ///
+  /// **Null means not configured**, and a settlement refuses on it — never "the start of
+  /// the financial year", never the tax configuration's date, never the earliest share.
+  /// The production date is outstanding and a device does not get to guess it (D-043).
+  ///
+  /// It lives on the coverage row rather than in a table of its own because it came from
+  /// the statement that certified the rest: one snapshot, one row (D-188).
+  final String? ownershipStartDate;
+
   /// Device clock, diagnostics only. Decides nothing.
   final String updatedAt;
   const OwnerSettlementCoverageRow({
@@ -25386,6 +25422,7 @@ class OwnerSettlementCoverageRow extends DataClass
     required this.snapshotId,
     required this.serverConfirmedAt,
     required this.movementCount,
+    this.ownershipStartDate,
     required this.updatedAt,
   });
   @override
@@ -25395,6 +25432,9 @@ class OwnerSettlementCoverageRow extends DataClass
     map['snapshot_id'] = Variable<String>(snapshotId);
     map['server_confirmed_at'] = Variable<String>(serverConfirmedAt);
     map['movement_count'] = Variable<int>(movementCount);
+    if (!nullToAbsent || ownershipStartDate != null) {
+      map['ownership_start_date'] = Variable<String>(ownershipStartDate);
+    }
     map['updated_at'] = Variable<String>(updatedAt);
     return map;
   }
@@ -25405,6 +25445,9 @@ class OwnerSettlementCoverageRow extends DataClass
       snapshotId: Value(snapshotId),
       serverConfirmedAt: Value(serverConfirmedAt),
       movementCount: Value(movementCount),
+      ownershipStartDate: ownershipStartDate == null && nullToAbsent
+          ? const Value.absent()
+          : Value(ownershipStartDate),
       updatedAt: Value(updatedAt),
     );
   }
@@ -25419,6 +25462,9 @@ class OwnerSettlementCoverageRow extends DataClass
       snapshotId: serializer.fromJson<String>(json['snapshotId']),
       serverConfirmedAt: serializer.fromJson<String>(json['serverConfirmedAt']),
       movementCount: serializer.fromJson<int>(json['movementCount']),
+      ownershipStartDate: serializer.fromJson<String?>(
+        json['ownershipStartDate'],
+      ),
       updatedAt: serializer.fromJson<String>(json['updatedAt']),
     );
   }
@@ -25430,6 +25476,7 @@ class OwnerSettlementCoverageRow extends DataClass
       'snapshotId': serializer.toJson<String>(snapshotId),
       'serverConfirmedAt': serializer.toJson<String>(serverConfirmedAt),
       'movementCount': serializer.toJson<int>(movementCount),
+      'ownershipStartDate': serializer.toJson<String?>(ownershipStartDate),
       'updatedAt': serializer.toJson<String>(updatedAt),
     };
   }
@@ -25439,12 +25486,16 @@ class OwnerSettlementCoverageRow extends DataClass
     String? snapshotId,
     String? serverConfirmedAt,
     int? movementCount,
+    Value<String?> ownershipStartDate = const Value.absent(),
     String? updatedAt,
   }) => OwnerSettlementCoverageRow(
     ownerUserId: ownerUserId ?? this.ownerUserId,
     snapshotId: snapshotId ?? this.snapshotId,
     serverConfirmedAt: serverConfirmedAt ?? this.serverConfirmedAt,
     movementCount: movementCount ?? this.movementCount,
+    ownershipStartDate: ownershipStartDate.present
+        ? ownershipStartDate.value
+        : this.ownershipStartDate,
     updatedAt: updatedAt ?? this.updatedAt,
   );
   OwnerSettlementCoverageRow copyWithCompanion(
@@ -25463,6 +25514,9 @@ class OwnerSettlementCoverageRow extends DataClass
       movementCount: data.movementCount.present
           ? data.movementCount.value
           : this.movementCount,
+      ownershipStartDate: data.ownershipStartDate.present
+          ? data.ownershipStartDate.value
+          : this.ownershipStartDate,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
   }
@@ -25474,6 +25528,7 @@ class OwnerSettlementCoverageRow extends DataClass
           ..write('snapshotId: $snapshotId, ')
           ..write('serverConfirmedAt: $serverConfirmedAt, ')
           ..write('movementCount: $movementCount, ')
+          ..write('ownershipStartDate: $ownershipStartDate, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
         .toString();
@@ -25485,6 +25540,7 @@ class OwnerSettlementCoverageRow extends DataClass
     snapshotId,
     serverConfirmedAt,
     movementCount,
+    ownershipStartDate,
     updatedAt,
   );
   @override
@@ -25495,6 +25551,7 @@ class OwnerSettlementCoverageRow extends DataClass
           other.snapshotId == this.snapshotId &&
           other.serverConfirmedAt == this.serverConfirmedAt &&
           other.movementCount == this.movementCount &&
+          other.ownershipStartDate == this.ownershipStartDate &&
           other.updatedAt == this.updatedAt);
 }
 
@@ -25504,6 +25561,7 @@ class OwnerSettlementCoverageCompanion
   final Value<String> snapshotId;
   final Value<String> serverConfirmedAt;
   final Value<int> movementCount;
+  final Value<String?> ownershipStartDate;
   final Value<String> updatedAt;
   final Value<int> rowid;
   const OwnerSettlementCoverageCompanion({
@@ -25511,6 +25569,7 @@ class OwnerSettlementCoverageCompanion
     this.snapshotId = const Value.absent(),
     this.serverConfirmedAt = const Value.absent(),
     this.movementCount = const Value.absent(),
+    this.ownershipStartDate = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
@@ -25519,6 +25578,7 @@ class OwnerSettlementCoverageCompanion
     required String snapshotId,
     required String serverConfirmedAt,
     required int movementCount,
+    this.ownershipStartDate = const Value.absent(),
     required String updatedAt,
     this.rowid = const Value.absent(),
   }) : ownerUserId = Value(ownerUserId),
@@ -25531,6 +25591,7 @@ class OwnerSettlementCoverageCompanion
     Expression<String>? snapshotId,
     Expression<String>? serverConfirmedAt,
     Expression<int>? movementCount,
+    Expression<String>? ownershipStartDate,
     Expression<String>? updatedAt,
     Expression<int>? rowid,
   }) {
@@ -25539,6 +25600,8 @@ class OwnerSettlementCoverageCompanion
       if (snapshotId != null) 'snapshot_id': snapshotId,
       if (serverConfirmedAt != null) 'server_confirmed_at': serverConfirmedAt,
       if (movementCount != null) 'movement_count': movementCount,
+      if (ownershipStartDate != null)
+        'ownership_start_date': ownershipStartDate,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (rowid != null) 'rowid': rowid,
     });
@@ -25549,6 +25612,7 @@ class OwnerSettlementCoverageCompanion
     Value<String>? snapshotId,
     Value<String>? serverConfirmedAt,
     Value<int>? movementCount,
+    Value<String?>? ownershipStartDate,
     Value<String>? updatedAt,
     Value<int>? rowid,
   }) {
@@ -25557,6 +25621,7 @@ class OwnerSettlementCoverageCompanion
       snapshotId: snapshotId ?? this.snapshotId,
       serverConfirmedAt: serverConfirmedAt ?? this.serverConfirmedAt,
       movementCount: movementCount ?? this.movementCount,
+      ownershipStartDate: ownershipStartDate ?? this.ownershipStartDate,
       updatedAt: updatedAt ?? this.updatedAt,
       rowid: rowid ?? this.rowid,
     );
@@ -25577,6 +25642,9 @@ class OwnerSettlementCoverageCompanion
     if (movementCount.present) {
       map['movement_count'] = Variable<int>(movementCount.value);
     }
+    if (ownershipStartDate.present) {
+      map['ownership_start_date'] = Variable<String>(ownershipStartDate.value);
+    }
     if (updatedAt.present) {
       map['updated_at'] = Variable<String>(updatedAt.value);
     }
@@ -25593,6 +25661,7 @@ class OwnerSettlementCoverageCompanion
           ..write('snapshotId: $snapshotId, ')
           ..write('serverConfirmedAt: $serverConfirmedAt, ')
           ..write('movementCount: $movementCount, ')
+          ..write('ownershipStartDate: $ownershipStartDate, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
@@ -42595,6 +42664,7 @@ typedef $$OwnerSettlementCoverageTableCreateCompanionBuilder =
       required String snapshotId,
       required String serverConfirmedAt,
       required int movementCount,
+      Value<String?> ownershipStartDate,
       required String updatedAt,
       Value<int> rowid,
     });
@@ -42604,6 +42674,7 @@ typedef $$OwnerSettlementCoverageTableUpdateCompanionBuilder =
       Value<String> snapshotId,
       Value<String> serverConfirmedAt,
       Value<int> movementCount,
+      Value<String?> ownershipStartDate,
       Value<String> updatedAt,
       Value<int> rowid,
     });
@@ -42634,6 +42705,11 @@ class $$OwnerSettlementCoverageTableFilterComposer
 
   ColumnFilters<int> get movementCount => $composableBuilder(
     column: $table.movementCount,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get ownershipStartDate => $composableBuilder(
+    column: $table.ownershipStartDate,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -42672,6 +42748,11 @@ class $$OwnerSettlementCoverageTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get ownershipStartDate => $composableBuilder(
+    column: $table.ownershipStartDate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get updatedAt => $composableBuilder(
     column: $table.updatedAt,
     builder: (column) => ColumnOrderings(column),
@@ -42704,6 +42785,11 @@ class $$OwnerSettlementCoverageTableAnnotationComposer
 
   GeneratedColumn<int> get movementCount => $composableBuilder(
     column: $table.movementCount,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get ownershipStartDate => $composableBuilder(
+    column: $table.ownershipStartDate,
     builder: (column) => column,
   );
 
@@ -42761,6 +42847,7 @@ class $$OwnerSettlementCoverageTableTableManager
                 Value<String> snapshotId = const Value.absent(),
                 Value<String> serverConfirmedAt = const Value.absent(),
                 Value<int> movementCount = const Value.absent(),
+                Value<String?> ownershipStartDate = const Value.absent(),
                 Value<String> updatedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => OwnerSettlementCoverageCompanion(
@@ -42768,6 +42855,7 @@ class $$OwnerSettlementCoverageTableTableManager
                 snapshotId: snapshotId,
                 serverConfirmedAt: serverConfirmedAt,
                 movementCount: movementCount,
+                ownershipStartDate: ownershipStartDate,
                 updatedAt: updatedAt,
                 rowid: rowid,
               ),
@@ -42777,6 +42865,7 @@ class $$OwnerSettlementCoverageTableTableManager
                 required String snapshotId,
                 required String serverConfirmedAt,
                 required int movementCount,
+                Value<String?> ownershipStartDate = const Value.absent(),
                 required String updatedAt,
                 Value<int> rowid = const Value.absent(),
               }) => OwnerSettlementCoverageCompanion.insert(
@@ -42784,6 +42873,7 @@ class $$OwnerSettlementCoverageTableTableManager
                 snapshotId: snapshotId,
                 serverConfirmedAt: serverConfirmedAt,
                 movementCount: movementCount,
+                ownershipStartDate: ownershipStartDate,
                 updatedAt: updatedAt,
                 rowid: rowid,
               ),

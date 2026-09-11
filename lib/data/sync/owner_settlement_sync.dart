@@ -50,6 +50,7 @@ import 'package:drift/drift.dart';
 import 'package:krishna_mis/data/local/app_database.dart';
 import 'package:krishna_mis/data/remote/owner_ledger_gateway.dart';
 import 'package:krishna_mis/data/remote/remote_outcome.dart';
+import 'package:krishna_mis/domain/value_objects/business_date.dart';
 
 /// What a synchronisation run established, or why it established nothing.
 sealed class OwnerSettlementSyncResult {
@@ -90,6 +91,25 @@ final class OwnerSettlementSyncUnavailable extends OwnerSettlementSyncResult {
 
   @override
   String toString() => 'OwnerSettlementSyncUnavailable($reason)';
+}
+
+/// The server answered, and said this person may not read a settlement (OA-3).
+///
+/// **An answer that arrived, not one that did not.** Since OA-3 the transport states the
+/// caller's settlement authority in the same statement as the facts, and withholds every
+/// dataset — as null, never as an empty list — from anybody without it. So this is
+/// confirmed authority loss, and it withdraws this person's canonical owner cache, the
+/// coverage row first: a device must not go on settling from history its reader has just
+/// been told they may not read (D-070).
+///
+/// Distinct from [OwnerSettlementSyncUnavailable], which withdraws nothing, because the two
+/// are different facts about the world and treating one as the other is either a leak or a
+/// wiped cache over a flaky network (D-048 section 1).
+final class OwnerSettlementSyncNotAuthorised extends OwnerSettlementSyncResult {
+  const OwnerSettlementSyncNotAuthorised();
+
+  @override
+  String toString() => 'OwnerSettlementSyncNotAuthorised()';
 }
 
 /// The refusal a settlement gets when the snapshot itself is malformed.
@@ -150,6 +170,35 @@ class OwnerSettlementSync {
       return const OwnerSettlementSyncRefused(
         'the snapshot carried an unreadable server time',
       );
+    }
+
+    // OA-3: the caller's settlement authority is **stated**, never inferred from the shape
+    // of the answer. A snapshot that does not say is refused rather than read as "yes" —
+    // guessing in the permissive direction is how a device would certify a settlement to
+    // somebody the server has closed it to.
+    final authorised = snapshot['settlement_authorised'];
+    if (authorised is! bool) {
+      return const OwnerSettlementSyncRefused(
+        'the snapshot did not state whether this reader may see a settlement',
+      );
+    }
+    if (!authorised) {
+      await _withdraw();
+      return const OwnerSettlementSyncNotAuthorised();
+    }
+
+    // The start date: a first-of-month date, or null for "not configured". Anything else
+    // is a boundary defect to surface, not a value to repair.
+    final startRaw = snapshot['ownership_start_date'];
+    String? ownershipStartDate;
+    if (startRaw != null) {
+      final start = startRaw is String ? BusinessDate.tryParse(startRaw) : null;
+      if (start == null || start.day != 1) {
+        return const OwnerSettlementSyncRefused(
+          'the snapshot carried a settlement start date that is not the first of a month',
+        );
+      }
+      ownershipStartDate = start.iso;
     }
 
     final movements = _rows(snapshot['movements']);
@@ -271,6 +320,7 @@ class OwnerSettlementSync {
               snapshotId: snapshotId,
               serverConfirmedAt: confirmedAt.toUtc().toIso8601String(),
               movementCount: movements.length,
+              ownershipStartDate: Value(ownershipStartDate),
               updatedAt: DateTime.now().toUtc().toIso8601String(),
             ),
           );
@@ -284,6 +334,27 @@ class OwnerSettlementSync {
       serverConfirmedAt: confirmedAt,
     );
   }
+
+  /// Removes this person's canonical owner cache, the coverage row first.
+  ///
+  /// One transaction, and only **this** person's rows: a second person on the same
+  /// installation keeps what their own authority established (D-074). The coverage row
+  /// goes before the facts it certifies, because a claim of complete history standing over
+  /// rows that are being removed is worse than no claim (D-171).
+  Future<void> _withdraw() => _db.transaction(() async {
+    await (_db.delete(
+      _db.ownerSettlementCoverage,
+    )..where((t) => t.ownerUserId.equals(ownerUserId))).go();
+    await (_db.delete(
+      _db.canonicalOwnerMovements,
+    )..where((t) => t.ownerUserId.equals(ownerUserId))).go();
+    await (_db.delete(
+      _db.canonicalOwnershipShares,
+    )..where((t) => t.ownerUserId.equals(ownerUserId))).go();
+    await (_db.delete(
+      _db.canonicalOwners,
+    )..where((t) => t.ownerUserId.equals(ownerUserId))).go();
+  });
 
   static List<Map<String, dynamic>>? _rows(Object? value) {
     if (value is! List) return null;

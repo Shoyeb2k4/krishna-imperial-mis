@@ -29,11 +29,16 @@ class OwnerSettlementCoverageState {
     required this.snapshotId,
     required this.serverConfirmedAt,
     required this.movementCount,
+    this.ownershipStartDate,
   });
 
   final String snapshotId;
   final DateTime serverConfirmedAt;
   final int movementCount;
+
+  /// The date 50:50 ownership and settlement begin, as that same snapshot stated it
+  /// (OA-3 Q1). **Null is "not configured"**, and a settlement refuses on it.
+  final BusinessDate? ownershipStartDate;
 }
 
 class OwnerSettlementRepository {
@@ -58,7 +63,21 @@ class OwnerSettlementRepository {
       snapshotId: row.snapshotId,
       serverConfirmedAt: DateTime.parse(row.serverConfirmedAt),
       movementCount: row.movementCount,
+      ownershipStartDate: row.ownershipStartDate == null
+          ? null
+          : BusinessDate.tryParse(row.ownershipStartDate!),
     );
+  }
+
+  /// The display names of the owners the canonical cache holds, by owner id.
+  ///
+  /// From the **owner-keyed** copy and nowhere else (D-208): the OA-1 `owners` table
+  /// survives a user switch, and a settlement surface must never name an owner out of it.
+  Future<Map<String, String>> ownerNames() async {
+    final rows = await (_db.select(
+      _db.canonicalOwners,
+    )..where((t) => t.ownerUserId.equals(ownerUserId))).get();
+    return {for (final row in rows) row.id: row.displayName};
   }
 
   /// Every canonical movement this person's cache holds, through [through] inclusive.

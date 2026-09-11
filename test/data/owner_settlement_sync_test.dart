@@ -92,18 +92,30 @@ Map<String, dynamic> ownerJson(String id, {bool active = true}) => {
   'change_seq': 5,
 };
 
+/// The OA-3 transport: the caller's authority is stated, and the start date travels with
+/// the facts. Defaults to an authorised caller whose organisation has **not configured**
+/// a start date, because that is the honest state of every real environment today.
 Map<String, dynamic> snapshot({
   List<Map<String, dynamic>>? movements,
   List<Map<String, dynamic>>? owners,
   List<Map<String, dynamic>>? shares,
   String snapshotId = 'snapshot-1',
   String serverTime = '2026-07-01T09:00:00.000Z',
+  bool authorised = true,
+  String? ownershipStartDate,
 }) => {
   'snapshot_id': snapshotId,
   'server_time': serverTime,
-  'movements': movements ?? const [],
-  'owners': owners ?? [ownerJson('owner-a'), ownerJson('owner-b')],
-  'ownership_shares': shares ?? [shareJson('owner-a'), shareJson('owner-b')],
+  'settlement_authorised': authorised,
+  'ownership_start_date': authorised ? ownershipStartDate : null,
+  'movements': authorised ? (movements ?? const []) : null,
+  'owners': authorised
+      ? (owners ?? [ownerJson('owner-a'), ownerJson('owner-b')])
+      : null,
+  'ownership_shares': authorised
+      ? (shares ?? [shareJson('owner-a'), shareJson('owner-b')])
+      : null,
+  'family_members': authorised ? const [] : null,
 };
 
 void main() {
@@ -373,6 +385,161 @@ void main() {
         expect((await repository.coverage())!.snapshotId, 'snapshot-1');
       },
     );
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  group('OA-3 Q1 · the settlement start date travels with the facts', () {
+    test('a configured date is recorded on this person coverage', () async {
+      source.answer = () =>
+          RemoteOk(snapshot(ownershipStartDate: '2026-04-01'));
+      await sync.synchronise();
+
+      expect(
+        (await repository.coverage())!.ownershipStartDate,
+        BusinessDate.of(2026, 4, 1),
+        reason:
+            'one authoritative server date: 50:50 ownership and settlement begin here',
+      );
+    });
+
+    test(
+      'not configured is recorded as not configured, and never defaulted',
+      () async {
+        await sync.synchronise();
+
+        final coverage = await repository.coverage();
+        expect(coverage, isNotNull, reason: 'the history itself is complete');
+        expect(
+          coverage!.ownershipStartDate,
+          isNull,
+          reason:
+              'no financial-year start, no tax-configuration date, no earliest share: '
+              'the production date is outstanding and is never guessed',
+        );
+      },
+    );
+
+    test('a start date that is not the first of a month is refused', () async {
+      await sync.synchronise();
+      source.answer = () => RemoteOk(
+        snapshot(ownershipStartDate: '2026-04-15', snapshotId: 's2'),
+      );
+
+      expect(await sync.synchronise(), isA<OwnerSettlementSyncRefused>());
+      expect(
+        (await repository.coverage())!.snapshotId,
+        'snapshot-1',
+        reason: 'the good coverage is kept rather than replaced by a defect',
+      );
+    });
+
+    test('an unreadable start date is refused', () async {
+      source.answer = () =>
+          RemoteOk(snapshot(ownershipStartDate: 'first of April'));
+      expect(await sync.synchronise(), isA<OwnerSettlementSyncRefused>());
+      expect(await repository.coverage(), isNull);
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  group('OA-3 · a confirmed not-authorised answer', () {
+    test(
+      'writes no coverage, and withdraws what this person held (D-070)',
+      () async {
+        source.answer = () => RemoteOk(
+          snapshot(
+            movements: [movementJson(id: 'm1')],
+            ownershipStartDate: '2026-04-01',
+          ),
+        );
+        await sync.synchronise();
+        expect(await repository.coverage(), isNotNull);
+
+        source.answer = () =>
+            RemoteOk(snapshot(authorised: false, snapshotId: 's2'));
+        final result = await sync.synchronise();
+
+        expect(result, isA<OwnerSettlementSyncNotAuthorised>());
+        expect(
+          await repository.coverage(),
+          isNull,
+          reason:
+              'the server said, in an answer that arrived, that this person may not read '
+              'a settlement. That is confirmed authority loss, not a network failure',
+        );
+        expect(
+          await repository.canonicalMovements(
+            through: BusinessDate.of(2026, 12, 31),
+          ),
+          isEmpty,
+        );
+        expect((await repository.ownershipShares()).shares, isEmpty);
+        expect(await repository.activeOwnerIds(), isEmpty);
+      },
+    );
+
+    test('is never certified as complete history with nothing in it', () async {
+      // The failure the null-not-empty server contract exists to prevent: if an
+      // unauthorised answer were read as empty arrays, the device would certify "complete
+      // history, no movements" — a missing side replaced with zero (D-163).
+      source.answer = () => RemoteOk(snapshot(authorised: false));
+      await sync.synchronise();
+      expect(await repository.coverage(), isNull);
+    });
+
+    test('touches nobody else cache on the installation (D-074)', () async {
+      final otherSync = OwnerSettlementSync(
+        database: db,
+        gateway: _Source(
+          () => RemoteOk(snapshot(movements: [movementJson(id: 'm7')])),
+        ),
+        ownerUserId: 'user-2',
+      );
+      await otherSync.synchronise();
+
+      source.answer = () => RemoteOk(snapshot(authorised: false));
+      await sync.synchronise();
+
+      final other = OwnerSettlementRepository(db, ownerUserId: 'user-2');
+      expect(await other.coverage(), isNotNull);
+      expect(
+        await other.canonicalMovements(through: BusinessDate.of(2026, 12, 31)),
+        hasLength(1),
+      );
+    });
+
+    test(
+      'an unreachable server is not a not-authorised answer, and withdraws nothing',
+      () async {
+        await sync.synchronise();
+        source.answer = () => const RemoteUnreachable(RemoteFailure.offline);
+        expect(await sync.synchronise(), isA<OwnerSettlementSyncUnavailable>());
+        expect(await repository.coverage(), isNotNull);
+      },
+    );
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  group('OA-3 · the transport contract is stated, never inferred', () {
+    test(
+      'a snapshot that does not say whether the caller was authorised is refused',
+      () async {
+        await sync.synchronise();
+        final legacy = snapshot(snapshotId: 's2')
+          ..remove('settlement_authorised');
+        source.answer = () => RemoteOk(legacy);
+
+        expect(await sync.synchronise(), isA<OwnerSettlementSyncRefused>());
+        expect((await repository.coverage())!.snapshotId, 'snapshot-1');
+      },
+    );
+
+    test('an authorised snapshot with a null dataset is malformed', () async {
+      final broken = snapshot()..['movements'] = null;
+      source.answer = () => RemoteOk(broken);
+      expect(await sync.synchronise(), isA<OwnerSettlementSyncRefused>());
+      expect(await repository.coverage(), isNull);
+    });
   });
 
   // ═══════════════════════════════════════════════════════════════════════════

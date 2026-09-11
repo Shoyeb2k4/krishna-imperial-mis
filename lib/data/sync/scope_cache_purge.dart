@@ -65,6 +65,7 @@ library;
 import 'package:drift/drift.dart';
 import 'package:krishna_mis/data/local/app_database.dart';
 import 'package:krishna_mis/domain/auth/authority.dart';
+import 'package:krishna_mis/domain/auth/capability.dart';
 import 'package:krishna_mis/domain/sync/sync_state.dart';
 
 /// What a purge did, for the sync log and for the tests.
@@ -81,10 +82,13 @@ final class ScopePurgeResult {
     this.physicalReclaim,
   });
 
-  /// Nothing happened, and why. Null when a purge actually ran.
-  const ScopePurgeResult.skipped(String reason)
+  /// No business unit was revoked, and why.
+  ///
+  /// [rowsRemoved] is non-empty only when a **capability** purge ran instead (OA-3): a
+  /// confirmed authority can withdraw the owner domain while every property is kept, and
+  /// that removal is reported rather than hidden behind the word "skipped".
+  const ScopePurgeResult.skipped(String reason, {this.rowsRemoved = const {}})
     : revokedUnits = const {},
-      rowsRemoved = const {},
       outboxEntriesPreserved = 0,
       skippedReason = reason,
       documentsRemoved = const {},
@@ -182,19 +186,196 @@ class ScopeCachePurge {
     // would be a second, silent revocation nobody decided (D-068).
     final restored =
         await _restoreBrowsability(refresh.snapshot) +
-        await _restoreRevenueBrowsability(refresh.snapshot);
+        await _restoreRevenueBrowsability(refresh.snapshot) +
+        await _restoreOwnerLedgerBrowsability(refresh.snapshot);
+
+    // OA-3 · the capability half, which a unit diff cannot see. `unitsRevokedSince` is
+    // empty for an org-wide holder by construction, and a person can lose the owner domain
+    // while keeping every property — so the owner caches are decided by what this confirmed
+    // authority *holds*, not by which units it lost.
+    final capabilityRemoved = await _purgeOnCapabilityLoss(refresh.snapshot);
 
     final revoked = refresh.snapshot.unitsRevokedSince(previous);
     if (revoked.isEmpty) {
+      final removedCount = capabilityRemoved.values.fold(0, (a, b) => a + b);
       return ScopePurgeResult.skipped(
-        restored == 0
-            ? 'no business unit was revoked'
-            : 'no business unit was revoked; $restored retained document(s) became '
-                  'browsable again under the confirmed scope',
+        [
+          'no business unit was revoked',
+          if (restored > 0)
+            '$restored retained document(s) became browsable again under the '
+                'confirmed scope',
+          if (removedCount > 0)
+            '$removedCount owner-domain row(s) removed because the confirmed '
+                'authority no longer holds the capability that reads them',
+        ].join('; '),
+        rowsRemoved: capabilityRemoved,
       );
     }
 
     return purgeUnits(revoked, actorUserId: refresh.snapshot.userId);
+  }
+
+  /// Removes the owner-domain caches a confirmed authority may no longer read (OA-3).
+  ///
+  /// **State, not transition.** What this confirmed answer holds decides it, so the rule is
+  /// idempotent and survives a device that was offline across the change: the next
+  /// confirmed refresh finds the capability absent and acts, whatever the device last
+  /// believed.
+  ///
+  /// Two caches, two capabilities, and neither covers the other:
+  ///
+  ///  * the **canonical owner cache** — the settlement's input, filled only under the
+  ///    settlement transport's own gate — goes whole for this person unless they still
+  ///    hold `owner_settlement.view` **and** `owner_ledger.view` **and** `reports.view`.
+  ///    Nothing in it is anybody's unsent work, so there is no exception to make;
+  ///  * the **OA-1 operational ledger** goes unless they still hold `owner_ledger.view`,
+  ///    **sparing the actor's own unsent movements**, which are stamped and removed from
+  ///    every canonical read exactly as a revoked unit's would be (D-070).
+  ///
+  /// Only ever reached through a confirmed authority: [applyTo] refuses everything else
+  /// before this line, so a network failure cannot remove anything (D-048 section 1).
+  Future<Map<String, int>> _purgeOnCapabilityLoss(
+    AuthoritySnapshot snapshot,
+  ) async {
+    final principal = snapshot.principal;
+    final removed = <String, int>{};
+
+    final mayReadSettlement =
+        principal.canAnywhere(Capability.ownerSettlementView) &&
+        principal.canAnywhere(Capability.ownerLedgerView) &&
+        principal.canAnywhere(Capability.reportsView);
+    final mayReadLedger = principal.canAnywhere(Capability.ownerLedgerView);
+
+    if (mayReadSettlement && mayReadLedger) return removed;
+
+    await db.transaction(() async {
+      if (!mayReadSettlement) {
+        await _purgeOwnerSettlementCacheFor(snapshot.userId, removed);
+      }
+      if (!mayReadLedger) {
+        final everyUnit = {
+          for (final row
+              in await db
+                  .customSelect(
+                    'SELECT DISTINCT business_unit_id AS id FROM owner_ledger_entries',
+                  )
+                  .get())
+            row.data['id'] as String,
+        };
+        if (everyUnit.isNotEmpty) await _purgeOwnerLedger(everyUnit, removed);
+      }
+    });
+    return removed;
+  }
+
+  /// One person's canonical owner cache, coverage first (D-171, D-074).
+  Future<void> _purgeOwnerSettlementCacheFor(
+    String ownerUserId,
+    Map<String, int> removed,
+  ) async {
+    for (final table in const [
+      'owner_settlement_coverage',
+      'canonical_owner_movements',
+      'canonical_ownership_shares',
+      'canonical_owners',
+    ]) {
+      removed[table] = await db.customUpdate(
+        'DELETE FROM $table WHERE owner_user_id = ?',
+        variables: [Variable<String>(ownerUserId)],
+        updates: const {},
+      );
+    }
+  }
+
+  /// The owner-ledger half of [_restoreBrowsability], on the identical rule — plus the
+  /// capability, because a movement may have been stamped for the capability's loss as
+  /// much as for a unit's (OA-3).
+  ///
+  /// Restored only to **the actor who queued it** (D-074), only inside the confirmed
+  /// scope, and only while that actor may read the ledger at all.
+  Future<int> _restoreOwnerLedgerBrowsability(
+    AuthoritySnapshot snapshot,
+  ) async {
+    if (!snapshot.principal.canAnywhere(Capability.ownerLedgerView)) return 0;
+
+    const ownedByThisActor =
+        'EXISTS (SELECT 1 FROM sync_outbox o '
+        "          WHERE o.entity_type = 'owner_ledger_entry' "
+        '            AND o.entity_id = owner_ledger_entries.id '
+        "            AND o.status <> 'done' AND o.actor_user_id = ?)";
+
+    if (snapshot.holdsOrgWideGrant) {
+      return db.customUpdate(
+        'UPDATE owner_ledger_entries SET scope_revoked_at = NULL '
+        'WHERE scope_revoked_at IS NOT NULL AND $ownedByThisActor',
+        variables: [Variable<String>(snapshot.userId)],
+        updates: const {},
+      );
+    }
+
+    final units = snapshot.scopedUnits;
+    if (units.isEmpty) return 0;
+    return db.customUpdate(
+      'UPDATE owner_ledger_entries SET scope_revoked_at = NULL '
+      'WHERE scope_revoked_at IS NOT NULL AND $ownedByThisActor '
+      '  AND business_unit_id IN ${_in(units)}',
+      variables: [
+        Variable<String>(snapshot.userId),
+        for (final unit in units) Variable<String>(unit),
+      ],
+      updates: const {},
+    );
+  }
+
+  /// Purges synced owner movements for [units], sparing movements that still carry unsent
+  /// work — the revenue rule, applied to the table whose classification has said since
+  /// OA-1 that it is purged this way, and which no code actually purged until OA-3.
+  Future<Set<String>> _purgeOwnerLedger(
+    Set<String> units,
+    Map<String, int> removed,
+  ) async {
+    removed['owner_ledger_entries'] = 0;
+
+    final touched = await _ids(
+      'SELECT id FROM owner_ledger_entries WHERE business_unit_id IN ${_in(units)}',
+      [for (final unit in units) Variable<String>(unit)],
+    );
+    if (touched.isEmpty) return const {};
+
+    // Work this device has not delivered: kept, stamped, excluded from every canonical
+    // read. It exists nowhere else (D-070).
+    final retained = await _ids(
+      'SELECT e.id AS id FROM owner_ledger_entries e WHERE e.id IN ${_in(touched)} '
+      'AND (e.pending_mutation_id IS NOT NULL OR EXISTS ('
+      '  SELECT 1 FROM sync_outbox o WHERE o.entity_type = ? '
+      '  AND o.entity_id = e.id AND o.status <> ?))',
+      [
+        for (final id in touched) Variable<String>(id),
+        Variable<String>('owner_ledger_entry'),
+        Variable<String>(OutboxStatus.done.name),
+      ],
+    );
+
+    if (retained.isNotEmpty) {
+      await db.customUpdate(
+        'UPDATE owner_ledger_entries SET scope_revoked_at = ? '
+        'WHERE id IN ${_in(retained)} AND scope_revoked_at IS NULL',
+        variables: [
+          Variable<DateTime>(DateTime.now().toUtc()),
+          for (final id in retained) Variable<String>(id),
+        ],
+        updates: const {},
+      );
+    }
+
+    final purgeable = touched.difference(retained);
+    if (purgeable.isNotEmpty) {
+      removed['owner_ledger_entries'] = await _delete2(
+        'DELETE FROM owner_ledger_entries WHERE id IN ${_in(purgeable)}',
+        [for (final id in purgeable) Variable<String>(id)],
+      );
+    }
+    return retained;
   }
 
   /// Clears `scope_revoked_at` on retained documents that belong to **this** actor and
@@ -366,7 +547,14 @@ class ScopeCachePurge {
   Future<int> quarantineAllDocuments() async {
     final now = DateTime.now().toUtc();
     var stamped = 0;
-    for (final table in const ['expenses', 'revenue_entries']) {
+    for (final table in const [
+      'expenses',
+      'revenue_entries',
+      // OA-3: the owner ledger is a financial table with the same stamp and the same
+      // fail-closed obligation — a sign-out that could not purge must not leave the
+      // previous person's owner movements browsable either (D-074).
+      'owner_ledger_entries',
+    ]) {
       stamped += await db.customUpdate(
         'UPDATE $table SET scope_revoked_at = ? WHERE scope_revoked_at IS NULL',
         variables: [Variable<DateTime>(now)],
@@ -473,6 +661,7 @@ class ScopeCachePurge {
     // separately from the expense figure so the result says how many of each survived
     // rather than blurring two different documents into one number.
     var revenue = const _RevenuePurge.empty();
+    var ownerLedgerRetained = const <String>{};
 
     await db.transaction(() async {
       // Financial documents first. They depend on nothing below them, and doing them
@@ -480,6 +669,7 @@ class ScopeCachePurge {
       // a single fact rather than two that could half-happen (D-068).
       financial = await _purgeFinancialDocuments(units, removed);
       revenue = await _purgeRevenue(units, removed);
+      ownerLedgerRetained = await _purgeOwnerLedger(units, removed);
       await _purgeReportingCache(units, removed);
       await _purgeOwnerSettlementCache(units, removed);
 
@@ -619,6 +809,7 @@ class ScopeCachePurge {
       documentsRetainedForUnsyncedWork: {
         ...financial.retained,
         ...revenue.retained,
+        ...ownerLedgerRetained,
       },
       stagingReclaimed: reclaimed,
       physicalReclaim: physicalReclaim,
@@ -834,15 +1025,34 @@ class ScopeCachePurge {
   Future<ScopePurgeResult> purgeAllScopedCache() async {
     final units = await _allCachedUnitIds();
     if (units.isEmpty) {
-      return const ScopePurgeResult.skipped(
-        'no scoped reference data was cached',
+      // No unit is cached, so there is nothing unit-scoped to remove — but the canonical
+      // owner cache carries no unit on three of its four tables, and "no business unit
+      // cached" is not a reason to leave the previous person's owners, ownership ratio
+      // and start date on a shared machine (OA-3, D-208). Removed for every person, as a
+      // user switch removes every unit.
+      final removed = <String, int>{};
+      await db.transaction(() => _purgeOwnerSettlementCache(const {}, removed));
+      return ScopePurgeResult.skipped(
+        'no scoped reference data was cached; the canonical owner cache was removed',
+        rowsRemoved: removed,
       );
     }
     return purgeUnits(units);
   }
 
+  /// Every unit this installation holds anything for — not only the cached masters.
+  ///
+  /// A user switch has to reach a financial row whose unit master has already gone, or it
+  /// would leave exactly that row behind. The owner tables are read as well as
+  /// `business_units` for that reason (OA-3).
   Future<Set<String>> _allCachedUnitIds() async {
-    final rows = await db.customSelect('SELECT id FROM business_units').get();
+    final rows = await db
+        .customSelect(
+          'SELECT id FROM business_units '
+          'UNION SELECT business_unit_id FROM owner_ledger_entries '
+          'UNION SELECT business_unit_id FROM canonical_owner_movements',
+        )
+        .get();
     return {for (final row in rows) row.data['id'] as String};
   }
 
