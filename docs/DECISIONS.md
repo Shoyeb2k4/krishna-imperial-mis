@@ -7418,3 +7418,224 @@ through a shell heredoc into a file arrived as literal backspace bytes inside a 
 way — by reading the file back rather than trusting the write — which is the only reason
 none of them shipped. It is recorded again because it is now clearly a property of the
 tooling rather than an accident.
+
+---
+
+# Phase 5 OA-3 — Owner Settlement UI / Security Surface (2026-09-11)
+
+## D-212 — The project lead's OA-3 rulings (Q1 … Q4)
+**Date:** 2026-09-11 · **Status:** Accepted (project-lead decision)
+
+OA-3 began with a verification pass and stopped on four questions the repository could not
+answer. The project lead answered all four; they are recorded as given.
+
+**Q1 · one date, not two.** There is **no separate settlement inception date** in V1. One
+authoritative server date means *"50:50 ownership and owner settlement begin from this
+date"*, and it is **not guessed**: until it is configured the settlement surface says
+**"Settlement start date not configured"**, the calculator refuses, and nothing defaults.
+It lives behind the existing owner-account configuration boundary — gated by
+`owner_masters.manage`, never by the Owner role name — and every change is audited.
+
+Built as `public.owner_settlement_settings` (one row per organisation, first-of-month
+CHECK, no default, **ships empty**) written only by `public.owner_settlement_start_set`,
+which requires unscoped `owner_masters.manage`, refuses a missing or mid-month date
+`KM031` with a sentence, enforces `base_row_version` (`KM003`), replays on `mutation_id`,
+and audits `ownership_start_set` with before and after values. The row is readable by
+holders of `owner_settlement.view` or `owner_masters.manage` — *anywhere*, not unscoped,
+because D-200 records what an unsatisfiable unscoped read gate costs.
+
+**The production date is still outstanding.** No migration, fixture or line of code
+supplies it.
+
+**Q2 · Owner only.** `owner_settlement.view` is created and granted to the Owner bundle
+alone; the Accountant, Manager and Data Entry bundles receive nothing. Enforcement is by
+capability, and because a settlement is organisation-wide there is **no partial settlement
+for a scoped reader** — a reader without unscoped P&L authority is refused
+(`reportingNotAuthorised`), never handed a settlement over the properties they can see.
+
+**Q3 · preview only.** No Finalize, Reopen, Lock, approval or statement versioning exists in
+OA-3. The result is labelled a **live, derived preview** on screen. D-193's Draft/Finalized
+model is recorded and not built, and nothing in OA-3 invents its rules.
+
+**Q4 · a separate screen.** "Owner Settlement" is its own destination — a Windows sidebar
+entry and an Android entry under More → Owner Accounts — shown only with
+`owner_settlement.view`, and **not** a tab inside Reports or the P&L. One shared domain
+contract, a monthly picker, no charts.
+
+**Consequences.** D-197's intersection (`reports.view` ∩ `owner_settlement.view`) is
+satisfied and extended: the server transport requires `owner_settlement.view`,
+`owner_ledger.view` and `reports.view` (D-213), and the client preview additionally requires
+unscoped `reports.view`, `revenue.view` and `expense.view.all` (D-164, D-187) before it asks
+for a figure.
+
+## D-213 — Seeing the ledger is not seeing the settlement, and the server says so
+**Date:** 2026-09-11 · **Status:** Accepted — **proven red first**
+
+**The gap.** OA-2's `owner_ledger_snapshot()` was `security invoker` over tables the
+Accountant may read, so it handed the Accountant everything a settlement is made of. As the
+development Accountant, before the change:
+
+```
+        owner_ledger_snapshot()   159 movements · 3 owners · 34 ownership shares · 2 family links
+```
+
+That is exactly the private information Q2 reserves to the Owner, and nothing about it
+was a leak by OA-2's rules — the Accountant *records* owner movements and legitimately reads
+the ledger. Q2 draws a line those rules did not have: **recording authority is not
+settlement visibility.**
+
+**Decision.** The snapshot computes `settlement_authorised = owner_settlement.view AND
+owner_ledger.view AND reports.view` in one CTE and returns every owner dataset — movements,
+owners, shares, family links and the start date — **only** when it is true. Otherwise each
+is **null, never an empty list**: an empty list is a claim that the owners hold nothing, and
+the client must be able to tell *withheld* from *none* (D-163). The client requires the flag
+as a boolean; a payload without it is refused rather than guessed at.
+
+**RLS on `owner_ledger_entries` is deliberately unchanged**, so the Accountant still reads
+the ledger it records into. Both halves are asserted live: the same Accountant gets
+`settlement_authorised: false` with every dataset null, and still reads ledger rows through
+RLS. The Owner is still authorised.
+
+**On the client**, a `false` answer is its own result, `OwnerSettlementSyncNotAuthorised`,
+and it **withdraws** this user's canonical owner cache — coverage first — in one
+transaction. A reader who loses the settlement does not keep last week's copy of it.
+
+## D-214 — A confirmed capability loss purges the owner-sensitive cache (corrects D-070's trigger)
+**Date:** 2026-09-11 · **Status:** Accepted (project-lead decision)
+
+D-070 purges on a confirmed **scope** revocation: losing a business unit. The canonical
+owner cache is not scoped by business unit at all (D-196), so a person who kept both
+properties and lost `owner_settlement.view` would have lost nothing from their device — the
+owners' private position would have stayed readable on a shared workstation by the person
+whose permission had just been withdrawn.
+
+**Decision.** `ScopeCachePurge.applyTo` now checks the **confirmed principal's current
+capabilities**, not a diff against a previous snapshot. If the confirmed principal lacks
+`owner_settlement.view`, `owner_ledger.view` or `reports.view`, this user's canonical owner
+cache is purged — coverage first — **even when their business-unit access is unchanged**. If
+they lack `owner_ledger.view`, the OA-1 ledger cache is purged for every unit present.
+
+State-based rather than diff-based, for the reason D-111 records: the stored previous
+snapshot is per user, so a diff on a shared installation can miss a loss entirely.
+
+**What it never does** — both from D-048 and asserted: nothing is purged on a network
+failure, a stale refresh or an unreachable server, because `unknown ≠ revoked`; and
+actor-owned unsent work is retained and stamped exactly as D-070 and D-074 retain it.
+
+**Positive controls, each seen RED and restored byte-identical:** the capability purge
+disabled (6 red); the restore-authorship predicate removed (1 red, the D-074 case).
+
+## D-215 — `owner_ledger_entries` was classified as purged and was never purged
+**Date:** 2026-09-11 · **Status:** Accepted — an OA-1 defect found by the D-214 audit
+
+OA-1 classified `owner_ledger_entries` `scopedFinancialHistory` — *purged on a confirmed
+revocation, sparing actor-owned unsent work* (D-070). **`ScopeCachePurge` contained no code
+that touched it.** A user switch or a revoked property therefore left synced owner movements
+readable on the device: the classification said one thing and the purge did another, and
+nothing compared them.
+
+The same family as D-068's vacuous classification guard: the guard proves every table is
+*classified*; nothing proved the classification is *implemented*.
+
+**Decision.** `_purgeOwnerLedger` mirrors revenue exactly — synced movements for a revoked
+unit are deleted; movements carrying this actor's outstanding intent are retained and
+stamped `scope_revoked_at`; restoring scope restores only the actor's own (D-074).
+`quarantineAllDocuments` includes the table, `purgeAllScopedCache` covers it, and the
+canonical owner cache is purged at sign-out **even when no business unit is cached**, which
+the earlier early-return skipped.
+
+## D-216 — D-208 resolved by option B: the OA-1 masters stay unwritten, permanently guarded
+**Date:** 2026-09-11 · **Status:** Accepted — the choice D-208 left to OA-3
+
+D-208 left OA-3 two options: **(A)** move OA-1's client-side NC pre-check onto the
+owner-keyed canonical cache, or **(B)** keep the organisation-global OA-1 master tables
+unwritten, with a permanent guard that nothing writes them.
+
+**Option A is not narrow, and that decided it.** The NC pre-check runs for whoever records
+the bill — the Accountant bundle holds `owner_ledger.create.nc` — and after D-213 the
+canonical cache is filled only for holders of `owner_settlement.view`. Moving the pre-check
+there would either give the recorder settlement visibility (the thing Q2 forbids) or leave
+the pre-check reading an empty cache for exactly the people who use it. The server already
+derives attribution from the link and refuses a disagreeing declaration (D-195), so the
+client pre-check is UX, not the boundary.
+
+**Decision: B.** `owners`, `ownership_shares` and `owner_family_members` stay classified
+`organizationGlobal` and stay **empty**. `owner_master_isolation_guard_test.dart` fails if
+any file in `lib/` names a Drift writer for them, and carries a self-test proving its
+pattern finds a planted writer. The settlement surface reads names only from the owner-keyed
+`canonical_owners`. User A's owner identities, ratio and family links are therefore never
+readable by User B, by construction.
+
+**The consequence stays stated:** OA-1's client-side NC pre-check cannot run on a real
+device, and the server remains the only thing that attributes an NC bill.
+
+## D-217 — Live suites that share one ledger run serially, and a count is not idempotence
+**Date:** 2026-09-11 · **Status:** Recorded — two findings from running the owner live
+suites together
+
+**1 · A count compared across two live reads is not a property.** OA-2's audit test
+*"a second pull is idempotent"* compared the cached movement count before and after a second
+pull. Run beside the OA-1 suite, which records movements, the count legitimately changed
+between the pulls and the test failed while the property held. It now asserts the property:
+after the second pull **every movement id is held exactly once**, and the audit's own
+movement once. D-152's rule again — assert the durable consequence, not a number that
+another writer can move.
+
+**2 · The OA-3 delta assertions cannot share the ledger with another writer.** The OA-3
+end-to-end group asserts that *this* sale moved Operating Profit by exactly its Net Sales and
+*this* withdrawal moved Owner A's withdrawals by exactly its amount. Beside the OA-1 suite
+the second read saw OA-1's own Owner A withdrawals and the delta was ₹-1,45,000 rather than
+₹12,345. Every preview was correct for the ledger it read. **Weakening the assertion to
+tolerate another writer would stop it proving "exactly once"**, so the owner live suites run
+with `--concurrency=1`, and the suite says so in its header.
+
+**3 · The development start date is a fixture.** The OA-3 live suite sets
+**2026-05-01** on `krishna-mis-dev` because no settlement can be exercised without one. It
+is **not** the production 50:50 date. It is chosen to look unlike a real answer (not the
+FY start, not the tax configuration's 2026-04-01) and to fall inside the development
+ownership history's 50:50 window. No client API unsets a configured date, by design; the
+administrative removal to restore "not configured" was **not performed** in this session
+(the action was declined by the session's permission gate), so the development project
+holds that fixture until somebody removes it deliberately. Its two audit rows are
+append-only evidence and stay regardless (D-066).
+
+## D-218 — Recorded and deliberately not changed in OA-3
+**Date:** 2026-09-11 · **Status:** Recorded
+
+**The OA-1 owner-ledger outbox transport is not wired in `bootstrap`.**
+`RoutingMutationEndpoint` is composed with masters, expenses and revenue;
+`OwnerLedgerMutationEndpoint` and `OwnerLedgerReconciler` exist and are not passed. A queued
+owner movement would therefore be answered terminally by the router and kept for a person
+to see (the D-059 behaviour) rather than delivered. **Latent**: no client surface creates an
+owner movement — OA-1 built none, and OA-3 is a read-only preview. The D-077 shape, in the
+owner domain; it belongs with the slice that builds an owner-movement entry surface, not
+inside a read-only preview (D-127).
+
+**No administrative UI sets the start date.** `owner_settlement_start_set` is the reviewed
+boundary and is proven live; the screen that calls it is not built. Until it is, the date
+is set through the RPC by an Owner session.
+
+**No per-person family breakdown.** The canonical cache does not carry family links, so the
+preview shows each owner's non-chargeable consumption as the OA-2 total, not per family
+member. Adding it means adding links to the owner-keyed cache, which D-216 deliberately did
+not widen.
+
+**`OwnerSettlementRefreshReport.reportingSucceeded` is true for an empty report list.**
+Unreachable — a non-empty range always needs at least one financial year — and harmless,
+because the preview decides from the coverage on disk, never from the report. Noted so it
+is not rediscovered as a defect.
+
+## D-219 — PowerShell text cmdlets corrupt UTF-8 source, and a control restore must be byte-identical
+**Date:** 2026-09-11 · **Status:** Recorded — the tooling hazard D-159 and D-211 record,
+in a fourth shape
+
+Restoring a positive control with PowerShell `Get-Content -Raw` / `WriteAllText` re-encoded
+`owner_settlement_sync.dart` through the ANSI code page and turned every non-ASCII
+character — `₹`, `—`, `§` — into mojibake. The file compiled; it was wrong. It was caught by
+the diff, repaired by reversing the mis-decode (UTF-8 bytes read as Windows-1252, re-encoded,
+decoded as UTF-8), and the repair verified as insertions only.
+
+**Rule, applied for the rest of OA-3:** every positive control is restored with a byte copy
+(`cp` of a saved original, then `cmp` to prove identity), and every scripted edit uses Python
+with explicit UTF-8 and `newline=''`. A restore is not restored until it has been read back
+(D-142) — and "read back" means compared as bytes, not eyeballed.

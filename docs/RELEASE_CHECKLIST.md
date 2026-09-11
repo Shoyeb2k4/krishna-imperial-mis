@@ -470,3 +470,55 @@ release, not per phase.
 - [ ] Redelivery of the same `mutation_id` yields one record
 - [ ] `KI-REV-…` numbering is server-issued and does not share the expense sequence
 - [ ] Attachments are optional and reuse the D-073a pipeline unchanged
+
+## N. Owner Settlement preview (Phase 5 OA-3)
+
+### N.1 Before any real settlement figure is shown to anybody
+
+- [ ] **The production 50:50 start date has been supplied by the project lead** and set
+      through `owner_settlement_start_set` by an Owner session — never guessed, never
+      defaulted, never copied from the development fixture (D-212)
+- [ ] The production ownership vector resolves to exactly `[5000, 5000]` from that date
+      (D-204)
+- [ ] `owner_settlement_settings` on **staging and production** holds no row until that date
+      is set — the development project's `2026-05-01` is a test fixture (D-217) and must not
+      travel
+
+### N.2 Authority, on the real backend
+
+- [ ] `owner_settlement.view` is held by the Owner role and by no other role
+- [ ] As the Accountant, `owner_ledger_snapshot()` returns `settlement_authorised: false`
+      with every owner dataset **null**, while ledger rows are still readable through RLS
+- [ ] Accountant, Manager and Data Entry are refused `owner_settlement_start_set`
+      (`KM001`/`KM002`), and read no `owner_settlement_settings` row
+- [ ] A mid-month start date is refused `KM031` with a sentence; a stale base is `KM003`
+- [ ] Every start-date change appears in `audit_logs` as `ownership_start_set` with before
+      and after values
+
+### N.3 The surface, on both platforms
+
+- [ ] "Owner Settlement" appears in the Windows sidebar and under Android More → Owner
+      Accounts **only** for a holder of `owner_settlement.view`
+- [ ] It is a separate screen, not a tab in Reports or the P&L
+- [ ] The **PREVIEW** banner is visible; no Finalize, Reopen, Lock or Approve control exists
+- [ ] "Settlement start date not configured" shows while no date is set, with no figure
+- [ ] Owner history and P&L each show their **own** "synchronised as of" time; no combined
+      time is shown
+- [ ] A refusal never renders ₹0; a real zero renders as ₹0 with "Nil — nothing due either
+      way"
+- [ ] A positive closing position reads "Due to owner", a negative one "Recoverable from
+      owner" — the sign is never the only signal
+
+### N.4 Revocation and a shared workstation
+
+- [ ] Withdrawing `owner_settlement.view` from a user whose business-unit access is unchanged
+      purges their canonical owner cache on the next confirmed refresh (D-214)
+- [ ] A network failure purges nothing
+- [ ] Signing out and signing in as another person leaves the first person's owner history
+      unreachable
+
+### N.5 Evidence
+
+- [ ] `test/remote/owner_settlement_live_test.dart` green against the target environment,
+      run **with `--concurrency=1`** alongside `owner_accounts_live_test.dart` — the two
+      share one owner ledger (D-217)

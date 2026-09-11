@@ -1727,3 +1727,92 @@ it certifies. There is no D-070 exception to make: nothing here is anybody's uns
 That was safe while nothing wrote them; a synchroniser filling them would leave the
 ownership ratio readable by whoever signs in next on a shared workstation. The OA-1 tables
 therefore stay empty and the settlement reads an owner-keyed copy (D-208).
+
+---
+
+## Phase 5 OA-3 — the settlement surface's schema, as built (2026-09-11)
+
+Decisions D-212 … D-219. Four server migrations and one local column.
+
+### `public.owner_settlement_settings`
+
+```
+owner_settlement_settings
+  org_id               uuid pk  → organizations(id)
+  ownership_start_date date NOT NULL      -- CHECK day = 1; NO default
+  created_by · created_at · updated_by · updated_at
+  row_version integer · change_seq bigint -- stamp_change_seq on UPDATE (D-177)
+```
+
+**One row per organisation, and it ships empty.** An absent row is the honest state
+*"Settlement start date not configured"*; the migration asserts no row exists after it runs,
+because the production 50:50 start date is outstanding and is never guessed (D-212).
+
+| | |
+|---|---|
+| RLS read | `current_org_id()` and (`has_capability_anywhere('owner_settlement.view')` or `has_capability_anywhere('owner_masters.manage')`) — not unscoped (D-200), not sliced by property |
+| client privileges | `revoke all` from `anon` and `authenticated`, then `grant select` to `authenticated` — all four write privileges gone (D-162) |
+| the one writer | `owner_settlement_start_set(p_ownership_start_date date, p_base_row_version integer default null, p_mutation_id uuid default null)`, `security definer`, `search_path = ''` |
+
+`owner_settlement_start_set` requires unscoped `owner_masters.manage`; refuses a missing
+date `KM031 ownership_start_required` and a mid-month one `KM031 ownership_start_mid_period`
+(with the next valid month in the detail); refuses a stale or claimed-but-absent base
+`KM003 version_conflict`; replays on `mutation_id`; audits `ownership_start_set` with before
+and after values; and returns `{status: created | updated | replayed, ownership_start_date,
+row_version}`.
+
+**On `krishna-mis-dev` the table holds a development fixture**, `2026-05-01`, set by the
+OA-3 live suite. It is not the production date (D-217).
+
+### `owner_ledger_snapshot()` — the gated contract
+
+Unchanged in shape and in its one-statement, one-snapshot discipline (D-207). What changed
+is who is handed the datasets:
+
+```
+        settlement_authorised   boolean   owner_settlement.view AND owner_ledger.view
+                                          AND reports.view, all "anywhere"
+        snapshot_id · server_time         always
+        ownership_start_date    date      NULL unless authorised; NULL when not configured
+        movements               jsonb[]   NULL unless authorised (never an empty list)
+        owners                  jsonb[]   NULL unless authorised
+        ownership_shares        jsonb[]   NULL unless authorised
+        family_members          jsonb[]   NULL unless authorised
+```
+
+`owner_ledger_entries` RLS is **not** changed: recording authority still reads the ledger
+(D-213).
+
+### The capability
+
+`owner_settlement.view`, category `owner_accounts`, granted to the `owner` role only. The
+migration asserts that the Owner holds it and that no other role does. One
+`owner_settlement.*` capability exists in the catalogue, and a host guard asserts that.
+
+### The reviewed API surface
+
+Restated whole in `20260911131228`: **58** functions, matching the live catalogue's count of
+what `authenticated` may execute in `public` — the previous list plus
+`owner_settlement_start_set`. D-139's dead-capability check runs over it with the same three
+exemptions (`reports.export`, `reports.print`, `settings.manage`); `owner_settlement.view`
+is evaluated by the snapshot and the settings policy.
+
+### Migrations
+
+| Ledger version | Name |
+|---|---|
+| 20260911130948 | `owner_settlement_view_capability` |
+| 20260911131042 | `owner_settlement_start_date` |
+| 20260911131130 | `owner_ledger_snapshot_requires_settlement_view` |
+| 20260911131228 | `api_surface_invariant_owner_settlement` |
+
+Executable-SQL identity verified for all four (D-203).
+
+### Local schema v21
+
+`owner_settlement_coverage` gains **`ownership_start_date text NULL`** — the date the same
+snapshot stated, so coverage and the date it governs come from one MVCC snapshot. Null is
+"not configured". The v21 step carries the D-144 range guard, `from >= 20 && from < 21`,
+because the table itself arrives at v20. No other local table changes; the OA-1 master
+tables `owners`, `ownership_shares` and `owner_family_members` stay **empty**, and a guard
+fails if anything in `lib/` writes them (D-216).

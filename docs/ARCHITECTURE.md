@@ -9,7 +9,7 @@ Status: **Sections 1–12 proposed (Phase 0, revised); sections 13–16 and 18�
 is built and verified; section 17 is the Phase 4 *plan*, since built — read §18–§26 for what
 shipped.** Sections 6, 5.3 and 8 carry the project lead's mandated corrections.
 Implementation status is tracked in `PROJECT_STATUS.md`.
-Last updated: 2026-09-10 — the Owner Settlement Engine (section 34); the Owner Ledger (section 33), with the V1 ownership vector in §33.3; Phase 5 Slice 6 corrective (section 32); Slice 5 in section 31; Slices 1-4 in sections 27-30
+Last updated: 2026-09-11 — the Owner Settlement surface and its security boundary (section 35); the Owner Settlement Engine (section 34); the Owner Ledger (section 33), with the V1 ownership vector in §33.3; Phase 5 Slice 6 corrective (section 32); Slice 5 in section 31; Slices 1-4 in sections 27-30
 
 ---
 
@@ -3463,3 +3463,93 @@ No treasury logic. And **no automatic trigger for the pull**: `ReferenceSync` ru
 signed-in person, and certifying complete canonical owner history to a principal entitled to
 read none of it would be a claim worse than none. The trigger belongs with the surface that
 holds the capability, which is OA-3's.
+
+---
+
+## 35. The Owner Settlement surface and its security boundary (2026-09-11)
+
+Phase 5 OA-3. §34 built the engine; this is who may see its answer, where it appears, and
+what it may never do. Decisions D-212 … D-219.
+
+### 35.1 Four conditions, decided before a figure exists
+
+```
+        a preview is available only when
+          owner_settlement.view is held                              (Q2)
+          the consolidated P&L is authorised — unscoped reports.view,
+            revenue.view and expense.view.all — and complete         (D-164, D-187)
+          the canonical owner history is authorised and complete     (OA-2 §18)
+          the 50:50 start date is configured                         (Q1)
+```
+
+Missing any one, `OwnerSettlementPreviewService` returns
+`OwnerSettlementPreviewUnavailable` with the reason — `notAuthorised`,
+`reportingNotAuthorised`, `ownerHistoryNotDownloaded`, `startDateNotConfigured`,
+`beforeStartDate`, `reportingNotDownloaded` or `ownershipUnavailable` — and **never ₹0**.
+The decision lives in the data layer, so a widget that forgot to check is still handed a
+refusal.
+
+### 35.2 The server withholds the datasets, not the client
+
+`owner_ledger_snapshot()` computes `settlement_authorised` from `owner_settlement.view`,
+`owner_ledger.view` and `reports.view` in the same statement that reads the facts, and
+returns movements, owners, shares, family links and the start date **only** when it is
+true — otherwise each is **null**, never an empty list (D-213). Ledger RLS is unchanged, so
+recording authority still reads the ledger; **seeing the ledger is not seeing the
+settlement**.
+
+On the client, `false` is its own result and withdraws this person's canonical owner cache
+in one transaction, coverage first.
+
+### 35.3 The start date
+
+One row per organisation in `owner_settlement_settings`, first-of-month, no default, shipped
+empty; written only by `owner_settlement_start_set` under unscoped `owner_masters.manage`,
+audited, concurrency-checked, idempotent (D-212). The snapshot carries it to the device
+inside the same MVCC snapshot as the movements it governs, so "history as of T" and "the
+date it begins from" cannot disagree.
+
+### 35.4 Two pulls, two snapshots, no combined "as of"
+
+`OwnerSettlementRefresher` starts both synchronisations the preview needs — the canonical
+owner history first, because it carries the start date that sizes the P&L range, then the
+reporting delta for every financial year that range touches (on demand for a year normal
+retention would prune, D-170). **Initiating is its job; certifying is not.** The preview
+reads the coverage each run left on disk and refuses on whatever is missing, so a failed
+pull can never pass through as a valid zero.
+
+The owner history and the P&L are two distinct authoritative snapshots, and the surface
+shows **each dataset's own** server-confirmed time. Nothing manufactures a combined one
+(D-188).
+
+### 35.5 Revocation reaches the owner cache (D-214, D-215)
+
+A confirmed capability loss — `owner_settlement.view`, `owner_ledger.view` or
+`reports.view` — purges this person's canonical owner cache **even with business-unit
+access unchanged**, decided from the confirmed principal's current state rather than a diff.
+The OA-1 ledger cache is now actually purged on revocation, as it was always classified.
+Nothing is purged on a network failure, and actor-owned unsent work is retained (D-070,
+D-074).
+
+### 35.6 The surface formats and nothing else
+
+`OwnerSettlementPage` is a separate destination on both shells (§10), gated for the
+interface by `owner_settlement.view` and refusing regardless when reached another way. Every
+figure it shows is a field of the OA-2 result — consolidated Operating Profit, per-property
+figures marked informational, the undivided remainder, and per owner the opening position,
+entitlement, withdrawals, non-chargeable consumption, settlement paid, adjustments and the
+closing position — with words beside the sign: **Due to owner**, **Recoverable from owner**,
+**Nil — nothing due either way**. A guard asserts the feature contains no `.paise` arithmetic, no settlement formula,
+and no finalize, reopen, lock or approval identifier, and that it never reads the OA-1
+organisation-global owner masters (D-216).
+
+**It is a preview.** A **PREVIEW** banner states that it is *a live settlement derived from
+canonical history, not a finalized statement, and changes when the underlying figures
+change*, and no statement is stored.
+
+### 35.7 What is deliberately absent
+
+No finalized statement, versioning or approval. No administrative screen for the start date
+(the RPC is the boundary). No per-family-member breakdown. No chart. And the OA-1
+owner-ledger outbox transport is still not wired in `bootstrap` — latent, because no surface
+creates an owner movement (D-218).

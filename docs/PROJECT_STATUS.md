@@ -5,9 +5,9 @@ Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
-Last updated: **2026-09-10** — **PHASE 5 OA-2 — OWNER SETTLEMENT ENGINE: COMPLETE**, on
-top of **OA-1 — OWNER ACCOUNTS FOUNDATION: COMPLETE**, and on
-top of **PHASE 5 — P&L / MIS REPORTING: SLICES 1–6 COMPLETE.**
+Last updated: **2026-09-11** — **PHASE 5 OA-3 — OWNER SETTLEMENT UI / SECURITY SURFACE:
+COMPLETE**, on top of **OA-2 — OWNER SETTLEMENT ENGINE: COMPLETE**, **OA-1 — OWNER ACCOUNTS
+FOUNDATION: COMPLETE**, and **PHASE 5 — P&L / MIS REPORTING: SLICES 1–6 COMPLETE.**
 
 **Read the *end* of this file first.** Owner Accounts is a newly discovered real business
 requirement that arrived between Slice 6 and Slice 7: it was audited, approved with eleven
@@ -4802,3 +4802,124 @@ that holds the capability, which is OA-3's.
 ## 8 · Next
 
 **OA-3 is not started, and is not started automatically.**
+
+---
+
+# PHASE 5 OA-3 — OWNER SETTLEMENT UI / SECURITY SURFACE: **COMPLETE**
+
+The Owner Profit & Settlement Statement **preview**, on its own screen on both platforms,
+behind a server boundary that decides who may see it. Decisions **D-212 … D-219**;
+`ARCHITECTURE.md` §35; `DATABASE_SCHEMA.md` *Phase 5 OA-3*; `RELEASE_CHECKLIST.md` §N.
+
+**It is a preview.** No finalize, reopen, lock, approval or statement versioning exists, by
+ruling (Q3). **The Finalized Statement slice and the old Phase 5 Slice 7 are not started**,
+and neither starts automatically.
+
+## 1 · What the project lead decided (D-212)
+
+| | Ruling |
+|---|---|
+| **Q1** | One date: *"50:50 ownership and owner settlement begin from this date."* No separate inception date, never guessed; set under `owner_masters.manage`, audited. **The production date is still outstanding.** |
+| **Q2** | `owner_settlement.view` for the **Owner only**; enforced by capability; no partial settlement for a scoped reader |
+| **Q3** | **Preview only** |
+| **Q4** | A **separate screen** named "Owner Settlement" on Windows and Android, shown only with `owner_settlement.view`; monthly picker; no charts |
+
+## 2 · What was found and fixed on the way
+
+| | |
+|---|---|
+| **D-213** | The Accountant — who records owner movements — was handed the whole settlement by the snapshot: **159 movements, 3 owners, 34 shares, 2 family links**. Proven red, closed on the server: now `settlement_authorised: false` with every dataset null, while ledger RLS still serves the Accountant |
+| **D-214** | D-070 purged on a lost **property**; the owner cache is not scoped by property, so losing `owner_settlement.view` with both properties kept would have removed nothing. A confirmed capability loss now purges it |
+| **D-215** | OA-1's `owner_ledger_entries` was **classified purged and never purged** — a user switch left synced owner movements readable. Fixed, mirroring revenue |
+| **D-216** | D-208 resolved by **option B**: the OA-1 master tables stay unwritten, with a permanent no-writer guard. Option A would have required recorders to hold settlement visibility |
+| **D-217** | Two live-suite findings: a count compared across two live reads is not idempotence; and the owner live suites share one ledger, so they run with `--concurrency=1` |
+| **D-219** | A PowerShell text-cmdlet restore corrupted a UTF-8 source file into mojibake. Repaired and verified; every later control restored by byte copy and `cmp` |
+
+## 3 · Verified
+
+Labels used exactly as defined: **Implemented / Tested / Partially tested / Not tested /
+Blocked.**
+
+| Item | Status | Evidence |
+|---|---|---|
+| `dart format --set-exit-if-changed` | **Tested** | clean, 261 files, 0 changed |
+| `flutter analyze` | **Tested** | **No issues found** |
+| Host suite | **Tested** | **1,692 tests, all passing** (1,605 + 87) |
+| Sync contract, schema v21, capability-loss purge | **Tested** | 26 + 3 + 16 host tests |
+| Preview service and refresher | **Tested** | 17 + 5 host tests |
+| D-208 no-writer guard | **Tested** | 3 host tests, incl. a pattern self-test |
+| UI, both shells | **Tested** | 23 widget tests, incl. every state named in the ruling |
+| OA-3 boundary guards | **Tested** | 17 host tests: preview only, no arithmetic, no OA-1 master reads |
+| Server gate RED → GREEN | **Tested** | Accountant: 159/3/34/2 → `settlement_authorised: false`, nulls |
+| Live OA-3 suite against `krishna-mis-dev` | **Tested** | **20 tests**, green in three runs: the first **20/20** with the not-configured case live, the next two **19 + 1 skipped** once the fixture date existed. Two further runs beside the OA-1 suite failed on the shared ledger and are recorded in D-217 |
+| Live owner suites together, serially | **Tested** | **58 passed + 1 skipped** — OA-1 31, OA-2 audit 8, OA-3 19 |
+| Live reporting suites | **Tested** | **13** + parity **29**, re-run after OA-3 |
+| Migration ledger parity (A0 / D-056, D-203) | **Tested** | executable-SQL identity for all four versions |
+| API surface | **Tested** | **58** functions, repository list = live catalogue |
+| Secret scan — tree, git history, built artefacts | **Tested** | clean, controls passing |
+| Clean Windows release bundle | **Tested** | built without acceptance defines; the settlement page, the snapshot call and "Owner Settlement" present in `app.so` |
+| Android build | **Not tested** | not built in OA-3 |
+| Windows / Android device acceptance of the settlement screen | **Not tested** | no device phase was written or run; the surface is proven by widget tests and the live service suite, not by driving a real client |
+
+### Positive controls, each seen RED and restored byte-identical
+
+| Control | Result |
+|---|---|
+| Sync `_withdraw` removed | RED |
+| Capability-loss purge disabled | **6** RED |
+| Restore-authorship predicate removed | **1** RED (the D-074 case) |
+| v21 range guard removed | RED — duplicate column |
+| An OA-1 master writer planted | RED — the D-216 guard |
+| Preview: settlement check, consolidated check, before-period profit | RED each |
+| Refresher: not-authorised stop, on-demand years | RED each |
+| UI: `.paise` planted, a finalize identifier planted, sidebar gate removed, closing label ignoring the sign | RED each |
+| **Live**: the refresher's reporting pull disabled | **4** RED, each `reportingNotDownloaded`, never ₹0 |
+
+## 4 · Commits
+
+| | |
+|---|---|
+| `6d0c4a6` | the server boundary: capability, start date, snapshot gate, API surface |
+| `2982153` | sync contract, local schema v21, capability-loss purge |
+| `e4a9d29` | preview service, refresher, production wiring, D-208 guard |
+| `571f35c` | the preview on both shells |
+| `3322434` | the live security suite against `krishna-mis-dev` |
+
+## 5 · Migration ledger
+
+| Ledger version | Name |
+|---|---|
+| 20260911130948 | `owner_settlement_view_capability` |
+| 20260911131042 | `owner_settlement_start_date` |
+| 20260911131130 | `owner_ledger_snapshot_requires_settlement_view` |
+| 20260911131228 | `api_surface_invariant_owner_settlement` |
+
+**100** applied versions on `krishna-mis-dev`. Local Drift schema **v21**.
+
+## 6 · The development project after OA-3
+
+| | |
+|---|---|
+| Open OA-3 fixtures (sales, owner movements) | **0** — voided through the real APIs |
+| Open revenue / open owner movements, any | **0 / 0** |
+| Live tax rules · bands/subtypes/statuses · closed periods | **4 · 0/0/0 · 0** |
+| Role grants · roles | **7 · owner, manager, accountant, data_entry** — unchanged by OA-3 |
+| `owner_settlement.view` holders | **owner** only |
+| `owner_settlement_settings` | **`2026-05-01` — a DEVELOPMENT FIXTURE, not the production date.** Restoring "not configured" needs an administrative removal, which was not performed in this session (D-217) |
+
+## 7 · Recorded and deliberately not changed (D-218)
+
+The OA-1 owner-ledger outbox transport is **not wired in `bootstrap`** (latent: no surface
+creates an owner movement). No administrative screen sets the start date (the reviewed RPC
+does). No per-family-member breakdown of non-chargeable consumption.
+
+## 8 · Open for the project lead
+
+1. **The production 50:50 start date.** Nothing real can be settled without it.
+2. **Whether to remove the development fixture start date** from `krishna-mis-dev`, so the
+   development project shows "Settlement start date not configured" again.
+
+## 9 · Next
+
+**Stop.** OA-3 is complete. The Finalized Statement slice and the old Phase 5 Slice 7 wait
+for the project lead.
