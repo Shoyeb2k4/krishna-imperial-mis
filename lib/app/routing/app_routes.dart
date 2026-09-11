@@ -22,6 +22,10 @@ abstract final class AppRoutes {
   static const String masters = '/masters';
   static const String administration = '/administration';
 
+  /// The Owner Profit & Settlement Statement preview (Phase 5 OA-3). Its own destination,
+  /// separate from Reports and the P&L: owner settlement is owner-private.
+  static const String ownerSettlement = '/owner-settlement';
+
   // ── Shared ────────────────────────────────────────────────────────────────
   static const String signIn = '/sign-in';
 }

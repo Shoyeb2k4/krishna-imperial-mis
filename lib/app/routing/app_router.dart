@@ -14,6 +14,7 @@ import 'package:krishna_mis/app/shell/mobile_shell.dart';
 import 'package:krishna_mis/features/expenses/presentation/expense_ledger_page.dart';
 import 'package:krishna_mis/features/transactions/presentation/transactions_page.dart';
 import 'package:krishna_mis/features/masters/presentation/masters_page.dart';
+import 'package:krishna_mis/features/owner_settlement/presentation/owner_settlement_page.dart';
 import 'package:krishna_mis/features/placeholder/placeholder_page.dart';
 
 enum AppShellKind { mobile, desktop }
@@ -110,6 +111,12 @@ abstract final class AppRouter {
               summary:
                   'Generated reports, Excel and PDF export, Windows printing.',
             ),
+          ),
+          // The branch order matches the sidebar's destinations exactly, so a filtered
+          // sidebar can never navigate somebody to the wrong screen.
+          _branch(
+            AppRoutes.ownerSettlement,
+            const OwnerSettlementPage(shellKind: AppShellKind.desktop),
           ),
           _branch(
             AppRoutes.masters,

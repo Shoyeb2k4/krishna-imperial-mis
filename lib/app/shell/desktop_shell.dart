@@ -38,6 +38,14 @@ class DesktopShell extends ConsumerWidget {
       label: 'Reports',
       requires: Capability.reportsView,
     ),
+    // Its own destination, never a tab inside Reports: owner settlement is owner-private
+    // financial information (OA-3 Q4). Gated here for the interface; the settlement
+    // surface and the server refuse regardless.
+    (
+      icon: Icons.account_balance_wallet_outlined,
+      label: 'Owner Settlement',
+      requires: Capability.ownerSettlementView,
+    ),
     (
       icon: Icons.inventory_2_outlined,
       label: 'Masters',

@@ -234,27 +234,126 @@ void main() {
   });
 
   // ═══════════════════════════════════════════════════════════════════════════
-  group('§45 · OA-2 builds no surface', () {
-    test('no settlement screen, card, export or button exists', () {
-      final features = Directory('lib/features')
-          .listSync(recursive: true)
-          .whereType<File>()
-          .where((f) => f.path.endsWith('.dart'))
-          .map((f) => f.readAsStringSync())
-          .join('\n');
+  //
+  // OA-2 asserted here that **no** settlement surface existed, because presentation was
+  // OA-3's. OA-3 built it, so that assertion moved by instruction — and the boundary it
+  // protected moved with it rather than being deleted: the surface is a *preview* and a
+  // *formatter*, and these say so in a form the build evaluates.
+  group('§45 → OA-3 · the surface is a preview, and it only formats', () {
+    List<File> surface() => Directory('lib/features/owner_settlement')
+        .listSync(recursive: true)
+        .whereType<File>()
+        .where((f) => f.path.endsWith('.dart'))
+        .toList();
 
-      for (final forbidden in [
-        'OwnerSettlement',
-        'settlementPosition',
-        'ownerStatement',
+    /// Code with comments **and string literals** removed: the screen says "not a
+    /// finalized statement" in words, and a sentence is not a finalize action.
+    String identifiers(String source) => _code(source)
+        .replaceAll(RegExp(r"'(?:[^'\\\n]|\\.)*'"), "''")
+        .replaceAll(RegExp(r'"(?:[^"\\\n]|\\.)*"'), '""');
+
+    test('there is a surface to check', () {
+      expect(surface().length, greaterThanOrEqualTo(2));
+    });
+
+    test('no finalize, reopen, lock, approval or versioning exists (Q3)', () {
+      for (final file in surface()) {
+        final code = identifiers(file.readAsStringSync());
+        for (final forbidden in [
+          RegExp(r'finali[sz]', caseSensitive: false),
+          RegExp('reopen', caseSensitive: false),
+          RegExp(r'approv', caseSensitive: false),
+          RegExp(r'lockStatement|statementLock|isLocked', caseSensitive: false),
+          RegExp(r'version', caseSensitive: false),
+        ]) {
+          expect(
+            forbidden.hasMatch(code),
+            isFalse,
+            reason:
+                '${file.path} names ${forbidden.pattern}. OA-3 is preview only; the '
+                'Finalized Statement slice defines finalize and reopen, not this one',
+          );
+        }
+      }
+    });
+
+    test('no widget recomputes a settlement figure', () {
+      for (final file in surface()) {
+        final code = identifiers(file.readAsStringSync());
+        for (final forbidden in [
+          '.paise',
+          'Money.fromPaise',
+          'Money.sum',
+          'Money.zero',
+          'OwnerSettlement.compute',
+          'CumulativeEntitlement',
+          'PeriodEntitlement',
+          'Pnl.compute',
+          'Pnl.consolidate',
+          'resolveV1For',
+          'resolveFor',
+          'shareBasisPoints',
+          'netMovements',
+          '~/',
+          'OwnerSettlementRepository(',
+          'OwnerLedgerRepository',
+          'ReportingEngine(',
+        ]) {
+          expect(
+            code,
+            isNot(contains(forbidden)),
+            reason:
+                '${file.path} names $forbidden. The surface consumes the OA-2 result; '
+                'Operating Profit, ownership, entitlement and every position are '
+                'computed once, elsewhere, and never in a widget (OA-3)',
+          );
+        }
+      }
+    });
+
+    test('and it does read the result it is meant to show', () {
+      // The complement: a page that computed nothing *and showed nothing* would satisfy
+      // the scan above while doing no work at all.
+      final page = File(
+        'lib/features/owner_settlement/presentation/owner_settlement_page.dart',
+      ).readAsStringSync();
+      for (final field in [
+        'openingPosition',
+        'profitEntitlement',
+        'withdrawals',
+        'ncConsumption',
+        'settlementPaid',
+        'adjustmentCredits',
+        'adjustmentDebits',
+        'closingPosition',
+        'operatingProfitByBusinessUnit',
+        'undistributedRemainder',
       ]) {
-        expect(
-          features,
-          isNot(contains(forbidden)),
-          reason:
-              'presentation and its security boundary are OA-3, and a slice boundary '
-              'nothing evaluates is a comment',
-        );
+        expect(page, contains(field));
+      }
+    });
+
+    test('the surface never reads the OA-1 owner masters (D-208)', () {
+      for (final file in [
+        ...surface(),
+        File('lib/data/repositories/owner_settlement_preview.dart'),
+        File('lib/data/repositories/owner_settlement_repository.dart'),
+      ]) {
+        final code = identifiers(file.readAsStringSync());
+        for (final forbidden in [
+          RegExp(r'\.owners\b'),
+          RegExp(r'\.ownershipShares\b'),
+          RegExp(r'\.ownerFamilyMembers\b'),
+        ]) {
+          expect(
+            forbidden.hasMatch(code),
+            isFalse,
+            reason:
+                '${file.path} reads an organisation-global owner master, which '
+                'survives a user switch. The settlement reads the owner-keyed '
+                'canonical cache only',
+          );
+        }
       }
     });
 

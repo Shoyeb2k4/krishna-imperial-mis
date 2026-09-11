@@ -8,8 +8,11 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:krishna_mis/app/providers.dart';
 import 'package:krishna_mis/app/routing/app_router.dart';
 import 'package:krishna_mis/core/design/tokens/app_tokens.dart';
+import 'package:krishna_mis/domain/auth/capability.dart';
+import 'package:krishna_mis/features/owner_settlement/presentation/owner_settlement_page.dart';
 import 'package:krishna_mis/features/masters/presentation/android_masters_view.dart';
 import 'package:krishna_mis/features/masters/presentation/windows_masters_view.dart';
 import 'package:krishna_mis/features/auth/presentation/account_control.dart';
@@ -204,6 +207,83 @@ class _AndroidMasters extends ConsumerWidget {
                 ),
               ),
             ),
+          // Owner settlement, shown only to holders of `owner_settlement.view` — its own
+          // group, never folded into set-up or into Reports, because it is owner-private
+          // (OA-3 Q4). Gating is interface only; the surface and the server refuse
+          // regardless.
+          if (ref
+              .watch(principalProvider)
+              .canAnywhere(Capability.ownerSettlementView)) ...[
+            const SizedBox(height: AppSpacing.lg),
+            const Divider(height: 1),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.lg,
+                AppSpacing.lg,
+                AppSpacing.lg,
+                AppSpacing.sm,
+              ),
+              child: Text('OWNER ACCOUNTS', style: AppTypography.overline),
+            ),
+            InkWell(
+              key: const Key('more-owner-settlement'),
+              focusColor: AppColors.brassWash,
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => Scaffold(
+                    appBar: AppBar(title: const Text('Owner Settlement')),
+                    body: const OwnerSettlementPage(
+                      shellKind: AppShellKind.mobile,
+                    ),
+                  ),
+                ),
+              ),
+              child: Container(
+                constraints: const BoxConstraints(minHeight: 64),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.lg,
+                  vertical: AppSpacing.md,
+                ),
+                decoration: const BoxDecoration(
+                  border: Border(bottom: BorderSide(color: AppColors.hairline)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.account_balance_wallet_outlined,
+                      size: 20,
+                      color: AppColors.brass,
+                    ),
+                    const SizedBox(width: AppSpacing.lg),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Owner Settlement',
+                            style: AppTypography.body.copyWith(
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const SizedBox(height: AppSpacing.xxs),
+                          Text(
+                            'Owner Profit & Settlement Statement preview',
+                            style: AppTypography.caption,
+                            maxLines: 2,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Icon(
+                      Icons.chevron_right,
+                      size: 18,
+                      color: AppColors.inkFaint,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: AppSpacing.lg),
           const Divider(height: 1),
           // "More" is where a phone user manages their own session (master spec §18).
