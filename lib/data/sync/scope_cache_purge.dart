@@ -246,9 +246,22 @@ class ScopeCachePurge {
         principal.canAnywhere(Capability.reportsView);
     final mayReadLedger = principal.canAnywhere(Capability.ownerLedgerView);
 
-    if (mayReadSettlement && mayReadLedger) return removed;
-
     await db.transaction(() async {
+      final reportingUnits = await _reportingUnitsFor(snapshot.userId);
+      final noLongerReportable = {
+        for (final unit in reportingUnits)
+          if (!principal.can(Capability.reportsView, businessUnitId: unit) ||
+              !principal.can(Capability.revenueView, businessUnitId: unit) ||
+              !principal.can(Capability.expenseViewAll, businessUnitId: unit))
+            unit,
+      };
+      if (noLongerReportable.isNotEmpty) {
+        await _purgeReportingCacheFor(
+          snapshot.userId,
+          noLongerReportable,
+          removed,
+        );
+      }
       if (!mayReadSettlement) {
         await _purgeOwnerSettlementCacheFor(snapshot.userId, removed);
       }
@@ -267,6 +280,26 @@ class ScopeCachePurge {
     });
     return removed;
   }
+
+  Future<Set<String>> _reportingUnitsFor(String ownerUserId) async => {
+    for (final row
+        in await db
+            .customSelect(
+              'SELECT business_unit_id AS id FROM reporting_coverage_markers '
+              'WHERE owner_user_id = ? '
+              'UNION SELECT business_unit_id AS id '
+              'FROM reporting_revenue_contributions WHERE owner_user_id = ? '
+              'UNION SELECT business_unit_id AS id '
+              'FROM reporting_expense_contributions WHERE owner_user_id = ?',
+              variables: [
+                Variable<String>(ownerUserId),
+                Variable<String>(ownerUserId),
+                Variable<String>(ownerUserId),
+              ],
+            )
+            .get())
+      row.data['id'] as String,
+  };
 
   /// One person's canonical owner cache, coverage first (D-171, D-074).
   Future<void> _purgeOwnerSettlementCacheFor(
@@ -595,6 +628,31 @@ class ScopeCachePurge {
       '${_in(units)}',
       units,
     );
+  }
+
+  /// One person's canonical reporting cache. Used for a confirmed authority change:
+  /// another person's rows on a shared device are not evidence about this revocation.
+  Future<void> _purgeReportingCacheFor(
+    String ownerUserId,
+    Set<String> units,
+    Map<String, int> removed,
+  ) async {
+    for (final table in const [
+      'reporting_coverage_markers',
+      'reporting_revenue_contributions',
+      'reporting_expense_contributions',
+    ]) {
+      final count = await db.customUpdate(
+        'DELETE FROM $table WHERE owner_user_id = ? '
+        'AND business_unit_id IN ${_in(units)}',
+        variables: [
+          Variable<String>(ownerUserId),
+          for (final unit in units) Variable<String>(unit),
+        ],
+        updates: const {},
+      );
+      removed.update(table, (value) => value + count, ifAbsent: () => count);
+    }
   }
 
   /// The canonical owner cache (OA-2), on the same terms and for the same reason.
@@ -1049,6 +1107,9 @@ class ScopeCachePurge {
     final rows = await db
         .customSelect(
           'SELECT id FROM business_units '
+          'UNION SELECT business_unit_id FROM reporting_coverage_markers '
+          'UNION SELECT business_unit_id FROM reporting_revenue_contributions '
+          'UNION SELECT business_unit_id FROM reporting_expense_contributions '
           'UNION SELECT business_unit_id FROM owner_ledger_entries '
           'UNION SELECT business_unit_id FROM canonical_owner_movements',
         )

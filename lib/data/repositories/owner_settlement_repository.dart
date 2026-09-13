@@ -17,6 +17,7 @@ library;
 import 'package:drift/drift.dart';
 
 import 'package:krishna_mis/data/local/app_database.dart';
+import 'package:krishna_mis/domain/auth/capability.dart';
 import 'package:krishna_mis/domain/owner_accounts/owner.dart';
 import 'package:krishna_mis/domain/owner_accounts/owner_ledger.dart';
 import 'package:krishna_mis/domain/owner_accounts/settlement/owner_settlement.dart';
@@ -42,12 +43,18 @@ class OwnerSettlementCoverageState {
 }
 
 class OwnerSettlementRepository {
-  OwnerSettlementRepository(this._db, {required this.ownerUserId});
+  OwnerSettlementRepository(this._db, {required this.principal});
 
   final AppDatabase _db;
+  final Principal principal;
 
   /// The signed-in person whose cache this reads (D-074).
-  final String ownerUserId;
+  String get ownerUserId => principal.userId;
+
+  bool get _mayRead =>
+      principal.canAnywhere(Capability.ownerSettlementView) &&
+      principal.canAnywhere(Capability.ownerLedgerView) &&
+      principal.canAnywhere(Capability.reportsView);
 
   /// The coverage row, or null when this device has never synchronised.
   ///
@@ -55,6 +62,7 @@ class OwnerSettlementRepository {
   /// a settlement refuses on it. The distinction D-106 and D-108 exist for, in a third
   /// domain.
   Future<OwnerSettlementCoverageState?> coverage() async {
+    if (!_mayRead) return null;
     final row = await (_db.select(
       _db.ownerSettlementCoverage,
     )..where((t) => t.ownerUserId.equals(ownerUserId))).getSingleOrNull();
@@ -74,6 +82,7 @@ class OwnerSettlementRepository {
   /// From the **owner-keyed** copy and nowhere else (D-208): the OA-1 `owners` table
   /// survives a user switch, and a settlement surface must never name an owner out of it.
   Future<Map<String, String>> ownerNames() async {
+    if (!_mayRead) return const {};
     final rows = await (_db.select(
       _db.canonicalOwners,
     )..where((t) => t.ownerUserId.equals(ownerUserId))).get();
@@ -88,6 +97,7 @@ class OwnerSettlementRepository {
   Future<List<OwnerLedgerEntry>> canonicalMovements({
     required BusinessDate through,
   }) async {
+    if (!_mayRead) return const [];
     final rows =
         await (_db.select(_db.canonicalOwnerMovements)
               ..where((t) => t.ownerUserId.equals(ownerUserId))
@@ -129,6 +139,7 @@ class OwnerSettlementRepository {
 
   /// The ownership vector the canonical cache holds.
   Future<OwnershipShareSet> ownershipShares() async {
+    if (!_mayRead) return OwnershipShareSet(const []);
     final rows = await (_db.select(
       _db.canonicalOwnershipShares,
     )..where((t) => t.ownerUserId.equals(ownerUserId))).get();
@@ -152,6 +163,7 @@ class OwnerSettlementRepository {
   /// share left behind on an archived owner then fails the count rather than satisfying
   /// it (D-204).
   Future<Set<String>> activeOwnerIds() async {
+    if (!_mayRead) return const {};
     final rows =
         await (_db.select(_db.canonicalOwners)
               ..where((t) => t.ownerUserId.equals(ownerUserId))

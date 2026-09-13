@@ -31,6 +31,7 @@ import 'package:krishna_mis/domain/value_objects/business_date.dart';
 import 'package:krishna_mis/domain/value_objects/money.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show SupabaseClient;
 import 'package:timezone/data/latest.dart' as tzdata;
+import '../support/cache_principal.dart';
 
 const _org = 'org-1';
 const _ccr = 'unit-ccr';
@@ -910,7 +911,7 @@ void main() {
       final engine = LocalReportingEngine(
         CachedReportingSource(
           cache: cache,
-          ownerUserId: _me,
+          principal: canonicalCachePrincipal(_me),
           coverage: await MarkerCoverage.load(cache, _me),
         ),
       );
@@ -1262,7 +1263,7 @@ void main() {
       final engine = LocalReportingEngine(
         CachedReportingSource(
           cache: cache,
-          ownerUserId: _me,
+          principal: canonicalCachePrincipal(_me),
           coverage: await MarkerCoverage.load(cache, _me),
         ),
       );
@@ -1547,7 +1548,7 @@ void main() {
       engine = LocalReportingEngine(
         CachedReportingSource(
           cache: cache,
-          ownerUserId: _me,
+          principal: canonicalCachePrincipal(_me),
           coverage: await MarkerCoverage.load(cache, _me),
         ),
       );
@@ -1892,7 +1893,7 @@ void main() {
       final engineForThem = LocalReportingEngine(
         CachedReportingSource(
           cache: cache,
-          ownerUserId: _colleague,
+          principal: canonicalCachePrincipal(_colleague),
           coverage: await MarkerCoverage.load(cache, _colleague),
         ),
       );
@@ -1921,7 +1922,7 @@ void main() {
       final engine = LocalReportingEngine(
         CachedReportingSource(
           cache: cache,
-          ownerUserId: _me,
+          principal: canonicalCachePrincipal(_me),
           coverage: await MarkerCoverage.load(cache, _me),
         ),
       );

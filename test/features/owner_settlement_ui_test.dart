@@ -33,6 +33,7 @@ import 'package:krishna_mis/domain/auth/authority.dart';
 import 'package:krishna_mis/domain/auth/capability.dart';
 import 'package:krishna_mis/domain/auth/session_state.dart';
 import 'package:krishna_mis/domain/expenses/expense_contribution.dart';
+import '../support/cache_principal.dart';
 import 'package:krishna_mis/domain/finance/reporting_period.dart';
 import 'package:krishna_mis/domain/finance/reporting_source.dart';
 import 'package:krishna_mis/domain/revenue/revenue_contribution.dart';
@@ -534,7 +535,10 @@ void main() {
         ownerUserId: userId,
         orgId: 'test-org',
       ),
-      repository: OwnerSettlementRepository(db, ownerUserId: userId),
+      repository: OwnerSettlementRepository(
+        db,
+        principal: canonicalCachePrincipal(userId),
+      ),
     );
 
     uiTest('synchronising, with nothing yet on the device', (tester) async {

@@ -18,6 +18,7 @@ import 'package:krishna_mis/data/local/app_database.dart';
 import 'package:krishna_mis/data/repositories/owner_settlement_repository.dart';
 
 import '../support/expense_fixtures.dart' show createTempDatabaseFile;
+import '../support/cache_principal.dart';
 
 Future<Set<String>> _columns(AppDatabase db, String table) async {
   final rows = await db.customSelect('PRAGMA table_info($table)').get();
@@ -84,7 +85,7 @@ void main() {
       expect(await _userVersion(upgraded), upgraded.schemaVersion);
       final coverage = await OwnerSettlementRepository(
         upgraded,
-        ownerUserId: 'user-1',
+        principal: canonicalCachePrincipal('user-1'),
       ).coverage();
       expect(coverage, isNotNull, reason: 'the coverage row is kept');
       expect(coverage!.snapshotId, 'snap-v20');

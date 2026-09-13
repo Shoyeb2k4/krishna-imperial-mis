@@ -30,6 +30,7 @@ import 'package:krishna_mis/data/sync/scope_cache_purge.dart';
 import 'package:krishna_mis/domain/auth/authority.dart';
 import 'package:krishna_mis/domain/auth/capability.dart';
 import 'package:krishna_mis/domain/value_objects/business_date.dart';
+import '../support/cache_principal.dart';
 
 const _ccr = 'unit-ccr';
 const _hki = 'unit-hki';
@@ -263,7 +264,10 @@ void main() {
           'canonical_owners': 0,
         });
         expect(
-          await OwnerSettlementRepository(db, ownerUserId: 'user-1').coverage(),
+          await OwnerSettlementRepository(
+            db,
+            principal: canonicalCachePrincipal('user-1'),
+          ).coverage(),
           isNull,
           reason:
               'no settlement may be certified from history this reader was just told '
@@ -490,13 +494,16 @@ void main() {
         expect(
           (await OwnerSettlementRepository(
             db,
-            ownerUserId: 'user-1',
+            principal: canonicalCachePrincipal('user-1'),
           ).coverage())!.ownershipStartDate,
           BusinessDate.of(2026, 4, 1),
         );
         await purge.purgeAllScopedCache();
         expect(
-          await OwnerSettlementRepository(db, ownerUserId: 'user-1').coverage(),
+          await OwnerSettlementRepository(
+            db,
+            principal: canonicalCachePrincipal('user-1'),
+          ).coverage(),
           isNull,
         );
       });

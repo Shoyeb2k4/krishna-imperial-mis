@@ -22,14 +22,24 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:krishna_mis/app/providers.dart';
 import 'package:krishna_mis/data/local/app_database.dart';
+import 'package:krishna_mis/data/remote/reporting_gateway.dart';
 import 'package:krishna_mis/data/reporting/cached_reporting_source.dart';
+import 'package:krishna_mis/data/repositories/reporting_cache.dart';
+import 'package:krishna_mis/domain/auth/authority.dart';
+import 'package:krishna_mis/domain/auth/capability.dart';
 import 'package:krishna_mis/domain/auth/session_state.dart';
+import 'package:krishna_mis/domain/finance/reporting_period.dart';
+import 'package:krishna_mis/domain/finance/reporting_source.dart';
 import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:drift/native.dart';
 
 import '../support/test_session.dart';
 
 void main() {
+  const ccr = 'unit-ccr';
+  const hki = 'unit-hki';
+  final now = DateTime.utc(2026, 9, 12, 9);
+
   setUpAll(() => driftRuntimeOptions.dontWarnAboutMultipleDatabases = true);
   tearDownAll(() => driftRuntimeOptions.dontWarnAboutMultipleDatabases = false);
 
@@ -44,6 +54,99 @@ void main() {
       databaseProvider.overrideWithValue(db),
       sessionProvider.overrideWith(() => StubSession(session)),
     ],
+  );
+
+  AuthoritySnapshot authority(Iterable<CapabilityGrant> grants) =>
+      AuthoritySnapshot(
+        userId: 'test-owner',
+        orgId: 'test-org',
+        grants: grants,
+        resolvedAt: now,
+      );
+
+  Future<void> seedCanonicalPnl() => ReportingCache(db).applySnapshot(
+    ownerUserId: 'test-owner',
+    orgId: 'test-org',
+    snapshotId: 'slice-7-snapshot',
+    serverConfirmedAt: now,
+    businessUnitIds: const {ccr, hki},
+    financialYears: const [2026],
+    datasets: {
+      ReportingDataset.revenue: const DatasetApplication(
+        documentIds: ['revenue-ccr', 'revenue-hki'],
+        rowsByYear: {
+          2026: [
+            RevenueRowValues(
+              contributionId: 'revenue-component-ccr',
+              revenueEntryId: 'revenue-ccr',
+              businessUnitId: ccr,
+              revenueCategoryId: 'category-ccr',
+              pnlDate: '2026-06-15',
+              pnlPeriodKey: '2026-06',
+              grossMinor: 10500,
+              taxMinor: 500,
+              netMinor: 10000,
+              taxTreatment: 'inclusive',
+              taxRateBasisPoints: 500,
+              enteredBasis: 'inclusive_total',
+              documentGeneration: 1,
+            ),
+            RevenueRowValues(
+              contributionId: 'revenue-component-hki',
+              revenueEntryId: 'revenue-hki',
+              businessUnitId: hki,
+              revenueCategoryId: 'category-hki',
+              pnlDate: '2026-06-15',
+              pnlPeriodKey: '2026-06',
+              grossMinor: 21000,
+              taxMinor: 1000,
+              netMinor: 20000,
+              taxTreatment: 'inclusive',
+              taxRateBasisPoints: 500,
+              enteredBasis: 'inclusive_total',
+              documentGeneration: 1,
+            ),
+          ],
+        },
+        generationByYear: {2026: 1},
+      ),
+      ReportingDataset.expense: const DatasetApplication(
+        documentIds: ['expense-ccr', 'expense-hki'],
+        rowsByYear: {
+          2026: [
+            ExpenseRowValues(
+              contributionId: 'expense-contribution-ccr',
+              expenseId: 'expense-ccr',
+              allocationId: 'allocation-ccr',
+              businessUnitId: ccr,
+              departmentId: 'department-ccr',
+              sectionId: 'section-ccr',
+              categoryId: 'expense-category-ccr',
+              pnlDate: '2026-06-15',
+              pnlPeriodKey: '2026-06',
+              amountMinor: 4000,
+              documentGeneration: 1,
+            ),
+            ExpenseRowValues(
+              contributionId: 'expense-contribution-hki',
+              expenseId: 'expense-hki',
+              allocationId: 'allocation-hki',
+              businessUnitId: hki,
+              departmentId: 'department-hki',
+              sectionId: 'section-hki',
+              categoryId: 'expense-category-hki',
+              pnlDate: '2026-06-15',
+              pnlPeriodKey: '2026-06',
+              amountMinor: 8000,
+              documentGeneration: 1,
+            ),
+          ],
+        },
+        generationByYear: {2026: 1},
+      ),
+    },
+    onDemand: false,
+    now: now,
   );
 
   setUp(() {
@@ -96,6 +199,174 @@ void main() {
           'a screen that forgot to check the session still gets nothing rather than '
           'somebody else P&L (D-051 §8)',
     );
+  });
+
+  group('the local cache enforces the reporting capability contract', () {
+    test('all three unit-scoped capabilities compute that unit P&L', () async {
+      await seedCanonicalPnl();
+      final allowed = containerFor(
+        readySession(
+          authority: authority(const [
+            CapabilityGrant(Capability.reportsView, businessUnitId: ccr),
+            CapabilityGrant(Capability.revenueView, businessUnitId: ccr),
+            CapabilityGrant(Capability.expenseViewAll, businessUnitId: ccr),
+          ]),
+        ),
+      );
+      addTearDown(allowed.dispose);
+
+      final report =
+          await (await allowed.read(
+            localReportingEngineProvider.future,
+          )).report(
+            ReportRequest(
+              period: const MonthPeriod(2026, 6),
+              scope: ReportingScope.unit(ccr),
+            ),
+          );
+
+      expect(report.isComputed, isTrue);
+      expect(report.resultOrNull!.netSales.paise, 10000);
+      expect(report.resultOrNull!.expenses.paise, 4000);
+    });
+
+    test(
+      'missing reports.view refuses both sides even when rows exist',
+      () async {
+        await seedCanonicalPnl();
+        final limited = containerFor(
+          readySession(
+            authority: authority(const [
+              CapabilityGrant(Capability.revenueView, businessUnitId: ccr),
+              CapabilityGrant(Capability.expenseViewAll, businessUnitId: ccr),
+            ]),
+          ),
+        );
+        addTearDown(limited.dispose);
+
+        final engine = await limited.read(localReportingEngineProvider.future);
+        final report = await engine.report(
+          ReportRequest(
+            period: const MonthPeriod(2026, 6),
+            scope: ReportingScope.unit(ccr),
+          ),
+        );
+
+        expect(report.isComputed, isFalse);
+        expect(report.revenueCoverage, ReportingCoverage.notAuthorised);
+        expect(report.expenseCoverage, ReportingCoverage.notAuthorised);
+      },
+    );
+
+    test('missing revenue.view refuses instead of substituting zero', () async {
+      await seedCanonicalPnl();
+      final noRevenue = containerFor(
+        readySession(
+          authority: authority(const [
+            CapabilityGrant(Capability.reportsView, businessUnitId: ccr),
+            CapabilityGrant(Capability.expenseViewAll, businessUnitId: ccr),
+          ]),
+        ),
+      );
+      addTearDown(noRevenue.dispose);
+
+      final report =
+          await (await noRevenue.read(
+            localReportingEngineProvider.future,
+          )).report(
+            ReportRequest(
+              period: const MonthPeriod(2026, 6),
+              scope: ReportingScope.unit(ccr),
+            ),
+          );
+
+      expect(report.isComputed, isFalse);
+      expect(report.revenueCoverage, ReportingCoverage.notAuthorised);
+      expect(report.expenseCoverage, ReportingCoverage.complete);
+      expect(report.resultOrNull, isNull);
+    });
+
+    test('expense.view.own never qualifies for the expense side', () async {
+      await seedCanonicalPnl();
+      final ownOnly = containerFor(
+        readySession(
+          authority: authority(const [
+            CapabilityGrant(Capability.reportsView, businessUnitId: ccr),
+            CapabilityGrant(Capability.revenueView, businessUnitId: ccr),
+            CapabilityGrant(Capability.expenseViewOwn, businessUnitId: ccr),
+          ]),
+        ),
+      );
+      addTearDown(ownOnly.dispose);
+
+      final engine = await ownOnly.read(localReportingEngineProvider.future);
+      final report = await engine.report(
+        ReportRequest(
+          period: const MonthPeriod(2026, 6),
+          scope: ReportingScope.unit(ccr),
+        ),
+      );
+
+      expect(report.isComputed, isFalse);
+      expect(report.revenueCoverage, ReportingCoverage.complete);
+      expect(report.expenseCoverage, ReportingCoverage.notAuthorised);
+    });
+
+    test('authority for another unit cannot read cached P&L', () async {
+      await seedCanonicalPnl();
+      final wrongUnit = containerFor(
+        readySession(
+          authority: authority(const [
+            CapabilityGrant(Capability.reportsView, businessUnitId: hki),
+            CapabilityGrant(Capability.revenueView, businessUnitId: hki),
+            CapabilityGrant(Capability.expenseViewAll, businessUnitId: hki),
+          ]),
+        ),
+      );
+      addTearDown(wrongUnit.dispose);
+
+      final report =
+          await (await wrongUnit.read(
+            localReportingEngineProvider.future,
+          )).report(
+            ReportRequest(
+              period: const MonthPeriod(2026, 6),
+              scope: ReportingScope.unit(ccr),
+            ),
+          );
+
+      expect(report.isComputed, isFalse);
+      expect(report.revenueCoverage, ReportingCoverage.notAuthorised);
+      expect(report.expenseCoverage, ReportingCoverage.notAuthorised);
+    });
+
+    test('two complete scoped grants do not authorise consolidation', () async {
+      await seedCanonicalPnl();
+      final scoped = containerFor(
+        readySession(
+          authority: authority([
+            for (final unit in const [ccr, hki]) ...[
+              CapabilityGrant(Capability.reportsView, businessUnitId: unit),
+              CapabilityGrant(Capability.revenueView, businessUnitId: unit),
+              CapabilityGrant(Capability.expenseViewAll, businessUnitId: unit),
+            ],
+          ]),
+        ),
+      );
+      addTearDown(scoped.dispose);
+
+      final engine = await scoped.read(localReportingEngineProvider.future);
+      final report = await engine.report(
+        ReportRequest(
+          period: const MonthPeriod(2026, 6),
+          scope: ReportingScope(const {ccr, hki}),
+        ),
+      );
+
+      expect(report.isComputed, isFalse);
+      expect(report.revenueCoverage, ReportingCoverage.notAuthorised);
+      expect(report.expenseCoverage, ReportingCoverage.notAuthorised);
+    });
   });
 
   test('the reporting gateway defaults to null and is overridden in main()', () {

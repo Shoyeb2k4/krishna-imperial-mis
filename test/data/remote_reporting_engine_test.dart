@@ -35,6 +35,7 @@ import 'package:krishna_mis/domain/finance/reporting_source.dart';
 import 'package:krishna_mis/domain/value_objects/business_date.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:timezone/data/latest.dart' as tzdata;
+import '../support/cache_principal.dart';
 
 import '../support/report_parity.dart';
 
@@ -228,7 +229,11 @@ void main() {
   tearDown(() => db.close());
 
   LocalReportingEngine local() => LocalReportingEngine(
-    CachedReportingSource(cache: cache, ownerUserId: _me, coverage: markers),
+    CachedReportingSource(
+      cache: cache,
+      principal: canonicalCachePrincipal(_me),
+      coverage: markers,
+    ),
   );
   RemoteReportingEngine remote() =>
       RemoteReportingEngine(RemoteReportingSource(boundary));

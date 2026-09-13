@@ -40,6 +40,7 @@ import 'package:krishna_mis/domain/value_objects/money.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:timezone/data/latest.dart' as tzdata;
 import 'package:uuid/uuid.dart';
+import '../support/cache_principal.dart';
 
 const _identitiesVar = 'KRISHNA_DEV_IDENTITIES';
 
@@ -815,7 +816,7 @@ void main() {
       final engine = LocalReportingEngine(
         CachedReportingSource(
           cache: device.cache,
-          ownerUserId: ownerId,
+          principal: canonicalCachePrincipal(ownerId),
           coverage: await MarkerCoverage.load(device.cache, ownerId),
         ),
       );

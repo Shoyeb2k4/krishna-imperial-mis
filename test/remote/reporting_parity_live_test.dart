@@ -49,6 +49,7 @@ import 'package:timezone/data/latest.dart' as tzdata;
 import 'package:uuid/uuid.dart';
 
 import '../support/report_parity.dart';
+import '../support/cache_principal.dart';
 
 const _identitiesVar = 'KRISHNA_DEV_IDENTITIES';
 
@@ -354,7 +355,7 @@ void main() {
       engine: LocalReportingEngine(
         CachedReportingSource(
           cache: device.cache,
-          ownerUserId: userId,
+          principal: canonicalCachePrincipal(userId),
           coverage: await MarkerCoverage.load(device.cache, userId),
         ),
       ),
@@ -368,7 +369,7 @@ void main() {
   ) async => LocalReportingEngine(
     CachedReportingSource(
       cache: cache,
-      ownerUserId: userId,
+      principal: canonicalCachePrincipal(userId),
       coverage: await MarkerCoverage.load(cache, userId),
     ),
   );

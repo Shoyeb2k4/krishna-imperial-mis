@@ -606,8 +606,22 @@ void main() {
     tearDown(() => db.close());
 
     test('a confirmed revocation removes the revoked property outright', () async {
+      final retainedAuthority = AuthoritySnapshot(
+        userId: 'manager',
+        orgId: seedOrgId,
+        resolvedAt: at,
+        grants: [
+          for (final capability in const [
+            Capability.mastersView,
+            Capability.reportsView,
+            Capability.revenueView,
+            Capability.expenseViewAll,
+          ])
+            CapabilityGrant(capability, businessUnitId: hki),
+        ],
+      );
       final result = await purge.applyTo(
-        AuthorityRefresh.confirmed(snapshot({hki})),
+        AuthorityRefresh.confirmed(retainedAuthority),
         previous: snapshot({ccr, hki}),
       );
       expect(result.didPurge, isTrue);
@@ -630,10 +644,7 @@ void main() {
     });
 
     test('the claim goes even where a colleague made it', () async {
-      await purge.applyTo(
-        AuthorityRefresh.confirmed(snapshot({hki})),
-        previous: snapshot({ccr, hki}),
-      );
+      await purge.purgeUnits({ccr}, actorUserId: 'manager');
 
       final owners = await db
           .customSelect(

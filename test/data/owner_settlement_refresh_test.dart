@@ -18,6 +18,7 @@ import 'package:krishna_mis/data/sync/owner_settlement_sync.dart';
 import 'package:krishna_mis/data/sync/reporting_sync.dart';
 import 'package:krishna_mis/domain/value_objects/business_date.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../support/cache_principal.dart';
 
 const _ccr = 'unit-ccr';
 const _hki = 'unit-hki';
@@ -98,7 +99,10 @@ void main() {
         ownerUserId: 'user-1',
         orgId: 'org-1',
       ),
-      repository: OwnerSettlementRepository(db, ownerUserId: 'user-1'),
+      repository: OwnerSettlementRepository(
+        db,
+        principal: canonicalCachePrincipal('user-1'),
+      ),
     );
   });
   tearDown(() => db.close());

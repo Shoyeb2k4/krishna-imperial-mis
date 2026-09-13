@@ -34,8 +34,11 @@ import 'package:krishna_mis/data/remote/reporting_gateway.dart';
 import 'package:krishna_mis/data/reporting/drift_reporting_source.dart'
     show ReportingCoverageOracle;
 import 'package:krishna_mis/data/repositories/reporting_cache.dart';
+import 'package:krishna_mis/domain/auth/capability.dart';
+import 'package:krishna_mis/domain/expenses/expense_contribution.dart';
 import 'package:krishna_mis/domain/finance/reporting_period.dart';
 import 'package:krishna_mis/domain/finance/reporting_source.dart';
+import 'package:krishna_mis/domain/revenue/revenue_contribution.dart';
 
 /// Coverage decided by what the synchroniser certified, never by what happens to be here.
 final class MarkerCoverage implements ReportingCoverageOracle {
@@ -138,17 +141,21 @@ final class CachedReportingSource
     implements ReportingFactsSource {
   const CachedReportingSource({
     required this.cache,
-    required this.ownerUserId,
+    required this.principal,
     required this.coverage,
   });
 
   final ReportingCache cache;
 
+  /// The authority that owns this source. It supplies both the cache owner and the
+  /// capability boundary, so those two identities cannot drift apart on a user switch.
+  final Principal principal;
+
   /// Whose cache is being read. A constructor field rather than a call argument, because
   /// a source belongs to a signed-in session — the same shape `SyncEngine.actorUserId`
   /// takes, and for the same reason: there is no signature by which a caller can read
   /// somebody else's figures by forgetting to say whose they are (D-050, D-074).
-  final String ownerUserId;
+  String get ownerUserId => principal.userId;
 
   final ReportingCoverageOracle coverage;
 
@@ -168,38 +175,64 @@ final class CachedReportingSource
       );
     }
 
+    final authority = _authorityFor(
+      businessUnitId: businessUnitId,
+      scope: scope,
+    );
+    if (!authority.reports) {
+      return UnitReportingFacts.uncovered(
+        businessUnitId: businessUnitId,
+        coverage: ReportingCoverage.notAuthorised,
+      );
+    }
+
+    final revenueCoverage = authority.revenue
+        ? coverage.coverageFor(
+            businessUnitId: businessUnitId,
+            range: range,
+            side: ReportingDatasetSide.revenue,
+          )
+        : ReportingCoverage.notAuthorised;
+    final expenseCoverage = authority.expenses
+        ? coverage.coverageFor(
+            businessUnitId: businessUnitId,
+            range: range,
+            side: ReportingDatasetSide.expenses,
+          )
+        : ReportingCoverage.notAuthorised;
+
     return UnitReportingFacts(
       businessUnitId: businessUnitId,
-      revenueCoverage: coverage.coverageFor(
-        businessUnitId: businessUnitId,
-        range: range,
-        side: ReportingDatasetSide.revenue,
-      ),
-      expenseCoverage: coverage.coverageFor(
-        businessUnitId: businessUnitId,
-        range: range,
-        side: ReportingDatasetSide.expenses,
-      ),
-      revenue: await cache.revenueTotals(
-        ownerUserId: ownerUserId,
-        businessUnitId: businessUnitId,
-        range: range,
-      ),
-      expenses: await cache.expenseTotals(
-        ownerUserId: ownerUserId,
-        businessUnitId: businessUnitId,
-        range: range,
-      ),
-      revenueByCategory: await cache.revenueByCategory(
-        ownerUserId: ownerUserId,
-        businessUnitId: businessUnitId,
-        range: range,
-      ),
-      expensesByCategory: await cache.expensesByCategory(
-        ownerUserId: ownerUserId,
-        businessUnitId: businessUnitId,
-        range: range,
-      ),
+      revenueCoverage: revenueCoverage,
+      expenseCoverage: expenseCoverage,
+      revenue: authority.revenue
+          ? await cache.revenueTotals(
+              ownerUserId: ownerUserId,
+              businessUnitId: businessUnitId,
+              range: range,
+            )
+          : RevenueTotals.zero,
+      expenses: authority.expenses
+          ? await cache.expenseTotals(
+              ownerUserId: ownerUserId,
+              businessUnitId: businessUnitId,
+              range: range,
+            )
+          : ExpenseTotals.zero,
+      revenueByCategory: authority.revenue
+          ? await cache.revenueByCategory(
+              ownerUserId: ownerUserId,
+              businessUnitId: businessUnitId,
+              range: range,
+            )
+          : const [],
+      expensesByCategory: authority.expenses
+          ? await cache.expensesByCategory(
+              ownerUserId: ownerUserId,
+              businessUnitId: businessUnitId,
+              range: range,
+            )
+          : const [],
     );
   }
 
@@ -208,6 +241,13 @@ final class CachedReportingSource
     required ReportRange range,
     required ReportingScope scope,
   }) async {
+    if (scope.isEmpty ||
+        scope.ordered.any(
+          (unit) =>
+              !_authorityFor(businessUnitId: unit, scope: scope).fullyReadable,
+        )) {
+      return null;
+    }
     final oracle = coverage;
     if (oracle is! MarkerCoverage) return null;
     return oracle.snapshotEvidence(
@@ -215,4 +255,47 @@ final class CachedReportingSource
       range: range,
     );
   }
+
+  ({bool reports, bool revenue, bool expenses, bool fullyReadable})
+  _authorityFor({
+    required String businessUnitId,
+    required ReportingScope scope,
+  }) {
+    if (scope.isConsolidated) {
+      final allowed =
+          _hasUnscoped(Capability.reportsView) &&
+          _hasUnscoped(Capability.revenueView) &&
+          _hasUnscoped(Capability.expenseViewAll);
+      return (
+        reports: allowed,
+        revenue: allowed,
+        expenses: allowed,
+        fullyReadable: allowed,
+      );
+    }
+
+    final reports = principal.can(
+      Capability.reportsView,
+      businessUnitId: businessUnitId,
+    );
+    final revenue =
+        reports &&
+        principal.can(Capability.revenueView, businessUnitId: businessUnitId);
+    final expenses =
+        reports &&
+        principal.can(
+          Capability.expenseViewAll,
+          businessUnitId: businessUnitId,
+        );
+    return (
+      reports: reports,
+      revenue: revenue,
+      expenses: expenses,
+      fullyReadable: reports && revenue && expenses,
+    );
+  }
+
+  bool _hasUnscoped(Capability capability) =>
+      principal.canAnywhere(capability) &&
+      principal.scopedUnitsFor(capability) == null;
 }

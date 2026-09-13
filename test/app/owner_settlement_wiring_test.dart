@@ -120,6 +120,48 @@ void main() {
       },
     );
 
+    test(
+      'direct repository access cannot read a retained settlement cache without authority',
+      () async {
+        await db.customStatement(
+          'INSERT INTO owner_settlement_coverage '
+          '(owner_user_id, snapshot_id, server_confirmed_at, movement_count, '
+          ' ownership_start_date, updated_at) '
+          "VALUES ('accountant-user', 'old-snapshot', "
+          "'2026-09-11T09:00:00.000Z', 0, '2026-05-01', "
+          "'2026-09-11T09:00:00.000Z')",
+        );
+        await db.customStatement(
+          'INSERT INTO canonical_owners '
+          '(owner_user_id, id, org_id, code, display_name, active, '
+          ' archived_at, row_version, change_seq) '
+          "VALUES ('accountant-user', 'owner-a', 'org-1', 'A', "
+          "'Private owner', 1, NULL, 1, 1)",
+        );
+
+        final c = container(
+          SessionState.ready(
+            authority: _authority('accountant-user', [
+              for (final cap in RoleTemplates.accountant)
+                CapabilityGrant(cap, businessUnitId: 'unit-ccr'),
+            ]),
+            freshness: AuthorityFreshness.confirmed,
+            email: 'accountant@example.com',
+          ),
+        );
+        final repository = c.read(ownerSettlementRepositoryProvider);
+
+        expect(
+          await repository.coverage(),
+          isNull,
+          reason:
+              'a provider is not an alternate path around owner_settlement.view; '
+              'revocation cleanup is defence in depth, not the read boundary',
+        );
+        expect(await repository.ownerNames(), isEmpty);
+      },
+    );
+
     test('with no session the repository names nobody who owns a row', () {
       final c = container(const SessionState.unauthenticated());
       expect(c.read(ownerSettlementRefresherProvider), isNull);

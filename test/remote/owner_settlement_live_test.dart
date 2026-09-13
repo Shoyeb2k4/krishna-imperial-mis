@@ -530,7 +530,10 @@ void main() {
       db = AppDatabase(NativeDatabase.memory());
       authority = await authorityOf(_owner);
       final userId = authority.userId;
-      repository = OwnerSettlementRepository(db, ownerUserId: userId);
+      repository = OwnerSettlementRepository(
+        db,
+        principal: authority.principal,
+      );
       refresher = OwnerSettlementRefresher(
         ownerSync: OwnerSettlementSync(
           database: db,
@@ -556,7 +559,7 @@ void main() {
       final engine = LocalReportingEngine(
         CachedReportingSource(
           cache: cache,
-          ownerUserId: authority.userId,
+          principal: authority.principal,
           coverage: await MarkerCoverage.load(cache, authority.userId),
         ),
       );
@@ -782,12 +785,12 @@ void main() {
           final preview = await OwnerSettlementPreviewService(
             repository: OwnerSettlementRepository(
               db,
-              ownerUserId: other.userId,
+              principal: other.principal,
             ),
             reporting: LocalReportingEngine(
               CachedReportingSource(
                 cache: ReportingCache(db),
-                ownerUserId: other.userId,
+                principal: other.principal,
                 coverage: await MarkerCoverage.load(
                   ReportingCache(db),
                   other.userId,
@@ -823,7 +826,7 @@ void main() {
         expect(ownerResult, isA<OwnerSettlementSynchronised>());
         final ownerRepository = OwnerSettlementRepository(
           db,
-          ownerUserId: ownerAuthority.userId,
+          principal: ownerAuthority.principal,
         );
         expect(await ownerRepository.coverage(), isNotNull);
 
@@ -849,7 +852,7 @@ void main() {
         );
         final accountantRepository = OwnerSettlementRepository(
           db,
-          ownerUserId: accountantAuthority.userId,
+          principal: accountantAuthority.principal,
         );
         expect(await accountantRepository.coverage(), isNull);
         expect(await accountantRepository.ownerNames(), isEmpty);

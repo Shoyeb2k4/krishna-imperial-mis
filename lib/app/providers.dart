@@ -298,7 +298,7 @@ final localReportingSourceProvider = FutureProvider<ReportingFactsSource>((
   final owner = session.principal.userId;
   return CachedReportingSource(
     cache: cache,
-    ownerUserId: owner,
+    principal: session.principal,
     coverage: await MarkerCoverage.load(cache, owner),
   );
 });
@@ -328,7 +328,7 @@ final ownerLedgerGatewayProvider = Provider<OwnerLedgerGateway?>((ref) => null);
 final ownerSettlementRepositoryProvider = Provider<OwnerSettlementRepository>(
   (ref) => OwnerSettlementRepository(
     ref.watch(databaseProvider),
-    ownerUserId: ref.watch(sessionProvider).principal.userId,
+    principal: ref.watch(sessionProvider).principal,
   ),
 );
 

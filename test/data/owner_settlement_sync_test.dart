@@ -17,6 +17,7 @@ import 'package:krishna_mis/domain/owner_accounts/settlement/owner_settlement.da
 import 'package:krishna_mis/domain/sync/server_refusal.dart';
 import 'package:krishna_mis/domain/value_objects/business_date.dart';
 import 'package:krishna_mis/domain/value_objects/money.dart';
+import '../support/cache_principal.dart';
 
 /// A snapshot source under the test's control.
 class _Source implements OwnerSnapshotSource {
@@ -132,7 +133,10 @@ void main() {
       gateway: source,
       ownerUserId: 'user-1',
     );
-    repository = OwnerSettlementRepository(db, ownerUserId: 'user-1');
+    repository = OwnerSettlementRepository(
+      db,
+      principal: canonicalCachePrincipal('user-1'),
+    );
   });
 
   tearDown(() => db.close());
@@ -500,7 +504,10 @@ void main() {
       source.answer = () => RemoteOk(snapshot(authorised: false));
       await sync.synchronise();
 
-      final other = OwnerSettlementRepository(db, ownerUserId: 'user-2');
+      final other = OwnerSettlementRepository(
+        db,
+        principal: canonicalCachePrincipal('user-2'),
+      );
       expect(await other.coverage(), isNotNull);
       expect(
         await other.canonicalMovements(through: BusinessDate.of(2026, 12, 31)),
@@ -553,7 +560,7 @@ void main() {
 
         final otherPerson = OwnerSettlementRepository(
           db,
-          ownerUserId: 'user-2',
+          principal: canonicalCachePrincipal('user-2'),
         );
         expect(await otherPerson.coverage(), isNull);
         expect(

@@ -23,6 +23,7 @@ import 'package:krishna_mis/domain/finance/reporting_source.dart';
 import 'package:krishna_mis/domain/revenue/revenue_contribution.dart';
 import 'package:krishna_mis/domain/value_objects/business_date.dart';
 import 'package:krishna_mis/domain/value_objects/money.dart';
+import '../support/cache_principal.dart';
 
 const _ccr = 'unit-ccr';
 const _hki = 'unit-hki';
@@ -236,7 +237,10 @@ void main() {
 
   setUp(() {
     db = AppDatabase(NativeDatabase.memory());
-    repository = OwnerSettlementRepository(db, ownerUserId: 'user-1');
+    repository = OwnerSettlementRepository(
+      db,
+      principal: canonicalCachePrincipal('user-1'),
+    );
   });
   tearDown(() => db.close());
 

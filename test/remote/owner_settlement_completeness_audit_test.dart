@@ -34,6 +34,7 @@ import 'package:krishna_mis/domain/owner_accounts/owner_ledger.dart';
 import 'package:krishna_mis/domain/value_objects/business_date.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
+import '../support/cache_principal.dart';
 
 const _identitiesVar = 'KRISHNA_DEV_IDENTITIES';
 const _marker = 'OA2-AUDIT';
@@ -291,7 +292,7 @@ void main() {
     setUpAll(() async {
       settlement = OwnerSettlementRepository(
         deviceBLocal,
-        ownerUserId: deviceB.auth.currentUser!.id,
+        principal: canonicalCachePrincipal(deviceB.auth.currentUser!.id),
       );
     });
 
