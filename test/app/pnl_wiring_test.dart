@@ -18,6 +18,7 @@ import 'package:krishna_mis/app/routing/app_router.dart';
 import 'package:krishna_mis/app/routing/app_routes.dart';
 import 'package:krishna_mis/data/local/app_database.dart';
 import 'package:krishna_mis/data/reporting/cached_reporting_source.dart';
+import 'package:krishna_mis/features/profit_and_loss/presentation/mobile_profit_and_loss_page.dart';
 import 'package:krishna_mis/features/profit_and_loss/presentation/profit_and_loss_page.dart';
 import 'package:krishna_mis/features/profit_and_loss/presentation/pnl_providers.dart';
 import 'package:timezone/data/latest.dart' as tzdata;
@@ -99,6 +100,46 @@ void main() {
       await tester.pump(const Duration(milliseconds: 200));
       expect(find.byType(ProfitAndLossPage), findsOneWidget);
       expect(find.text('Not built yet'), findsNothing);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 1));
+    },
+  );
+
+  testWidgets(
+    'the Android Reports tab is the phone P&L page, not a placeholder or a menu',
+    (tester) async {
+      final db = AppDatabase(NativeDatabase.memory());
+      addTearDown(db.close);
+      final router = AppRouter.create(
+        shellKind: AppShellKind.mobile,
+        initialLocation: AppRoutes.reports,
+      );
+      addTearDown(router.dispose);
+      await tester.binding.setSurfaceSize(const Size(390, 844));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            databaseProvider.overrideWithValue(db),
+            sessionProvider.overrideWith(() => StubSession(readySession())),
+          ],
+          child: MaterialApp.router(routerConfig: router),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(find.byType(MobileProfitAndLossPage), findsOneWidget);
+      expect(find.byType(ProfitAndLossPage), findsNothing);
+      expect(find.textContaining('Phase 5'), findsNothing);
+
+      // It reads the same wired engine as Windows: the canonical cache, not this device's
+      // ledger.
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(MobileProfitAndLossPage)),
+      );
+      final engine = await container.read(localReportingEngineProvider.future);
+      expect(engine.source, isA<CachedReportingSource>());
 
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump(const Duration(milliseconds: 1));

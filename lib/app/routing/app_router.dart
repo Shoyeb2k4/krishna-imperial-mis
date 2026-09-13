@@ -16,6 +16,7 @@ import 'package:krishna_mis/features/transactions/presentation/transactions_page
 import 'package:krishna_mis/features/masters/presentation/masters_page.dart';
 import 'package:krishna_mis/features/owner_settlement/presentation/owner_settlement_page.dart';
 import 'package:krishna_mis/features/placeholder/placeholder_page.dart';
+import 'package:krishna_mis/features/profit_and_loss/presentation/mobile_profit_and_loss_page.dart';
 import 'package:krishna_mis/features/profit_and_loss/presentation/profit_and_loss_page.dart';
 
 enum AppShellKind { mobile, desktop }
@@ -53,12 +54,10 @@ abstract final class AppRouter {
           ),
           _branch(
             AppRoutes.reports,
-            const PlaceholderPage(
-              title: 'Reports',
-              arrivesIn: 'Phase 5 — Ledger & Reporting Engine',
-              summary:
-                  'P&L and analysis for any period, computed locally and offline.',
-            ),
+            // Reports opens directly to Profit & Loss (Phase 5 Slice 9): V1 has one standard
+            // reporting surface, so there is no menu in front of it. The page and its
+            // providers decide P&L authority themselves; the tab is a convenience, not a gate.
+            const MobileProfitAndLossPage(),
           ),
           _branch(
             AppRoutes.more,

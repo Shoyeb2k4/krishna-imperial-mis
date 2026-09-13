@@ -85,9 +85,64 @@ List<String> boundaryViolations(String source) {
   ];
 }
 
+/// Android takes no typed date (Phase 5 Slice 9): Custom is the calendar picker, calendar
+/// only, and a tapped day is never converted through a zone, UTC or the device clock.
+List<String> typedDateEntryViolations(String source) {
+  final code = _code(source);
+  return [
+    for (final (pattern, what) in [
+      (RegExp(r'\bTextField\b'), 'a text field'),
+      (RegExp(r'\bTextFormField\b'), 'a text form field'),
+      (RegExp(r'\bBusinessDate\s*\.\s*tryParse\b'), 'parses typed dates'),
+      (
+        RegExp(r'DatePickerEntryMode\s*\.\s*(input|inputOnly|calendar)\b'),
+        'allows typed date entry',
+      ),
+      (RegExp(r'\.\s*toUtc\s*\('), 'converts a date through UTC'),
+      (RegExp(r'\.\s*toLocal\s*\('), 'converts a date through the device zone'),
+      (RegExp(r'\bDateTime\s*\.\s*now\b'), 'reads the device clock'),
+    ])
+      if (pattern.hasMatch(code)) what,
+  ];
+}
+
+/// A surface shows a report, and the scopes it offers, only to the person they were
+/// computed for (D-074). Reading either provider's value directly would show the previous
+/// person's while the next person's loads.
+List<String> sessionIsolationViolations(String source) {
+  final code = _code(source);
+  return [
+    for (final (pattern, what) in [
+      (
+        RegExp(
+          r'pnlViewProvider\s*\)\s*\.\s*(value|valueOrNull|requireValue)\b',
+        ),
+        'shows a report without checking whose it is',
+      ),
+      (
+        RegExp(
+          r'pnlScopeOptionsProvider\s*\)\s*\.\s*(value|valueOrNull|requireValue)\b',
+        ),
+        'offers scopes without checking whose they are',
+      ),
+    ])
+      if (pattern.hasMatch(code)) what,
+  ];
+}
+
+const _pages = [
+  '$_featureDir/presentation/profit_and_loss_page.dart',
+  '$_featureDir/presentation/mobile_profit_and_loss_page.dart',
+];
+const _mobilePage =
+    '$_featureDir/presentation/mobile_profit_and_loss_page.dart';
+
 void main() {
   test('there are files to check in the first place', () {
-    expect(_files(), hasLength(greaterThanOrEqualTo(2)));
+    expect(_files(), hasLength(greaterThanOrEqualTo(4)));
+    for (final page in _pages) {
+      expect(File(page).existsSync(), isTrue, reason: page);
+    }
   });
 
   group('the guards catch what they claim to catch', () {
@@ -128,9 +183,61 @@ void main() {
         expect(boundaryViolations(planted), isNotEmpty, reason: planted);
       }
     });
+
+    test(
+      'each typed-date-entry violation is detected in a planted snippet',
+      () {
+        for (final planted in [
+          "TextField(key: const Key('pnl-custom-from'))",
+          "TextFormField(controller: c)",
+          "final d = BusinessDate.tryParse(text);",
+          "initialEntryMode: DatePickerEntryMode.input,",
+          "initialEntryMode: DatePickerEntryMode.calendar,",
+          "final day = picked.start.toUtc();",
+          "final day = picked.start.toLocal();",
+          "final today = DateTime.now();",
+        ]) {
+          expect(
+            typedDateEntryViolations(planted),
+            isNotEmpty,
+            reason: planted,
+          );
+        }
+        expect(
+          typedDateEntryViolations(
+            "initialEntryMode: DatePickerEntryMode.calendarOnly,\n"
+            "// no TextField here, and nothing calls DateTime.now",
+          ),
+          isEmpty,
+        );
+      },
+    );
+
+    test(
+      'each session-isolation violation is detected in a planted snippet',
+      () {
+        for (final planted in [
+          "if (ref.watch(pnlViewProvider).value case final v?) {}",
+          "final o = ref.watch(pnlScopeOptionsProvider).value;",
+          "final v = ref.watch(pnlViewProvider).requireValue;",
+        ]) {
+          expect(
+            sessionIsolationViolations(planted),
+            isNotEmpty,
+            reason: planted,
+          );
+        }
+        expect(
+          sessionIsolationViolations(
+            "final v = pnlViewShownTo(ref.watch(pnlViewProvider), principal);",
+          ),
+          isEmpty,
+        );
+      },
+    );
   });
 
-  group('the Windows P&L surface', () {
+  group('the P&L surfaces', () {
     for (final file in _files()) {
       test('${file.path} calculates nothing', () {
         expect(calculationViolations(file.readAsStringSync()), isEmpty);
@@ -149,57 +256,129 @@ void main() {
     }
 
     test('only the clock provider reads the device clock', () {
-      final page = _code(
-        File(
-          '$_featureDir/presentation/profit_and_loss_page.dart',
-        ).readAsStringSync(),
-      );
-      expect(page, isNot(contains('DateTime.now')));
+      for (final path in [
+        ..._pages,
+        '$_featureDir/presentation/pnl_presentation.dart',
+      ]) {
+        expect(
+          _code(File(path).readAsStringSync()),
+          isNot(contains('DateTime.now')),
+          reason: path,
+        );
+      }
       final providers = _code(
         File('$_featureDir/presentation/pnl_providers.dart').readAsStringSync(),
       );
       expect(RegExp(r'DateTime\.now').allMatches(providers), hasLength(1));
     });
 
-    test(
-      'the page reads figures only through the providers, never a repository',
-      () {
-        final page = _code(
-          File(
-            '$_featureDir/presentation/profit_and_loss_page.dart',
-          ).readAsStringSync(),
-        );
-        expect(page, isNot(contains('package:krishna_mis/data/repositories')));
-        expect(page, isNot(contains('package:krishna_mis/data/reporting')));
-        expect(page, isNot(contains('package:krishna_mis/data/sync')));
-        expect(page, contains('pnlViewProvider'));
-      },
-    );
+    for (final path in [
+      ..._pages,
+      '$_featureDir/presentation/pnl_presentation.dart',
+    ]) {
+      test(
+        '$path reads figures only through the providers, never a repository',
+        () {
+          final code = _code(File(path).readAsStringSync());
+          expect(
+            code,
+            isNot(contains('package:krishna_mis/data/repositories')),
+          );
+          expect(code, isNot(contains('package:krishna_mis/data/reporting')));
+          expect(code, isNot(contains('package:krishna_mis/data/sync')));
+        },
+      );
+    }
 
-    test(
-      'category lines are shown only behind the domain reconciliation check',
-      () {
-        final page = _code(
-          File(
-            '$_featureDir/presentation/profit_and_loss_page.dart',
-          ).readAsStringSync(),
+    for (final path in _pages) {
+      test('$path reads the report through the providers', () {
+        expect(
+          _code(File(path).readAsStringSync()),
+          contains('pnlViewProvider'),
         );
-        expect(page, contains('breakdownReconciles'));
-      },
-    );
+      });
+
+      test(
+        '$path shows category lines only behind the domain reconciliation check',
+        () {
+          expect(
+            _code(File(path).readAsStringSync()),
+            contains('breakdownReconciles'),
+          );
+        },
+      );
+
+      test('$path shows a report only to the person it was computed for', () {
+        final code = _code(File(path).readAsStringSync());
+        expect(sessionIsolationViolations(code), isEmpty);
+        expect(code, contains('pnlViewShownTo('));
+        expect(code, contains('pnlScopeOptionsShownTo('));
+      });
+    }
   });
 
-  test('Android keeps its Reports placeholder — the phone P&L is Slice 9', () {
-    final router = File('lib/app/routing/app_router.dart').readAsStringSync();
-    final mobile = router.substring(
-      router.indexOf('_mobileRouter('),
-      router.indexOf('_desktopRouter('),
-    );
-    expect(mobile, isNot(contains('ProfitAndLossPage')));
-    final desktop = router.substring(router.indexOf('_desktopRouter('));
-    expect(
-      desktop,
-      contains('ProfitAndLossPage(shellKind: AppShellKind.desktop)'),
-    );
+  group('the Android P&L surface (Slice 9)', () {
+    test('takes no typed date and converts no picked day', () {
+      expect(
+        typedDateEntryViolations(File(_mobilePage).readAsStringSync()),
+        isEmpty,
+      );
+    });
+
+    test('chooses Custom dates on the calendar picker, calendar only', () {
+      final code = _code(File(_mobilePage).readAsStringSync());
+      expect(code, contains('showDateRangePicker('));
+      expect(code, contains('DatePickerEntryMode.calendarOnly'));
+      expect(code, contains('pnlCustomDatesFrom('));
+    });
+
+    test('opens the scope sheet and the picker over the whole screen', () {
+      // Over the root navigator, so no choice and no Apply sits behind the bottom bar or
+      // the docked [ + ] action.
+      final code = _code(File(_mobilePage).readAsStringSync());
+      expect(
+        RegExp(r'useRootNavigator:\s*true').allMatches(code),
+        hasLength(2),
+      );
+    });
+
+    test('refreshes through the same synchroniser as Windows', () {
+      final code = _code(File(_mobilePage).readAsStringSync());
+      expect(code, contains('RefreshIndicator('));
+      expect(code, contains('pnlSyncProvider'));
+      expect(code, isNot(contains('ReportingSync')));
+    });
   });
+
+  test(
+    'Android Reports opens directly to the phone P&L; Windows keeps it under Analytics',
+    () {
+      // Anchored on the method declarations. The first `_mobileRouter(` in the file is the
+      // call inside `create()`, and the Slice 8 version of this guard sliced from there — a
+      // one-line "mobile router" that could contain nothing, so its assertion could never
+      // fail. Each anchor is now required to be found before anything is asserted about
+      // what lies between them.
+      final router = File('lib/app/routing/app_router.dart').readAsStringSync();
+      final mobileStart = router.indexOf('static GoRouter _mobileRouter(');
+      final desktopStart = router.indexOf('static GoRouter _desktopRouter(');
+      expect(mobileStart, isNonNegative);
+      expect(desktopStart, greaterThan(mobileStart));
+      final mobile = router.substring(mobileStart, desktopStart);
+      final reportsStart = mobile.indexOf('AppRoutes.reports');
+      final moreStart = mobile.indexOf('AppRoutes.more');
+      expect(reportsStart, isNonNegative);
+      expect(moreStart, greaterThan(reportsStart));
+      final reports = mobile.substring(reportsStart, moreStart);
+      expect(reports, contains('const MobileProfitAndLossPage()'));
+      expect(reports, isNot(contains('PlaceholderPage')));
+      expect(mobile, isNot(contains('ProfitAndLossPage(shellKind')));
+
+      final desktop = router.substring(desktopStart);
+      expect(
+        desktop,
+        contains('ProfitAndLossPage(shellKind: AppShellKind.desktop)'),
+      );
+      expect(desktop, isNot(contains('MobileProfitAndLossPage')));
+    },
+  );
 }

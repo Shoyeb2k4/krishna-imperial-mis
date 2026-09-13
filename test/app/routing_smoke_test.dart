@@ -62,12 +62,15 @@ void main() {
     testWidgets('moves between branches', (tester) async {
       await pumpApp(tester, AppShellKind.mobile);
 
+      // Reports opens directly to Profit & Loss (Phase 5 Slice 9) — no placeholder and no
+      // reports menu in front of it.
       await tester.tap(find.text('Reports').last);
       await tester.pumpAndSettle();
-      expect(find.text('Phase 5 — Ledger & Reporting Engine'), findsNothing);
+      expect(find.text('Profit & Loss'), findsOneWidget);
+      expect(find.byKey(const Key('pnl-page')), findsOneWidget);
       expect(
         find.textContaining('Phase 5 — Ledger & Reporting Engine'),
-        findsOneWidget,
+        findsNothing,
       );
 
       // "More" now opens the real Masters set-up, not a placeholder. A phone picks a

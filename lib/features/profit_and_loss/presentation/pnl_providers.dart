@@ -181,7 +181,12 @@ final class PnlScopeOptions {
   const PnlScopeOptions({
     required this.units,
     required this.consolidatedAllowed,
+    required this.viewerUserId,
   });
+
+  /// The person these options were decided for. A surface shows them to nobody else
+  /// ([pnlScopeOptionsShownTo]).
+  final String viewerUserId;
 
   /// P&L-authorised properties, in id order.
   final List<PnlUnitOption> units;
@@ -226,8 +231,41 @@ final pnlScopeOptionsProvider = FutureProvider<PnlScopeOptions>((ref) async {
       for (final id in permitted) PnlUnitOption(id: id, name: names[id]!),
     ],
     consolidatedAllowed: PnlAuthority.mayReadConsolidated(principal),
+    viewerUserId: principal.userId,
   );
 });
+
+// ── What a surface may show, and to whom ────────────────────────────────────
+
+/// The view a surface may show to [principal] now, or null while there is none.
+///
+/// A provider re-reading keeps its previous value while it loads. That is right when a
+/// synchronisation lands — the report stays on screen instead of flashing to a spinner —
+/// and wrong when the person changes: the previous person's figures would be shown to the
+/// next person for as long as the next person's first read waits, and that read queues
+/// behind the reporting cache lock, so a synchronisation still running at the switch held
+/// them there for its whole duration (D-074). A report is therefore shown only to the person
+/// it was computed for. Views that carry no figure are shown as they are.
+PnlView? pnlViewShownTo(AsyncValue<PnlView> view, Principal principal) =>
+    switch (view.value) {
+      PnlReportView(:final viewerUserId)
+          when viewerUserId != principal.userId =>
+        null,
+      final value => value,
+    };
+
+/// The scope options a surface may show to [principal] now, or null while there are none.
+///
+/// For the same reason as [pnlViewShownTo]: the previous person's properties, and their
+/// consolidated choice, are never offered to the next person while theirs load.
+PnlScopeOptions? pnlScopeOptionsShownTo(
+  AsyncValue<PnlScopeOptions> options,
+  Principal principal,
+) => switch (options.value) {
+  final PnlScopeOptions value when value.viewerUserId == principal.userId =>
+    value,
+  _ => null,
+};
 
 // ── Resolving what a report covers ──────────────────────────────────────────
 
@@ -264,7 +302,11 @@ final class PnlReportView extends PnlView {
     required this.range,
     required this.neededYears,
     required this.retainedYears,
+    required this.viewerUserId,
   });
+
+  /// The person this report was computed for. Shown to nobody else ([pnlViewShownTo]).
+  final String viewerUserId;
 
   final ReportEnvelope envelope;
   final PnlScopeChoice scope;
@@ -453,6 +495,7 @@ final pnlViewProvider = FutureProvider<PnlView>((ref) async {
     range: target.range,
     neededYears: target.neededYears,
     retainedYears: target.retainedYears,
+    viewerUserId: principal.userId,
   );
 });
 
@@ -567,6 +610,11 @@ class PnlSyncController extends Notifier<PnlSyncStatus> {
     }
 
     final principal = ref.read(sessionProvider).principal;
+    // A run belongs to the person who started it. If the person changes while it runs, its
+    // outcome is not the next person's status (D-074).
+    bool stillTheSamePerson() =>
+        ref.mounted &&
+        ref.read(sessionProvider).principal.userId == principal.userId;
     final options = await ref.read(pnlScopeOptionsProvider.future);
     final rules = await ref.read(businessDayRulesProvider.future);
     final resolved = _resolve(
@@ -576,7 +624,7 @@ class PnlSyncController extends Notifier<PnlSyncStatus> {
       rules: rules,
       now: ref.read(reportingClockProvider)(),
     );
-    if (!ref.mounted) return;
+    if (!stillTheSamePerson()) return;
     // Nothing this person may read, or no period to read: there is nothing to fetch, and
     // fetching anyway would ask the server about properties the surface will not show.
     if (resolved is! _Target) return;
@@ -647,7 +695,7 @@ class PnlSyncController extends Notifier<PnlSyncStatus> {
       if (ref.mounted) ref.invalidate(localReportingSourceProvider);
       return runs;
     });
-    if (!ref.mounted) return;
+    if (!stillTheSamePerson()) return;
 
     final outcomes = [for (final r in reports) ...r.outcomes];
     final landed = outcomes.every((o) => o.isApplied);
