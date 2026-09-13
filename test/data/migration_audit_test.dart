@@ -28,8 +28,15 @@ List<({String name, String sql})> _migrations() {
   ];
 }
 
-/// Each function definition, paired with the header text up to its body.
-Iterable<({String file, String name, String header})> _functions() sync* {
+/// The functions that exist after replaying [migrations], paired with the header text up
+/// to their latest body.
+///
+/// A historical definition is not an active API. Slice 7 removes one dead function, so
+/// this scanner has to model `DROP FUNCTION` as well as `CREATE OR REPLACE`; otherwise the
+/// API-surface guard itself would require a removed privilege to stay listed forever.
+Iterable<({String file, String name, String header})> _functionsFrom(
+  List<({String name, String sql})> migrations,
+) sync* {
   // The body tag is `$$` in most migrations and a named tag such as `$fn$` where a
   // function's own text contains `$$`. Matching only the bare form is the D-103 mistake
   // in miniature: the parser keyed on an incidental convention, so three new
@@ -37,18 +44,56 @@ Iterable<({String file, String name, String header})> _functions() sync* {
   // once, including the search_path one, which is the direction that fails quietly.
   final pattern = RegExp(
     r'create or replace function\s+([\w.]+)\s*\([\s\S]*?\)\s*returns[\s\S]*?as \$\w*\$',
+    caseSensitive: false,
   );
-  for (final m in _migrations()) {
-    for (final match in pattern.allMatches(m.sql)) {
-      yield (file: m.name, name: match.group(1)!, header: match.group(0)!);
+  final drop = RegExp(
+    r'drop function(?: if exists)?\s+([\w.]+)\s*\(',
+    caseSensitive: false,
+  );
+  final active = <String, ({String file, String name, String header})>{};
+
+  for (final migration in migrations) {
+    final events = <({int offset, bool creates, RegExpMatch match})>[
+      for (final match in pattern.allMatches(migration.sql))
+        (offset: match.start, creates: true, match: match),
+      for (final match in drop.allMatches(migration.sql))
+        (offset: match.start, creates: false, match: match),
+    ]..sort((a, b) => a.offset.compareTo(b.offset));
+
+    for (final event in events) {
+      final name = event.match.group(1)!.toLowerCase();
+      if (event.creates) {
+        active[name] = (
+          file: migration.name,
+          name: name,
+          header: event.match.group(0)!,
+        );
+      } else {
+        active.remove(name);
+      }
     }
   }
+
+  yield* active.values;
 }
+
+Iterable<({String file, String name, String header})> _functions() =>
+    _functionsFrom(_migrations());
 
 /// The declaration of the reviewed API surface, wherever it currently lives.
 final _apiSurfaceArray = RegExp(
   r'v_api\s+text\[\]\s*:=\s*array\[([\s\S]*?)\];',
 );
+
+Set<String> _deadGrantedCapabilities({
+  required Set<String> granted,
+  required Set<String> exempt,
+  required String evaluators,
+}) => {
+  for (final capability in granted)
+    if (!exempt.contains(capability) && !evaluators.contains(capability))
+      capability,
+};
 
 void main() {
   group('privilege', () {
@@ -71,6 +116,46 @@ void main() {
           .where((f) => f.header.contains('security definer'))
           .length;
       expect(definers, greaterThan(20));
+    });
+
+    test('the active-function scanner sees drops and later recreations', () {
+      const header =
+          'create or replace function public.sample() returns int language sql '
+          'security invoker set search_path = public, pg_temp as \$fn\$';
+      final removed = _functionsFrom(const [
+        (name: '001.sql', sql: '$header select 1 \$fn\$;'),
+        (name: '002.sql', sql: 'drop function public.sample();'),
+      ]).toList();
+      expect(
+        removed,
+        isEmpty,
+        reason:
+            'a guard that counts historical definitions would force a removed API to '
+            'stay reviewed and callable forever',
+      );
+
+      final recreated = _functionsFrom(const [
+        (name: '001.sql', sql: '$header select 1 \$fn\$;'),
+        (name: '002.sql', sql: 'drop function public.sample();'),
+        (name: '003.sql', sql: '$header select 2 \$fn\$;'),
+      ]).toList();
+      expect(recreated, hasLength(1));
+      expect(recreated.single.file, '003.sql');
+    });
+
+    test('the D-139 detector catches a granted capability with no evaluator', () {
+      final dead = _deadGrantedCapabilities(
+        granted: const {'synthetic.report.read'},
+        exempt: const {},
+        evaluators: 'an unrelated function body',
+      );
+      expect(
+        dead,
+        {'synthetic.report.read'},
+        reason:
+            'a production guard without a positive control can pass because its '
+            'extractor stopped seeing grants or evaluators',
+      );
     });
 
     test(
@@ -227,6 +312,36 @@ void main() {
       }
     });
 
+    test('the unused expense whole-organisation helper is removed', () {
+      const name = 'expense_sees_whole_org';
+      final active = _functions().where((f) => f.name == 'public.$name');
+      expect(
+        active,
+        isEmpty,
+        reason:
+            'the helper has no runtime caller. Keeping an authenticated executable '
+            'function merely because it was once reviewed is an unnecessary privileged '
+            'surface',
+      );
+
+      final restatements = _migrations()
+          .where((m) => _apiSurfaceArray.hasMatch(m.sql))
+          .toList();
+      final latest = _apiSurfaceArray
+          .firstMatch(restatements.last.sql)!
+          .group(1)!;
+      expect(latest, isNot(contains("'$name'")));
+
+      final dartCallers = <String>[
+        for (final entity in Directory('lib').listSync(recursive: true))
+          if (entity is File &&
+              entity.path.endsWith('.dart') &&
+              entity.readAsStringSync().contains(name))
+            entity.path,
+      ];
+      expect(dartCallers, isEmpty);
+    });
+
     test('no capability is granted in production and evaluated nowhere', () {
       // D-127 §3: `transaction.correct.business_date` was granted to two role bundles and
       // named by no function and no policy. A grant with no evaluator is the quieter twin
@@ -320,11 +435,11 @@ void main() {
             'that reads an empty haystack reports success',
       );
 
-      final dead = [
-        for (final capability in granted)
-          if (!exempt.contains(capability) && !evaluators.contains(capability))
-            capability,
-      ];
+      final dead = _deadGrantedCapabilities(
+        granted: granted,
+        exempt: exempt,
+        evaluators: evaluators,
+      );
 
       expect(
         dead,
