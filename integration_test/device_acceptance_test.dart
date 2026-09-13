@@ -115,6 +115,10 @@ import 'package:krishna_mis/domain/auth/session_state.dart';
 import 'package:krishna_mis/domain/sync/pending_mutation.dart';
 import 'package:krishna_mis/domain/sync/server_refusal.dart';
 import 'package:krishna_mis/core/design/components/sync_state_chip.dart';
+import 'package:krishna_mis/core/design/components/money_text.dart';
+import 'package:krishna_mis/domain/finance/pnl.dart';
+import 'package:krishna_mis/domain/finance/pnl_authority.dart';
+import 'package:krishna_mis/features/profit_and_loss/presentation/pnl_providers.dart';
 import 'package:krishna_mis/domain/sync/sync_state.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
@@ -7525,6 +7529,555 @@ void main() {
         isEmpty,
       );
     });
+  });
+
+  // ── Phase 5 Slice 8: the Windows P&L, in the real executable ───────────────
+  //
+  // Every figure on the screen is compared, to the paisa, with `reporting_primitives` over
+  // the same scope and inclusive range — the authoritative server aggregation (D-020).
+  // Fixtures go through the ordinary RPCs, carry a marker, and are voided with a reason
+  // naming the run in a `finally` and again before the next run (D-066, D-071, D-076).
+
+  const pnlMarker = '$_acceptanceMarker: slice8 pnl';
+  const pnlFrom = '2027-03-01';
+  const pnlTo = '2027-03-31';
+  const pnlDate = '2027-03-10';
+
+  Future<void> sweepPnlFixtures(SupabaseClient client) async {
+    for (final (relation, rpc) in const [
+      ('revenue_document', 'revenue_void'),
+      ('expense_document', 'expense_void'),
+    ]) {
+      final open = await client
+          .from(relation)
+          .select('id,row_version')
+          .like('notes', '$pnlMarker%')
+          .isFilter('voided_at', null);
+      for (final row in open) {
+        await client.rpc<dynamic>(
+          rpc,
+          params: {
+            'p_id': row['id'],
+            'p_base_row_version': row['row_version'],
+            'p_reason': 'Reversing $pnlMarker fixture (D-066)',
+            'p_mutation_id': const Uuid().v4(),
+          },
+        );
+      }
+      final remaining = await client
+          .from(relation)
+          .select('id')
+          .like('notes', '$pnlMarker%')
+          .isFilter('voided_at', null);
+      expect(remaining, isEmpty, reason: 'every $relation fixture reversed');
+    }
+  }
+
+  /// The server's own primitive sums for a scope and range, with breakdowns.
+  Future<
+    ({
+      int gross,
+      int tax,
+      int net,
+      int expenses,
+      int revenueRows,
+      int expenseRows,
+      Map<String, List<int>> revenueLines,
+      Map<String, int> expenseLines,
+    })
+  >
+  serverPnl(
+    SupabaseClient client,
+    List<String> units,
+    String from,
+    String to,
+  ) async {
+    final answer = Map<String, dynamic>.from(
+      await client.rpc<dynamic>(
+            'reporting_primitives',
+            params: {
+              'p_business_unit_ids': units,
+              'p_from': from,
+              'p_to': to,
+              'p_breakdown': true,
+            },
+          )
+          as Map,
+    );
+    var gross = 0, tax = 0, net = 0, expenses = 0, rRows = 0, eRows = 0;
+    final revenueLines = <String, List<int>>{};
+    final expenseLines = <String, int>{};
+    int n(Object? v) => (v as num).toInt();
+    for (final raw in answer['units'] as List) {
+      final unit = Map<String, dynamic>.from(raw as Map);
+      final id = unit['business_unit_id'] as String;
+      final revenue = unit['revenue'] as Map?;
+      final expense = unit['expense'] as Map?;
+      expect(revenue, isNotNull, reason: 'server revenue authorised for $id');
+      expect(expense, isNotNull, reason: 'server expenses authorised for $id');
+      gross += n(revenue!['gross_minor']);
+      tax += n(revenue['tax_minor']);
+      net += n(revenue['net_minor']);
+      rRows += n(revenue['contributions']);
+      expenses += n(expense!['amount_minor']);
+      eRows += n(expense['contributions']);
+      for (final line in (unit['revenue_by_category'] as List? ?? const [])) {
+        final m = Map<String, dynamic>.from(line as Map);
+        revenueLines['$id-${m['revenue_category_id']}'] = [
+          n(m['gross_minor']),
+          n(m['tax_minor']),
+          n(m['net_minor']),
+        ];
+      }
+      for (final line in (unit['expense_by_hierarchy'] as List? ?? const [])) {
+        final m = Map<String, dynamic>.from(line as Map);
+        final key = '$id-${m['category_id']}';
+        expenseLines[key] = (expenseLines[key] ?? 0) + n(m['amount_minor']);
+      }
+    }
+    return (
+      gross: gross,
+      tax: tax,
+      net: net,
+      expenses: expenses,
+      revenueRows: rRows,
+      expenseRows: eRows,
+      revenueLines: revenueLines,
+      expenseLines: expenseLines,
+    );
+  }
+
+  int uiPaise(WidgetTester tester, String key) =>
+      tester.widget<MoneyText>(find.byKey(Key(key))).amount.paise;
+
+  Future<void> settlePnl(WidgetTester tester, ProviderContainer container) =>
+      pumpUntil(tester, 'the P&L to be read', () {
+        final view = container.read(pnlViewProvider);
+        return view.hasValue &&
+            !view.isLoading &&
+            !container.read(pnlSyncProvider).isRunning;
+      }, timeout: const Duration(seconds: 90));
+
+  Future<void> refreshPnl(
+    WidgetTester tester,
+    ProviderContainer container, {
+    PnlSyncPhase expected = PnlSyncPhase.succeeded,
+    Key control = const Key('pnl-refresh'),
+  }) async {
+    await settlePnl(tester, container);
+    final before = container.read(pnlSyncProvider);
+    await tapWhenHittable(tester, find.byKey(control));
+    await pumpUntil(
+      tester,
+      'the P&L synchronisation to finish',
+      () {
+        final now = container.read(pnlSyncProvider);
+        return !identical(now, before) && !now.isRunning;
+      },
+      timeout: const Duration(seconds: 90),
+    );
+    expect(container.read(pnlSyncProvider).phase, expected);
+    await settlePnl(tester, container);
+  }
+
+  PnlResult computedPnl(ProviderContainer container) {
+    final view = container.read(pnlViewProvider).value;
+    expect(view, isA<PnlReportView>());
+    final outcome = (view! as PnlReportView).envelope.outcome;
+    expect(outcome, isA<PnlComputed>(), reason: '$outcome');
+    return (outcome as PnlComputed).result;
+  }
+
+  void expectPnlMatchesServer(
+    WidgetTester tester,
+    ProviderContainer container,
+    ({
+      int gross,
+      int tax,
+      int net,
+      int expenses,
+      int revenueRows,
+      int expenseRows,
+      Map<String, List<int>> revenueLines,
+      Map<String, int> expenseLines,
+    })
+    server,
+  ) {
+    // On the screen, exactly.
+    expect(uiPaise(tester, 'pnl-gross'), server.gross);
+    expect(uiPaise(tester, 'pnl-gst'), server.tax);
+    expect(uiPaise(tester, 'pnl-net'), server.net);
+    expect(uiPaise(tester, 'pnl-expenses'), server.expenses);
+    expect(
+      uiPaise(tester, 'pnl-operating-result'),
+      server.net - server.expenses,
+    );
+
+    // And behind it: counts and every category line, exactly.
+    final result = computedPnl(container);
+    expect(result.grossSales.paise, server.gross);
+    expect(result.gst.paise, server.tax);
+    expect(result.netSales.paise, server.net);
+    expect(result.expenses.paise, server.expenses);
+    expect(result.revenueContributions, server.revenueRows);
+    expect(result.expenseContributions, server.expenseRows);
+    expect(result.breakdownReconciles, isTrue);
+    expect({
+      for (final l in result.revenueByCategory)
+        '${l.businessUnitId}-${l.revenueCategoryId}': [
+          l.totals.gross.paise,
+          l.totals.tax.paise,
+          l.totals.net.paise,
+        ],
+    }, equals(server.revenueLines));
+    final expenseLines = <String, int>{};
+    for (final l in result.expenseByHierarchy) {
+      final key = '${l.businessUnitId}-${l.categoryId}';
+      expenseLines[key] = (expenseLines[key] ?? 0) + l.totals.amount.paise;
+    }
+    expect(expenseLines, equals(server.expenseLines));
+  }
+
+  Future<void> openPnl(WidgetTester tester, ProviderContainer container) async {
+    await pumpUntil(
+      tester,
+      'the Analytics destination',
+      () => visible('Analytics'),
+    );
+    await tester.tap(find.text('Analytics').first);
+    await pumpUntil(
+      tester,
+      'the P&L page',
+      () => find.byKey(const Key('pnl-page')).evaluate().isNotEmpty,
+    );
+    await settlePnl(tester, container);
+  }
+
+  Future<void> chooseCustom(
+    WidgetTester tester,
+    ProviderContainer container,
+    String from,
+    String to,
+  ) async {
+    await tapWhenHittable(tester, find.byKey(const Key('pnl-preset-custom')));
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.enterText(find.byKey(const Key('pnl-custom-from')), from);
+    await tester.enterText(find.byKey(const Key('pnl-custom-to')), to);
+    await tapWhenHittable(tester, find.byKey(const Key('pnl-custom-apply')));
+    await tester.pump(const Duration(milliseconds: 400));
+    await settlePnl(tester, container);
+  }
+
+  group('windows-pnl', skip: _phase != 'windows-pnl', () {
+    testWidgets('the P&L equals the server to the paisa through sync, void and offline', (
+      tester,
+    ) async {
+      expect(
+        boot.shellKind.name,
+        isNot('mobile'),
+        reason: 'this phase is about the desktop P&L; run it with -d windows',
+      );
+      await launch(tester);
+      await signIn(tester, 'giridhar@hki.com');
+      await expectSignedIn(tester, 'giridhar@hki.com');
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(KrishnaMisApp)),
+      );
+      await container.read(sessionProvider.notifier).refreshAuthority();
+      await tester.pump(const Duration(seconds: 2));
+      final client = Supabase.instance.client;
+
+      await sweepPnlFixtures(client);
+      try {
+        await openPnl(tester, container);
+        final options = container.read(pnlScopeOptionsProvider).value!;
+        expect(options.consolidatedAllowed, isTrue);
+        final units = [for (final u in options.units) u.id];
+        expect(units, containsAll([_ccr, _hki]));
+
+        final baseline = await serverPnl(client, units, pnlFrom, pnlTo);
+
+        // ── A sale and two expenses, through the ordinary RPCs ───────────────
+        final restaurant =
+            (await client
+                    .from('revenue_categories')
+                    .select('id')
+                    .eq('code', 'RESTAURANT')
+                    .eq('business_unit_id', _ccr)
+                    .single())['id']
+                as String;
+        final sale = const Uuid().v7();
+        await client.rpc<dynamic>(
+          'revenue_create',
+          params: {
+            'p_id': sale,
+            'p_business_unit_id': _ccr,
+            'p_revenue_category_id': restaurant,
+            'p_business_date': pnlDate,
+            'p_notes': '$pnlMarker sale',
+            'p_components': [
+              {'entered_amount_minor': 12364200},
+            ],
+            'p_mutation_id': const Uuid().v4(),
+          },
+        );
+        for (final (unit, dept, section, category, amount) in [
+          (
+            _ccr,
+            _seedId('dept:CCR/FB'),
+            _seedId('sec:CCR/FB/FOOD_PROD'),
+            _kirana,
+            4500000,
+          ),
+          (
+            _hki,
+            _seedId('dept:HKI/HKI_UTIL'),
+            _seedId('sec:HKI/HKI_UTIL/HKI_POWER'),
+            _seedId('cat:HKI/HKI_UTIL/HKI_POWER/ELECTRICITY'),
+            3000000,
+          ),
+        ]) {
+          await client.rpc<dynamic>(
+            'expense_create',
+            params: {
+              'p_id': const Uuid().v7(),
+              'p_business_date': pnlDate,
+              'p_total_minor': amount,
+              'p_notes': '$pnlMarker expense',
+              'p_allocations': [
+                {
+                  'business_unit_id': unit,
+                  'department_id': dept,
+                  'section_id': section,
+                  'category_id': category,
+                  'amount_minor': amount,
+                },
+              ],
+              'p_mutation_id': const Uuid().v4(),
+            },
+          );
+        }
+
+        // ── Consolidated custom range, synchronised, equal to the server ─────
+        await chooseCustom(tester, container, pnlFrom, pnlTo);
+        await refreshPnl(tester, container);
+        var server = await serverPnl(client, units, pnlFrom, pnlTo);
+        expect(server.gross - baseline.gross, 12364200);
+        expect(server.tax - baseline.tax, 588771);
+        expect(server.net - baseline.net, 11775429);
+        expect(server.expenses - baseline.expenses, 7500000);
+        expectPnlMatchesServer(tester, container, server);
+        expect(
+          find.byKey(const Key('pnl-freshness-synchronised')),
+          findsOneWidget,
+        );
+        expect(
+          find.text(computedPnl(container).margin.displayTwoDecimals),
+          findsWidgets,
+        );
+
+        // The category lines on screen, once scrolled to.
+        final page = find.descendant(
+          of: find.byKey(const Key('pnl-page')),
+          matching: find.byType(Scrollable),
+        );
+        await tester.scrollUntilVisible(
+          find.byKey(const Key('pnl-exp-total-amount')),
+          300,
+          scrollable: page.first,
+        );
+        expect(
+          uiPaise(tester, 'pnl-exp-$_ccr-$_kirana-amount'),
+          server.expenseLines['$_ccr-$_kirana'],
+        );
+        expect(uiPaise(tester, 'pnl-exp-total-amount'), server.expenses);
+        await tester.drag(page.first, const Offset(0, 4000));
+        await tester.pump(const Duration(milliseconds: 400));
+
+        // ── A void reaches the P&L exactly once ──────────────────────────────
+        final saleDoc = await client
+            .from('revenue_document')
+            .select('row_version')
+            .eq('id', sale)
+            .single();
+        await client.rpc<dynamic>(
+          'revenue_void',
+          params: {
+            'p_id': sale,
+            'p_base_row_version': saleDoc['row_version'],
+            'p_reason': 'Reversing $pnlMarker sale (D-066)',
+            'p_mutation_id': const Uuid().v4(),
+          },
+        );
+        await refreshPnl(tester, container);
+        server = await serverPnl(client, units, pnlFrom, pnlTo);
+        expect(server.gross, baseline.gross);
+        expect(server.expenses - baseline.expenses, 7500000);
+        expectPnlMatchesServer(tester, container, server);
+
+        // ── One property, equal to the server for that property ──────────────
+        await tapWhenHittable(tester, find.byKey(Key('pnl-scope-$_ccr')));
+        await tester.pump(const Duration(milliseconds: 400));
+        await settlePnl(tester, container);
+        expectPnlMatchesServer(
+          tester,
+          container,
+          await serverPnl(client, [_ccr], pnlFrom, pnlTo),
+        );
+        await tapWhenHittable(
+          tester,
+          find.byKey(const Key('pnl-scope-consolidated')),
+        );
+        await tester.pump(const Duration(milliseconds: 400));
+        await settlePnl(tester, container);
+
+        // ── Offline: the complete report stays readable, never ₹0 ───────────
+        final expensesBefore = uiPaise(tester, 'pnl-expenses');
+        final grossBefore = uiPaise(tester, 'pnl-gross');
+        _transport.online = false;
+        try {
+          await refreshPnl(tester, container, expected: PnlSyncPhase.failed);
+          expect(find.byKey(const Key('pnl-offline')), findsOneWidget);
+          expect(find.byKey(const Key('pnl-statement')), findsOneWidget);
+          expect(
+            find.byKey(const Key('pnl-freshness-synchronised')),
+            findsOneWidget,
+          );
+          // Re-read from the cache with no server at all.
+          container.invalidate(pnlViewProvider);
+          await settlePnl(tester, container);
+          expect(uiPaise(tester, 'pnl-expenses'), expensesBefore);
+          expect(uiPaise(tester, 'pnl-gross'), grossBefore);
+        } finally {
+          _transport.online = true;
+        }
+
+        // ── Older history is downloaded on demand, then equals the server ────
+        await chooseCustom(tester, container, '2023-06-01', '2023-06-30');
+        if (find.byKey(const Key('pnl-download')).evaluate().isNotEmpty) {
+          expect(find.byKey(const Key('pnl-not-downloaded')), findsOneWidget);
+          await refreshPnl(
+            tester,
+            container,
+            control: const Key('pnl-download'),
+          );
+        }
+        expectPnlMatchesServer(
+          tester,
+          container,
+          await serverPnl(client, units, '2023-06-01', '2023-06-30'),
+        );
+      } finally {
+        _transport.online = true;
+        await sweepPnlFixtures(client);
+      }
+    });
+  });
+
+  group('windows-pnl-scope', skip: _phase != 'windows-pnl-scope', () {
+    testWidgets(
+      'complete P&L authority for one property reports it and nothing else',
+      (tester) async {
+        expect(boot.shellKind.name, isNot('mobile'));
+        await launch(tester);
+        await signIn(tester, 'ccr.manager@example.com');
+        await expectSignedIn(tester, 'ccr.manager@example.com');
+        final container = ProviderScope.containerOf(
+          tester.element(find.byType(KrishnaMisApp)),
+        );
+        await container.read(sessionProvider.notifier).refreshAuthority();
+        await tester.pump(const Duration(seconds: 2));
+        final client = Supabase.instance.client;
+
+        // The subject is the capability state, not the role name, so it is asserted
+        // before anything depends on it.
+        final principal = container.read(principalProvider);
+        expect(
+          PnlAuthority.mayReadUnit(principal, _ccr),
+          isTrue,
+          reason: 'fixture must hold complete P&L authority for Crystal Canopy',
+        );
+        expect(
+          PnlAuthority.mayReadUnit(principal, _hki),
+          isFalse,
+          reason: 'fixture must hold no qualifying authority for Hotel Krishna',
+        );
+        expect(
+          PnlAuthority.mayReadConsolidated(principal),
+          isFalse,
+          reason: 'fixture must hold no unscoped consolidated authority',
+        );
+
+        await openPnl(tester, container);
+        expect(find.byKey(Key('pnl-scope-$_ccr')), findsOneWidget);
+        expect(find.byKey(Key('pnl-scope-$_hki')), findsNothing);
+        expect(find.byKey(const Key('pnl-scope-consolidated')), findsNothing);
+
+        // Crystal Canopy opens, equal to the server.
+        await refreshPnl(tester, container);
+        final view = container.read(pnlViewProvider).value! as PnlReportView;
+        expect(view.scope, PnlUnitScope(_ccr));
+        expectPnlMatchesServer(
+          tester,
+          container,
+          await serverPnl(
+            client,
+            [_ccr],
+            view.range.from.iso,
+            view.range.to.iso,
+          ),
+        );
+
+        Future<void> expectServerWithholds(List<String> units) async {
+          final answer = Map<String, dynamic>.from(
+            await client.rpc<dynamic>(
+                  'reporting_primitives',
+                  params: {
+                    'p_business_unit_ids': units,
+                    'p_from': view.range.from.iso,
+                    'p_to': view.range.to.iso,
+                    'p_breakdown': true,
+                  },
+                )
+                as Map,
+          );
+          for (final raw in answer['units'] as List) {
+            final unit = Map<String, dynamic>.from(raw as Map);
+            expect(unit['revenue'], isNull, reason: '$units revenue withheld');
+            expect(unit['expense'], isNull, reason: '$units expenses withheld');
+          }
+        }
+
+        // Hotel Krishna, requested directly, is refused on the device and the server.
+        container
+            .read(pnlSelectionProvider.notifier)
+            .selectScope(PnlUnitScope(_hki));
+        await tester.pump(const Duration(milliseconds: 400));
+        await settlePnl(tester, container);
+        expect(container.read(pnlViewProvider).value, isA<PnlNotAuthorised>());
+        expect(find.byKey(const Key('pnl-not-authorised')), findsOneWidget);
+        expect(find.byKey(const Key('pnl-statement')), findsNothing);
+        await expectServerWithholds([_hki]);
+
+        // Consolidated, requested directly, likewise.
+        container
+            .read(pnlSelectionProvider.notifier)
+            .selectScope(const PnlConsolidatedScope());
+        await tester.pump(const Duration(milliseconds: 400));
+        await settlePnl(tester, container);
+        expect(container.read(pnlViewProvider).value, isA<PnlNotAuthorised>());
+        expect(find.byKey(const Key('pnl-not-authorised')), findsOneWidget);
+        await expectServerWithholds([_ccr, _hki]);
+
+        // And the permitted property still reports afterwards.
+        container
+            .read(pnlSelectionProvider.notifier)
+            .selectScope(PnlUnitScope(_ccr));
+        await tester.pump(const Duration(milliseconds: 400));
+        await settlePnl(tester, container);
+        expect(find.byKey(const Key('pnl-statement')), findsOneWidget);
+      },
+    );
   });
 
   group('expense-cleanup', skip: _phase != 'expense-cleanup', () {
