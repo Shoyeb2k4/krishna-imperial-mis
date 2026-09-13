@@ -9,7 +9,7 @@ Status: **Sections 1–12 proposed (Phase 0, revised); sections 13–16 and 18�
 is built and verified; section 17 is the Phase 4 *plan*, since built — read §18–§26 for what
 shipped.** Sections 6, 5.3 and 8 carry the project lead's mandated corrections.
 Implementation status is tracked in `PROJECT_STATUS.md`.
-Last updated: 2026-09-13 — the Windows P&L surface (section 37); Slice 7 reporting security closure (section 36); 2026-09-11 — the Owner Settlement surface and its security boundary (section 35); the Owner Settlement Engine (section 34); the Owner Ledger (section 33), with the V1 ownership vector in §33.3; Phase 5 Slice 6 corrective (section 32); Slice 5 in section 31; Slices 1-4 in sections 27-30
+Last updated: 2026-09-13 — the Android P&L surface (section 38); the Windows P&L surface (section 37); Slice 7 reporting security closure (section 36); 2026-09-11 — the Owner Settlement surface and its security boundary (section 35); the Owner Settlement Engine (section 34); the Owner Ledger (section 33), with the V1 ownership vector in §33.3; Phase 5 Slice 6 corrective (section 32); Slice 5 in section 31; Slices 1-4 in sections 27-30
 
 ---
 
@@ -3610,3 +3610,40 @@ hardening" mean **Phase 8 — Production Hardening**. The `may_read_expense` per
 the `org_id`-leading local expense reporting index are carried there; Slice 8 did not change
 them. Android (Slice 9), drill-down (Slice 10), charts, exports, printing and finalized owner
 statements are not built.
+
+## 38. The Android P&L surface — Phase 5 Slice 9
+
+Decisions D-228…D-232. **No schema change, no migration, local Drift schema v21.**
+
+```
+        Reports tab (mobile router) ─► MobileProfitAndLossPage
+          ├─ pnlViewProvider · pnlScopeOptionsProvider · pnlSelectionProvider
+          │  pnlPresetAvailabilityProvider · pnlSyncProvider      ← the Slice 8 providers, unchanged
+          ├─ pnlViewShownTo / pnlScopeOptionsShownTo              ← only the viewer's own (D-231)
+          └─ pnl_presentation.dart                                ← wording shared with Windows (D-232)
+```
+
+* **A presentation, not a second P&L.** The phone page reads the same providers, engine, cache,
+  lock, synchroniser, coverage and freshness as Windows. It arranges figures for a portrait phone
+  and computes none of them. The Slice 8 calculation and boundary guards scan it.
+* **Layout.** Portrait-first: title and freshness; property in a bottom sheet; relative presets
+  in a horizontally scrollable strip; Custom through the calendar picker; the headline card;
+  revenue by category (gross, GST, net stacked per line); expense by category; state messages;
+  pull-to-refresh; and bottom clearance for the docked [ + ] action. Amounts scale down rather than
+  overflow. Landscape stays usable and scrollable without a separate design.
+* **Overlays** (the scope sheet and the date picker) open over the root navigator, so no choice
+  and no Apply sits behind the bottom bar or the [ + ]. Android back closes either and changes
+  nothing.
+* **Custom dates** are calendar-only (D-229). A tapped day is its own P&L date, read by year,
+  month and day with no zone, UTC or clock conversion, and never swapped.
+* **Authority, periods, older years, freshness and offline behaviour** are Slice 8's, unchanged:
+  the D2 intersection per property and unscoped consolidation; presets per property with disagreeing
+  consolidated presets disabled and pointed to Custom; on-demand download of every missing financial
+  year; synchronised-as-of, server-has-newer and no-freshness-evidence; cached complete reports
+  readable offline.
+* **Refresh.** On opening, whenever the person changes, from the header control, or by pull-to-refresh,
+  always through `pnlSyncProvider` under `ReportingCacheLock` (D-227).
+
+Not built, and still later slices: department and section breakdowns, transaction drill-down
+(Slice 10), charts, trends, comparisons, exports, printing and finalized owner statements. D-227's
+owner-settlement lock gap is still carried forward.

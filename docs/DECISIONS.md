@@ -7753,3 +7753,124 @@ unreachable server changes nothing, and a complete cached report stays readable 
 settlement refresh and a P&L read on another tab could in principle interleave. Not
 demonstrated, outside Slice 8's surface, and left for the slice that next touches that
 refresher rather than changed in passing (D-127).
+
+---
+
+# Phase 5 Slice 9 — Android P&L Surface (2026-09-13)
+
+## D-228 — The Android Reports tab opens directly to Profit & Loss
+**Date:** 2026-09-13 · **Status:** Implemented / Tested (project-lead decision)
+
+V1 has one standard reporting surface, so the phone's Reports tab opens straight to Profit &
+Loss (`MobileProfitAndLossPage`) with no intermediate reports menu. Owner Settlement stays on
+its own private owner surface and is not reachable from Reports. When later phases add enough
+distinct reporting surfaces, the tab may become a reporting hub, under a separately approved
+slice. The tab is a convenience, not a gate: the page and its providers decide P&L authority
+themselves, exactly as on Windows (D-226).
+
+## D-229 — Android Custom dates are chosen on a calendar picker only
+**Date:** 2026-09-13 · **Status:** Implemented / Tested (project-lead decision) — **one
+wording point raised for the project lead**
+
+Android offers no typed date entry. Custom opens the Material date-range picker in
+`DatePickerEntryMode.calendarOnly`, so there is no text field and no switch to typed input.
+The tapped calendar days are the explicit P&L dates: `pnlCustomDatesFrom` reads year, month
+and day only, and nothing is converted through a timezone, UTC or the device clock. A dismissed
+picker leaves the selection exactly as it was. A range ending before it starts is never swapped:
+it is passed on and refused by the existing resolver (`PnlInvalidRange`). The picker opens on the
+custom range already chosen, otherwise on the period being reported, so opening it reads no clock
+either. Windows keeps its existing typed Custom entry.
+
+**What "native" means here, stated rather than assumed.** The picker is Flutter's Material
+`showDateRangePicker`, the Android Material Design date-range picker as Flutter renders it. It is
+**not** the Android OS `MaterialDatePicker` dialog reached through a platform channel: the project
+has no such plugin, and adding a new dependency was outside Slice 9's approved scope. If the
+decision meant the OS dialog literally, that is a separate change and needs its own approval.
+
+## D-230 — Slice 9 is emulator acceptance; a physical-device pass remains before Phase 5 closes
+**Date:** 2026-09-13 · **Status:** Accepted (project-lead decision)
+
+Slice 9's real-app acceptance ran on the local `Pixel_8` Android emulator (`emulator-5554`,
+Android 17 / API 37). It is recorded as **emulator acceptance** and is never reported as
+physical-device acceptance. Phase 5 final acceptance must still include a real physical Android
+device pass (the Galaxy A06 or another approved target) before Phase 5 closes. That line is in
+`RELEASE_CHECKLIST.md` §O as **PENDING**.
+
+## D-231 — A P&L on screen belongs to the person it was computed for
+**Date:** 2026-09-13 · **Status:** Implemented / Tested — **a D-074-class isolation defect in
+the Slice 8 provider layer, proven RED before it was fixed**
+
+**The defect.** `pnlViewProvider` and `pnlScopeOptionsProvider` watch the session, so a new person
+triggers a re-read, and a Riverpod re-read keeps the previous value while it loads. That is right
+when a synchronisation lands: the report stays on screen instead of flashing to a spinner. It is
+wrong when the person changes, and both surfaces rendered `view.value`. The next person's first
+read queues behind `ReportingCacheLock`, so a synchronisation still running at the switch kept the
+previous person's figures on screen for its whole duration.
+
+**Proven red on the shipped Slice 8 code.** An Owner reading the consolidated P&L starts a refresh.
+While it holds the lock, the session moves to a Crystal Canopy-only principal. The Windows page
+went on showing the Owner's consolidated gross, ₹11,040.00, to that principal
+(`test/features/pnl_session_switch_test.dart`).
+
+**Decision.** `PnlReportView` and `PnlScopeOptions` carry `viewerUserId`. Both surfaces show a view
+only through `pnlViewShownTo`, and offer scopes only through `pnlScopeOptionsShownTo`: a report or
+an option set computed for somebody else is treated as not yet loaded. Views that carry no figure
+are shown as they are. `PnlSyncController` also stops a run started for one person from writing its
+outcome into the next person's status. A structural guard refuses a page that reads either
+provider's value directly.
+
+**Controls, each seen to fail.** With the display rule disabled, the regression turns RED on both
+Windows and Android. Restored byte-identical, it is green again.
+
+**Recorded, not changed.** `reportingSyncProvider` binds a `ReportingSync` to the owner id of the
+session that built it. A synchronisation that is still running when that person signs out keeps
+running with their id, so it could write that person's rows into the canonical cache after the
+sign-out purge removed them. Those rows are owner-keyed and unreadable by the next person, since
+the cache adapter refuses anyone without authority (D-220). This has **not been demonstrated**, and
+the Slice 9 switch acceptance lets the Owner's run settle before signing out. It is recorded for
+Slice 11's accumulated-state acceptance, and is not fixed inside a presentation slice (D-127).
+
+## D-232 — One wording for both P&L surfaces, and a Slice 8 guard that could not fail
+**Date:** 2026-09-13 · **Status:** Implemented / Tested
+
+**One wording.** Android and Windows lay a P&L out differently and must not describe one
+differently. Every refusal, not-downloaded, downloading, failed, unavailable-side, sync-notice and
+freshness sentence now lives once in `pnl_presentation.dart`, along with range and instant
+formatting and category ordering. Both pages only arrange them, with every Slice 8 key and sentence
+unchanged, and the Slice 8 Windows suite passes unmodified over the rewired page. The file computes
+no figure, decides no authority and derives no business date; the existing calculation and boundary
+guards scan it along with the rest of the feature.
+
+**A vacuous guard.** Slice 8's "Android keeps its Reports placeholder" test sliced the router source
+from the first `_mobileRouter(`, which is the call inside `create()`, not the method. Its "mobile
+router" was one line, so `isNot(contains('ProfitAndLossPage'))` could never fail. It is replaced by
+an assertion anchored on the method declarations, which requires each anchor to be found before
+asserting anything between them. It is proven RED by pointing Reports back at a placeholder. This is
+the family D-139, D-187 and D-201 record: a guard is not a guard until it has been seen to fail.
+
+**New guards, each with planted positive controls and a real sabotage seen RED:** no typed date
+entry or date conversion on the phone page, and the picker is calendar-only; no direct read of the
+view or scope-options value on either page; the scope sheet and the picker open over the root
+navigator, so nothing sits behind the bottom bar or the docked [ + ]; and Android Reports is the
+phone P&L while Windows keeps it under Analytics. Missed taps are fatal in the new phone widget
+suite (D-075).
+
+**One acceptance-harness defect, found on the emulator and reproduced on the host.** The first
+`android-pnl` run failed while choosing a Custom range, before any P&L figure was compared. The
+helper scrolled the date-range picker by "the first vertical `Scrollable` inside the dialog". That is
+one month's own grid, which has `NeverScrollableScrollPhysics`, so 400 drags moved nothing and the
+target day never appeared. The phone widget test had not caught it because its dates were in the
+month the picker opened on. Two host tests now choose dates six months forward and eighteen months
+backward. They failed in exactly the emulator's way until the helper bound to the nearest ancestor
+`Scrollable` that can actually scroll, captured once as an element. The product was not involved.
+The failed run's fixtures were voided by its own `finally` sweep, verified on the server as 0 open
+of 3.
+
+**A second acceptance-harness defect, found on the next emulator run.** With the picker fixed,
+`android-pnl` reached the P&L, matched the server, and then timed out on "the control to exist"
+when it went to refresh. The step before had scrolled the page to the bottom to prove the last line
+clears the [ + ] action. The phone page is a lazy list, so the header holding the refresh control was
+no longer built, and a helper that waits for a control before scrolling to it could never see it.
+The helper now walks the page towards the top, then the bottom, until the control is built, and only
+then centres it. The product was not involved: on a phone, refresh lives at the top, alongside
+pull-to-refresh. That run's fixtures were voided by its `finally` sweep (0 open of 6 on the server).

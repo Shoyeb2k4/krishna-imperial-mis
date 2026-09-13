@@ -522,3 +522,36 @@ release, not per phase.
 - [ ] `test/remote/owner_settlement_live_test.dart` green against the target environment,
       run **with `--concurrency=1`** alongside `owner_accounts_live_test.dart` — the two
       share one owner ledger (D-217)
+
+## O. Android P&L surface (Phase 5 Slice 9)
+
+### O.1 Emulator acceptance (Slice 9) — not a substitute for O.2
+
+Run on the local `Pixel_8` emulator against `krishna-mis-dev`, one process launch per phase:
+
+    flutter test integration_test/device_acceptance_test.dart -d emulator-5554 \
+      --flavor dev --dart-define-from-file=config/dev.json \
+      --dart-define-from-file=<scratch>/identities.defines.json \
+      --dart-define=PHASE=<phase>
+
+- [ ] `android-pnl`: Reports opens straight to P&L; consolidated and Crystal Canopy equal
+      `reporting_primitives` to the paisa; category lines reconcile; Custom chosen on the calendar;
+      pull-to-refresh; void; offline cached read; older-FY download; fixtures voided
+- [ ] `android-pnl-scope`: one property's D2 authority (asserted by capability) reports it; the
+      other property and consolidated are refused on the phone and withheld by the server
+- [ ] `android-pnl-switch`: Owner → scoped principal on one installation; no selection, figure
+      or cache of the Owner's survives
+
+### O.2 Physical Android device — **PENDING, required before Phase 5 closes** (D-230)
+
+On a real phone (the Galaxy A06 or another approved target), with a clean dev build:
+
+- [ ] Reports opens directly to Profit & Loss; no reports menu; Owner Settlement not reachable from it
+- [ ] The scope bottom sheet and the calendar picker open over the whole screen, and Android back
+      closes each without changing the report
+- [ ] Custom offers no typed entry; the tapped days appear as the report's range
+- [ ] Pull-to-refresh updates the freshness line; with networking off, the last complete report stays
+      readable and older history says a connection is required
+- [ ] With the system font enlarged, nothing overflows and the last line scrolls clear of the [ + ]
+- [ ] Recorded as **physical-device acceptance**, with the device named. The emulator run in O.1 is
+      never reported as this

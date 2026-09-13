@@ -5,8 +5,9 @@ Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
-Last updated: **2026-09-13** — **PHASE 5 SLICE 8 — WINDOWS P&L SURFACE: COMPLETE** (record
-at the end of this file), on top of **SLICE 7 — REPORTING SECURITY CLOSURE: COMPLETE** and
+Last updated: **2026-09-14** — **PHASE 5 SLICE 9 — ANDROID P&L SURFACE: COMPLETE (emulator
+acceptance; physical-device pass PENDING)** (record at the end of this file), on top of
+**2026-09-13** — **PHASE 5 SLICE 8 — WINDOWS P&L SURFACE: COMPLETE**, on top of **SLICE 7 — REPORTING SECURITY CLOSURE: COMPLETE** and
 **2026-09-11** — **PHASE 5 OA-3 — OWNER SETTLEMENT UI / SECURITY SURFACE:
 COMPLETE**, on top of **OA-2 — OWNER SETTLEMENT ENGINE: COMPLETE**, **OA-1 — OWNER ACCOUNTS
 FOUNDATION: COMPLETE**, and **PHASE 5 — P&L / MIS REPORTING: SLICES 1–6 COMPLETE.**
@@ -3256,7 +3257,7 @@ are not merged because they could be implemented quickly.
 | 6 | Freshness, as-of and closed periods | **COMPLETE** |
 | 7 | The reporting capability model (D-163, D-164) | **COMPLETE** (D-220…D-222) |
 | 8 | Windows P&L surface | **COMPLETE** (D-223…D-227) |
-| 9 | Android P&L surface | not started |
+| 9 | Android P&L surface | **COMPLETE** (D-228…D-232; emulator acceptance, physical-device pass pending) |
 | 10 | Breakdowns + read-only transaction drill-down (D-166) | not started |
 | 11 | Full live / device / two-client acceptance | not started |
 | 12 | Closure | not started |
@@ -5060,3 +5061,80 @@ test; both completed normally.
 
 **Slice 9 — Android P&L Surface is safe to scope from this foundation and has not been
 started.**
+
+---
+
+# PHASE 5 SLICE 9 — ANDROID P&L SURFACE: COMPLETE
+
+Verified 2026-09-13/14 against `krishna-mis-dev` only (`loratzmactetjbqolwri`). Starting HEAD
+`dea929b`. Decisions **D-228…D-232**; `ARCHITECTURE.md` §38; `RELEASE_CHECKLIST.md` §O. No schema
+change, no migration; local Drift schema **v21**, ledger **101** versions.
+
+**Acceptance was on the local `Pixel_8` emulator. A physical Android device pass (Galaxy A06 or
+another approved target) is still required before Phase 5 closes, and is not claimed (D-230).**
+
+## What shipped
+
+* The Android **Reports** tab opens directly to Profit & Loss (`MobileProfitAndLossPage`), with no
+  reports menu (D-228). Owner Settlement stays separate. Windows keeps P&L under Analytics.
+* A portrait-first phone layout over the **same** Slice 8 providers, engine, cache, lock,
+  synchroniser, coverage and freshness: title and freshness, property in a bottom sheet, preset
+  chips in a horizontal strip, Custom through a calendar-only picker (D-229), headline card,
+  revenue by category, expense by category, state messages, pull-to-refresh, and clearance for the
+  docked [ + ]. It computes no figure and decides no authority.
+* `pnl_presentation.dart`: one set of P&L wording, range/instant formatting and category ordering
+  shared by both surfaces (D-232). The Windows page was rewired onto it with every Slice 8 key and
+  sentence unchanged.
+* Session isolation (D-231): views and scope options carry `viewerUserId`; both surfaces show them
+  only through `pnlViewShownTo` / `pnlScopeOptionsShownTo`, and a sync started for one person
+  cannot write its outcome into the next person's status.
+
+## Defects found and fixed
+
+| | Defect | Found by |
+|---|---|---|
+| D-231 | After a user switch, **both** P&L surfaces kept showing the previous person's report while a sync held the lock (the Owner's consolidated ₹11,040.00 shown to a Crystal Canopy-only principal) | a session-switch regression, proven RED on the shipped Slice 8 code |
+| D-232 | Slice 8's "Android keeps its Reports placeholder" guard sliced one line of the router and **could never fail** | replacing it; the new guard was seen RED |
+| D-232 | Acceptance helper scrolled a month grid (`NeverScrollableScrollPhysics`) instead of the picker's month list | first `android-pnl` emulator run; reproduced on host by two new picker tests |
+| D-232 | Acceptance helper waited for a refresh control the lazy page had not built | second `android-pnl` emulator run |
+
+None of the four is a financial-calculation defect. Both harness defects were fixed in the harness;
+each failed run's fixtures were voided by its own `finally` sweep (0 open of 3, 0 open of 6).
+
+## Verification
+
+| Gate | Status | Evidence |
+|---|---|---|
+| `dart format --set-exit-if-changed lib test integration_test tool` | Tested | 281 files, 0 changed |
+| `flutter analyze` | Tested | No issues found |
+| Host suite | Tested | **1,953 passed** (run 2). Run 1 had **one** failure: `financial_cache_retention_test.dart` "…the revoked share is not left legible in the database file" timed out at 30 s under load and could not delete its temp database (file in use). It passed in 3 isolated reruns and in the full run 2. No Slice 9 code is on its path; recorded as a load-related timeout, not hidden |
+| P&L suites together (phone UI, session switch, surface guard, wiring, routing smoke, Windows UI, providers) | Tested | **196 passed** |
+| Positive controls | Tested | display rule disabled → session-switch RED on both surfaces; Reports pointed back at a placeholder → routing guard RED; guard self-tests with planted violations; each restored byte-identical |
+| Emulator acceptance, `sdk gphone16k x86_64`, `emulator-5554`, Android 17 / API 37 | Tested (emulator) | `android-pnl` **PASS** (143 s), `android-pnl-scope` **PASS** (119 s), `android-pnl-switch` **PASS** (123 s), on the final acceptance file |
+| Physical Android device acceptance | **Not tested** | PENDING before Phase 5 closure (D-230, checklist §O) |
+| Live suites, `--concurrency=1` | Tested | **101 passed** — reporting 13, parity 29, owner accounts 31, completeness 8, settlement 20 |
+| Android dev debug build | Tested | clean rebuild with `config/dev.json` only, `app-dev-debug.apk` 242,939,162 bytes; `kernel_blob.bin` contains `MobileProfitAndLossPage`, `pnlViewShownTo`, the picker label and `pnl-scope-selector`; 0 of 6 identity passwords |
+| Secret scan | Tested | working tree + git history clean; working tree + extracted APK (558 entries) clean |
+| Windows build / device acceptance | Not tested | not touched by Slice 9 beyond the rewired page, which the Slice 8 Windows widget suite covers unmodified |
+
+## Backend baseline after acceptance
+
+Slice 9 fixtures **0 open of 9**. Settings rows **0** (the owner suite's `2026-05-01` fixture removed
+with `owner_settlement_dev_fixture_cleanup.sql`). Open revenue **0**, open owner movements **0**, open
+acceptance expenses **0**, open expenses **61** (pre-existing), role grants **7** (5 active), roles
+**4**, closed periods **0**, dead helper absent, ledger **101**.
+
+## Carried forward
+
+* **Physical-device P&L pass** before Phase 5 closure (D-230).
+* **D-229 wording point:** the picker is Flutter's Material `showDateRangePicker` in calendar-only
+  mode, not the Android OS `MaterialDatePicker` through a platform channel. If the latter was meant,
+  it needs its own approval.
+* **D-227:** the owner-settlement refresher does not take the P&L lock (not demonstrated).
+* **D-231 note:** a `ReportingSync` still running at sign-out keeps its owner id and could write
+  owner-keyed rows after the purge (not demonstrated; for Slice 11).
+* Phase 8: `may_read_expense` per-row cost; `org_id`-leading local expense index (D-223).
+* The production 50:50 start date remains a project-lead decision.
+
+**Slice 10 — breakdowns and read-only drill-down — is safe to scope from this foundation and has
+not been started.**
