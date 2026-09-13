@@ -7639,3 +7639,39 @@ decoded as UTF-8), and the repair verified as insertions only.
 (`cp` of a saved original, then `cmp` to prove identity), and every scripted edit uses Python
 with explicit UTF-8 and `newline=''`. A restore is not restored until it has been read back
 (D-142) — and "read back" means compared as bytes, not eyeballed.
+
+## D-220 — Canonical cache ownership is not reporting authority
+**Date:** 2026-09-13 · **Status:** Implemented / Tested — Phase 5 Slice 7
+
+The offline reporting adapter and direct owner-settlement repository could read retained
+canonical cache without checking the current capabilities. Capability-loss purge also
+missed reporting data when unit access stayed unchanged, and sign-out missed reporting-only
+units without master rows. Each was demonstrated RED, then corrected at its owning layer.
+Adapters receive the session principal and derive the cache-owner identity from it. D2 and
+unscoped consolidated authority apply locally too; absent authority never becomes a zero
+side. D-070 removes affected owner/unit reporting cache with coverage first; D-074 discovers
+all reporting unit IDs. Unavailable refreshes and actor-owned pending work keep the existing
+doctrine. This is not a new financial or role policy. See `SLICE7_SECURITY_AUDIT.md`.
+
+## D-221 — Retire dead executable API surface, and control the audit itself
+**Date:** 2026-09-13 · **Status:** Implemented / Tested
+
+Live function/policy inspection and client search found no caller of
+`expense_sees_whole_org()`. Migration `20260912100000` removes it without CASCADE and
+restates the reviewed API at 57 functions. Live rollback rehearsal, atomic application/
+ledger recording and full SQL identity were verified. Historical migrations are unchanged.
+The host active-function scanner now honours drops and recreations. A synthetic granted
+capability made the actual D-139 guard fail despite an older exemption and comment/DO
+mentions; adding a `$fn$` evaluator made it pass. Controls were removed, never deployed.
+Export, print and settings-management exemptions stay deferred, not silently implemented.
+
+## D-222 — The development start date is an acceptance fixture, not a baseline
+**Date:** 2026-09-13 · **Status:** Implemented / Tested — project-lead-authorised cleanup
+
+No persistent fixture requires development to retain `2026-05-01`. The exact dev settings
+row was removed through the administrator boundary before and after the final serial
+owner/reporting run. All 101 live tests passed, including the not-configured case. Final
+settings count is zero; no production date was chosen and no financial/audit history was
+deleted. The SQL teardown asset lives outside migrations. Acceptance owns setup plus
+administrative cleanup, including failures; do not give the client a privileged reset RPC.
+The production 50:50 start date remains an unanswered business decision.

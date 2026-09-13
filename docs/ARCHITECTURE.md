@@ -3553,3 +3553,27 @@ No finalized statement, versioning or approval. No administrative screen for the
 (the RPC is the boundary). No per-family-member breakdown. No chart. And the OA-1
 owner-ledger outbox transport is still not wired in `bootstrap` — latent, because no surface
 creates an owner movement (D-218).
+
+## 36. Reporting security closure — Phase 5 Slice 7
+
+The audited capability matrix, live controls and provenance are recorded in
+`SLICE7_SECURITY_AUDIT.md` (D-220…D-222).
+
+`CachedReportingSource` now receives the session's `Principal`, not a separately supplied
+cache-owner string. Unit reporting requires `reports.view`, `revenue.view` and
+`expense.view.all`; consolidated reporting requires all three unscoped. Coverage and
+freshness evidence cannot substitute for authority. Unauthorised sides are not queried,
+are marked unavailable, and never become a half-P&L. Providers watch session changes.
+
+The owner-settlement repository independently checks settlement, ledger and reporting
+capabilities before reading any owner-keyed dataset. The preview retains its stronger
+unscoped P&L gate. Navigation remains only an interface filter.
+
+Confirmed reporting-capability loss now reaches canonical reporting cache even when
+property access remains: marker first, facts next, owner and unit filtered, transactional.
+Sign-out discovers reporting-only units without depending on master rows. Network failure
+does not purge and actor-owned pending work remains protected. Existing owner-cache and
+no-global-master-writer safeguards remain in force.
+
+The dead `expense_sees_whole_org()` helper is removed; reviewed API count is 57. No new
+reporting capability, arithmetic, local schema version or reporting UI was introduced.

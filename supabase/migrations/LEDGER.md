@@ -498,4 +498,19 @@ The divergences are confined to comments, blank lines, indentation and that head
 20260911131042 owner_settlement_start_date
 20260911131130 owner_ledger_snapshot_requires_settlement_view
 20260911131228 api_surface_invariant_owner_settlement
+20260912100000 remove_dead_expense_whole_org_helper
 ```
+
+## Phase 5 Slice 7 — dead reporting helper removed
+
+| Ledger version | Ledger name | Committed file |
+|---|---|---|
+| 20260912100000 | `remove_dead_expense_whole_org_helper` | `20260912100000_remove_dead_expense_whole_org_helper.sql` |
+
+Applied only to `krishna-mis-dev` after a rollback-only live rehearsal and caller audit.
+No function/policy/client caller remained. The helper is absent; reviewed API count is 57.
+The administrative application and ledger INSERT committed atomically. The stored SQL and
+repository file match in full after LF normalisation: MD5
+`54951899d004206b58330ff683a21f18`. The full 101-entry version/name ledger matches the list
+above (LF-joined sorted lines MD5 `c24732d3a792a8ea09ddfd1d5712a02f`).
+See `docs/SLICE7_SECURITY_AUDIT.md` for the live privilege and capability evidence.

@@ -4923,3 +4923,59 @@ does). No per-family-member breakdown of non-chargeable consumption.
 
 **Stop.** OA-3 is complete. The Finalized Statement slice and the old Phase 5 Slice 7 wait
 for the project lead.
+
+---
+
+# PHASE 5 SLICE 7 — REPORTING SECURITY / AUTHORIZATION CLOSURE: COMPLETE
+
+Verified 2026-09-12/13. This entry supersedes the earlier "Slice 7 not started" handoff.
+Full capability matrix, audit boundaries, RED/GREEN evidence and baseline details:
+`SLICE7_SECURITY_AUDIT.md`; architecture §36; decisions D-220…D-222.
+
+## Security corrections
+
+- Canonical local P&L reads now enforce current capabilities and unscoped consolidation.
+- Direct owner-settlement repository reads independently refuse missing authority.
+- Confirmed reporting-capability loss purges facts and coverage even with units retained.
+- Sign-out removes reporting-only cache/evidence even without unit master rows.
+- Dead `expense_sees_whole_org()` removed through migration `20260912100000`.
+
+No arithmetic, business facts, role-name authorisation, new schema version, UI, export,
+print or finalized-statement behaviour was added. Local schema remains v21.
+
+## Closure evidence
+
+| Gate | Status | Result |
+|---|---|---|
+| D2 unit and unscoped consolidated authority | Tested | Live independently altered capability fixtures; both unit positives and two-scope consolidated refusal |
+| Local half-P&L / direct owner repository | Tested | Production-wiring regressions refuse retained unauthorised cache |
+| D-070 / D-074 | Tested | Capability-loss, unavailable-network, pending-work and shared-device tests green; live owner isolation green |
+| Host suite | Tested | **1,711 passed** |
+| Relevant live suites, serial (`--concurrency=1`) | Tested | **101 passed, zero skipped**: 13 reporting + 29 parity + 31 OA-1 + 8 completeness + 20 OA-3 |
+| Format / analyze | Tested | 263 files, 0 changes; no issues |
+| Live security catalogue | Tested | 57 reviewed APIs; PUBLIC/anon EXECUTE 0; anon reads 0; client writes 0; all public base tables RLS; no public overloads |
+| D-139 guard | Tested | Latest exemption, comments/DO exclusion and named-dollar-tag positive controls; live dead non-exempt grants 0 |
+| Migration provenance | Tested | 101 ledger entries match; applied migration SQL equals repository after LF normalisation |
+| Credential scan | Tested | Working tree and Git history clean |
+| New builds/device acceptance | Not tested | No release/device claim added by this security-only slice |
+
+## Development baseline restored
+
+`owner_settlement_settings`: **0 rows**, "Settlement start date not configured". The
+`2026-05-01` disposable fixture was removed administratively before and after acceptance.
+Open revenue / owner movements / reporting acceptance expenses: **0 / 0 / 0**.
+Role-grant rows remain **7**, of which **5** active; same four bundles. Historical voids,
+ownership fixtures and audit records remain. The production start date remains outstanding.
+
+## Next — stop at the boundary
+
+Implementation commits: `460980b4e17d62c0a42a695c34dc1d8ebea127f6` (security and
+coupled regression/constructor tests), `989846a60545e5d7568f9835434affef5115e96a`
+(API migration and structural guards), `c384af63fce20b9036708e0d1f1cca2892c13939`
+(administrative acceptance teardown). The documentation closure is the following commit.
+
+The Slice 7 security gate is closed. **Slice 8 is safe to scope and begin from this
+foundation, but has not been started.** It still requires its own binding-document handoff
+and acceptance plan. Finalized Owner Statements and Phase 7 exports/printing remain outside
+this slice. There is no pending Slice 7 corrective; the production start date is still a
+project-lead business decision, not a licence to reuse the dev fixture.
