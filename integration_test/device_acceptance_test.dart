@@ -119,6 +119,9 @@ import 'package:krishna_mis/core/design/components/money_text.dart';
 import 'package:krishna_mis/domain/finance/pnl.dart';
 import 'package:krishna_mis/domain/finance/pnl_authority.dart';
 import 'package:krishna_mis/features/profit_and_loss/presentation/pnl_providers.dart';
+import 'package:krishna_mis/features/profit_and_loss/presentation/mobile_profit_and_loss_page.dart';
+import 'package:krishna_mis/data/repositories/reporting_cache.dart';
+import 'package:krishna_mis/domain/finance/reporting_presets.dart';
 import 'package:krishna_mis/domain/sync/sync_state.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
@@ -7543,7 +7546,10 @@ void main() {
   const pnlTo = '2027-03-31';
   const pnlDate = '2027-03-10';
 
-  Future<void> sweepPnlFixtures(SupabaseClient client) async {
+  Future<void> sweepPnlFixtures(
+    SupabaseClient client, {
+    String marker = pnlMarker,
+  }) async {
     for (final (relation, rpc) in const [
       ('revenue_document', 'revenue_void'),
       ('expense_document', 'expense_void'),
@@ -7551,7 +7557,7 @@ void main() {
       final open = await client
           .from(relation)
           .select('id,row_version')
-          .like('notes', '$pnlMarker%')
+          .like('notes', '$marker%')
           .isFilter('voided_at', null);
       for (final row in open) {
         await client.rpc<dynamic>(
@@ -7559,7 +7565,7 @@ void main() {
           params: {
             'p_id': row['id'],
             'p_base_row_version': row['row_version'],
-            'p_reason': 'Reversing $pnlMarker fixture (D-066)',
+            'p_reason': 'Reversing $marker fixture (D-066)',
             'p_mutation_id': const Uuid().v4(),
           },
         );
@@ -7567,7 +7573,7 @@ void main() {
       final remaining = await client
           .from(relation)
           .select('id')
-          .like('notes', '$pnlMarker%')
+          .like('notes', '$marker%')
           .isFilter('voided_at', null);
       expect(remaining, isEmpty, reason: 'every $relation fixture reversed');
     }
@@ -8076,6 +8082,797 @@ void main() {
         await tester.pump(const Duration(milliseconds: 400));
         await settlePnl(tester, container);
         expect(find.byKey(const Key('pnl-statement')), findsOneWidget);
+      },
+    );
+  });
+
+  // ── Phase 5 Slice 9: the Android P&L, in the real APK on the emulator ──────
+  //
+  // The same comparison as the Windows phases — every figure on the phone, to the paisa,
+  // against `reporting_primitives` over the same scope and inclusive range — reached the way a
+  // phone reaches it: the Reports tab, the scope bottom sheet, the calendar picker and
+  // pull-to-refresh. Fixtures carry their own marker and are voided in a `finally` and again
+  // before the next run (D-066, D-071, D-076).
+  //
+  // Emulator acceptance only. It is not physical-device acceptance, and is never reported as
+  // one.
+
+  const phonePnlMarker = '$_acceptanceMarker: slice9 android pnl';
+  const monthNames = [
+    'January',
+    'February',
+    'March',
+    'April',
+    'May',
+    'June',
+    'July',
+    'August',
+    'September',
+    'October',
+    'November',
+    'December',
+  ];
+
+  Finder phonePnlScrollable() => find
+      .descendant(
+        of: find.byKey(const Key('pnl-page')),
+        matching: find.byType(Scrollable),
+      )
+      .first;
+
+  /// Centres [finder] in every scrollable around it, so a tap cannot land on the docked
+  /// [ + ] action or past the end of the preset strip.
+  Future<void> centrePnlControl(WidgetTester tester, Finder finder) async {
+    // The page is a lazy list: a control scrolled far out of view is not built at all, and
+    // no amount of waiting will make it exist. Walk the page towards the top, then the
+    // bottom, until it is built - the refresh control lives in the header.
+    final page = find.byKey(const Key('pnl-page'));
+    for (final step in const [Offset(0, 300), Offset(0, -300)]) {
+      for (
+        var i = 0;
+        i < 60 && finder.evaluate().isEmpty && page.evaluate().isNotEmpty;
+        i++
+      ) {
+        await tester.drag(phonePnlScrollable(), step, warnIfMissed: false);
+        await tester.pump(const Duration(milliseconds: 120));
+      }
+    }
+    await pumpUntil(
+      tester,
+      'the control to exist',
+      () => finder.evaluate().isNotEmpty,
+    );
+    await Scrollable.ensureVisible(tester.element(finder), alignment: 0.5);
+    await tester.pump(const Duration(milliseconds: 400));
+  }
+
+  Future<void> openPhonePnl(
+    WidgetTester tester,
+    ProviderContainer container,
+  ) async {
+    expect(
+      boot.shellKind.name,
+      'mobile',
+      reason:
+          'this phase is about the phone P&L; run it on the Android emulator',
+    );
+    await pumpUntil(tester, 'the Reports tab', () => visible('Reports'));
+    await tapWhenHittable(tester, find.text('Reports').last);
+    await pumpUntil(
+      tester,
+      'the phone P&L page',
+      () => find.byType(MobileProfitAndLossPage).evaluate().isNotEmpty,
+    );
+    await settlePnl(tester, container);
+  }
+
+  Future<void> refreshPhonePnl(
+    WidgetTester tester,
+    ProviderContainer container, {
+    PnlSyncPhase expected = PnlSyncPhase.succeeded,
+    Key control = const Key('pnl-refresh'),
+  }) async {
+    await settlePnl(tester, container);
+    await centrePnlControl(tester, find.byKey(control));
+    await refreshPnl(tester, container, expected: expected, control: control);
+  }
+
+  Future<void> pullToRefreshPnl(
+    WidgetTester tester,
+    ProviderContainer container,
+  ) async {
+    await settlePnl(tester, container);
+    // Back to the top first; dragging there may itself refresh, so let that settle.
+    await tester.drag(phonePnlScrollable(), const Offset(0, 4000));
+    await tester.pump(const Duration(milliseconds: 600));
+    await settlePnl(tester, container);
+    final before = container.read(pnlSyncProvider);
+    await tester.fling(phonePnlScrollable(), const Offset(0, 500), 1500);
+    await pumpUntil(
+      tester,
+      'pull-to-refresh to run the synchronisation',
+      () {
+        final now = container.read(pnlSyncProvider);
+        return !identical(now, before) && !now.isRunning;
+      },
+      timeout: const Duration(seconds: 90),
+    );
+    expect(container.read(pnlSyncProvider).phase, PnlSyncPhase.succeeded);
+    await settlePnl(tester, container);
+  }
+
+  Future<void> choosePhoneScope(
+    WidgetTester tester,
+    ProviderContainer container,
+    Key choice,
+  ) async {
+    await settlePnl(tester, container);
+    await centrePnlControl(tester, find.byKey(const Key('pnl-scope-selector')));
+    await tapWhenHittable(tester, find.byKey(const Key('pnl-scope-selector')));
+    await pumpUntil(
+      tester,
+      'the scope sheet',
+      () => find.byKey(const Key('pnl-scope-sheet')).evaluate().isNotEmpty,
+    );
+    await tapWhenHittable(tester, find.byKey(choice));
+    await pumpUntil(
+      tester,
+      'the scope sheet to close',
+      () => find.byKey(const Key('pnl-scope-sheet')).evaluate().isEmpty,
+    );
+    await tester.pump(const Duration(milliseconds: 400));
+    await settlePnl(tester, container);
+  }
+
+  /// Chooses [from]–[to] on the calendar picker, tapping the two days as a person would.
+  Future<void> choosePhoneCustom(
+    WidgetTester tester,
+    ProviderContainer container,
+    BusinessDate from,
+    BusinessDate to,
+  ) async {
+    await settlePnl(tester, container);
+    final opensOn = switch ((
+      container.read(pnlSelectionProvider).period,
+      container.read(pnlViewProvider).value,
+    )) {
+      (PnlCustomPeriod(:final from), _) => from,
+      (_, PnlReportView(:final range)) => range.from,
+      _ => fail('the picker has no period to open on'),
+    };
+    final semantics = tester.ensureSemantics();
+    try {
+      await centrePnlControl(
+        tester,
+        find.byKey(const Key('pnl-preset-custom')),
+      );
+      await tapWhenHittable(tester, find.byKey(const Key('pnl-preset-custom')));
+      await pumpUntil(
+        tester,
+        'the date-range picker',
+        () => visible('Profit & loss period'),
+      );
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(
+        find.byType(TextField),
+        findsNothing,
+        reason: 'calendar only: Android takes no typed dates',
+      );
+      // The month list is the scrollable nearest a day the picker opened on. The first
+      // vertical scrollable inside the dialog is not it — dragging that one moved nothing
+      // for 400 drags on the emulator. Bound to the element once, so it survives that day
+      // scrolling out of view.
+      final monthsElement = tester.element(
+        find
+            .ancestor(
+              of: find.bySemanticsLabel(
+                RegExp(
+                  RegExp.escape(
+                    '${monthNames[opensOn.month - 1]} ${opensOn.day}, ${opensOn.year}',
+                  ),
+                ),
+              ),
+              // Each month is its own non-scrolling grid; the list of months is the
+              // nearest ancestor that can actually scroll.
+              matching: find.byWidgetPredicate(
+                (w) =>
+                    w is Scrollable &&
+                    w.physics is! NeverScrollableScrollPhysics,
+              ),
+            )
+            .first,
+      );
+      final months = find.byElementPredicate((e) => e == monthsElement);
+      for (final day in [from, to]) {
+        final cell = find.bySemanticsLabel(
+          RegExp(
+            RegExp.escape(
+              '${monthNames[day.month - 1]} ${day.day}, ${day.year}',
+            ),
+          ),
+        );
+        await tester.scrollUntilVisible(
+          cell,
+          day >= opensOn ? 250 : -250,
+          scrollable: months,
+          maxScrolls: 400,
+        );
+        await tester.pump(const Duration(milliseconds: 300));
+        await tapWhenHittable(tester, cell);
+        await tester.pump(const Duration(milliseconds: 400));
+      }
+      await tapWhenHittable(tester, find.text('Apply'));
+      await pumpUntil(
+        tester,
+        'the picker to close',
+        () => !visible('Profit & loss period'),
+      );
+    } finally {
+      semantics.dispose();
+    }
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(
+      container.read(pnlSelectionProvider).period,
+      PnlCustomPeriod(from, to),
+      reason: 'the tapped calendar days are the P&L dates, unconverted',
+    );
+    await settlePnl(tester, container);
+  }
+
+  Future<void> expectServerWithholdsPnl(
+    SupabaseClient client,
+    List<String> units,
+    String from,
+    String to,
+  ) async {
+    final answer = Map<String, dynamic>.from(
+      await client.rpc<dynamic>(
+            'reporting_primitives',
+            params: {
+              'p_business_unit_ids': units,
+              'p_from': from,
+              'p_to': to,
+              'p_breakdown': true,
+            },
+          )
+          as Map,
+    );
+    for (final raw in answer['units'] as List) {
+      final unit = Map<String, dynamic>.from(raw as Map);
+      expect(unit['revenue'], isNull, reason: '$units revenue withheld');
+      expect(unit['expense'], isNull, reason: '$units expenses withheld');
+    }
+  }
+
+  /// Rows the canonical reporting cache holds for [ownerUserId], optionally for one property.
+  Future<int> reportingCacheRows(
+    String ownerUserId, {
+    String? businessUnitId,
+  }) async {
+    final db = boot.database;
+    final revenue = await db.select(db.reportingRevenueContributions).get();
+    final expense = await db.select(db.reportingExpenseContributions).get();
+    bool matches(String owner, String unit) =>
+        owner == ownerUserId &&
+        (businessUnitId == null || unit == businessUnitId);
+    return revenue
+            .where((r) => matches(r.ownerUserId, r.businessUnitId))
+            .length +
+        expense.where((r) => matches(r.ownerUserId, r.businessUnitId)).length;
+  }
+
+  group('android-pnl', skip: _phase != 'android-pnl', () {
+    testWidgets(
+      'the phone P&L equals the server to the paisa through the tab, sheet, picker, '
+      'pull-to-refresh, void and offline',
+      (tester) async {
+        await launch(tester);
+        await signIn(tester, 'giridhar@hki.com');
+        await expectSignedIn(tester, 'giridhar@hki.com');
+        final container = ProviderScope.containerOf(
+          tester.element(find.byType(KrishnaMisApp)),
+        );
+        await container.read(sessionProvider.notifier).refreshAuthority();
+        await tester.pump(const Duration(seconds: 2));
+        final client = Supabase.instance.client;
+
+        await sweepPnlFixtures(client, marker: phonePnlMarker);
+        try {
+          await openPhonePnl(tester, container);
+          final options = container.read(pnlScopeOptionsProvider).value!;
+          expect(options.consolidatedAllowed, isTrue);
+          final units = [for (final u in options.units) u.id];
+          expect(units, containsAll([_ccr, _hki]));
+          expect(
+            tester.widget<Text>(find.byKey(const Key('pnl-scope-name'))).data,
+            'Both properties (consolidated)',
+          );
+
+          final baseline = await serverPnl(client, units, pnlFrom, pnlTo);
+
+          // ── A sale and two expenses, through the ordinary RPCs ─────────────
+          final restaurant =
+              (await client
+                      .from('revenue_categories')
+                      .select('id')
+                      .eq('code', 'RESTAURANT')
+                      .eq('business_unit_id', _ccr)
+                      .single())['id']
+                  as String;
+          final sale = const Uuid().v7();
+          await client.rpc<dynamic>(
+            'revenue_create',
+            params: {
+              'p_id': sale,
+              'p_business_unit_id': _ccr,
+              'p_revenue_category_id': restaurant,
+              'p_business_date': pnlDate,
+              'p_notes': '$phonePnlMarker sale',
+              'p_components': [
+                {'entered_amount_minor': 12364200},
+              ],
+              'p_mutation_id': const Uuid().v4(),
+            },
+          );
+          for (final (unit, dept, section, category, amount) in [
+            (
+              _ccr,
+              _seedId('dept:CCR/FB'),
+              _seedId('sec:CCR/FB/FOOD_PROD'),
+              _kirana,
+              4500000,
+            ),
+            (
+              _hki,
+              _seedId('dept:HKI/HKI_UTIL'),
+              _seedId('sec:HKI/HKI_UTIL/HKI_POWER'),
+              _seedId('cat:HKI/HKI_UTIL/HKI_POWER/ELECTRICITY'),
+              3000000,
+            ),
+          ]) {
+            await client.rpc<dynamic>(
+              'expense_create',
+              params: {
+                'p_id': const Uuid().v7(),
+                'p_business_date': pnlDate,
+                'p_total_minor': amount,
+                'p_notes': '$phonePnlMarker expense',
+                'p_allocations': [
+                  {
+                    'business_unit_id': unit,
+                    'department_id': dept,
+                    'section_id': section,
+                    'category_id': category,
+                    'amount_minor': amount,
+                  },
+                ],
+                'p_mutation_id': const Uuid().v4(),
+              },
+            );
+          }
+
+          // ── Custom range on the calendar, pull-to-refresh, equal to the server ──
+          await choosePhoneCustom(
+            tester,
+            container,
+            BusinessDate.of(2027, 3, 1),
+            BusinessDate.of(2027, 3, 31),
+          );
+          await pullToRefreshPnl(tester, container);
+          var server = await serverPnl(client, units, pnlFrom, pnlTo);
+          expect(server.gross - baseline.gross, 12364200);
+          expect(server.tax - baseline.tax, 588771);
+          expect(server.net - baseline.net, 11775429);
+          expect(server.expenses - baseline.expenses, 7500000);
+          expectPnlMatchesServer(tester, container, server);
+          expect(
+            find.byKey(const Key('pnl-freshness-synchronised')),
+            findsOneWidget,
+          );
+          expect(
+            find.text(computedPnl(container).margin.displayTwoDecimals),
+            findsWidgets,
+          );
+
+          // The category lines on screen, once scrolled to.
+          await centrePnlControl(
+            tester,
+            find.byKey(const Key('pnl-exp-total-amount')),
+          );
+          expect(
+            uiPaise(tester, 'pnl-exp-$_ccr-$_kirana-amount'),
+            server.expenseLines['$_ccr-$_kirana'],
+          );
+          expect(uiPaise(tester, 'pnl-exp-total-amount'), server.expenses);
+
+          // Scrolled to the end, the last line stays clear of the docked [ + ] action.
+          await tester.drag(phonePnlScrollable(), const Offset(0, -8000));
+          await tester.pump(const Duration(milliseconds: 800));
+          final fab = tester.getRect(find.byType(FloatingActionButton));
+          expect(
+            tester
+                .getRect(find.byKey(const Key('pnl-exp-total-amount')))
+                .bottom,
+            lessThanOrEqualTo(fab.top),
+          );
+          expect(
+            tester.getRect(find.byKey(const Key('pnl-basis'))).bottom,
+            lessThanOrEqualTo(fab.top),
+          );
+
+          // ── A void reaches the P&L exactly once ────────────────────────────
+          final saleDoc = await client
+              .from('revenue_document')
+              .select('row_version')
+              .eq('id', sale)
+              .single();
+          await client.rpc<dynamic>(
+            'revenue_void',
+            params: {
+              'p_id': sale,
+              'p_base_row_version': saleDoc['row_version'],
+              'p_reason': 'Reversing $phonePnlMarker sale (D-066)',
+              'p_mutation_id': const Uuid().v4(),
+            },
+          );
+          await refreshPhonePnl(tester, container);
+          server = await serverPnl(client, units, pnlFrom, pnlTo);
+          expect(server.gross, baseline.gross);
+          expect(server.expenses - baseline.expenses, 7500000);
+          expectPnlMatchesServer(tester, container, server);
+
+          // ── One property through the bottom sheet, equal to the server ─────
+          await choosePhoneScope(tester, container, Key('pnl-scope-$_ccr'));
+          expect(
+            (container.read(pnlViewProvider).value! as PnlReportView).scope,
+            PnlUnitScope(_ccr),
+          );
+          expectPnlMatchesServer(
+            tester,
+            container,
+            await serverPnl(client, [_ccr], pnlFrom, pnlTo),
+          );
+
+          // Android back closes the sheet and changes nothing.
+          await centrePnlControl(
+            tester,
+            find.byKey(const Key('pnl-scope-selector')),
+          );
+          await tapWhenHittable(
+            tester,
+            find.byKey(const Key('pnl-scope-selector')),
+          );
+          await pumpUntil(
+            tester,
+            'the scope sheet',
+            () =>
+                find.byKey(const Key('pnl-scope-sheet')).evaluate().isNotEmpty,
+          );
+          await tester.binding.handlePopRoute();
+          await pumpUntil(
+            tester,
+            'back to close the sheet',
+            () => find.byKey(const Key('pnl-scope-sheet')).evaluate().isEmpty,
+          );
+          expect(
+            container.read(pnlSelectionProvider).scope,
+            PnlUnitScope(_ccr),
+          );
+          expect(find.byType(MobileProfitAndLossPage), findsOneWidget);
+
+          await choosePhoneScope(
+            tester,
+            container,
+            const Key('pnl-scope-consolidated'),
+          );
+
+          // ── Offline: the complete report stays readable, never ₹0 ─────────
+          final expensesBefore = uiPaise(tester, 'pnl-expenses');
+          final grossBefore = uiPaise(tester, 'pnl-gross');
+          _transport.online = false;
+          try {
+            await refreshPhonePnl(
+              tester,
+              container,
+              expected: PnlSyncPhase.failed,
+            );
+            expect(find.byKey(const Key('pnl-offline')), findsOneWidget);
+            expect(find.byKey(const Key('pnl-statement')), findsOneWidget);
+            expect(
+              find.byKey(const Key('pnl-freshness-synchronised')),
+              findsOneWidget,
+            );
+            // Re-read from the cache with no server at all.
+            container.invalidate(pnlViewProvider);
+            await settlePnl(tester, container);
+            expect(uiPaise(tester, 'pnl-expenses'), expensesBefore);
+            expect(uiPaise(tester, 'pnl-gross'), grossBefore);
+          } finally {
+            _transport.online = true;
+          }
+
+          // ── Older history, chosen on the calendar and downloaded on demand ─
+          await choosePhoneCustom(
+            tester,
+            container,
+            BusinessDate.of(2025, 3, 1),
+            BusinessDate.of(2025, 3, 31),
+          );
+          if (find.byKey(const Key('pnl-download')).evaluate().isNotEmpty) {
+            expect(find.byKey(const Key('pnl-not-downloaded')), findsOneWidget);
+            expect(find.byKey(const Key('pnl-statement')), findsNothing);
+            await refreshPhonePnl(
+              tester,
+              container,
+              control: const Key('pnl-download'),
+            );
+          }
+          expectPnlMatchesServer(
+            tester,
+            container,
+            await serverPnl(client, units, '2025-03-01', '2025-03-31'),
+          );
+        } finally {
+          _transport.online = true;
+          await sweepPnlFixtures(client, marker: phonePnlMarker);
+        }
+      },
+    );
+  });
+
+  group('android-pnl-scope', skip: _phase != 'android-pnl-scope', () {
+    testWidgets(
+      'complete P&L authority for one property reports it and nothing else, on the phone',
+      (tester) async {
+        await launch(tester);
+        await signIn(tester, 'ccr.manager@example.com');
+        await expectSignedIn(tester, 'ccr.manager@example.com');
+        final container = ProviderScope.containerOf(
+          tester.element(find.byType(KrishnaMisApp)),
+        );
+        await container.read(sessionProvider.notifier).refreshAuthority();
+        await tester.pump(const Duration(seconds: 2));
+        final client = Supabase.instance.client;
+
+        // The subject is the capability state, not the role name, so it is asserted before
+        // anything depends on it.
+        final principal = container.read(principalProvider);
+        expect(
+          PnlAuthority.mayReadUnit(principal, _ccr),
+          isTrue,
+          reason: 'fixture must hold complete P&L authority for Crystal Canopy',
+        );
+        expect(
+          PnlAuthority.mayReadUnit(principal, _hki),
+          isFalse,
+          reason: 'fixture must hold no qualifying authority for Hotel Krishna',
+        );
+        expect(
+          PnlAuthority.mayReadConsolidated(principal),
+          isFalse,
+          reason: 'fixture must hold no unscoped consolidated authority',
+        );
+
+        await openPhonePnl(tester, container);
+        final options = container.read(pnlScopeOptionsProvider).value!;
+        expect([for (final u in options.units) u.id], [_ccr]);
+        expect(options.consolidatedAllowed, isFalse);
+        expect(find.text('Both properties (consolidated)'), findsNothing);
+
+        // The sheet offers Crystal Canopy alone; back closes it.
+        await centrePnlControl(
+          tester,
+          find.byKey(const Key('pnl-scope-selector')),
+        );
+        await tapWhenHittable(
+          tester,
+          find.byKey(const Key('pnl-scope-selector')),
+        );
+        await pumpUntil(
+          tester,
+          'the scope sheet',
+          () => find.byKey(const Key('pnl-scope-sheet')).evaluate().isNotEmpty,
+        );
+        expect(find.byKey(Key('pnl-scope-$_ccr')), findsOneWidget);
+        expect(find.byKey(Key('pnl-scope-$_hki')), findsNothing);
+        expect(find.byKey(const Key('pnl-scope-consolidated')), findsNothing);
+        await tester.binding.handlePopRoute();
+        await pumpUntil(
+          tester,
+          'back to close the sheet',
+          () => find.byKey(const Key('pnl-scope-sheet')).evaluate().isEmpty,
+        );
+
+        // Crystal Canopy opens, equal to the server.
+        await refreshPhonePnl(tester, container);
+        final view = container.read(pnlViewProvider).value! as PnlReportView;
+        expect(view.scope, PnlUnitScope(_ccr));
+        expect(view.viewerUserId, principal.userId);
+        expectPnlMatchesServer(
+          tester,
+          container,
+          await serverPnl(
+            client,
+            [_ccr],
+            view.range.from.iso,
+            view.range.to.iso,
+          ),
+        );
+
+        // Hotel Krishna, requested directly, is refused on the phone and the server.
+        container
+            .read(pnlSelectionProvider.notifier)
+            .selectScope(PnlUnitScope(_hki));
+        await tester.pump(const Duration(milliseconds: 400));
+        await settlePnl(tester, container);
+        expect(container.read(pnlViewProvider).value, isA<PnlNotAuthorised>());
+        expect(find.byKey(const Key('pnl-not-authorised')), findsOneWidget);
+        expect(find.byKey(const Key('pnl-statement')), findsNothing);
+        await expectServerWithholdsPnl(
+          client,
+          [_hki],
+          view.range.from.iso,
+          view.range.to.iso,
+        );
+
+        // Consolidated, requested directly, likewise.
+        container
+            .read(pnlSelectionProvider.notifier)
+            .selectScope(const PnlConsolidatedScope());
+        await tester.pump(const Duration(milliseconds: 400));
+        await settlePnl(tester, container);
+        expect(container.read(pnlViewProvider).value, isA<PnlNotAuthorised>());
+        expect(find.byKey(const Key('pnl-not-authorised')), findsOneWidget);
+        await expectServerWithholdsPnl(
+          client,
+          [_ccr, _hki],
+          view.range.from.iso,
+          view.range.to.iso,
+        );
+
+        // And the permitted property still reports afterwards.
+        container
+            .read(pnlSelectionProvider.notifier)
+            .selectScope(PnlUnitScope(_ccr));
+        await tester.pump(const Duration(milliseconds: 400));
+        await settlePnl(tester, container);
+        expect(find.byKey(const Key('pnl-statement')), findsOneWidget);
+      },
+    );
+  });
+
+  group('android-pnl-switch', skip: _phase != 'android-pnl-switch', () {
+    testWidgets(
+      'the next person on the same phone inherits no scope, figure or cache from the last',
+      (tester) async {
+        await launch(tester);
+        await signIn(tester, 'giridhar@hki.com');
+        await expectSignedIn(tester, 'giridhar@hki.com');
+        final container = ProviderScope.containerOf(
+          tester.element(find.byType(KrishnaMisApp)),
+        );
+        await container.read(sessionProvider.notifier).refreshAuthority();
+        await tester.pump(const Duration(seconds: 2));
+        final client = Supabase.instance.client;
+        final cache = ReportingCache(boot.database);
+
+        // ── The Owner reads the consolidated P&L on this phone ─────────────
+        final ownerId = container.read(principalProvider).userId;
+        await openPhonePnl(tester, container);
+        await refreshPhonePnl(tester, container);
+        final ownerView =
+            container.read(pnlViewProvider).value! as PnlReportView;
+        expect(ownerView.scope, const PnlConsolidatedScope());
+        expect(ownerView.viewerUserId, ownerId);
+        expect(find.text('Both properties (consolidated)'), findsOneWidget);
+        expect(
+          await cache.markersFor(ownerId),
+          isNotEmpty,
+          reason: 'the Owner synchronised a report on this installation',
+        );
+
+        // ── The Owner signs out; the next person signs in on the same phone ─
+        await container.read(sessionProvider.notifier).signOut();
+        await tester.pump(const Duration(seconds: 3));
+        expect(
+          await cache.markersFor(ownerId),
+          isEmpty,
+          reason: 'sign-out removes the reporting coverage it held (D-220)',
+        );
+        expect(
+          await reportingCacheRows(ownerId),
+          0,
+          reason: 'sign-out removes the reporting figures it held (D-220)',
+        );
+
+        await signIn(tester, 'ccr.manager@example.com');
+        await expectSignedIn(tester, 'ccr.manager@example.com');
+        await container.read(sessionProvider.notifier).refreshAuthority();
+        await tester.pump(const Duration(seconds: 2));
+        final manager = container.read(principalProvider);
+        expect(manager.userId, isNot(ownerId));
+        expect(PnlAuthority.mayReadUnit(manager, _ccr), isTrue);
+        expect(PnlAuthority.mayReadUnit(manager, _hki), isFalse);
+        expect(PnlAuthority.mayReadConsolidated(manager), isFalse);
+
+        // No previous selection survives.
+        expect(container.read(pnlSelectionProvider).scope, isNull);
+        expect(
+          container.read(pnlSelectionProvider).period,
+          const PnlPresetPeriod(RelativePreset.thisMonth),
+        );
+
+        // At every frame until it settles, the phone shows nothing computed for the Owner.
+        await pumpUntil(tester, 'the Reports tab', () => visible('Reports'));
+        await tapWhenHittable(tester, find.text('Reports').last);
+        var framesChecked = 0;
+        await pumpUntil(
+          tester,
+          'the phone P&L to settle, showing nothing of the previous person',
+          () {
+            framesChecked++;
+            if (visible('Both properties (consolidated)')) {
+              fail(
+                'the previous person\'s consolidated scope reached the next',
+              );
+            }
+            if (find.byKey(const Key('pnl-statement')).evaluate().isNotEmpty) {
+              final shown = pnlViewShownTo(
+                container.read(pnlViewProvider),
+                container.read(principalProvider),
+              );
+              if (shown is! PnlReportView ||
+                  shown.viewerUserId != manager.userId ||
+                  shown.scope != PnlUnitScope(_ccr)) {
+                fail('a figure not computed for this person is on screen');
+              }
+            }
+            final view = container.read(pnlViewProvider);
+            return find.byType(MobileProfitAndLossPage).evaluate().isNotEmpty &&
+                view.hasValue &&
+                !view.isLoading &&
+                !container.read(pnlSyncProvider).isRunning;
+          },
+          timeout: const Duration(seconds: 90),
+        );
+        expect(framesChecked, greaterThan(0));
+
+        // The next person's own report, equal to the server for their property.
+        await refreshPhonePnl(tester, container);
+        final view = container.read(pnlViewProvider).value! as PnlReportView;
+        expect(view.viewerUserId, manager.userId);
+        expect(view.scope, PnlUnitScope(_ccr));
+        expect(find.text('Both properties (consolidated)'), findsNothing);
+        expectPnlMatchesServer(
+          tester,
+          container,
+          await serverPnl(
+            client,
+            [_ccr],
+            view.range.from.iso,
+            view.range.to.iso,
+          ),
+        );
+
+        // The cache holds this person's Crystal Canopy facts, and nothing of the Owner's.
+        final markers = await cache.markersFor(manager.userId);
+        expect(markers, isNotEmpty);
+        expect({for (final m in markers) m.businessUnitId}, {_ccr});
+        expect(await cache.markersFor(ownerId), isEmpty);
+        expect(await reportingCacheRows(ownerId), 0);
+        expect(
+          await reportingCacheRows(manager.userId, businessUnitId: _hki),
+          0,
+        );
+
+        // A direct read of the other property is still refused.
+        container
+            .read(pnlSelectionProvider.notifier)
+            .selectScope(PnlUnitScope(_hki));
+        await tester.pump(const Duration(milliseconds: 400));
+        await settlePnl(tester, container);
+        expect(find.byKey(const Key('pnl-not-authorised')), findsOneWidget);
+        expect(find.byKey(const Key('pnl-statement')), findsNothing);
       },
     );
   });
