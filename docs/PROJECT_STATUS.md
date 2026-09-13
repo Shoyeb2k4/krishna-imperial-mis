@@ -5,7 +5,9 @@ Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
-Last updated: **2026-09-11** — **PHASE 5 OA-3 — OWNER SETTLEMENT UI / SECURITY SURFACE:
+Last updated: **2026-09-13** — **PHASE 5 SLICE 8 — WINDOWS P&L SURFACE: COMPLETE** (record
+at the end of this file), on top of **SLICE 7 — REPORTING SECURITY CLOSURE: COMPLETE** and
+**2026-09-11** — **PHASE 5 OA-3 — OWNER SETTLEMENT UI / SECURITY SURFACE:
 COMPLETE**, on top of **OA-2 — OWNER SETTLEMENT ENGINE: COMPLETE**, **OA-1 — OWNER ACCOUNTS
 FOUNDATION: COMPLETE**, and **PHASE 5 — P&L / MIS REPORTING: SLICES 1–6 COMPLETE.**
 
@@ -3252,8 +3254,8 @@ are not merged because they could be implemented quickly.
 | 4 | Canonical reporting cache + synchronisation completeness (D-171, D-172, D-173) | **COMPLETE** |
 | 5 | Server reporting boundary + `RemoteReportingEngine` parity | **COMPLETE** |
 | 6 | Freshness, as-of and closed periods | **COMPLETE** |
-| 7 | The reporting capability model (D-163, D-164) | not started |
-| 8 | Windows P&L surface | not started |
+| 7 | The reporting capability model (D-163, D-164) | **COMPLETE** (D-220…D-222) |
+| 8 | Windows P&L surface | **COMPLETE** (D-223…D-227) |
 | 9 | Android P&L surface | not started |
 | 10 | Breakdowns + read-only transaction drill-down (D-166) | not started |
 | 11 | Full live / device / two-client acceptance | not started |
@@ -4979,3 +4981,82 @@ foundation, but has not been started.** It still requires its own binding-docume
 and acceptance plan. Finalized Owner Statements and Phase 7 exports/printing remain outside
 this slice. There is no pending Slice 7 corrective; the production start date is still a
 project-lead business decision, not a licence to reuse the dev fixture.
+
+---
+
+# PHASE 5 SLICE 8 — WINDOWS P&L SURFACE: COMPLETE
+
+Verified 2026-09-13 against `krishna-mis-dev` only (`loratzmactetjbqolwri`). Starting HEAD
+`a085e48`. Decisions **D-223…D-227**; `ARCHITECTURE.md` §37. No schema change, no migration;
+local Drift schema **v21**, ledger **101** versions.
+
+## What shipped
+
+* **Analytics → Profit & Loss** on the desktop router (`ProfitAndLossPage`); Android keeps its
+  Reports placeholder (Slice 9).
+* Providers: `pnlScopeOptionsProvider`, `pnlSelectionProvider`, `pnlViewProvider`,
+  `pnlPresetAvailabilityProvider`, `pnlSyncProvider`, `businessDayRulesProvider`,
+  `reportingClockProvider`, `pnlReportingLockProvider`.
+* Domain: `PnlAuthority`, `RelativePreset` / `resolvePresetForUnits`, `BusinessDayRule`,
+  `PnlResult.breakdownReconciles`, `OperatingMargin.displayTwoDecimals`.
+* Headline (Gross Sales, GST, Net Sales, Expenses, Operating Profit/Loss, Operating Margin),
+  revenue by category (gross/GST/net) and expense by category, each reconciling exactly.
+
+## Behaviour
+
+| | |
+|---|---|
+| Authorization | a property only with `reports.view` ∩ `revenue.view` ∩ `expense.view.all`; consolidated only all three unscoped; direct reads refused before any cache read |
+| Periods | presets resolved per property; consolidated disables/refuses disagreeing ranges and directs to Custom; unreadable rules refuse; reversed Custom refused |
+| Margin | 2 decimals, symmetric half-away-from-zero, N/A at zero Net Sales |
+| Older years | Not downloaded → Download required data (on demand, every missing FY) → computed only when all covered; failure stays not downloaded; offline explains a connection is required |
+| Freshness | synchronised at server time · server has newer (confirmed head check only) · no freshness evidence; offline complete reports stay readable |
+| Coherence | report reads and syncs serialised by one lock (D-227) |
+
+## Verification
+
+| Gate | Status | Evidence |
+|---|---|---|
+| `dart format` | Tested | lib/test clean; acceptance file formatted |
+| `flutter analyze` | Tested | No issues found |
+| Host suite | Tested | **1,850 passed** (1,711 + 139) |
+| Widget suite | Tested | every required state; three Windows sizes × 8 states without overflow |
+| Positive controls | Tested | 8 sabotages all seen RED (lock, authority, presets, GST reconciliation, margin sign, server-has-newer, surface guard, older-year download), restored byte-identical by `cmp` |
+| Real `krishna_mis.exe` acceptance | Tested | `windows-pnl` (sale + 2 expenses via RPCs, consolidated and CCR parity to the paisa with `reporting_primitives`, void + resync, offline cached read, older-FY download) and `windows-pnl-scope` (capability-asserted principal: CCR opens; HKI and consolidated refused on device, withheld by server) |
+| Windows shell | Tested | `windows_shell_test` 15 passed in the real executable |
+| Live suites, `--concurrency=1` | Tested | **101 passed, zero skipped** — reporting 13, parity 29, owner accounts 31, completeness 8, settlement 20 |
+| Windows release build | Tested | built with `config/dev.json` only; P&L strings present in `app.so`; 0 identity passwords in release and debug binaries |
+| Secret scan | Tested | working tree, Git history and built artefacts clean |
+| Android build / device acceptance | Not tested | Slice 9 |
+
+## Defects found and fixed while building
+
+1. An enum value shadowed by a parameter named `today` in `periodFor` — compile error, fixed.
+2. Riverpod `CircularDependencyError`: the sync controller invalidated the view that watches it
+   — removed; the view re-reads via source invalidation inside the lock.
+3. The surface guard missed imports because it blanked strings first — caught by its own
+   self-test, fixed.
+4. The page declared a `double` constant — caught by the guard, fixed.
+5. Design hazard: a sync could land between a report's cache queries (mixed snapshots) —
+   prevented by `ReportingCacheLock`, with a regression whose no-op-lock control goes red.
+
+No pre-existing product defect was found; Slice 7 was not reopened.
+
+## Backend baseline after acceptance
+
+Fixtures: 1 sale and 2 expenses created, all voided. Settings rows **0** (the owner suite's
+`2026-05-01` fixture removed with `owner_settlement_dev_fixture_cleanup.sql`). Open revenue
+**0**, open owner movements **0**, open acceptance expenses **0**, open expenses **61**
+(pre-existing), role grants **7** (5 active), roles **4**, closed periods **0**, dead helper
+absent, ledger **101**. Process note: one secret-scan `dart run` overlapped the Windows shell
+test; both completed normally.
+
+## Carried forward
+
+* Phase 8: `may_read_expense` per-row reporting cost; `org_id`-leading local expense index
+  (D-223). Historical "Slice 8 performance hardening" references mean Phase 8.
+* The OA-3 settlement refresher does not share the P&L lock (D-227, not demonstrated).
+* The production 50:50 start date remains a project-lead decision.
+
+**Slice 9 — Android P&L Surface is safe to scope from this foundation and has not been
+started.**

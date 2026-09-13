@@ -9,7 +9,7 @@ Status: **Sections 1–12 proposed (Phase 0, revised); sections 13–16 and 18�
 is built and verified; section 17 is the Phase 4 *plan*, since built — read §18–§26 for what
 shipped.** Sections 6, 5.3 and 8 carry the project lead's mandated corrections.
 Implementation status is tracked in `PROJECT_STATUS.md`.
-Last updated: 2026-09-11 — the Owner Settlement surface and its security boundary (section 35); the Owner Settlement Engine (section 34); the Owner Ledger (section 33), with the V1 ownership vector in §33.3; Phase 5 Slice 6 corrective (section 32); Slice 5 in section 31; Slices 1-4 in sections 27-30
+Last updated: 2026-09-13 — the Windows P&L surface (section 37); Slice 7 reporting security closure (section 36); 2026-09-11 — the Owner Settlement surface and its security boundary (section 35); the Owner Settlement Engine (section 34); the Owner Ledger (section 33), with the V1 ownership vector in §33.3; Phase 5 Slice 6 corrective (section 32); Slice 5 in section 31; Slices 1-4 in sections 27-30
 
 ---
 
@@ -3577,3 +3577,36 @@ no-global-master-writer safeguards remain in force.
 
 The dead `expense_sees_whole_org()` helper is removed; reviewed API count is 57. No new
 reporting capability, arithmetic, local schema version or reporting UI was introduced.
+
+## 37. The Windows P&L surface — Phase 5 Slice 8
+
+Decisions D-223…D-227. **No schema change, no migration, local Drift schema v21.**
+
+```
+        ProfitAndLossPage (Analytics branch, desktop router only)
+          └─ pnlViewProvider ── PnlAuthority ── per-property presets ── ReportingCacheLock
+               └─ localReportingEngineProvider → CachedReportingSource → Pnl.compute
+          └─ pnlSyncProvider ── head check ── ReportingSync (retained / on-demand years)
+```
+
+* **Formats only.** The page reads providers; every figure is a `PnlResult` field. A
+  structural guard (with planted-violation self-tests and a real sabotage seen red) forbids
+  paise access, money construction or arithmetic, calculator calls, margin rounding,
+  `double`, SQL, storage imports, role bundles, a hard-coded property zone, department /
+  section / vendor detail, navigation, export, printing and charts in the feature.
+* **Authority** (D-226): scope options and every direct read use `PnlAuthority`.
+* **Periods** (D-225): presets per property via `BusinessDayRule`; consolidated refuses
+  disagreeing ranges; Custom is explicit and a reversed range is refused.
+* **States**: loading, synchronising, computed profit, loss, genuine zero, margin N/A,
+  not authorised, revenue / expense / both unavailable, not downloaded, downloading,
+  download failed, offline-but-readable, synchronised at server time, server has newer, no
+  freshness evidence. None renders a refusal as ₹0.
+* **Freshness and coherence** (D-227): reads and syncs serialised; server time shown in the
+  scope's own property zone; figures never move on a head check.
+* **Category lines**: canonical category primitives behind `breakdownReconciles`.
+
+**Clarification (D-223):** earlier references in §29 and §31.5 to "Slice 8 performance
+hardening" mean **Phase 8 — Production Hardening**. The `may_read_expense` per-row cost and
+the `org_id`-leading local expense reporting index are carried there; Slice 8 did not change
+them. Android (Slice 9), drill-down (Slice 10), charts, exports, printing and finalized owner
+statements are not built.

@@ -7675,3 +7675,81 @@ settings count is zero; no production date was chosen and no financial/audit his
 deleted. The SQL teardown asset lives outside migrations. Acceptance owns setup plus
 administrative cleanup, including failures; do not give the client a privileged reset RPC.
 The production 50:50 start date remains an unanswered business decision.
+
+---
+
+# Phase 5 Slice 8 — Windows P&L Surface (2026-09-13)
+
+## D-223 — Slice numbering confirmed; "Slice 8 owns performance hardening" meant Phase 8
+**Date:** 2026-09-13 · **Status:** Accepted (project-lead ruling)
+
+Phase 5 remains: Slice 8 Windows P&L Surface, 9 Android P&L Surface, 10 Breakdown +
+read-only drill-down, 11 Full acceptance, 12 Closure. The Owner Accounts addendum's
+renumbered §26 plan was a non-binding proposal, superseded by OA-1…OA-3 and Slice 7.
+
+Historical statements that "Slice 8 owns performance hardening" (`PROJECT_STATUS.md` Slice 3
+and Slice 5 notes, `ARCHITECTURE.md` §29 and §31.5, D-186, and the comment in applied
+migration `20260907204444`) are incorrect references to **Phase 8 — Production
+Hardening**. They are clarified here and in `ARCHITECTURE.md` §37 rather than rewritten, and
+the applied migration is not edited. Two items are carried to Phase 8 and were **not**
+optimised in Slice 8: server expense authorization / per-row `may_read_expense` reporting
+cost, and the local expense reporting index that leads with `org_id`.
+
+## D-224 — Operating Margin is displayed to two decimal places, or N/A
+**Date:** 2026-09-13 · **Status:** Implemented / Tested — settles what D-175 deferred
+
+`OperatingMargin.displayTwoDecimals` renders `12.34%` / `-4.27%` from the exact
+`MarginRatio.percentageScaled(2)`: half away from zero, symmetric for profit and loss, the
+sign taken from the rounded value (so −0.004% reads `0.00%` and −0.05% keeps its sign), and
+`N/A` — never `0.00%` — when Net Sales are zero. It lives beside the exact ratio in
+`domain/finance` so no surface divides, formats a percentage itself, touches a `double` or
+derives a margin from rounded rupees. A sabotaged sign turned five display tests red.
+
+## D-225 — Relative presets resolve under each property's own business date
+**Date:** 2026-09-13 · **Status:** Implemented / Tested (project-lead ruling)
+
+Today, Yesterday, This Week, Last Week, This Month, Last Month and Financial Year are
+resolved independently for every included property from one instant, through that
+property's stored timezone and cut-off (`BusinessDayRule`, read per business unit). A single
+property uses its own date. Consolidated reporting may use a preset only when every property
+resolves to the identical inclusive range; otherwise the preset is disabled and refused with
+a direction to Custom. No property is the master calendar; no device, UTC or database
+calendar date decides it. A property whose stored rules are unreadable refuses the preset
+rather than being defaulted to `Asia/Kolkata`/05:00. Custom uses explicit P&L dates.
+
+## D-226 — A P&L scope qualifies only with the full D2 intersection
+**Date:** 2026-09-13 · **Status:** Implemented / Tested (project-lead refinement)
+
+`PnlAuthority` states once what the surface offers: a property only when the principal holds
+`reports.view`, `revenue.view` and `expense.view.all` for it; consolidated only with all
+three unscoped. Membership, `expense.view.own` and two scoped grants never qualify, and no
+role name is evaluated. The view provider decides again against the principal before
+opening the cache, so a directly selected scope is `PnlNotAuthorised` without a read; the
+cache adapter and server refuse independently (Slice 7). Real-executable acceptance proved
+this for a principal asserted by capability, not by role name.
+
+Category lines use the canonical category primitives and are shown only when
+`PnlResult.breakdownReconciles` confirms gross, GST, net and expenses reconcile exactly; the
+totals under them are the headline figures, never a widget sum. Department, section, vendor
+and transaction navigation remain Slice 10.
+
+## D-227 — The P&L surface serialises its cache reads with its synchronisation
+**Date:** 2026-09-13 · **Status:** Implemented / Tested
+
+A report is several cache queries and a synchronisation is one transaction writing that
+cache, so a sync landing between two queries could pair revenue from one snapshot with
+expenses from another (D-188). Every P&L report read — including loading coverage markers —
+and every P&L sync takes one `ReportingCacheLock`; the reporting source is invalidated inside
+the lock so the next read loads the markers the run wrote. A no-op lock turned the
+interleaving regression red.
+
+Refresh brings retained years current, keeps already-downloaded older years current, and
+never starts a download. "Download required data" fetches every missing financial year of
+the range on demand through the existing `ReportingSync`; no second cache exists. A head
+check before syncing marks a report "server has newer" only on a confirmed answer; an
+unreachable server changes nothing, and a complete cached report stays readable offline.
+
+**Recorded, not changed:** the OA-3 owner-settlement refresher does not take this lock, so a
+settlement refresh and a P&L read on another tab could in principle interleave. Not
+demonstrated, outside Slice 8's surface, and left for the slice that next touches that
+refresher rather than changed in passing (D-127).
