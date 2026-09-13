@@ -16,6 +16,7 @@ import 'package:krishna_mis/features/transactions/presentation/transactions_page
 import 'package:krishna_mis/features/masters/presentation/masters_page.dart';
 import 'package:krishna_mis/features/owner_settlement/presentation/owner_settlement_page.dart';
 import 'package:krishna_mis/features/placeholder/placeholder_page.dart';
+import 'package:krishna_mis/features/profit_and_loss/presentation/profit_and_loss_page.dart';
 
 enum AppShellKind { mobile, desktop }
 
@@ -95,13 +96,10 @@ abstract final class AppRouter {
           ),
           _branch(
             AppRoutes.analytics,
-            const PlaceholderPage(
-              title: 'Analytics',
-              arrivesIn: 'Phase 5 — Ledger & Reporting Engine',
-              summary:
-                  'Profit & Loss, expense analysis, revenue analysis, department '
-                  'performance and business comparison.',
-            ),
+            // Profit & Loss, as spec §19 places it under Analytics (Phase 5 Slice 8). The
+            // sidebar shows the destination to holders of reports.view; the page and its
+            // providers decide P&L authority themselves, and refuse if reached otherwise.
+            const ProfitAndLossPage(shellKind: AppShellKind.desktop),
           ),
           _branch(
             AppRoutes.reports,

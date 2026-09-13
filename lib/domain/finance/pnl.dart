@@ -211,6 +211,37 @@ final class PnlResult {
   /// caught by the identity it broke somewhere else.
   bool get reconciles => grossSales.paise == gst.paise + netSales.paise;
 
+  /// The revenue category lines add up to the headline, on gross, GST **and** net, exactly.
+  ///
+  /// Phase 5 Slice 8. A surface that shows revenue by category checks this rather than
+  /// summing anything itself, and refuses to show a breakdown that does not reconcile. Each
+  /// figure is compared on its own: gross and net can agree while the tax split does not.
+  bool get revenueBreakdownReconciles {
+    var gross = 0;
+    var tax = 0;
+    var net = 0;
+    for (final line in revenueByCategory) {
+      gross += line.totals.gross.paise;
+      tax += line.totals.tax.paise;
+      net += line.totals.net.paise;
+    }
+    return gross == grossSales.paise &&
+        tax == gst.paise &&
+        net == netSales.paise;
+  }
+
+  /// The expense category lines add up to headline Expenses, exactly.
+  bool get expenseBreakdownReconciles {
+    var amount = 0;
+    for (final line in expenseByHierarchy) {
+      amount += line.totals.amount.paise;
+    }
+    return amount == expenses.paise;
+  }
+
+  bool get breakdownReconciles =>
+      revenueBreakdownReconciles && expenseBreakdownReconciles;
+
   @override
   String toString() =>
       'PnlResult(${businessUnitId ?? 'consolidated'} $range '

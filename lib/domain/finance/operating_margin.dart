@@ -24,6 +24,15 @@ library;
 /// The margin of a P&L, or the statement that there is not one.
 sealed class OperatingMargin {
   const OperatingMargin();
+
+  /// The margin as the P&L surfaces display it: two decimal places, or `N/A`.
+  ///
+  /// Phase 5 Slice 8. The project lead settled the precision D-175 deliberately left open:
+  /// **two decimal places**, `12.34%` / `-4.27%`, and `N/A` when net sales are zero — never
+  /// `0.00%`. Presentation rounding only, done once here on the exact ratio through
+  /// [MarginRatio.percentageScaled], so no surface divides, formats a percentage itself, or
+  /// derives a margin from rounded rupee figures.
+  String get displayTwoDecimals;
 }
 
 /// Net sales were zero, so the margin is undefined (spec §10).
@@ -32,6 +41,9 @@ sealed class OperatingMargin {
 /// A break-even month and a month with no trade are different facts.
 final class MarginNotApplicable extends OperatingMargin {
   const MarginNotApplicable();
+
+  @override
+  String get displayTwoDecimals => 'N/A';
 
   @override
   bool operator ==(Object other) => other is MarginNotApplicable;
@@ -84,6 +96,18 @@ final class MarginRatio extends OperatingMargin {
     if (!roundsUp) return quotient;
     final sign = (operatingProfitPaise.sign * netSalesPaise.sign) < 0 ? -1 : 1;
     return quotient + sign;
+  }
+
+  @override
+  String get displayTwoDecimals {
+    final hundredths = percentageScaled(2);
+    // The sign comes from the rounded value, so -0.004% reads 0.00% rather than "-0.00%",
+    // and -0.05% keeps its sign even though its whole-percent part is zero.
+    final sign = hundredths < 0 ? '-' : '';
+    final magnitude = hundredths.abs();
+    final whole = magnitude ~/ 100;
+    final fraction = (magnitude % 100).toString().padLeft(2, '0');
+    return '$sign$whole.$fraction%';
   }
 
   @override

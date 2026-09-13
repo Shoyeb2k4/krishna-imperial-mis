@@ -12,6 +12,7 @@ import 'package:krishna_mis/data/local/app_database.dart';
 import 'package:krishna_mis/domain/masters/master_graph.dart';
 import 'package:krishna_mis/domain/masters/master_hierarchy.dart';
 import 'package:krishna_mis/domain/masters/master_reference.dart';
+import 'package:krishna_mis/domain/value_objects/business_date.dart';
 
 /// Which master a generic operation applies to.
 enum MasterKind {
@@ -100,6 +101,23 @@ class MasterRepository {
           ),
       ],
     );
+  }
+
+  /// Each cached property's business-date rules, keyed by business unit id.
+  ///
+  /// Phase 5 Slice 8: a relative report preset is resolved under every property's own
+  /// timezone and cut-off (D-019). A property whose stored rules cannot be read is
+  /// **absent** from the map rather than defaulted — the caller then refuses the preset for
+  /// it instead of assuming the seeded `Asia/Kolkata` and 05:00.
+  Future<Map<String, BusinessDayRule>> businessDayRules() async {
+    final units = await _db.select(_db.businessUnits).get();
+    return {
+      for (final unit in units)
+        unit.id: ?BusinessDayRule.tryParse(
+          timeZoneId: unit.timezone,
+          cutoff: unit.businessDayCutoff,
+        ),
+    };
   }
 
   /// Validates a classification against current masters.

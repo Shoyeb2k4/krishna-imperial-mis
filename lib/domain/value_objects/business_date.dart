@@ -64,6 +64,54 @@ final class BusinessDayCutoff {
   String toString() => 'BusinessDayCutoff($formatted)';
 }
 
+/// One property's business-date rules: its IANA timezone and its cut-off (D-019).
+///
+/// Phase 5 Slice 8 needs a property's **current** business date to resolve a relative
+/// report preset, and each property has its own rules — so they travel as a pair, per
+/// property, rather than being assumed from one hard-coded zone.
+@immutable
+final class BusinessDayRule {
+  const BusinessDayRule._(this.timeZoneId, this.cutoff);
+
+  /// The rule for a stored timezone and cut-off, or null when either is unusable.
+  ///
+  /// Null rather than a default: `Asia/Kolkata` and 05:00 are the seeded values, not a
+  /// fact about a property whose configuration cannot be read. `tz.initializeTimeZones()`
+  /// must have run first.
+  static BusinessDayRule? tryParse({
+    required String timeZoneId,
+    required String cutoff,
+  }) {
+    final parsedCutoff = BusinessDayCutoff.tryParse(cutoff);
+    if (parsedCutoff == null) return null;
+    try {
+      tz.getLocation(timeZoneId);
+    } on tz.LocationNotFoundException {
+      return null;
+    }
+    return BusinessDayRule._(timeZoneId, parsedCutoff);
+  }
+
+  final String timeZoneId;
+  final BusinessDayCutoff cutoff;
+
+  /// This property's business date at [instant].
+  BusinessDate businessDateAt(DateTime instant) =>
+      BusinessDate.fromInstant(instant, timeZoneId: timeZoneId, cutoff: cutoff);
+
+  @override
+  bool operator ==(Object other) =>
+      other is BusinessDayRule &&
+      other.timeZoneId == timeZoneId &&
+      other.cutoff == cutoff;
+
+  @override
+  int get hashCode => Object.hash(timeZoneId, cutoff);
+
+  @override
+  String toString() => 'BusinessDayRule($timeZoneId, ${cutoff.formatted})';
+}
+
 /// How a stored business date came to hold its value.
 ///
 /// Persisted alongside the date so an auditor can always tell an automatic derivation
