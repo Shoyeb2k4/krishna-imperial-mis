@@ -120,6 +120,8 @@ import 'package:krishna_mis/domain/finance/pnl.dart';
 import 'package:krishna_mis/domain/finance/pnl_authority.dart';
 import 'package:krishna_mis/features/profit_and_loss/presentation/pnl_providers.dart';
 import 'package:krishna_mis/features/profit_and_loss/presentation/mobile_profit_and_loss_page.dart';
+import 'package:krishna_mis/features/profit_and_loss/presentation/mobile_pnl_drilldown_pages.dart';
+import 'package:krishna_mis/features/profit_and_loss/presentation/pnl_drilldown_view.dart';
 import 'package:krishna_mis/data/repositories/reporting_cache.dart';
 import 'package:krishna_mis/domain/finance/reporting_presets.dart';
 import 'package:krishna_mis/domain/sync/sync_state.dart';
@@ -476,6 +478,8 @@ void main() {
           // arriving again — which is why the wiring test now compares this list
           // against `main()`'s rather than trusting either.
           revenueGatewayProvider.overrideWithValue(boot.revenueGateway),
+          // Slice 10: opening a document from a report reads through this gateway.
+          expenseGatewayProvider.overrideWithValue(boot.expenseGateway),
           reportingGatewayProvider.overrideWithValue(boot.reportingGateway),
           // OA-3: the settlement surface's owner pull. Without it the acceptance would
           // show "owner history not downloaded" for ever while the shipped build pulls it.
@@ -8873,6 +8877,460 @@ void main() {
         await settlePnl(tester, container);
         expect(find.byKey(const Key('pnl-not-authorised')), findsOneWidget);
         expect(find.byKey(const Key('pnl-statement')), findsNothing);
+      },
+    );
+  });
+
+  // ── Phase 5 Slice 10: the read-only drill-down, in the real applications ────
+  //
+  // Through the shipped P&L pages: a category row to its documents, the expense hierarchy
+  // down to a bucket, and a document opened read-only for a principal who could edit, void
+  // and attach from the ledger. Opening a document is asserted to write nothing to this
+  // device's ordinary transaction tables, outbox or reporting cache, and a lost connection to
+  // leave the rows readable while the detail says it is not downloaded. Fixtures go through
+  // the ordinary RPCs and are reversed with a reason naming the run (D-066, D-071, D-076).
+
+  const drillMarker = '$_acceptanceMarker: slice10 drill';
+
+  Future<Map<String, int>> ordinaryAndCacheCounts() async => {
+    for (final table in const [
+      'expenses',
+      'expense_allocations',
+      'expense_period_allocations',
+      'revenue_entries',
+      'revenue_components',
+      'sync_outbox',
+      'reporting_revenue_contributions',
+      'reporting_expense_contributions',
+      'reporting_coverage_markers',
+    ])
+      table:
+          (await boot.database
+                  .customSelect('SELECT COUNT(*) AS c FROM $table')
+                  .getSingle())
+              .read<int>('c'),
+  };
+
+  void expectReportDetailReadOnly() {
+    for (final key in const [
+      'revenue-edit',
+      'revenue-void',
+      'edit-expense',
+      'void-expense',
+      'revenue-conflict-review-latest',
+      'conflict-review-latest',
+      'revenue-evidence',
+    ]) {
+      expect(find.byKey(Key(key)), findsNothing, reason: key);
+    }
+    for (final text in const [
+      'Edit',
+      'Edit expense',
+      'Void',
+      'Review latest',
+    ]) {
+      expect(find.text(text), findsNothing, reason: text);
+    }
+  }
+
+  /// Records the drill-down fixtures and returns their ids.
+  Future<({String sale, String shared, String restaurant})> recordDrillFixtures(
+    SupabaseClient client,
+  ) async {
+    final restaurant =
+        (await client
+                .from('revenue_categories')
+                .select('id')
+                .eq('code', 'RESTAURANT')
+                .eq('business_unit_id', _ccr)
+                .single())['id']
+            as String;
+    final sale = const Uuid().v7();
+    await client.rpc<dynamic>(
+      'revenue_create',
+      params: {
+        'p_id': sale,
+        'p_business_unit_id': _ccr,
+        'p_revenue_category_id': restaurant,
+        'p_business_date': pnlDate,
+        'p_notes': '$drillMarker sale',
+        'p_components': [
+          {'entered_amount_minor': 12364200},
+        ],
+        'p_mutation_id': const Uuid().v4(),
+      },
+    );
+    final shared = const Uuid().v7();
+    await client.rpc<dynamic>(
+      'expense_create',
+      params: {
+        'p_id': shared,
+        'p_business_date': pnlDate,
+        'p_total_minor': 5800000,
+        'p_notes': '$drillMarker shared expense',
+        'p_allocations': [
+          {
+            'business_unit_id': _ccr,
+            'department_id': _seedId('dept:CCR/FB'),
+            'section_id': _seedId('sec:CCR/FB/FOOD_PROD'),
+            'category_id': _kirana,
+            'amount_minor': 2500000,
+          },
+          {
+            'business_unit_id': _hki,
+            'department_id': _seedId('dept:HKI/HKI_UTIL'),
+            'section_id': _seedId('sec:HKI/HKI_UTIL/HKI_POWER'),
+            'category_id': _seedId('cat:HKI/HKI_UTIL/HKI_POWER/ELECTRICITY'),
+            'amount_minor': 3300000,
+          },
+        ],
+        'p_mutation_id': const Uuid().v4(),
+      },
+    );
+    return (sale: sale, shared: shared, restaurant: restaurant);
+  }
+
+  group('windows-pnl-drill', skip: _phase != 'windows-pnl-drill', () {
+    testWidgets('the Windows drill-down reaches a document read-only, writes nothing, and says '
+        'when detail needs a connection', (tester) async {
+      expect(
+        boot.shellKind.name,
+        isNot('mobile'),
+        reason:
+            'this phase is about the desktop drill-down; run it with -d windows',
+      );
+      await launch(tester);
+      await signIn(tester, 'giridhar@hki.com');
+      await expectSignedIn(tester, 'giridhar@hki.com');
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(KrishnaMisApp)),
+      );
+      await container.read(sessionProvider.notifier).refreshAuthority();
+      await tester.pump(const Duration(seconds: 2));
+      final client = Supabase.instance.client;
+
+      await sweepPnlFixtures(client, marker: drillMarker);
+      try {
+        final ids = await recordDrillFixtures(client);
+        await openPnl(tester, container);
+        await chooseCustom(tester, container, pnlFrom, pnlTo);
+        await refreshPnl(tester, container);
+        final units = [
+          for (final u in container.read(pnlScopeOptionsProvider).value!.units)
+            u.id,
+        ];
+        final server = await serverPnl(client, units, pnlFrom, pnlTo);
+        expectPnlMatchesServer(tester, container, server);
+
+        Finder pageScroll() => find
+            .descendant(
+              of: find.byKey(const Key('pnl-page')),
+              matching: find.byType(Scrollable),
+            )
+            .first;
+
+        // ── Revenue → Restaurant → the sale ──────────────────────────────────
+        final open = find.byKey(Key('pnl-rev-open-$_ccr-${ids.restaurant}'));
+        await tester.scrollUntilVisible(open, 300, scrollable: pageScroll());
+        await tapWhenHittable(tester, open);
+        await pumpUntil(
+          tester,
+          'the sale in the drill-down',
+          () => find
+              .byKey(Key('pnl-drill-doc-${ids.sale}'))
+              .evaluate()
+              .isNotEmpty,
+        );
+        expect(uiPaise(tester, 'pnl-drill-doc-${ids.sale}-gross'), 12364200);
+        expect(
+          uiPaise(tester, 'pnl-drill-total-gross'),
+          server.revenueLines['$_ccr-${ids.restaurant}']![0],
+        );
+
+        final before = await ordinaryAndCacheCounts();
+        await tapWhenHittable(
+          tester,
+          find.byKey(Key('pnl-drill-doc-${ids.sale}')),
+        );
+        await pumpUntil(
+          tester,
+          'the sale opened from the report',
+          () => find
+              .byKey(const Key('pnl-document-revenue'))
+              .evaluate()
+              .isNotEmpty,
+          timeout: const Duration(seconds: 60),
+        );
+        expect(find.textContaining('KI-REV-'), findsWidgets);
+        expect(uiPaise(tester, 'pnl-document-contribution-gross'), 12364200);
+        expectReportDetailReadOnly();
+        expect(await ordinaryAndCacheCounts(), before);
+
+        // ── Expenses → F&B → Food Production → Kirana → the shared bill ──────
+        await tapWhenHittable(
+          tester,
+          find.byKey(const Key('pnl-crumb-report')),
+        );
+        await pumpUntil(
+          tester,
+          'the P&L again',
+          () => find.byKey(const Key('pnl-statement')).evaluate().isNotEmpty,
+        );
+        final byDept = find.byKey(const Key('pnl-exp-by-department'));
+        await tester.scrollUntilVisible(byDept, 300, scrollable: pageScroll());
+        await tapWhenHittable(tester, byDept);
+        for (final key in [
+          'pnl-drill-dept-$_ccr-${_seedId('dept:CCR/FB')}',
+          'pnl-drill-section-$_ccr-${_seedId('sec:CCR/FB/FOOD_PROD')}',
+          'pnl-drill-category-$_ccr-$_kirana',
+        ]) {
+          await pumpUntil(
+            tester,
+            key,
+            () => find.byKey(Key(key)).evaluate().isNotEmpty,
+          );
+          await tapWhenHittable(tester, find.byKey(Key(key)));
+        }
+        final sharedRow = find.byKey(Key('pnl-drill-doc-${ids.shared}'));
+        await pumpUntil(
+          tester,
+          'the shared bill in its bucket',
+          () => sharedRow.evaluate().isNotEmpty,
+        );
+        expect(uiPaise(tester, 'pnl-drill-doc-${ids.shared}-amount'), 2500000);
+        await tapWhenHittable(tester, sharedRow);
+        await pumpUntil(
+          tester,
+          'the shared bill opened from the report',
+          () => find
+              .byKey(const Key('pnl-document-expense'))
+              .evaluate()
+              .isNotEmpty,
+          timeout: const Duration(seconds: 60),
+        );
+        expect(uiPaise(tester, 'pnl-document-contribution-amount'), 2500000);
+        expectReportDetailReadOnly();
+        expect(await ordinaryAndCacheCounts(), before);
+
+        // ── Offline: the rows stay, the detail says it is not downloaded ─────
+        await tapWhenHittable(
+          tester,
+          find.byKey(const Key('pnl-document-close')),
+        );
+        _transport.online = false;
+        try {
+          await tapWhenHittable(tester, sharedRow);
+          try {
+            await pumpUntil(
+              tester,
+              'detail not downloaded while offline',
+              () =>
+                  find.text(pnlDocumentNotDownloadedText).evaluate().isNotEmpty,
+              timeout: const Duration(seconds: 60),
+            );
+          } on TestFailure {
+            // Say what is on screen instead, so a timeout is evidence rather than a guess.
+            final keys = <String>{
+              for (final element
+                  in find
+                      .byWidgetPredicate(
+                        (w) =>
+                            w.key is ValueKey<String> &&
+                            (w.key! as ValueKey<String>).value.startsWith(
+                              'pnl-',
+                            ),
+                      )
+                      .evaluate())
+                (element.widget.key! as ValueKey<String>).value,
+            }.toList()..sort();
+            debugPrint('DRILL keys on screen: $keys');
+            debugPrint(
+              'DRILL session: ${container.read(sessionProvider).runtimeType}',
+            );
+            debugPrint(
+              'DRILL spinners: '
+              '${find.byType(CircularProgressIndicator).evaluate().length}',
+            );
+            debugPrint(
+              'DRILL requests while offline: ${_transport.refusedWhileOffline}',
+            );
+            rethrow;
+          }
+          expect(
+            uiPaise(tester, 'pnl-drill-doc-${ids.shared}-amount'),
+            2500000,
+          );
+        } finally {
+          _transport.online = true;
+        }
+        expect(await ordinaryAndCacheCounts(), before);
+      } finally {
+        _transport.online = true;
+        await sweepPnlFixtures(client, marker: drillMarker);
+      }
+    });
+  });
+
+  group('android-pnl-drill', skip: _phase != 'android-pnl-drill', () {
+    testWidgets(
+      'the phone drill-down pushes each level, opens a document read-only, writes '
+      'nothing, and backs out',
+      (tester) async {
+        await launch(tester);
+        await signIn(tester, 'giridhar@hki.com');
+        await expectSignedIn(tester, 'giridhar@hki.com');
+        final container = ProviderScope.containerOf(
+          tester.element(find.byType(KrishnaMisApp)),
+        );
+        await container.read(sessionProvider.notifier).refreshAuthority();
+        await tester.pump(const Duration(seconds: 2));
+        final client = Supabase.instance.client;
+
+        await sweepPnlFixtures(client, marker: drillMarker);
+        try {
+          final ids = await recordDrillFixtures(client);
+          await openPhonePnl(tester, container);
+          await choosePhoneCustom(
+            tester,
+            container,
+            BusinessDate.of(2027, 3, 1),
+            BusinessDate.of(2027, 3, 31),
+          );
+          await refreshPhonePnl(tester, container);
+
+          // ── Reports → Restaurant → the sale ──────────────────────────────────
+          final open = find.byKey(Key('pnl-rev-open-$_ccr-${ids.restaurant}'));
+          await centrePnlControl(tester, open);
+          await tapWhenHittable(tester, open);
+          await pumpUntil(
+            tester,
+            'the drill-down page',
+            () => find
+                .byKey(Key('pnl-drill-doc-${ids.sale}'))
+                .evaluate()
+                .isNotEmpty,
+          );
+          expect(find.byType(MobilePnlDrillPage), findsOneWidget);
+          expect(uiPaise(tester, 'pnl-drill-doc-${ids.sale}-gross'), 12364200);
+
+          final before = await ordinaryAndCacheCounts();
+          await tapWhenHittable(
+            tester,
+            find.byKey(Key('pnl-drill-doc-${ids.sale}')),
+          );
+          await pumpUntil(
+            tester,
+            'the sale page',
+            () => find
+                .byKey(const Key('pnl-document-revenue'))
+                .evaluate()
+                .isNotEmpty,
+            timeout: const Duration(seconds: 60),
+          );
+          expect(find.byType(MobilePnlDocumentPage), findsOneWidget);
+          expect(find.textContaining('KI-REV-'), findsWidgets);
+          expectReportDetailReadOnly();
+          expect(await ordinaryAndCacheCounts(), before);
+
+          // Android back walks up one level at a time.
+          await tester.binding.handlePopRoute();
+          await pumpUntil(
+            tester,
+            'back to the documents',
+            () => find.byType(MobilePnlDocumentPage).evaluate().isEmpty,
+          );
+          expect(find.byType(MobilePnlDrillPage), findsOneWidget);
+          await tester.binding.handlePopRoute();
+          await pumpUntil(
+            tester,
+            'back to the P&L',
+            () => find.byType(MobilePnlDrillPage).evaluate().isEmpty,
+          );
+          expect(find.byType(MobileProfitAndLossPage), findsOneWidget);
+
+          // ── Expenses by department down to the shared bill ───────────────────
+          final byDept = find.byKey(const Key('pnl-exp-by-department'));
+          await centrePnlControl(tester, byDept);
+          await tapWhenHittable(tester, byDept);
+          for (final key in [
+            'pnl-drill-dept-$_ccr-${_seedId('dept:CCR/FB')}',
+            'pnl-drill-section-$_ccr-${_seedId('sec:CCR/FB/FOOD_PROD')}',
+            'pnl-drill-category-$_ccr-$_kirana',
+          ]) {
+            await pumpUntil(
+              tester,
+              key,
+              () => find.byKey(Key(key)).evaluate().isNotEmpty,
+            );
+            await Scrollable.ensureVisible(
+              tester.element(find.byKey(Key(key))),
+              alignment: 0.3,
+            );
+            await tester.pump(const Duration(milliseconds: 300));
+            await tapWhenHittable(tester, find.byKey(Key(key)));
+          }
+          final sharedRow = find.byKey(Key('pnl-drill-doc-${ids.shared}'));
+          await pumpUntil(
+            tester,
+            'the shared bill in its bucket',
+            () => sharedRow.evaluate().isNotEmpty,
+          );
+          expect(
+            uiPaise(tester, 'pnl-drill-doc-${ids.shared}-amount'),
+            2500000,
+          );
+          await Scrollable.ensureVisible(
+            tester.element(sharedRow),
+            alignment: 0.3,
+          );
+          await tester.pump(const Duration(milliseconds: 300));
+          await tapWhenHittable(tester, sharedRow);
+          await pumpUntil(
+            tester,
+            'the shared bill page',
+            () => find
+                .byKey(const Key('pnl-document-expense'))
+                .evaluate()
+                .isNotEmpty,
+            timeout: const Duration(seconds: 60),
+          );
+          expect(uiPaise(tester, 'pnl-document-contribution-amount'), 2500000);
+          expectReportDetailReadOnly();
+          expect(await ordinaryAndCacheCounts(), before);
+
+          // ── Offline: detail not downloaded ───────────────────────────────────
+          await tester.binding.handlePopRoute();
+          await pumpUntil(
+            tester,
+            'back to the bucket',
+            () => find.byType(MobilePnlDocumentPage).evaluate().isEmpty,
+          );
+          _transport.online = false;
+          try {
+            await tapWhenHittable(tester, sharedRow);
+            await pumpUntil(
+              tester,
+              'detail not downloaded while offline',
+              () =>
+                  find.text(pnlDocumentNotDownloadedText).evaluate().isNotEmpty,
+              timeout: const Duration(seconds: 60),
+            );
+          } finally {
+            _transport.online = true;
+          }
+          expect(await ordinaryAndCacheCounts(), before);
+          for (var i = 0; i < 5; i++) {
+            if (find.byType(MobileProfitAndLossPage).evaluate().isNotEmpty &&
+                find.byType(MobilePnlDrillPage).evaluate().isEmpty) {
+              break;
+            }
+            await tester.binding.handlePopRoute();
+            await tester.pump(const Duration(milliseconds: 500));
+          }
+        } finally {
+          _transport.online = true;
+          await sweepPnlFixtures(client, marker: drillMarker);
+        }
       },
     );
   });
