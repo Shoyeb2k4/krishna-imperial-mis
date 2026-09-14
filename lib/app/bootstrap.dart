@@ -71,6 +71,7 @@ class BootstrapResult {
     required this.mutationEndpoint,
     required this.mutationReconciler,
     required this.expensePull,
+    required this.expenseGateway,
     required this.revenueGateway,
     required this.reportingGateway,
     required this.ownerLedgerGateway,
@@ -102,6 +103,10 @@ class BootstrapResult {
   /// Re-reads one expense through the projection the server is willing to show. Used by
   /// the conflict flow, where the point is to see what the record says *now*.
   final ExpensePull? expensePull;
+
+  /// The expense half of the remote boundary, shared with the sync worker. The P&L
+  /// drill-down reads documents through it without writing them anywhere (Slice 10).
+  final ExpenseGateway? expenseGateway;
 
   /// The revenue half of the remote boundary, shared by the sync worker and the
   /// conflict path so both talk to one client rather than two.
@@ -188,6 +193,7 @@ Future<BootstrapResult> bootstrap({http.Client? transport}) async {
   RemoteMutationEndpoint? mutationEndpoint;
   MutationReconciler? mutationReconciler;
   ExpensePull? expensePull;
+  ExpenseGateway? gatewayForExpenses;
   RevenueGateway? gatewayForRevenue;
   ReportingGateway? gatewayForReporting;
   OwnerLedgerGateway? gatewayForOwners;
@@ -207,6 +213,7 @@ Future<BootstrapResult> bootstrap({http.Client? transport}) async {
     final masterGateway = MasterGateway(client);
     final expenseGateway = ExpenseGateway(client);
     final revenueGateway = RevenueGateway(client);
+    gatewayForExpenses = expenseGateway;
     gatewayForRevenue = revenueGateway;
     gatewayForReporting = ReportingGateway(client);
     gatewayForOwners = OwnerLedgerGateway(client);
@@ -268,6 +275,7 @@ Future<BootstrapResult> bootstrap({http.Client? transport}) async {
     mutationEndpoint: mutationEndpoint,
     mutationReconciler: mutationReconciler,
     expensePull: expensePull,
+    expenseGateway: gatewayForExpenses,
     revenueGateway: gatewayForRevenue,
     reportingGateway: gatewayForReporting,
     ownerLedgerGateway: gatewayForOwners,

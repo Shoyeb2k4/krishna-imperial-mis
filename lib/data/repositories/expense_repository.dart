@@ -28,6 +28,7 @@ import 'package:krishna_mis/data/local/app_database.dart';
 import 'package:krishna_mis/data/local/expense_tables.dart';
 import 'package:krishna_mis/domain/expenses/expense.dart';
 import 'package:krishna_mis/domain/expenses/expense_contribution.dart';
+import 'package:krishna_mis/domain/expenses/expense_document_detail.dart';
 import 'package:krishna_mis/domain/expenses/expense_number.dart';
 import 'package:krishna_mis/domain/sync/pending_mutation.dart';
 import 'package:krishna_mis/domain/sync/sync_state.dart';
@@ -113,6 +114,54 @@ final class LocalExpense {
   String get displayReference =>
       row.txnNumber ??
       'Pending number · ${row.id.substring(0, 8).toUpperCase()}';
+
+  /// This document as a value to render (Phase 5 Slice 10). Carries nothing a renderer
+  /// could act on; the ledger composes its own actions beside it.
+  ExpenseDocumentDetail get detail => ExpenseDocumentDetail(
+    id: row.id,
+    txnNumber: row.txnNumber,
+    businessDate: row.businessDate,
+    accountingPeriodStart: row.accountingPeriodStart,
+    accountingPeriodEnd: row.accountingPeriodEnd,
+    paymentStatus: row.paymentStatus,
+    paymentDate: row.paymentDate,
+    referenceNumber: row.referenceNumber,
+    notes: row.notes,
+    isScoped: isScoped,
+    visibleAmount: visibleAmount,
+    allocations: [
+      for (final line in allocations)
+        ExpenseDetailAllocation(
+          id: line.id,
+          businessUnitId: line.businessUnitId,
+          label: line.categoryLabel,
+          amount: Money.fromPaise(line.amountMinor),
+        ),
+    ],
+    periods: [
+      for (final part in periodContributions)
+        ExpenseDetailPeriod(
+          allocationId: part.allocationId,
+          periodKey: part.pnlPeriodKey,
+          isDerived: part.isDerived,
+          amount: Money.fromPaise(part.amountMinor),
+        ),
+    ],
+    attachments: [
+      for (final a in attachments)
+        ExpenseDetailAttachment(
+          fileName: a.fileName,
+          uploadState: a.uploadState,
+        ),
+    ],
+    createdBy: row.createdBy,
+    capturedAt: row.capturedAt,
+    serverUpdatedAt: row.serverUpdatedAt,
+    rowVersion: row.rowVersion,
+    voidedAt: row.voidedAt,
+    voidedBy: row.voidedBy,
+    voidReason: row.voidReason,
+  );
 }
 
 /// What the ledger is being asked for.

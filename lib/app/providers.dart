@@ -14,7 +14,10 @@ import 'package:krishna_mis/data/attachments/attachment_source.dart';
 import 'package:krishna_mis/data/attachments/platform_attachment_source.dart';
 import 'package:krishna_mis/data/attachments/attachment_staging.dart';
 import 'package:krishna_mis/data/local/encrypted_database.dart';
+import 'package:krishna_mis/data/remote/expense_gateway.dart';
+import 'package:krishna_mis/data/remote/report_document_reader.dart';
 import 'package:krishna_mis/data/remote/revenue_gateway.dart';
+import 'package:krishna_mis/data/reporting/cached_drilldown_source.dart';
 import 'package:krishna_mis/data/repositories/expense_repository.dart';
 import 'package:krishna_mis/data/repositories/master_repository.dart';
 import 'package:krishna_mis/data/repositories/tax_repository.dart';
@@ -79,6 +82,12 @@ final expensePullProvider = Provider<ExpensePull?>((ref) => null);
 /// asserts that — because D-077 is what happens when a null default is left standing and
 /// every test supplies its own replacement.
 final revenueGatewayProvider = Provider<RevenueGateway?>((ref) => null);
+
+/// The expense half of the remote boundary, for reads that must not touch the local
+/// transaction tables — opening a document from a report (Phase 5 Slice 10). Null with no
+/// backend. Overridden in `main()` from the same gateway the sync worker uses, and a test
+/// asserts that (D-077).
+final expenseGatewayProvider = Provider<ExpenseGateway?>((ref) => null);
 
 /// Uploads attached bills, independently of the expenses they belong to (D-073).
 final attachmentUploadWorkerProvider = Provider<AttachmentUploadWorker?>(
@@ -309,6 +318,31 @@ final localReportingEngineProvider = FutureProvider<LocalReportingEngine>(
     await ref.watch(localReportingSourceProvider.future),
   ),
 );
+
+/// Document rows beneath a P&L, from the same cache and the same coverage markers as the
+/// report itself, gated by the same authority (Phase 5 Slice 10). Rebuilt on a session
+/// change, so nobody reads another person's rows (D-074).
+final reportingDrilldownSourceProvider = FutureProvider<CachedDrilldownSource>((
+  ref,
+) async {
+  final session = ref.watch(sessionProvider);
+  final cache = ref.watch(reportingCacheProvider);
+  return CachedDrilldownSource(
+    cache: cache,
+    principal: session.principal,
+    coverage: await MarkerCoverage.load(cache, session.principal.userId),
+  );
+});
+
+/// Opens a document from a report: read from the authorised projections on demand and held
+/// in memory only (D-233). Null with no backend, which the surface reports as detail that is
+/// not downloaded rather than as an error.
+final reportDocumentReaderProvider = Provider<ReportDocumentReader?>((ref) {
+  final expenses = ref.watch(expenseGatewayProvider);
+  final revenue = ref.watch(revenueGatewayProvider);
+  if (expenses == null || revenue == null) return null;
+  return ReportDocumentReader(expenses: expenses, revenue: revenue);
+});
 
 // ── Owner settlement (Phase 5 OA-3) ─────────────────────────────────────────
 

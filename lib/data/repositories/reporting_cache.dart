@@ -29,9 +29,11 @@ import 'package:drift/drift.dart';
 import 'package:krishna_mis/data/local/app_database.dart';
 import 'package:krishna_mis/data/remote/reporting_gateway.dart';
 import 'package:krishna_mis/domain/expenses/expense_contribution.dart';
+import 'package:krishna_mis/domain/finance/pnl_drilldown.dart';
 import 'package:krishna_mis/domain/finance/reporting_period.dart';
 import 'package:krishna_mis/domain/revenue/revenue_contribution.dart';
 import 'package:krishna_mis/domain/tax/tax_rule.dart' show TaxTreatment;
+import 'package:krishna_mis/domain/value_objects/business_date.dart';
 import 'package:krishna_mis/domain/value_objects/money.dart';
 
 /// One coverage claim: this owner's dataset for this property and financial year is
@@ -249,6 +251,111 @@ final class ReportingCache {
           departmentId: row.read<String>('d'),
           sectionId: row.read<String>('s'),
           categoryId: row.read<String>('k'),
+          totals: ExpenseTotals(
+            amount: Money.fromPaise(row.read<int>('a')),
+            contributions: row.read<int>('c'),
+          ),
+        ),
+    ];
+  }
+
+  // ── Document rows, for the read-only drill-down (Phase 5 Slice 10) ─────────
+  //
+  // The same rows the category totals were summed from, summed at the document instead.
+  // Every predicate here is one the headline read already applies — owner, property,
+  // inclusive `pnl_date` range — plus the exact bucket identity, so a document row can only
+  // ever be part of the line it sits under. No transaction timestamp, device date or server
+  // calendar date is consulted.
+
+  /// Each revenue document's contribution to one property's revenue category.
+  Future<List<RevenueDocumentLine>> revenueDocuments({
+    required String ownerUserId,
+    required String businessUnitId,
+    required String revenueCategoryId,
+    required ReportRange range,
+  }) async {
+    final rows = await _db
+        .customSelect(
+          'SELECT revenue_entry_id AS d, MIN(pnl_date) AS p, '
+          '       COALESCE(SUM(gross_minor), 0) AS g, '
+          '       COALESCE(SUM(tax_minor), 0)   AS t, '
+          '       COALESCE(SUM(net_minor), 0)   AS n, '
+          '       COUNT(*)                      AS c '
+          '  FROM reporting_revenue_contributions '
+          ' WHERE owner_user_id = ? AND business_unit_id = ? '
+          '   AND revenue_category_id = ? '
+          '   AND pnl_date >= ? AND pnl_date <= ? '
+          ' GROUP BY revenue_entry_id '
+          ' ORDER BY p DESC, revenue_entry_id',
+          variables: [
+            Variable<String>(ownerUserId),
+            Variable<String>(businessUnitId),
+            Variable<String>(revenueCategoryId),
+            Variable<String>(range.from.iso),
+            Variable<String>(range.to.iso),
+          ],
+        )
+        .get();
+    return [
+      for (final row in rows)
+        RevenueDocumentLine(
+          businessUnitId: businessUnitId,
+          revenueCategoryId: revenueCategoryId,
+          revenueEntryId: row.read<String>('d'),
+          pnlDate: BusinessDate.tryParse(row.read<String>('p'))!,
+          totals: RevenueTotals(
+            gross: Money.fromPaise(row.read<int>('g')),
+            tax: Money.fromPaise(row.read<int>('t')),
+            net: Money.fromPaise(row.read<int>('n')),
+            contributions: row.read<int>('c'),
+          ),
+        ),
+    ];
+  }
+
+  /// Each expense document's contribution to one exact Department + Section + Category
+  /// bucket of one property.
+  Future<List<ExpenseDocumentLine>> expenseDocuments({
+    required String ownerUserId,
+    required String businessUnitId,
+    required String departmentId,
+    required String sectionId,
+    required String categoryId,
+    required ReportRange range,
+  }) async {
+    final rows = await _db
+        .customSelect(
+          'SELECT expense_id AS d, MIN(pnl_date) AS f, MAX(pnl_date) AS l, '
+          '       MIN(vendor_id) AS v, '
+          '       COALESCE(SUM(amount_minor), 0) AS a, COUNT(*) AS c '
+          '  FROM reporting_expense_contributions '
+          ' WHERE owner_user_id = ? AND business_unit_id = ? '
+          '   AND department_id = ? AND section_id = ? AND category_id = ? '
+          '   AND pnl_date >= ? AND pnl_date <= ? '
+          ' GROUP BY expense_id '
+          ' ORDER BY l DESC, expense_id',
+          variables: [
+            Variable<String>(ownerUserId),
+            Variable<String>(businessUnitId),
+            Variable<String>(departmentId),
+            Variable<String>(sectionId),
+            Variable<String>(categoryId),
+            Variable<String>(range.from.iso),
+            Variable<String>(range.to.iso),
+          ],
+        )
+        .get();
+    return [
+      for (final row in rows)
+        ExpenseDocumentLine(
+          businessUnitId: businessUnitId,
+          departmentId: departmentId,
+          sectionId: sectionId,
+          categoryId: categoryId,
+          expenseId: row.read<String>('d'),
+          firstPnlDate: BusinessDate.tryParse(row.read<String>('f'))!,
+          lastPnlDate: BusinessDate.tryParse(row.read<String>('l'))!,
+          vendorId: row.read<String?>('v'),
           totals: ExpenseTotals(
             amount: Money.fromPaise(row.read<int>('a')),
             contributions: row.read<int>('c'),
