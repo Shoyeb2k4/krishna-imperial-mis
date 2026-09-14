@@ -29,6 +29,8 @@ import 'package:krishna_mis/domain/finance/pnl.dart';
 import 'package:krishna_mis/domain/finance/reporting_presets.dart';
 import 'package:krishna_mis/domain/tax/tax_rule.dart';
 import 'package:krishna_mis/domain/value_objects/money.dart';
+import 'package:krishna_mis/features/profit_and_loss/presentation/mobile_pnl_drilldown_pages.dart';
+import 'package:krishna_mis/features/profit_and_loss/presentation/pnl_drilldown_providers.dart';
 import 'package:krishna_mis/features/profit_and_loss/presentation/pnl_presentation.dart';
 import 'package:krishna_mis/features/profit_and_loss/presentation/pnl_providers.dart';
 
@@ -549,9 +551,9 @@ class _Statement extends StatelessWidget {
         ),
         const SizedBox(height: AppSpacing.lg),
         if (result.breakdownReconciles) ...[
-          _RevenueCategories(result: result),
+          _RevenueCategories(view: view, result: result),
           const SizedBox(height: AppSpacing.lg),
-          _ExpenseCategories(result: result),
+          _ExpenseCategories(view: view, result: result),
         ] else
           const _MessageCard(
             message: PnlStateMessage(
@@ -569,8 +571,9 @@ class _Statement extends StatelessWidget {
 }
 
 class _RevenueCategories extends ConsumerWidget {
-  const _RevenueCategories({required this.result});
+  const _RevenueCategories({required this.view, required this.result});
 
+  final PnlReportView view;
   final PnlResult result;
 
   @override
@@ -578,6 +581,7 @@ class _RevenueCategories extends ConsumerWidget {
     final graph = ref.watch(masterGraphProvider).value;
     final consolidated = result.isConsolidated;
     final lines = pnlRevenueLinesInOrder(result);
+    final anchor = PnlDrillAnchor.of(view);
 
     return _Card(
       key: const Key('pnl-revenue-categories'),
@@ -586,31 +590,49 @@ class _RevenueCategories extends ConsumerWidget {
         const SizedBox(height: AppSpacing.sm),
         if (lines.isEmpty)
           Text('No revenue in this period.', style: AppTypography.caption),
-        for (final line in lines) ...[
-          _LineTitle(
-            label:
-                graph?.revenueCategory(line.revenueCategoryId)?.name ??
-                'Revenue category not on this device',
-            detail: [
-              if (consolidated)
-                graph?.businessUnit(line.businessUnitId)?.name ?? 'Property',
-              if (line.treatment == TaxTreatment.none) 'No GST',
-            ].join(' · '),
-          ),
-          for (final (label, suffix, amount) in [
-            ('Gross', 'gross', line.totals.gross),
-            ('GST', 'gst', line.totals.tax),
-            ('Net', 'net', line.totals.net),
-          ])
-            _Figure(
-              label: label,
-              amount: amount,
-              keyName:
-                  'pnl-rev-${line.businessUnitId}-${line.revenueCategoryId}-$suffix',
-              indent: true,
+        for (final line in lines)
+          InkWell(
+            key: Key(
+              'pnl-rev-open-${line.businessUnitId}-${line.revenueCategoryId}',
             ),
-          const SizedBox(height: AppSpacing.sm),
-        ],
+            onTap: () => pushPnlDrillLevel(
+              context,
+              PnlRevenueDocumentsAt(
+                anchor,
+                businessUnitId: line.businessUnitId,
+                revenueCategoryId: line.revenueCategoryId,
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _LineTitle(
+                  label:
+                      graph?.revenueCategory(line.revenueCategoryId)?.name ??
+                      'Revenue category not on this device',
+                  detail: [
+                    if (consolidated)
+                      graph?.businessUnit(line.businessUnitId)?.name ??
+                          'Property',
+                    if (line.treatment == TaxTreatment.none) 'No GST',
+                  ].join(' · '),
+                ),
+                for (final (label, suffix, amount) in [
+                  ('Gross', 'gross', line.totals.gross),
+                  ('GST', 'gst', line.totals.tax),
+                  ('Net', 'net', line.totals.net),
+                ])
+                  _Figure(
+                    label: label,
+                    amount: amount,
+                    keyName:
+                        'pnl-rev-${line.businessUnitId}-${line.revenueCategoryId}-$suffix',
+                    indent: true,
+                  ),
+                const SizedBox(height: AppSpacing.sm),
+              ],
+            ),
+          ),
         const Divider(height: AppSpacing.md, color: AppColors.hairline),
         // The totals are the headline figures, which the domain has confirmed these lines
         // reconcile to. Nothing is summed here.
@@ -642,8 +664,9 @@ class _RevenueCategories extends ConsumerWidget {
 }
 
 class _ExpenseCategories extends ConsumerWidget {
-  const _ExpenseCategories({required this.result});
+  const _ExpenseCategories({required this.view, required this.result});
 
+  final PnlReportView view;
   final PnlResult result;
 
   @override
@@ -651,27 +674,66 @@ class _ExpenseCategories extends ConsumerWidget {
     final graph = ref.watch(masterGraphProvider).value;
     final consolidated = result.isConsolidated;
     final lines = pnlExpenseLinesInOrder(result);
+    final anchor = PnlDrillAnchor.of(view);
 
     return _Card(
       key: const Key('pnl-expense-categories'),
       children: [
-        Text('EXPENSES BY CATEGORY', style: AppTypography.overline),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'EXPENSES BY CATEGORY',
+                style: AppTypography.overline,
+              ),
+            ),
+            TextButton(
+              key: const Key('pnl-exp-by-department'),
+              onPressed: () =>
+                  pushPnlDrillLevel(context, PnlExpenseDepartmentsAt(anchor)),
+              child: const Text('By department'),
+            ),
+          ],
+        ),
         const SizedBox(height: AppSpacing.sm),
         if (lines.isEmpty)
           Text('No expenses in this period.', style: AppTypography.caption),
         for (final line in lines)
-          _Figure(
-            label: switch (line.categoryId) {
-              final String id =>
-                graph?.expenseCategory(id)?.name ??
-                    'Expense category not on this device',
-              null => 'Uncategorised',
-            },
-            detail: consolidated
-                ? graph?.businessUnit(line.businessUnitId)?.name ?? 'Property'
-                : null,
-            amount: line.totals.amount,
-            keyName: 'pnl-exp-${line.businessUnitId}-${line.categoryId}-amount',
+          InkWell(
+            key: Key('pnl-exp-open-${line.businessUnitId}-${line.categoryId}'),
+            // A shortcut to the exact Department + Section + Category bucket.
+            onTap:
+                line.departmentId == null ||
+                    line.sectionId == null ||
+                    line.categoryId == null
+                ? null
+                : () => pushPnlDrillLevel(
+                    context,
+                    PnlExpenseDocumentsAt(
+                      anchor,
+                      businessUnitId: line.businessUnitId,
+                      departmentId: line.departmentId!,
+                      sectionId: line.sectionId!,
+                      categoryId: line.categoryId!,
+                    ),
+                  ),
+            child: _Figure(
+              label: switch (line.categoryId) {
+                final String id =>
+                  graph?.expenseCategory(id)?.name ??
+                      'Expense category not on this device',
+                null => 'Uncategorised',
+              },
+              detail: [
+                if (consolidated)
+                  graph?.businessUnit(line.businessUnitId)?.name ?? 'Property',
+                if (line.sectionId case final String id)
+                  graph?.section(id)?.name ?? 'Section',
+              ].join(' · '),
+              amount: line.totals.amount,
+              keyName:
+                  'pnl-exp-${line.businessUnitId}-${line.categoryId}-amount',
+            ),
           ),
         const Divider(height: AppSpacing.md, color: AppColors.hairline),
         _Figure(

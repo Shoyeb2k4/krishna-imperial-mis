@@ -691,8 +691,13 @@ class PnlSyncController extends Notifier<PnlSyncStatus> {
             onDemand: true,
           ),
       ];
-      // Still inside the lock: the next read loads the markers these runs wrote.
-      if (ref.mounted) ref.invalidate(localReportingSourceProvider);
+      // Still inside the lock: the next read loads the markers these runs wrote — for the
+      // report and for the document rows beneath it (Slice 10).
+      if (ref.mounted) {
+        ref
+          ..invalidate(localReportingSourceProvider)
+          ..invalidate(reportingDrilldownSourceProvider);
+      }
       return runs;
     });
     if (!stillTheSamePerson()) return;

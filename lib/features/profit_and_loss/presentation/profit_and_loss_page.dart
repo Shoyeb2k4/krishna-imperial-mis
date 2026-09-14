@@ -29,6 +29,8 @@ import 'package:krishna_mis/domain/finance/reporting_presets.dart';
 import 'package:krishna_mis/domain/tax/tax_rule.dart';
 import 'package:krishna_mis/domain/value_objects/business_date.dart';
 import 'package:krishna_mis/domain/value_objects/money.dart';
+import 'package:krishna_mis/features/profit_and_loss/presentation/pnl_drilldown_providers.dart';
+import 'package:krishna_mis/features/profit_and_loss/presentation/pnl_drilldown_view.dart';
 import 'package:krishna_mis/features/profit_and_loss/presentation/pnl_presentation.dart';
 import 'package:krishna_mis/features/profit_and_loss/presentation/pnl_providers.dart';
 
@@ -58,6 +60,21 @@ class _ProfitAndLossPageState extends ConsumerState<ProfitAndLossPage> {
     // Only a report computed for the person signed in now (D-074).
     final view = pnlViewShownTo(viewAsync, ref.watch(principalProvider));
     final sync = ref.watch(pnlSyncProvider);
+    final drill = ref.watch(pnlDrillProvider);
+
+    // A drill-down is shown only over the exact report it was opened from: the same person,
+    // the same properties and the same P&L dates (Slice 10).
+    if (drill != null &&
+        view is PnlReportView &&
+        view.envelope.isComputed &&
+        PnlDrillAnchor.of(view) == drill.location.anchor) {
+      return _DrillLayout(
+        view: view,
+        drill: drill,
+        sync: sync,
+        density: density,
+      );
+    }
 
     return ListView(
       key: const Key('pnl-page'),
@@ -121,6 +138,109 @@ class _Body extends ConsumerWidget {
       view: report,
       result: (report.envelope.outcome as PnlComputed).result,
       sync: sync,
+    );
+  }
+}
+
+// ── The drill-down ───────────────────────────────────────────────────────────
+
+/// A level of the breakdown in a pane, with the selected document beside it (Slice 10).
+///
+/// Scope, period, refresh and freshness stay on screen: changing either of the first two
+/// closes the drill-down, and the freshness line is the report's own. The document is the
+/// immutable body with nothing composed into it.
+class _DrillLayout extends ConsumerWidget {
+  const _DrillLayout({
+    required this.view,
+    required this.drill,
+    required this.sync,
+    required this.density,
+  });
+
+  final PnlReportView view;
+  final PnlDrillState drill;
+  final PnlSyncStatus sync;
+  final AppDensity density;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final controller = ref.read(pnlDrillProvider.notifier);
+    final notice = pnlSyncNotice(sync);
+    final freshness = pnlFreshnessLine(
+      view,
+      ref.watch(businessDayRulesProvider).value ?? const {},
+    );
+    final selected = drill.selected;
+
+    return Padding(
+      key: const Key('pnl-drill-layout'),
+      padding: EdgeInsets.all(density.pagePadding),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SectionHeader(
+            eyebrow: 'Analytics',
+            title: 'Profit & Loss',
+            trailing: _RefreshControl(sync: sync),
+          ),
+          const _ScopeBar(),
+          const SizedBox(height: AppSpacing.sm),
+          const _PeriodBar(),
+          const SizedBox(height: AppSpacing.sm),
+          if (notice != null) _Notice(notice: notice),
+          Text(
+            '${pnlRangeLabel(view.range)} · ${freshness.text}',
+            key: freshness.key,
+            style: freshness.caution
+                ? AppTypography.caption.copyWith(color: AppColors.caution)
+                : AppTypography.caption,
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          PnlDrillBreadcrumb(
+            location: drill.location,
+            onReport: controller.close,
+            onOpen: controller.open,
+          ),
+          const Divider(height: AppSpacing.md, color: AppColors.hairline),
+          Expanded(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  child: PnlDrillLevelList(
+                    location: drill.location,
+                    selected: selected,
+                    onOpen: controller.open,
+                    onSelect: controller.select,
+                    onReportChanged: controller.close,
+                  ),
+                ),
+                if (selected != null) ...[
+                  const VerticalDivider(width: 1, color: AppColors.hairline),
+                  SizedBox(
+                    width: 420,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: IconButton(
+                            key: const Key('pnl-document-close'),
+                            tooltip: 'Close',
+                            onPressed: controller.closeDocument,
+                            icon: const Icon(Icons.close, size: 18),
+                          ),
+                        ),
+                        Expanded(child: PnlDocumentDetail(request: selected)),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -231,9 +351,9 @@ class _Statement extends ConsumerWidget {
         ),
         const SizedBox(height: AppSpacing.lg),
         if (result.breakdownReconciles) ...[
-          _RevenueCategories(result: result),
+          _RevenueCategories(view: view, result: result),
           const SizedBox(height: AppSpacing.lg),
-          _ExpenseCategories(result: result),
+          _ExpenseCategories(view: view, result: result),
         ] else
           const _Message(
             message: PnlStateMessage(
@@ -251,8 +371,9 @@ class _Statement extends ConsumerWidget {
 }
 
 class _RevenueCategories extends ConsumerWidget {
-  const _RevenueCategories({required this.result});
+  const _RevenueCategories({required this.view, required this.result});
 
+  final PnlReportView view;
   final PnlResult result;
 
   @override
@@ -260,6 +381,8 @@ class _RevenueCategories extends ConsumerWidget {
     final graph = ref.watch(masterGraphProvider).value;
     final consolidated = result.isConsolidated;
     final lines = pnlRevenueLinesInOrder(result);
+    final anchor = PnlDrillAnchor.of(view);
+    final drill = ref.read(pnlDrillProvider.notifier);
 
     return _Panel(
       key: const Key('pnl-revenue-categories'),
@@ -270,18 +393,30 @@ class _RevenueCategories extends ConsumerWidget {
         if (lines.isEmpty)
           Text('No revenue in this period.', style: AppTypography.caption),
         for (final line in lines)
-          _Columns(
-            keyPrefix:
-                'pnl-rev-${line.businessUnitId}-${line.revenueCategoryId}',
-            label:
-                graph?.revenueCategory(line.revenueCategoryId)?.name ??
-                'Revenue category not on this device',
-            detail: [
-              if (consolidated)
-                graph?.businessUnit(line.businessUnitId)?.name ?? 'Property',
-              if (line.treatment == TaxTreatment.none) 'No GST',
-            ].join(' · '),
-            amounts: [line.totals.gross, line.totals.tax, line.totals.net],
+          InkWell(
+            key: Key(
+              'pnl-rev-open-${line.businessUnitId}-${line.revenueCategoryId}',
+            ),
+            onTap: () => drill.open(
+              PnlRevenueDocumentsAt(
+                anchor,
+                businessUnitId: line.businessUnitId,
+                revenueCategoryId: line.revenueCategoryId,
+              ),
+            ),
+            child: _Columns(
+              keyPrefix:
+                  'pnl-rev-${line.businessUnitId}-${line.revenueCategoryId}',
+              label:
+                  graph?.revenueCategory(line.revenueCategoryId)?.name ??
+                  'Revenue category not on this device',
+              detail: [
+                if (consolidated)
+                  graph?.businessUnit(line.businessUnitId)?.name ?? 'Property',
+                if (line.treatment == TaxTreatment.none) 'No GST',
+              ].join(' · '),
+              amounts: [line.totals.gross, line.totals.tax, line.totals.net],
+            ),
           ),
         const Divider(height: AppSpacing.md, color: AppColors.hairline),
         // The totals are the headline figures, which the domain has confirmed these lines
@@ -298,8 +433,9 @@ class _RevenueCategories extends ConsumerWidget {
 }
 
 class _ExpenseCategories extends ConsumerWidget {
-  const _ExpenseCategories({required this.result});
+  const _ExpenseCategories({required this.view, required this.result});
 
+  final PnlReportView view;
   final PnlResult result;
 
   @override
@@ -307,28 +443,67 @@ class _ExpenseCategories extends ConsumerWidget {
     final graph = ref.watch(masterGraphProvider).value;
     final consolidated = result.isConsolidated;
     final lines = pnlExpenseLinesInOrder(result);
+    final anchor = PnlDrillAnchor.of(view);
+    final drill = ref.read(pnlDrillProvider.notifier);
 
     return _Panel(
       key: const Key('pnl-expense-categories'),
       children: [
-        Text('EXPENSES BY CATEGORY', style: AppTypography.overline),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'EXPENSES BY CATEGORY',
+                style: AppTypography.overline,
+              ),
+            ),
+            TextButton(
+              key: const Key('pnl-exp-by-department'),
+              onPressed: () => drill.open(PnlExpenseDepartmentsAt(anchor)),
+              child: const Text('By department'),
+            ),
+          ],
+        ),
         const SizedBox(height: AppSpacing.sm),
         const _ColumnHeads(labels: ['Amount']),
         if (lines.isEmpty)
           Text('No expenses in this period.', style: AppTypography.caption),
         for (final line in lines)
-          _Columns(
-            keyPrefix: 'pnl-exp-${line.businessUnitId}-${line.categoryId}',
-            label: switch (line.categoryId) {
-              final String id =>
-                graph?.expenseCategory(id)?.name ??
-                    'Expense category not on this device',
-              null => 'Uncategorised',
-            },
-            detail: consolidated
-                ? graph?.businessUnit(line.businessUnitId)?.name ?? 'Property'
-                : '',
-            amounts: [line.totals.amount],
+          InkWell(
+            key: Key('pnl-exp-open-${line.businessUnitId}-${line.categoryId}'),
+            // A shortcut to the exact Department + Section + Category bucket.
+            onTap:
+                line.departmentId == null ||
+                    line.sectionId == null ||
+                    line.categoryId == null
+                ? null
+                : () => drill.open(
+                    PnlExpenseDocumentsAt(
+                      anchor,
+                      businessUnitId: line.businessUnitId,
+                      departmentId: line.departmentId!,
+                      sectionId: line.sectionId!,
+                      categoryId: line.categoryId!,
+                    ),
+                  ),
+            child: _Columns(
+              keyPrefix: 'pnl-exp-${line.businessUnitId}-${line.categoryId}',
+              label: switch (line.categoryId) {
+                final String id =>
+                  graph?.expenseCategory(id)?.name ??
+                      'Expense category not on this device',
+                null => 'Uncategorised',
+              },
+              detail: [
+                if (consolidated)
+                  graph?.businessUnit(line.businessUnitId)?.name ?? 'Property',
+                if (line.departmentId case final String id)
+                  graph?.department(id)?.name ?? 'Department',
+                if (line.sectionId case final String id)
+                  graph?.section(id)?.name ?? 'Section',
+              ].join(' · '),
+              amounts: [line.totals.amount],
+            ),
           ),
         const Divider(height: AppSpacing.md, color: AppColors.hairline),
         _Columns(
