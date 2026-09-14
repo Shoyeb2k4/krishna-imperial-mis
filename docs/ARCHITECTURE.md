@@ -3647,3 +3647,37 @@ Decisions D-228…D-232. **No schema change, no migration, local Drift schema v2
 Not built, and still later slices: department and section breakdowns, transaction drill-down
 (Slice 10), charts, trends, comparisons, exports, printing and finalized owner statements. D-227's
 owner-settlement lock gap is still carried forward.
+
+## 39. Reporting breakdown and read-only drill-down — Phase 5 Slice 10
+
+Decisions D-233…D-238. **No schema change, no migration, local Drift schema v21.**
+
+```
+        category line on the P&L (Windows pane · Android pushed page)
+          └─ pnlDrillProvider          location, anchored to viewer + scope + range; reset on change
+          └─ pnlDrillLevelProvider     PnlAuthority → reportingDrilldownSourceProvider (under lock)
+               └─ CachedDrilldownSource → ReportingCache.revenueDocuments / expenseDocuments
+               └─ PnlDrilldown.*ChildrenReconcile      exact paise, or no rows at all
+          └─ pnlDocumentDetailProvider  documents.contains(line), then ReportDocumentReader
+               └─ gateways' fetch* only → RevenueEntry / ExpenseDocumentDetail, held in memory
+               └─ PnlDrilldown.*DocumentExplains       Ready · Changed · NotAvailable · NotDownloaded
+          └─ RevenueDocumentBody / ExpenseDocumentBody  values in, no actions
+```
+
+* **Two kinds of truth, kept apart.** Hierarchy, rows and amounts come from the canonical
+  reporting cache and work offline. Detail comes from the server on demand, and is written
+  nowhere (D-233).
+* **Exact or nothing.** A level shows children only when they add up to the displayed
+  parent in integer paise. A document opens only when it explains the cached row;
+  otherwise the surface says it changed and offers Refresh (D-236).
+* **Every open is a fetch.** Opening a document row discards any copy still held from the
+  last time it was open. On Windows that happens in `PnlDrillController.select`; on
+  Android, in the drill page's `onSelect`. Offline, a re-opened document says it is not
+  downloaded; online, it is current (D-239).
+* **Read-only by construction.** The bodies own no actions, and guards scan every P&L file
+  and both bodies for mutation surfaces (D-234, D-237).
+* **Unchanged:** authority (D2 per property, unscoped consolidated), session isolation
+  (D-231), older years (a report that is not downloaded offers no drill-down), and the
+  cache lock (D-227).
+* **Not built:** owner settlement drill-down, charts, trends, comparisons, export,
+  printing, editing from reports, and finalized owner statements.

@@ -1011,12 +1011,27 @@ subtotals, so a breakdown costs no second pass (D-186).
 
 ### What does not exist yet
 
-**No P&L screen**, on either platform, and no export, chart or freshness presentation —
-Slices 6 to 9. **No `reports.export` or `reports.print` evaluator** — Phase 7, and both stay
-on D-139's exemption list; `reports.view` came off it here, because the surface it governs
-now exists. **No general reporting pull beyond
-the Slice 4 delta**: `ExpensePull.pullOne(expenseId)` still fetches one document by id for
-the Review-latest path only.
+*Corrected at Phase 5 Slice 10 (2026-09-14).* This paragraph first said no P&L screen or
+freshness presentation existed. Both now do: freshness since Slice 6, the Windows P&L since
+Slice 8, the Android P&L since Slice 9.
+
+**Slice 10's breakdown and read-only drill-down add no relation, column, index, RPC or
+migration.** Local schema stays **v21** and the ledger stays at **101** versions.
+
+* Document rows under a category bucket come from the canonical reporting cache: `SELECT`
+  only, owner-keyed, filtered on `pnl_date`, grouped by `revenue_entry_id` or `expense_id`.
+* Opening a document reads the existing projections: `revenue_document`,
+  `revenue_component_detail` and the revenue attachments on the revenue side;
+  `expense_document`, `expense_allocations`, `expense_period_contributions` and the expense
+  attachments on the expense side. The answer is held in memory and written nowhere
+  (D-233).
+
+Still absent:
+
+* **No `reports.export` or `reports.print` evaluator.** That is Phase 7, and both stay on
+  D-139's exemption list.
+* **No general reporting pull beyond the Slice 4 delta.** `ExpensePull.pullOne(expenseId)`
+  still serves only the Review-latest path, and the report path does not call it.
 
 ## 12. Seed and fixture data
 

@@ -555,3 +555,28 @@ On a real phone (the Galaxy A06 or another approved target), with a clean dev bu
 - [ ] With the system font enlarged, nothing overflows and the last line scrolls clear of the [ + ]
 - [ ] Recorded as **physical-device acceptance**, with the device named. The emulator run in O.1 is
       never reported as this
+
+## P. Reporting breakdown and read-only drill-down (Phase 5 Slice 10)
+
+### P.1 Real-app acceptance against `krishna-mis-dev`
+
+One process launch per phase, with the same commands as §O.1:
+
+- [ ] `windows-pnl-drill` (Windows, `-d windows`):
+  - Revenue → Restaurant → the sale opens read-only.
+  - Expenses → department → section → Kirana → the shared bill opens, showing ₹25,000,
+    Crystal Canopy's contribution.
+  - The device's transaction, outbox and reporting-cache row counts are unchanged.
+  - Offline, the rows stay and the detail says it is not downloaded, including for a
+    document opened a moment earlier (D-239).
+  - Fixtures are voided.
+- [ ] `android-pnl-drill` (emulator, `--flavor dev`): the same, with a pushed page per level
+  and Android back walking up one level at a time.
+
+### P.2 Physical Android device — **PENDING, with §O.2, before Phase 5 closes**
+
+- [ ] A category line opens its documents; each level adds up exactly to the line it came from.
+- [ ] A document opens read-only, with no Edit, Void, Review latest or attachment control,
+      even for a principal who could do those from the ledger.
+- [ ] With networking off, the rows stay, and re-opening a document says it is not downloaded.
+- [ ] Recorded as physical-device acceptance, with the device named.

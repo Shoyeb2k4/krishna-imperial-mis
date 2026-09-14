@@ -5,8 +5,10 @@ Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
-Last updated: **2026-09-14** — **PHASE 5 SLICE 9 — ANDROID P&L SURFACE: COMPLETE (emulator
-acceptance; physical-device pass PENDING)** (record at the end of this file), on top of
+Last updated: **2026-09-14** — **PHASE 5 SLICE 10 — REPORTING BREAKDOWN + READ-ONLY TRANSACTION
+DRILL-DOWN: COMPLETE (Windows real-app and Android emulator acceptance; physical-device pass
+PENDING)** (record at the end of this file), on top of **PHASE 5 SLICE 9 — ANDROID P&L SURFACE:
+COMPLETE (emulator acceptance; physical-device pass PENDING)**, on top of
 **2026-09-13** — **PHASE 5 SLICE 8 — WINDOWS P&L SURFACE: COMPLETE**, on top of **SLICE 7 — REPORTING SECURITY CLOSURE: COMPLETE** and
 **2026-09-11** — **PHASE 5 OA-3 — OWNER SETTLEMENT UI / SECURITY SURFACE:
 COMPLETE**, on top of **OA-2 — OWNER SETTLEMENT ENGINE: COMPLETE**, **OA-1 — OWNER ACCOUNTS
@@ -3258,7 +3260,7 @@ are not merged because they could be implemented quickly.
 | 7 | The reporting capability model (D-163, D-164) | **COMPLETE** (D-220…D-222) |
 | 8 | Windows P&L surface | **COMPLETE** (D-223…D-227) |
 | 9 | Android P&L surface | **COMPLETE** (D-228…D-232; emulator acceptance, physical-device pass pending) |
-| 10 | Breakdowns + read-only transaction drill-down (D-166) | not started |
+| 10 | Breakdowns + read-only transaction drill-down (D-166) | **COMPLETE** (D-233…D-239; emulator acceptance, physical-device pass pending) |
 | 11 | Full live / device / two-client acceptance | not started |
 | 12 | Closure | not started |
 
@@ -5138,3 +5140,131 @@ acceptance expenses **0**, open expenses **61** (pre-existing), role grants **7*
 
 **Slice 10 — breakdowns and read-only drill-down — is safe to scope from this foundation and has
 not been started.**
+
+---
+
+# PHASE 5 SLICE 10 — REPORTING BREAKDOWN + READ-ONLY TRANSACTION DRILL-DOWN: COMPLETE
+
+Verified 2026-09-14 against `krishna-mis-dev` only (`loratzmactetjbqolwri`). Starting HEAD
+`8c1d9e9`. Decisions **D-233…D-239**; `ARCHITECTURE.md` §39; `RELEASE_CHECKLIST.md` §P.
+
+**No schema change and no migration.** Local Drift schema stays **v21**, and the migration
+ledger stays at **101** versions.
+
+**Acceptance was a Windows real-app run and an Android emulator run. A physical Android device
+pass is still required before Phase 5 closes, and is not claimed (D-230, §O.2, §P.2).**
+
+## What shipped
+
+**Paths** (D-235):
+
+```
+        Expenses   P&L → Expenses → Department → Section → Category → Documents → Detail
+        Revenue    P&L → Revenue → Revenue Category → Documents → Detail
+```
+
+* An expense category line on the P&L is a shortcut to its exact Department + Section +
+  Category bucket.
+* Revenue has no entry-kind, value-band or supply-subtype level; components are shown inside
+  the detail.
+
+**Rows.** Document rows come from the canonical reporting cache, grouped by document, for the
+viewer, the scope and the `pnl_date` range. A row is that document's **contribution to the
+bucket**: a ₹58,000 bill shared with Hotel Krishna shows ₹25,000 under Crystal Canopy's
+Kirana bucket, and says so.
+
+**Detail** (D-233). `ReportDocumentReader` calls only the gateways' `fetch*` reads and holds
+the answer in memory. Nothing is written: no transaction row, no outbox item, no reporting
+cache row, no marker. `ExpensePull.pullOne` and `applyServerDocument` are not on this path.
+
+**Bodies** (D-234). `RevenueDocumentBody` and `ExpenseDocumentBody` are immutable and own no
+action. The ledger panels compose them with their actions; the drill-down uses the body alone.
+
+**Platforms.**
+* Windows: a breadcrumb, the level list, and the document in a 420 px pane on the right.
+* Android: a pushed page per level on the Reports branch, native back, and bottom clearance
+  for the docked [ + ].
+
+## Rules
+
+**Exact reconciliation** (D-236). Before any child row is shown, the children must equal the
+displayed parent in integer paise, with no tolerance, and the counts must match.
+* Revenue proves gross, GST and net separately; expenses prove amount.
+* There is no Other, Unallocated or rounding bucket.
+* On failure: "Transactions not shown — amounts do not add up exactly. Refresh."
+
+**Stale detail** (D-236). A fetched document must explain its cached row, or the surface
+says "This transaction changed since the report was synchronised. Refresh the report to
+open current detail." Refresh goes through the existing synchroniser, and the report on
+screen is never altered in place.
+
+**Every open is a fetch** (D-239). Opening a document row discards any copy still held
+from the last time it was open.
+
+**Authority.** Each property needs `reports.view`, `revenue.view` and `expense.view.all`.
+Consolidated needs all three unscoped. `expense.view.own` never qualifies, and no role name
+is read.
+* A fetch is only for a line contained in the currently authorised bucket, never a free-form
+  id.
+* A withheld document says "Not available to you".
+* A scoped reader sees "Your allocation" (D-062).
+
+**Scope and period.** Drill state is anchored to viewer, scope and range; changing any of
+them resets it.
+
+**Offline and older years.**
+* Hierarchy, rows and amounts come from the cache and work offline.
+* Detail needs a connection: "Detail not downloaded — connect to open this document."
+* A report that is not downloaded, including an older financial year, offers no drill-down.
+
+## Defects found
+
+| | Defect | Found by |
+|---|---|---|
+| D-239 | Re-opening a document reused the copy still held in memory and never asked the server, so offline showed a document instead of "not downloaded" | `windows-pnl-drill` in the real executable. A diagnostic proved no request was made; two host regressions were seen RED before the fix |
+| D-238 | A live authority probe asked about both properties in one call, which is the consolidated question, so a scoped manager was correctly refused | the first live run; the test was fixed, no product code changed |
+
+**Recorded, not a defect.** One full host run reported 396 failures in 37 seconds. It had run
+at the same time as an Android build. The failing files passed on their own, and the full
+suite then passed alone (2,057). The cause was contention over the shared native build step,
+not the code.
+
+## Verification
+
+| Gate | Status | Evidence |
+|---|---|---|
+| `dart format` | Tested | clean, 0 files changed |
+| `flutter analyze` | Tested | No issues found |
+| Host suite | Tested | **2,057 passed**, run alone after the D-239 fix |
+| Drill-down UI, guards, session switch | Tested | 88 passed together after the fix |
+| Positive controls | Tested | 10 sabotages seen RED and restored byte-identical (D-236 list), plus both D-239 regressions RED before the fix |
+| Live suites, `--concurrency=1` | Tested | **106 passed**: drill-down 5, reporting 13, parity 29, owner accounts 31, completeness 8, settlement 20 |
+| `windows-pnl-drill`, real `krishna_mis.exe` | Tested | **PASS** after D-239; the two runs before it failed on the offline re-open, and a diagnostic run found the cause |
+| `android-pnl-drill`, emulator `emulator-5554`, Android 17 / API 37 | Tested (emulator) | **PASS**, 45 s |
+| Physical Android device | **Not tested** | PENDING before Phase 5 closes (§O.2, §P.2) |
+| Clean artefacts and artefact secret scan | Tested | acceptance Debug bundle removed first; `app-dev-debug.apk` (243,021,115 bytes) and the Windows Release bundle rebuilt with `config/dev.json` only; tree, git history and built artefacts scanned clean |
+| Secret scan, tree and git history | Tested | clean |
+
+## Backend after acceptance
+
+* Drill fixtures: 5 sales and 5 expenses created by the device runs, **0 open**.
+* Live suite fixtures: 6 sales and 8 expenses, **0 open**.
+* Settings rows **0**; open revenue **0**; open owner movements **0**.
+* Open expenses **61**, all pre-existing.
+* Role grants **7** (5 active); roles **4**; closed periods **0**.
+* Dead helper absent; ledger **101**.
+
+## Carried forward, unchanged
+
+* **Physical Android pass** for the P&L and the drill-down, before Phase 5 closes (D-230).
+* **D-227:** the owner-settlement refresher does not take the P&L lock.
+* **D-231:** a reporting sync still running at sign-out keeps its owner id.
+* **D-229:** the calendar picker is Flutter's Material picker, not the OS dialog.
+* The production 50:50 start date remains a project-lead decision.
+* Phase 8: the `may_read_expense` per-row cost and the `org_id`-leading local expense index.
+
+**Not built, and still out of scope:** owner settlement drill-down, charts, trends,
+comparisons, export, printing, editing from reports, and finalized owner statements.
+
+**Slice 11 — full live, device and two-client acceptance — is safe to scope from this
+foundation and has not been started.**

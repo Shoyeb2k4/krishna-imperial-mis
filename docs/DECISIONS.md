@@ -7874,3 +7874,230 @@ no longer built, and a helper that waits for a control before scrolling to it co
 The helper now walks the page towards the top, then the bottom, until the control is built, and only
 then centres it. The product was not involved: on a phone, refresh lives at the top, alongside
 pull-to-refresh. That run's fixtures were voided by its `finally` sweep (0 open of 6 on the server).
+
+---
+
+# Phase 5 Slice 10 — Reporting Breakdown + Read-Only Transaction Drill-Down (2026-09-14)
+
+## D-233 — Report detail is fetched on demand and held in memory; this reconciles D-166 with D-171
+**Date:** 2026-09-14 · **Status:** Implemented / Tested (project-lead decision Q1)
+
+**The contradiction.** D-166 said drill-down would reuse `ExpensePull.pullOne` and
+`RevenueGateway.fetchComponents` for the document a manager opens. Both reuse paths persist
+what they fetch:
+
+* `pullOne` writes the document into the local `expenses` tables.
+* `RevenueRepository.applyServerDocument` does the same for revenue.
+
+That is correct on the Review-latest path, where the document is already this actor's. From
+a report, it would put another actor's canonical document into this actor's attempt-state
+tables, under D-070 and D-074 retention. D-171 forbids mixing those two authority classes.
+
+**Decision.** `ReportDocumentReader` calls only the gateways' `fetch*` reads. It maps each
+answer to an immutable domain value, `RevenueEntry` or `ExpenseDocumentDetail`, and the
+provider holds that value in memory. It writes nothing:
+
+* no transaction row
+* no outbox item
+* no reporting cache row
+* no coverage marker
+
+**Guards.**
+
+* The reader names no database and no RPC, and calls only `fetch*`.
+* Neither the reader nor the drill-down source contains `pullOne`, `expense_pull` or
+  `applyServerDocument`.
+* The cache document queries are `SELECT`-only, owner-keyed, and filter on `pnl_date`.
+
+**Proven.** Live, on a device that recorded nothing, the row counts of eleven tables are
+identical before and after opening a sale and a shared bill. The tables are the seven
+transaction tables, the outbox, and the three reporting cache tables.
+
+**Offline (Q3).** No full detail is shown from local transaction tables. Showing it would
+need proof that the local copy is the same document version the report counted, and no
+existing provenance can prove that without a schema change. No enhancement is proposed.
+Offline detail says **"Detail not downloaded — connect to open this document."**
+
+## D-234 — Document bodies are immutable values, and only the ledgers compose actions
+**Date:** 2026-09-14 · **Status:** Implemented / Tested (project-lead decision Q2)
+
+**Decision.** `RevenueDocumentBody(entry)` and `ExpenseDocumentBody(detail)` render a
+document from a value. They own none of these:
+
+* Edit, Void, Correction or Review latest
+* attachment mutation
+* sync state, outbox or approval
+* reopen, create or delete
+
+The ledger detail panels compose a body with their existing actions, unchanged. The P&L
+drill-down composes the body alone.
+
+**Guards.**
+
+* A mutation scan covers every P&L presentation file and both bodies. It forbids action
+  imports, action widgets and calls, write providers, action keys and database writes.
+* Planted controls prove the scan works. `RevenueActions` planted in the drill-down view
+  and `SyncStateChip` planted in the revenue body each turned it red.
+* A widget test renders drill-down detail for a principal who holds edit, void and attach
+  capabilities, and finds no action surface.
+
+## D-235 — The drill-down hierarchy, and a document row is that document's contribution
+**Date:** 2026-09-14 · **Status:** Implemented / Tested (project-lead decisions Q4, Q5, Q6)
+
+**Paths.**
+
+```
+        Expenses   P&L → Expenses → Department → Section → Category → Documents → Detail
+        Revenue    P&L → Revenue → Revenue Category → Documents → Detail
+```
+
+**Rules.**
+
+* An expense category line on the P&L is a shortcut to the exact
+  Department + Section + Category bucket.
+* Revenue has no entry-kind, value-band or supply-subtype level. Components are shown
+  inside the detail.
+* Every level uses canonical IDs from the cache. Document rows are that bucket's
+  contributions grouped by document, for the viewer, the scope and the `pnl_date` range.
+
+**A document row is the document's contribution to the bucket, not the document's total.**
+A ₹58,000 bill shared with Hotel Krishna appears under Crystal Canopy's Kirana bucket as
+₹25,000. Both the row note and the detail's contribution card say so.
+
+**Anchor.** Drill state is anchored to viewer, scope and range, and changing any of them
+resets it.
+
+**Platforms.** Windows shows a breadcrumb with detail on the right. Android pushes one page
+per level, uses native back, and returns to the report when the session or selection
+changes.
+
+## D-236 — Children reconcile exactly, and a fetched document must explain its row
+**Date:** 2026-09-14 · **Status:** Implemented / Tested
+
+**Reconciliation.** Before any child row is shown, the children must equal the displayed
+parent:
+
+* amounts in integer paise, with no tolerance, and the row count must match;
+* revenue proves gross, GST and net separately;
+* expenses prove amount;
+* there is no Other, Unallocated or rounding bucket.
+
+On failure no child is shown, and the surface says **"Transactions not shown — amounts do
+not add up exactly. Refresh."**
+
+**Fetched document versus cached row.** A fetched document is shown only if it explains its
+cached row:
+
+* Revenue: accepted, not voided, same unit, category and business date, inside the range,
+  and component sums and count equal to the row.
+* Expense: its contributions filtered to the bucket and range equal the row in amount,
+  count and first and last P&L date.
+
+**Otherwise.**
+
+* A mismatch says **"This transaction changed since the report was synchronised. Refresh
+  the report to open current detail."** Refresh goes through the existing synchroniser
+  under `ReportingCacheLock`. The displayed report is never altered in place.
+* A document the server withholds, or does not return, says **"Not available to you."**
+
+**What may be fetched.** Only a line contained in the currently authorised bucket, checked
+with `documents.contains(line)` inside the provider. No path fetches a free-form document
+id.
+
+**Authorization.** Each property needs `reports.view`, `revenue.view` and
+`expense.view.all`. Consolidated needs all three unscoped. `expense.view.own` never
+qualifies, and no role name is read (D-164, D-226).
+
+**Positive controls, each seen red and restored byte-identical:**
+
+1. expense reconciliation forced true
+2. revenue reconciliation forced true
+3. the reader's cross-check removed
+4. the bucket-containment check disabled
+5. drill state not reset on a scope change
+6. the level anchor check removed
+7. the source's authority check removed
+8. `RevenueActions` planted in the view
+9. `SyncStateChip` planted in the body
+10. `pullOne` planted in the reader
+
+## D-237 — The Slice 8 P&L boundary guard is narrowed, deliberately
+**Date:** 2026-09-14 · **Status:** Implemented / Tested (project-lead ruling)
+
+Slice 8's guard forbade department, section and vendor detail and all navigation in the P&L
+feature. Slice 10 needs exactly those, so the guard is narrowed rather than bypassed.
+
+**Still forbidden:**
+
+* router navigation (`context.go`, `context.push`, `GoRouter`, `AppRoutes`)
+* export, print and charts
+* owner settlement
+* arithmetic in the UI
+* any mutation
+* importing a transaction page or ledger
+
+**New:** `MaterialPageRoute` builders are limited to `MobilePnlDrillPage` and
+`MobilePnlDocumentPage`.
+
+Each rule has a planted-snippet positive control. The five Slice 8 boundary tests that
+failed when drill-down was first added were rewritten to state the narrowed boundary.
+
+## D-238 — A live authority probe asked the consolidated question by mistake
+**Date:** 2026-09-14 · **Status:** Recorded; the fix is in the test
+
+The first live run of the Slice 10 suite failed on a Crystal Canopy manager: *"the server
+grants Crystal Canopy"* came back false.
+
+**Cause.** The helper asked `reporting_primitives` about both properties in one call. A
+request naming two properties is the consolidated report, and a scoped reader is refused
+both (D-164, D-187). The server answered correctly; the test asked the wrong question.
+
+**Fix.** The helper now asks one property per call.
+
+**State checked on the catalogue.** The manager's Crystal Canopy grant is active. Their
+Hotel Krishna grant was revoked on 2026-09-13 by the D-187 regression fixture. The per-unit
+answers are therefore Crystal Canopy authorised and Hotel Krishna refused, which is what
+the test asserts.
+
+This is D-187's rule catching a test that forgot it. No product code changed.
+
+## D-239 — Opening a document always fetches it again
+**Date:** 2026-09-14 · **Status:** Implemented / Tested — **a defect found by the Windows
+real-app phase, proven red on the host before it was fixed**
+
+**Symptom.** In `windows-pnl-drill`, every online step passed: the sale and the shared bill
+both opened read-only, and the device's row counts were unchanged. The offline step then
+failed. After closing the shared bill and cutting the connection, re-opening the same row
+never said "Detail not downloaded".
+
+**Evidence, not a guess.** Two theories were checked and ruled out first:
+
+* the wording differing from the test's expectation — the rendered sentence is the constant;
+* PostgREST's automatic GET retries delaying the answer past the wait — they add about
+  7 seconds, and the wait is 60 seconds of wall-clock time.
+
+A diagnostic then printed what was on screen at the timeout. It showed:
+
+* the already-fetched expense body, with no spinner;
+* **no request attempted while offline**.
+
+**Cause.** `pnlDocumentDetailProvider` is keyed by the request. Re-opening the identical row
+while the copy fetched a moment earlier was still held reused that copy, and never asked the
+server. That breaks D-233's rule that detail comes from the server on demand. Offline, it
+showed a document as if it had just been opened. Online, it could show a copy that no longer
+matched the server.
+
+**Why the host tests missed it.** Host pumping finishes disposing the provider before the
+next tap, so a host re-open always fetched. The two new host regressions therefore hold the
+fetched copy alive across the re-open, as the real executable did. On the unfixed code both
+failed the way the real run did: reads stayed at 1.
+
+**Fix.** Every open of a document row discards any held copy first:
+
+* Windows: `PnlDrillController.select` invalidates `pnlDocumentDetailProvider(request)`.
+* Android: the drill page's `onSelect` does the same before pushing the document page.
+
+Offline, a re-open now says "Detail not downloaded". Online, it shows the current document.
+
+**Kept.** The on-screen diagnostic stays in the acceptance offline step, so a future timeout
+there reports what the page showed instead of only that it timed out (D-075).
