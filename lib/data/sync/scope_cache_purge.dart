@@ -64,6 +64,7 @@ library;
 
 import 'package:drift/drift.dart';
 import 'package:krishna_mis/data/local/app_database.dart';
+import 'package:krishna_mis/data/local/cache_authority_generation.dart';
 import 'package:krishna_mis/domain/auth/authority.dart';
 import 'package:krishna_mis/domain/auth/capability.dart';
 import 'package:krishna_mis/domain/sync/sync_state.dart';
@@ -247,6 +248,9 @@ class ScopeCachePurge {
     final mayReadLedger = principal.canAnywhere(Capability.ownerLedgerView);
 
     await db.transaction(() async {
+      // D-231: in the same transaction as the purge, so a synchronisation started under the
+      // previous authority cannot write after this commits.
+      await CacheAuthorityGeneration(db).recordConfirmed(snapshot);
       final reportingUnits = await _reportingUnitsFor(snapshot.userId);
       final noLongerReportable = {
         for (final unit in reportingUnits)
@@ -578,6 +582,8 @@ class ScopeCachePurge {
   }
 
   Future<int> quarantineAllDocuments() async {
+    // The fail-closed sign-out path ends the session too, so nothing in flight lands.
+    await CacheAuthorityGeneration(db).endSession();
     final now = DateTime.now().toUtc();
     var stamped = 0;
     for (final table in const [
@@ -722,6 +728,9 @@ class ScopeCachePurge {
     var ownerLedgerRetained = const <String>{};
 
     await db.transaction(() async {
+      // D-231: a sign-out or user switch ends the session the caches belonged to, inside
+      // the purge's transaction. A confirmed revocation has already recorded its own.
+      if (actorUserId == null) await CacheAuthorityGeneration(db).endSession();
       // Financial documents first. They depend on nothing below them, and doing them
       // inside the same transaction is what makes "the revoked unit's figures are gone"
       // a single fact rather than two that could half-happen (D-068).
@@ -1089,7 +1098,10 @@ class ScopeCachePurge {
       // and start date on a shared machine (OA-3, D-208). Removed for every person, as a
       // user switch removes every unit.
       final removed = <String, int>{};
-      await db.transaction(() => _purgeOwnerSettlementCache(const {}, removed));
+      await db.transaction(() async {
+        await CacheAuthorityGeneration(db).endSession();
+        await _purgeOwnerSettlementCache(const {}, removed);
+      });
       return ScopePurgeResult.skipped(
         'no scoped reference data was cached; the canonical owner cache was removed',
         rowsRemoved: removed,

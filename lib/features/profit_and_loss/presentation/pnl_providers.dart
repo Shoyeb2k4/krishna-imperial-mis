@@ -702,6 +702,13 @@ class PnlSyncController extends Notifier<PnlSyncStatus> {
     });
     if (!stillTheSamePerson()) return;
 
+    // Superseded by a confirmed authority change while it ran (D-231): it wrote nothing, and
+    // it is not the server refusing or failing. The report re-reads under the new authority.
+    if (reports.any((r) => r.abandoned)) {
+      state = PnlSyncStatus(PnlSyncPhase.idle, lastAction: action);
+      return;
+    }
+
     final outcomes = [for (final r in reports) ...r.outcomes];
     final landed = outcomes.every((o) => o.isApplied);
     RemoteFailure? failure;

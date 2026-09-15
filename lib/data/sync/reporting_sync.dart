@@ -41,6 +41,7 @@
 /// property's books.
 library;
 
+import 'package:krishna_mis/data/local/cache_authority_generation.dart';
 import 'package:krishna_mis/data/remote/remote_outcome.dart';
 import 'package:krishna_mis/data/remote/reporting_gateway.dart';
 import 'package:krishna_mis/data/repositories/reporting_cache.dart';
@@ -88,6 +89,13 @@ final class DatasetSynchronised extends DatasetSyncOutcome {
 final class DatasetUnreachable extends DatasetSyncOutcome {
   const DatasetUnreachable(super.dataset, this.failure);
   final RemoteFailure failure;
+}
+
+/// The session or authority this run was started under ended before its answer could be
+/// applied (D-231). Nothing was written — not a row, not a marker, not snapshot evidence —
+/// and it is neither a failure to report nor a success to certify.
+final class DatasetAbandoned extends DatasetSyncOutcome {
+  const DatasetAbandoned(super.dataset);
 }
 
 /// The server declined. A person is told; nothing is retried blindly.
@@ -142,6 +150,10 @@ final class ReportingSyncReport {
   /// True only when **both** sides landed. A P&L needs both, so a caller that treats a
   /// half-run as success is the D-163 defect one layer up.
   bool get isComplete => outcomes.every((o) => o.isApplied);
+
+  /// True when the run was superseded by a session or authority transition and wrote
+  /// nothing (D-231).
+  bool get abandoned => outcomes.any((o) => o is DatasetAbandoned);
 
   DatasetSyncOutcome forDataset(ReportingDataset dataset) =>
       outcomes.firstWhere((o) => o.dataset == dataset);
@@ -214,6 +226,10 @@ final class ReportingSync {
       ]);
     }
 
+    // D-231: the generation this run belongs to, taken before anything is asked. The write
+    // re-checks it inside its own transaction.
+    final startedUnder = await CacheAuthorityGeneration(cache.database).read();
+
     final markers = await cache.markersFor(ownerUserId);
     final held = <ReportingDataset, Map<String, int>>{
       for (final dataset in ReportingDataset.values)
@@ -267,6 +283,7 @@ final class ReportingSync {
           held: held,
           askFrom: askFrom,
           onDemand: onDemand,
+          startedUnder: startedUnder,
         );
     }
   }
@@ -329,6 +346,7 @@ final class ReportingSync {
     required Map<ReportingDataset, Map<String, int>> held,
     required Map<ReportingDataset, int> askFrom,
     required bool onDemand,
+    required CacheGeneration? startedUnder,
   }) async {
     final snapshotId = response['snapshot_id'] as String?;
     final serverTime = _serverTime(response['server_time']);
@@ -446,17 +464,29 @@ final class ReportingSync {
     // One transaction for the whole snapshot: both datasets, every year, the markers and
     // the snapshot evidence last. A failure anywhere leaves the previous coherent
     // snapshot exactly as it was.
-    await cache.applySnapshot(
-      ownerUserId: ownerUserId,
-      orgId: orgId,
-      snapshotId: snapshotId,
-      serverConfirmedAt: serverTime,
-      businessUnitIds: authorised,
-      financialYears: [for (final year in years) year.openingYear],
-      datasets: applications,
-      onDemand: onDemand,
-      now: _clock(),
-    );
+    try {
+      await cache.applySnapshot(
+        ownerUserId: ownerUserId,
+        orgId: orgId,
+        snapshotId: snapshotId,
+        serverConfirmedAt: serverTime,
+        businessUnitIds: authorised,
+        financialYears: [for (final year in years) year.openingYear],
+        datasets: applications,
+        onDemand: onDemand,
+        now: _clock(),
+        stillCurrent: () =>
+            CacheAuthorityGeneration(cache.database).ensureStillCurrent(
+              startedUnder: startedUnder,
+              ownerUserId: ownerUserId,
+            ),
+      );
+    } on StaleCacheGeneration {
+      return ReportingSyncReport([
+        for (final dataset in ReportingDataset.values)
+          DatasetAbandoned(dataset),
+      ]);
+    }
 
     return ReportingSyncReport(
       outcomes,

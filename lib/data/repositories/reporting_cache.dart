@@ -104,6 +104,10 @@ final class ReportingCache {
 
   final AppDatabase _db;
 
+  /// The database the cache lives in, for the D-231 generation check a synchroniser
+  /// makes inside the transaction that writes.
+  AppDatabase get database => _db;
+
   // ── Reads, for the reporting source ────────────────────────────────────────
   //
   // No canonical-only predicate appears here, and its absence is the point. In the
@@ -487,7 +491,11 @@ final class ReportingCache {
     required Map<ReportingDataset, DatasetApplication> datasets,
     required bool onDemand,
     required DateTime now,
+    Future<void> Function()? stillCurrent,
   }) => _db.transaction(() async {
+    // D-231: decided inside the transaction that writes, so a purge cannot commit between
+    // the check and the rows. A stale run throws here and writes nothing.
+    if (stillCurrent != null) await stillCurrent();
     for (final dataset in ReportingDataset.values) {
       final application = datasets[dataset];
       if (application == null) continue;

@@ -14,6 +14,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:krishna_mis/app/providers.dart';
 import 'package:krishna_mis/data/repositories/owner_settlement_preview.dart';
 import 'package:krishna_mis/data/sync/owner_settlement_refresh.dart';
+import 'package:krishna_mis/data/sync/owner_settlement_sync.dart';
 import 'package:krishna_mis/domain/finance/reporting_period.dart';
 import 'package:krishna_mis/domain/value_objects/business_date.dart';
 import 'package:krishna_mis/features/expenses/presentation/expense_providers.dart'
@@ -188,6 +189,14 @@ class OwnerSettlementSyncController
       today: ref.read(currentBusinessDateProvider),
     );
     if (!ref.mounted) return;
+
+    // Superseded by a session or authority transition (D-231): nothing was written.
+    if (report.owner is OwnerSettlementSyncAbandoned ||
+        (report.reporting?.any((r) => r.abandoned) ?? false)) {
+      state = const OwnerSettlementSyncStatus(OwnerSettlementSyncPhase.idle);
+      ref.invalidate(ownerSettlementPreviewProvider);
+      return;
+    }
 
     state = OwnerSettlementSyncStatus(
       report.succeeded

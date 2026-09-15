@@ -48,6 +48,7 @@ library;
 import 'package:drift/drift.dart';
 
 import 'package:krishna_mis/data/local/app_database.dart';
+import 'package:krishna_mis/data/local/cache_authority_generation.dart';
 import 'package:krishna_mis/data/remote/owner_ledger_gateway.dart';
 import 'package:krishna_mis/data/remote/remote_outcome.dart';
 import 'package:krishna_mis/domain/value_objects/business_date.dart';
@@ -117,6 +118,15 @@ final class OwnerSettlementSyncNotAuthorised extends OwnerSettlementSyncResult {
 /// Fail closed rather than repair: replacing working coverage with unusable coverage is
 /// strictly worse than keeping yesterday's, because the device would then refuse every
 /// settlement *while claiming to be synchronised* (D-108 §19.5's rule, in a second domain).
+/// The session or authority this run was started under ended before its answer could be
+/// applied (D-231). Nothing was written.
+final class OwnerSettlementSyncAbandoned extends OwnerSettlementSyncResult {
+  const OwnerSettlementSyncAbandoned();
+
+  @override
+  String toString() => 'OwnerSettlementSyncAbandoned()';
+}
+
 final class OwnerSettlementSyncRefused extends OwnerSettlementSyncResult {
   const OwnerSettlementSyncRefused(this.reason);
   final String reason;
@@ -141,6 +151,8 @@ class OwnerSettlementSync {
   final String ownerUserId;
 
   Future<OwnerSettlementSyncResult> synchronise() async {
+    // D-231: the generation this run belongs to, re-checked inside the writing transaction.
+    final startedUnder = await CacheAuthorityGeneration(_db).read();
     final outcome = await gateway.fetchSettlementSnapshot();
 
     switch (outcome) {
@@ -151,12 +163,17 @@ class OwnerSettlementSync {
       case RemoteRefused(refusal: final refusal):
         return OwnerSettlementSyncUnavailable(refusal.message);
       case RemoteOk(value: final snapshot):
-        return _apply(snapshot);
+        try {
+          return await _apply(snapshot, startedUnder);
+        } on StaleCacheGeneration {
+          return const OwnerSettlementSyncAbandoned();
+        }
     }
   }
 
   Future<OwnerSettlementSyncResult> _apply(
     Map<String, dynamic> snapshot,
+    CacheGeneration? startedUnder,
   ) async {
     final snapshotId = snapshot['snapshot_id'];
     final serverTime = snapshot['server_time'];
@@ -223,6 +240,10 @@ class OwnerSettlementSync {
     }
 
     await _db.transaction(() async {
+      await CacheAuthorityGeneration(_db).ensureStillCurrent(
+        startedUnder: startedUnder,
+        ownerUserId: ownerUserId,
+      );
       // Replace, wholly. Nothing is preserved across a run, so a corrected movement
       // arrives corrected, a voided one arrives voided, and one that is no longer
       // returned simply ceases to exist here.

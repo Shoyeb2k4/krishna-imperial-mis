@@ -80,7 +80,9 @@ final class OwnerSettlementRefresher {
     required BusinessDate today,
   }) async {
     final owner = await ownerSync.synchronise();
-    if (owner is OwnerSettlementSyncNotAuthorised) {
+    // A superseded run stops as well: the session or authority it served has ended (D-231).
+    if (owner is OwnerSettlementSyncNotAuthorised ||
+        owner is OwnerSettlementSyncAbandoned) {
       return OwnerSettlementRefreshReport(owner: owner);
     }
 
