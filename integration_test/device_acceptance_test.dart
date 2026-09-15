@@ -74,6 +74,11 @@
 library;
 
 import 'dart:convert';
+import 'package:drift/drift.dart' show Variable;
+import 'package:krishna_mis/domain/auth/capability.dart';
+import 'package:krishna_mis/data/repositories/owner_settlement_preview.dart';
+import 'package:krishna_mis/features/owner_settlement/presentation/owner_settlement_providers.dart';
+import 'package:krishna_mis/features/profit_and_loss/presentation/pnl_drilldown_providers.dart';
 import 'package:krishna_mis/domain/expenses/expense_contribution.dart';
 import 'package:krishna_mis/data/attachments/attachment_staging.dart';
 import 'package:krishna_mis/data/attachments/attachment_source.dart';
@@ -128,6 +133,7 @@ import 'package:krishna_mis/domain/sync/sync_state.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
+import '../test/support/owner_settlement_reference.dart';
 import 'support/controllable_transport.dart';
 
 const _phase = String.fromEnvironment('PHASE');
@@ -9582,6 +9588,1317 @@ void main() {
       );
       expect((await _row('expense_categories', _milk))['archived_at'], isNull);
     });
+  });
+
+  // ── Phase 5 Slice 11: full reporting and Owner Accounts acceptance ─────────
+  //
+  // The completed surfaces together, in the real applications against krishna-mis-dev:
+  // the shared device, the whole correction/void/period lifecycle, a closed period, offline
+  // and reconnect, an older financial year, the Owner Settlement preview, and a confirmed
+  // capability loss while a report is open. Every figure is compared, in paise, against the
+  // server's own primitives or the independent settlement oracle — never against production
+  // arithmetic. Financial fixtures carry a marker and are voided in a `finally` and before
+  // the next run (D-066, D-071, D-076). The disposable settlement start date is removed by
+  // the host through the administrator path after the phase; the client has no such path.
+
+  const s11Marker = '$_acceptanceMarker: slice11';
+  const s11FixtureStart = '2026-05-01';
+  const s11OwnerA = '993e6fa6-1513-4a99-9d45-ebf6440a1d88';
+  const s11OwnerB = '62f72e3e-20b3-4085-8363-13c62d868dfe';
+  const s11Handshake = String.fromEnvironment('S11_HANDSHAKE');
+
+  bool s11Phone() => boot.shellKind.name == 'mobile';
+
+  Future<ProviderContainer> s11SignIn(WidgetTester tester, String email) async {
+    await signIn(tester, email);
+    await expectSignedIn(tester, email);
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(KrishnaMisApp)),
+    );
+    await container.read(sessionProvider.notifier).refreshAuthority();
+    await tester.pump(const Duration(seconds: 2));
+    return container;
+  }
+
+  Future<void> s11OpenPnl(WidgetTester tester, ProviderContainer container) =>
+      s11Phone() ? openPhonePnl(tester, container) : openPnl(tester, container);
+
+  Future<void> s11Range(
+    WidgetTester tester,
+    ProviderContainer container,
+    String from,
+    String to,
+  ) => s11Phone()
+      ? choosePhoneCustom(
+          tester,
+          container,
+          BusinessDate.tryParse(from)!,
+          BusinessDate.tryParse(to)!,
+        )
+      : chooseCustom(tester, container, from, to);
+
+  Future<void> s11Refresh(
+    WidgetTester tester,
+    ProviderContainer container, {
+    PnlSyncPhase expected = PnlSyncPhase.succeeded,
+    Key control = const Key('pnl-refresh'),
+  }) => s11Phone()
+      ? refreshPhonePnl(tester, container, expected: expected, control: control)
+      : refreshPnl(tester, container, expected: expected, control: control);
+
+  Future<String> s11Restaurant(SupabaseClient client) async =>
+      (await client
+              .from('revenue_categories')
+              .select('id')
+              .eq('code', 'RESTAURANT')
+              .eq('business_unit_id', _ccr)
+              .single())['id']
+          as String;
+
+  Future<int> s11Version(
+    SupabaseClient client,
+    String relation,
+    String id,
+  ) async =>
+      (await client
+              .from(relation)
+              .select('row_version')
+              .eq('id', id)
+              .single())['row_version']
+          as int;
+
+  Future<String> s11Sale(
+    SupabaseClient client,
+    String marker,
+    String date,
+    int amount,
+  ) async {
+    final id = const Uuid().v7();
+    await client.rpc<dynamic>(
+      'revenue_create',
+      params: {
+        'p_id': id,
+        'p_business_unit_id': _ccr,
+        'p_revenue_category_id': await s11Restaurant(client),
+        'p_business_date': date,
+        'p_notes': '$marker sale',
+        'p_components': [
+          {'entered_amount_minor': amount},
+        ],
+        'p_mutation_id': const Uuid().v4(),
+      },
+    );
+    return id;
+  }
+
+  Future<String> s11Cost(
+    SupabaseClient client,
+    String marker,
+    String date,
+    int amount,
+  ) async {
+    final id = const Uuid().v7();
+    await client.rpc<dynamic>(
+      'expense_create',
+      params: {
+        'p_id': id,
+        'p_business_date': date,
+        'p_total_minor': amount,
+        'p_notes': '$marker expense',
+        'p_allocations': [
+          {
+            'business_unit_id': _ccr,
+            'department_id': _seedId('dept:CCR/FB'),
+            'section_id': _seedId('sec:CCR/FB/FOOD_PROD'),
+            'category_id': _kirana,
+            'amount_minor': amount,
+          },
+        ],
+        'p_mutation_id': const Uuid().v4(),
+      },
+    );
+    return id;
+  }
+
+  Finder s11DesktopPage() => find
+      .descendant(
+        of: find.byKey(const Key('pnl-page')),
+        matching: find.byType(Scrollable),
+      )
+      .first;
+
+  Future<void> s11Reach(WidgetTester tester, Finder finder) async {
+    if (s11Phone()) {
+      await centrePnlControl(tester, finder);
+    } else {
+      await tester.scrollUntilVisible(
+        finder,
+        300,
+        scrollable: s11DesktopPage(),
+      );
+    }
+  }
+
+  /// Revenue → Restaurant → the sale, opened read-only.
+  Future<void> s11OpenSale(
+    WidgetTester tester,
+    String restaurant,
+    String sale, {
+    bool expectDetail = true,
+  }) async {
+    final open = find.byKey(Key('pnl-rev-open-$_ccr-$restaurant'));
+    await s11Reach(tester, open);
+    await tapWhenHittable(tester, open);
+    final row = find.byKey(Key('pnl-drill-doc-$sale'));
+    await pumpUntil(
+      tester,
+      'the sale in the drill-down',
+      () => row.evaluate().isNotEmpty,
+    );
+    await Scrollable.ensureVisible(tester.element(row), alignment: 0.3);
+    await tester.pump(const Duration(milliseconds: 300));
+    await tapWhenHittable(tester, row);
+    if (expectDetail) {
+      await pumpUntil(
+        tester,
+        'the sale opened read-only',
+        () =>
+            find.byKey(const Key('pnl-document-revenue')).evaluate().isNotEmpty,
+        timeout: const Duration(seconds: 60),
+      );
+    }
+  }
+
+  Future<void> s11BackToReport(WidgetTester tester) async {
+    if (s11Phone()) {
+      for (var i = 0; i < 6; i++) {
+        if (find.byType(MobilePnlDrillPage).evaluate().isEmpty &&
+            find.byType(MobilePnlDocumentPage).evaluate().isEmpty) {
+          break;
+        }
+        await tester.binding.handlePopRoute();
+        await tester.pump(const Duration(milliseconds: 500));
+      }
+    } else {
+      final crumb = find.byKey(const Key('pnl-crumb-report'));
+      if (crumb.evaluate().isNotEmpty) await tapWhenHittable(tester, crumb);
+    }
+    await tester.pump(const Duration(milliseconds: 500));
+  }
+
+  Future<int> s11OwnerCacheRows(String ownerUserId) async {
+    var total = 0;
+    for (final table in const [
+      'canonical_owner_movements',
+      'canonical_owners',
+      'canonical_ownership_shares',
+      'owner_settlement_coverage',
+    ]) {
+      total +=
+          (await boot.database
+                  .customSelect(
+                    'SELECT COUNT(*) AS c FROM $table WHERE owner_user_id = ?',
+                    variables: [Variable<String>(ownerUserId)],
+                  )
+                  .getSingle())
+              .read<int>('c');
+    }
+    return total;
+  }
+
+  bool s11SettlementEntryVisible() => s11Phone()
+      ? find.byKey(const Key('more-owner-settlement')).evaluate().isNotEmpty
+      : visible('Owner Settlement');
+
+  Future<void> s11ShowNavigation(WidgetTester tester) async {
+    if (s11Phone()) {
+      await pumpUntil(tester, 'the More tab', () => visible('More'));
+      await tapWhenHittable(tester, find.text('More').last);
+      await tester.pump(const Duration(seconds: 1));
+    } else {
+      await pumpUntil(tester, 'the sidebar', () => visible('Analytics'));
+    }
+  }
+
+  Future<void> s11OpenSettlement(WidgetTester tester) async {
+    await s11ShowNavigation(tester);
+    if (s11Phone()) {
+      final entry = find.byKey(const Key('more-owner-settlement'));
+      await pumpUntil(
+        tester,
+        'the Owner Settlement entry',
+        () => entry.evaluate().isNotEmpty,
+      );
+      await Scrollable.ensureVisible(tester.element(entry), alignment: 0.5);
+      await tester.pump(const Duration(milliseconds: 300));
+      await tapWhenHittable(tester, entry);
+    } else {
+      await pumpUntil(
+        tester,
+        'the Owner Settlement destination',
+        () => visible('Owner Settlement'),
+      );
+      await tapWhenHittable(tester, find.text('Owner Settlement').first);
+    }
+    await pumpUntil(
+      tester,
+      'the settlement page',
+      () =>
+          find.byKey(const Key('owner-settlement-page')).evaluate().isNotEmpty,
+    );
+  }
+
+  Future<void> s11SettleSettlement(
+    WidgetTester tester,
+    ProviderContainer container,
+  ) => pumpUntil(
+    tester,
+    'the settlement preview to be read',
+    () {
+      final preview = container.read(ownerSettlementPreviewProvider);
+      return preview.hasValue &&
+          !preview.isLoading &&
+          container.read(ownerSettlementSyncProvider).phase !=
+              OwnerSettlementSyncPhase.synchronising;
+    },
+    timeout: const Duration(seconds: 180),
+  );
+
+  Future<void> s11RefreshSettlement(
+    WidgetTester tester,
+    ProviderContainer container, {
+    OwnerSettlementSyncPhase expected = OwnerSettlementSyncPhase.succeeded,
+  }) async {
+    await s11SettleSettlement(tester, container);
+    final before = container.read(ownerSettlementSyncProvider);
+    final refresh = find.byKey(const Key('owner-settlement-refresh'));
+    await Scrollable.ensureVisible(tester.element(refresh), alignment: 0.2);
+    await tester.pump(const Duration(milliseconds: 300));
+    await tapWhenHittable(tester, refresh);
+    await pumpUntil(
+      tester,
+      'the settlement refresh to finish',
+      () {
+        final now = container.read(ownerSettlementSyncProvider);
+        return !identical(now, before) &&
+            now.phase != OwnerSettlementSyncPhase.synchronising;
+      },
+      timeout: const Duration(seconds: 180),
+    );
+    expect(container.read(ownerSettlementSyncProvider).phase, expected);
+    await s11SettleSettlement(tester, container);
+  }
+
+  Future<void> s11SettlementMonth(
+    WidgetTester tester,
+    ProviderContainer container,
+    int year,
+    int month,
+  ) async {
+    for (var i = 0; i < 24; i++) {
+      final current = container.read(settlementMonthProvider);
+      if (current.year == year && current.month == month) break;
+      await tapWhenHittable(
+        tester,
+        find.byKey(const Key('owner-settlement-previous-month')),
+      );
+      await tester.pump(const Duration(milliseconds: 300));
+    }
+    final current = container.read(settlementMonthProvider);
+    expect((current.year, current.month), (year, month));
+    await s11SettleSettlement(tester, container);
+  }
+
+  /// The disposable start date, through the audited administrative boundary. Never a
+  /// production date: the host removes it through the administrator path afterwards.
+  Future<void> s11EnsureFixtureStart(SupabaseClient client) async {
+    final rows = await client
+        .from('owner_settlement_settings')
+        .select('ownership_start_date,row_version');
+    if (rows.isNotEmpty) {
+      expect(
+        rows.single['ownership_start_date'],
+        s11FixtureStart,
+        reason: 'only the disposable fixture date may ever be present on dev',
+      );
+      return;
+    }
+    await client.rpc<dynamic>(
+      'owner_settlement_start_set',
+      params: {
+        'p_ownership_start_date': s11FixtureStart,
+        'p_base_row_version': null,
+        'p_mutation_id': const Uuid().v4(),
+      },
+    );
+  }
+
+  Future<void> s11SweepOwnerMovements(
+    SupabaseClient client,
+    String marker,
+  ) async {
+    final open = await client
+        .from('owner_ledger_entries')
+        .select('id,row_version')
+        .like('remarks', '$marker%')
+        .isFilter('voided_at', null);
+    for (final row in open) {
+      await client.rpc<dynamic>(
+        'owner_movement_void',
+        params: {
+          'p_id': row['id'],
+          'p_reason': 'Reversing $marker fixture (D-066)',
+          'p_base_row_version': row['row_version'],
+          'p_mutation_id': const Uuid().v4(),
+        },
+      );
+    }
+    final remaining = await client
+        .from('owner_ledger_entries')
+        .select('id')
+        .like('remarks', '$marker%')
+        .isFilter('voided_at', null);
+    expect(remaining, isEmpty, reason: 'every owner movement fixture reversed');
+  }
+
+  /// June 2026, by the independent oracle, from the server's own P&L primitives and the
+  /// server's own owner snapshot.
+  Future<ReferenceStatement> s11ExpectedJune(
+    SupabaseClient client,
+    List<String> units,
+  ) async {
+    final atEnd = await serverPnl(client, units, s11FixtureStart, '2026-06-30');
+    final before = await serverPnl(
+      client,
+      units,
+      s11FixtureStart,
+      '2026-05-31',
+    );
+    final snapshot = Map<String, dynamic>.from(
+      await client.rpc<dynamic>('owner_ledger_snapshot') as Map,
+    );
+    expect(snapshot['settlement_authorised'], isTrue);
+    return referenceSettlement(
+      ownerIds: [s11OwnerA, s11OwnerB]..sort(),
+      cumulativeBeforePaise: before.net - before.expenses,
+      cumulativeAtEndPaise: atEnd.net - atEnd.expenses,
+      periodStart: '2026-06-01',
+      periodEnd: '2026-06-30',
+      movements: [
+        for (final raw in snapshot['movements'] as List)
+          if ((raw as Map)['business_date'].toString().compareTo(
+                s11FixtureStart,
+              ) >=
+              0)
+            (
+              ownerId: raw['owner_id'] as String,
+              type: raw['movement_type'] as String,
+              direction: raw['direction'] as String,
+              amountPaise: (raw['amount_minor'] as num).toInt(),
+              businessDate: raw['business_date'] as String,
+              canonical: raw['voided_at'] == null && raw['txn_number'] != null,
+            ),
+      ],
+    );
+  }
+
+  void s11ExpectSettlementMatches(
+    WidgetTester tester,
+    ProviderContainer container,
+    ReferenceStatement expected,
+  ) {
+    final preview = container.read(ownerSettlementPreviewProvider).value;
+    expect(preview, isA<OwnerSettlementPreviewReady>(), reason: '$preview');
+    final statement = (preview! as OwnerSettlementPreviewReady).statement;
+    expect(statement.operatingProfit.paise, expected.operatingProfitPaise);
+    expect(statement.undistributedRemainder.paise, expected.remainderPaise);
+    expect(
+      uiPaise(tester, 'owner-settlement-op-consolidated'),
+      expected.operatingProfitPaise,
+    );
+    final lines = {for (final l in statement.lines) l.ownerId: l};
+    for (final line in expected.lines) {
+      final actual = lines[line.ownerId]!;
+      expect(actual.openingPosition.paise, line.openingPaise);
+      expect(actual.profitEntitlement.paise, line.entitlementPaise);
+      expect(actual.withdrawals.paise, line.withdrawalsPaise);
+      expect(actual.ncConsumption.paise, line.ncPaise);
+      expect(actual.settlementPaid.paise, line.settlementPaidPaise);
+      expect(actual.closingPosition.paise, line.closingPaise);
+      expect(
+        uiPaise(tester, 'owner-settlement-closing-${line.ownerId}'),
+        line.closingPaise,
+      );
+      expect(
+        tester
+            .widget<Text>(
+              find.byKey(Key('owner-settlement-closing-label-${line.ownerId}')),
+            )
+            .data,
+        line.closingPaise < 0
+            ? 'Recoverable from owner'
+            : line.closingPaise == 0
+            ? 'Nil — nothing due either way'
+            : 'Due to owner',
+      );
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  for (final (phase, phone) in const [
+    ('windows-owner-settlement', false),
+    ('android-owner-settlement', true),
+  ]) {
+    group(phase, skip: _phase != phase, () {
+      testWidgets(
+        'Owner Settlement: not configured, then a disposable start date, the oracle to '
+        'the paisa, offline, and a reader who may not see it',
+        (tester) async {
+          expect(
+            s11Phone(),
+            phone,
+            reason: 'run $phase on ${phone ? 'the Android device' : 'Windows'}',
+          );
+          const marker = '$s11Marker settlement';
+          await launch(tester);
+          var container = await s11SignIn(tester, 'giridhar@hki.com');
+          final client = Supabase.instance.client;
+          final ownerId = container.read(principalProvider).userId;
+
+          expect(
+            await client.from('owner_settlement_settings').select('org_id'),
+            isEmpty,
+            reason:
+                'the development baseline is "Settlement start date not configured"',
+          );
+          await s11SweepOwnerMovements(client, marker);
+
+          try {
+            // ── The clean baseline: not configured, and no figure ─────────────
+            await s11OpenSettlement(tester);
+            await s11RefreshSettlement(tester, container);
+            expect(
+              find.byKey(
+                const Key(
+                  'owner-settlement-unavailable-startDateNotConfigured',
+                ),
+              ),
+              findsOneWidget,
+            );
+            expect(
+              find.byKey(const Key('owner-settlement-statement')),
+              findsNothing,
+            );
+
+            // ── A disposable start date and one owner movement ────────────────
+            await s11EnsureFixtureStart(client);
+            await client.rpc<dynamic>(
+              'owner_movement_create',
+              params: {
+                'p_id': const Uuid().v4(),
+                'p_business_unit_id': _hki,
+                'p_business_date': '2026-06-12',
+                'p_movement_type': 'withdrawal',
+                'p_amount_minor': 1234567,
+                'p_direction': null,
+                'p_family_member_id': null,
+                'p_declared_owner_id': null,
+                'p_owner_id': s11OwnerA,
+                'p_remarks': '$marker withdrawal',
+                'p_reason': null,
+                'p_mutation_id': const Uuid().v4(),
+              },
+            );
+
+            await s11RefreshSettlement(tester, container);
+            await s11SettlementMonth(tester, container, 2026, 6);
+            expect(
+              find.byKey(const Key('owner-settlement-preview-banner')),
+              findsOneWidget,
+            );
+            expect(
+              find.byKey(const Key('owner-settlement-statement')),
+              findsOneWidget,
+            );
+            final units = [
+              for (final unit
+                  in container
+                      .read(masterGraphProvider)
+                      .value!
+                      .businessUnits(includeArchived: true))
+                unit.id,
+            ];
+            final expected = await s11ExpectedJune(client, units);
+            s11ExpectSettlementMatches(tester, container, expected);
+            expect(
+              expected.lines
+                  .firstWhere((l) => l.ownerId == s11OwnerA)
+                  .withdrawalsPaise,
+              1234567,
+            );
+
+            // ── Offline: the complete preview stays readable, never ₹0 ────────
+            final closingA = uiPaise(
+              tester,
+              'owner-settlement-closing-$s11OwnerA',
+            );
+            _transport.online = false;
+            try {
+              await s11RefreshSettlement(
+                tester,
+                container,
+                expected: OwnerSettlementSyncPhase.failed,
+              );
+              expect(
+                find.byKey(const Key('owner-settlement-offline')),
+                findsOneWidget,
+              );
+              expect(
+                uiPaise(tester, 'owner-settlement-closing-$s11OwnerA'),
+                closingA,
+              );
+              s11ExpectSettlementMatches(tester, container, expected);
+            } finally {
+              _transport.online = true;
+            }
+
+            await s11SweepOwnerMovements(client, marker);
+            expect(await s11OwnerCacheRows(ownerId), greaterThan(0));
+
+            // ── A reader who may not see a settlement ─────────────────────────
+            container = await s11SignIn(tester, 'accountant@example.com');
+            expect(
+              await s11OwnerCacheRows(ownerId),
+              0,
+              reason: 'sign-out took the owner-sensitive cache with it',
+            );
+            await s11ShowNavigation(tester);
+            expect(s11SettlementEntryVisible(), isFalse);
+            final direct = await container.read(
+              ownerSettlementPreviewProvider.future,
+            );
+            expect(direct, isA<OwnerSettlementPreviewUnavailable>());
+            expect(
+              (direct as OwnerSettlementPreviewUnavailable).reason,
+              OwnerSettlementUnavailableReason.notAuthorised,
+            );
+          } finally {
+            _transport.online = true;
+            if (container.read(principalProvider).userId != ownerId) {
+              container = await s11SignIn(tester, 'giridhar@hki.com');
+            }
+            await s11SweepOwnerMovements(client, marker);
+          }
+        },
+      );
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  group('slice11-shared-device', skip: _phase != 'slice11-shared-device', () {
+    testWidgets(
+      'the next person on the same installation inherits no figure, scope, drill-down, '
+      'document, freshness, coverage or settlement from the last',
+      (tester) async {
+        const marker = '$s11Marker shared';
+        await launch(tester);
+        var container = await s11SignIn(tester, 'giridhar@hki.com');
+        final client = Supabase.instance.client;
+        final cache = ReportingCache(boot.database);
+        final ownerId = container.read(principalProvider).userId;
+        await sweepPnlFixtures(client, marker: marker);
+
+        try {
+          // ── The Owner: consolidated P&L, a drill-down, a document, the settlement ─
+          final restaurant = await s11Restaurant(client);
+          final sale = await s11Sale(client, marker, pnlDate, 12364200);
+          await s11OpenPnl(tester, container);
+          await s11Range(tester, container, pnlFrom, pnlTo);
+          await s11Refresh(tester, container);
+          final units = [
+            for (final u
+                in container.read(pnlScopeOptionsProvider).value!.units)
+              u.id,
+          ];
+          expect(
+            container.read(pnlScopeOptionsProvider).value!.consolidatedAllowed,
+            isTrue,
+          );
+          expectPnlMatchesServer(
+            tester,
+            container,
+            await serverPnl(client, units, pnlFrom, pnlTo),
+          );
+          await s11OpenSale(tester, restaurant, sale);
+          expect(find.textContaining('KI-REV-'), findsWidgets);
+          await s11BackToReport(tester);
+
+          await s11EnsureFixtureStart(client);
+          await s11OpenSettlement(tester);
+          await s11RefreshSettlement(tester, container);
+          await s11SettlementMonth(tester, container, 2026, 6);
+          expect(
+            find.byKey(const Key('owner-settlement-statement')),
+            findsOneWidget,
+          );
+          expect(await cache.markersFor(ownerId), isNotEmpty);
+          expect(await s11OwnerCacheRows(ownerId), greaterThan(0));
+
+          // ── The Owner signs out ─────────────────────────────────────────────────
+          await container.read(sessionProvider.notifier).signOut();
+          await tester.pump(const Duration(seconds: 3));
+          expect(await cache.markersFor(ownerId), isEmpty);
+          expect(await reportingCacheRows(ownerId), 0);
+          expect(await s11OwnerCacheRows(ownerId), 0);
+
+          // ── The next person, before any synchronisation of their own ────────────
+          await signIn(tester, 'ccr.manager@example.com');
+          await expectSignedIn(tester, 'ccr.manager@example.com');
+          container = ProviderScope.containerOf(
+            tester.element(find.byType(KrishnaMisApp)),
+          );
+          final manager = container.read(principalProvider);
+          expect(manager.userId, isNot(ownerId));
+          expect(PnlAuthority.mayReadConsolidated(manager), isFalse);
+          expect(PnlAuthority.mayReadUnit(manager, _hki), isFalse);
+          expect(container.read(pnlSelectionProvider).scope, isNull);
+          expect(container.read(pnlDrillProvider), isNull);
+          expect(find.byKey(const Key('pnl-document-revenue')), findsNothing);
+          expect(find.textContaining('KI-REV-'), findsNothing);
+          expect(await cache.markersFor(manager.userId), isEmpty);
+          expect(await cache.markersFor(ownerId), isEmpty);
+          expect(await reportingCacheRows(ownerId), 0);
+          expect(await s11OwnerCacheRows(ownerId), 0);
+          final shown = pnlViewShownTo(
+            container.read(pnlViewProvider),
+            manager,
+          );
+          expect(
+            shown is! PnlReportView || shown.viewerUserId == manager.userId,
+            isTrue,
+            reason: 'no report computed for the Owner may be shown',
+          );
+          await s11ShowNavigation(tester);
+          expect(s11SettlementEntryVisible(), isFalse);
+          final settlement = await container.read(
+            ownerSettlementPreviewProvider.future,
+          );
+          expect(
+            (settlement as OwnerSettlementPreviewUnavailable).reason,
+            OwnerSettlementUnavailableReason.notAuthorised,
+          );
+
+          // ── After their own synchronisation: their property, exactly ─────────────
+          await s11OpenPnl(tester, container);
+          expect(find.text('Both properties (consolidated)'), findsNothing);
+          await s11Range(tester, container, pnlFrom, pnlTo);
+          await s11Refresh(tester, container);
+          final view = container.read(pnlViewProvider).value! as PnlReportView;
+          expect(view.viewerUserId, manager.userId);
+          expect(view.scope, PnlUnitScope(_ccr));
+          expectPnlMatchesServer(
+            tester,
+            container,
+            await serverPnl(client, [_ccr], pnlFrom, pnlTo),
+          );
+          final markers = await cache.markersFor(manager.userId);
+          expect({for (final m in markers) m.businessUnitId}, {_ccr});
+          expect(await cache.markersFor(ownerId), isEmpty);
+          expect(
+            await reportingCacheRows(manager.userId, businessUnitId: _hki),
+            0,
+          );
+        } finally {
+          _transport.online = true;
+          if (container.read(principalProvider).userId != ownerId) {
+            container = await s11SignIn(tester, 'giridhar@hki.com');
+          }
+          await sweepPnlFixtures(client, marker: marker);
+        }
+      },
+    );
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  group('slice11-lifecycle', skip: _phase != 'slice11-lifecycle', () {
+    testWidgets(
+      'create, correct across periods, close a period, void, go offline and back, and '
+      'download an older financial year — every figure equal to the server',
+      (tester) async {
+        const marker = '$s11Marker lifecycle';
+        const febFrom = '2027-02-01';
+        const febTo = '2027-02-28';
+        const olderFrom = '2025-03-01';
+        const olderTo = '2025-03-31';
+        await launch(tester);
+        final container = await s11SignIn(tester, 'giridhar@hki.com');
+        final client = Supabase.instance.client;
+        final cache = ReportingCache(boot.database);
+        await sweepPnlFixtures(client, marker: marker);
+        var closed = false;
+
+        Future<void> reopenMarch() async {
+          final lock = await client
+              .from('period_locks')
+              .select('row_version,state')
+              .eq('period_key', '2027-03')
+              .eq('business_unit_id', _ccr)
+              .maybeSingle();
+          if (lock == null || lock['state'] != 'closed') return;
+          await client.rpc<dynamic>(
+            'period_reopen',
+            params: {
+              'p_period_key': '2027-03',
+              'p_business_unit_id': _ccr,
+              'p_reason': '$marker: restoring the closed-period fixture',
+              'p_base_row_version': lock['row_version'],
+              'p_mutation_id': const Uuid().v4(),
+            },
+          );
+        }
+
+        try {
+          await s11OpenPnl(tester, container);
+          final units = [
+            for (final u
+                in container.read(pnlScopeOptionsProvider).value!.units)
+              u.id,
+          ];
+          final feb0 = await serverPnl(client, units, febFrom, febTo);
+          final mar0 = await serverPnl(client, units, pnlFrom, pnlTo);
+          final restaurant = await s11Restaurant(client);
+
+          // ── Create in February ────────────────────────────────────────────────
+          final sale = await s11Sale(client, marker, '2027-02-10', 5000000);
+          final cost = await s11Cost(client, marker, '2027-02-11', 1200000);
+          await s11Range(tester, container, febFrom, febTo);
+          await s11Refresh(tester, container);
+          var feb = await serverPnl(client, units, febFrom, febTo);
+          expect(feb.gross - feb0.gross, 5000000);
+          expect(feb.expenses - feb0.expenses, 1200000);
+          expectPnlMatchesServer(tester, container, feb);
+
+          // ── Correct both into March: a business date and an accounting period ──
+          await client.rpc<dynamic>(
+            'revenue_update',
+            params: {
+              'p_id': sale,
+              'p_business_date': '2027-03-10',
+              'p_notes': '$marker sale',
+              'p_components': [
+                {'entered_amount_minor': 5000000},
+              ],
+              'p_base_row_version': await s11Version(
+                client,
+                'revenue_document',
+                sale,
+              ),
+              'p_correction_reason':
+                  'Recorded against the wrong trading day ($marker)',
+              'p_mutation_id': const Uuid().v4(),
+            },
+          );
+          await client.rpc<dynamic>(
+            'expense_update',
+            params: {
+              'p_id': cost,
+              'p_base_row_version': await s11Version(
+                client,
+                'expense_document',
+                cost,
+              ),
+              'p_business_date': '2027-02-11',
+              'p_total_minor': 1200000,
+              'p_allocations': [
+                {
+                  'business_unit_id': _ccr,
+                  'department_id': _seedId('dept:CCR/FB'),
+                  'section_id': _seedId('sec:CCR/FB/FOOD_PROD'),
+                  'category_id': _kirana,
+                  'amount_minor': 1200000,
+                },
+              ],
+              'p_period_start': '2027-03-01',
+              'p_period_end': '2027-03-31',
+              'p_notes': '$marker expense',
+              'p_mutation_id': const Uuid().v4(),
+            },
+          );
+          await s11Refresh(tester, container);
+          feb = await serverPnl(client, units, febFrom, febTo);
+          expect(feb.gross, feb0.gross, reason: 'nothing left in February');
+          expect(feb.expenses, feb0.expenses);
+          expectPnlMatchesServer(tester, container, feb);
+
+          await s11Range(tester, container, pnlFrom, pnlTo);
+          await s11Refresh(tester, container);
+          var mar = await serverPnl(client, units, pnlFrom, pnlTo);
+          expect(mar.gross - mar0.gross, 5000000, reason: 'moved exactly once');
+          expect(mar.expenses - mar0.expenses, 1200000);
+          expectPnlMatchesServer(tester, container, mar);
+
+          // ── Offline, then reconnect ───────────────────────────────────────────
+          final before =
+              (container.read(pnlViewProvider).value! as PnlReportView)
+                  .envelope
+                  .freshness
+                  ?.synchronisedAt;
+          expect(before, isNotNull);
+          final grossBefore = uiPaise(tester, 'pnl-gross');
+          _transport.online = false;
+          try {
+            await s11Refresh(tester, container, expected: PnlSyncPhase.failed);
+            expect(find.byKey(const Key('pnl-offline')), findsOneWidget);
+            expect(uiPaise(tester, 'pnl-gross'), grossBefore);
+            expect(find.byKey(const Key('pnl-not-authorised')), findsNothing);
+            await s11OpenSale(tester, restaurant, sale, expectDetail: false);
+            await pumpUntil(
+              tester,
+              'detail not downloaded while offline',
+              () =>
+                  find.text(pnlDocumentNotDownloadedText).evaluate().isNotEmpty,
+              timeout: const Duration(seconds: 60),
+            );
+            await s11BackToReport(tester);
+          } finally {
+            _transport.online = true;
+          }
+          await tester.pump(const Duration(seconds: 2));
+          await s11Refresh(tester, container);
+          final after =
+              (container.read(pnlViewProvider).value! as PnlReportView)
+                  .envelope
+                  .freshness
+                  ?.synchronisedAt;
+          expect(
+            after!.isAfter(before!),
+            isTrue,
+            reason: 'freshness moved forward',
+          );
+          expectPnlMatchesServer(tester, container, mar);
+
+          // ── A closed period stays readable and refuses a correction ────────────
+          await client.rpc<dynamic>(
+            'period_close',
+            params: {
+              'p_period_key': '2027-03',
+              'p_business_unit_id': _ccr,
+              'p_mutation_id': const Uuid().v4(),
+            },
+          );
+          closed = true;
+          await s11Refresh(tester, container);
+          expectPnlMatchesServer(tester, container, mar);
+          await s11OpenSale(tester, restaurant, sale);
+          expect(find.textContaining('KI-REV-'), findsWidgets);
+          await s11BackToReport(tester);
+          try {
+            await client.rpc<dynamic>(
+              'revenue_update',
+              params: {
+                'p_id': sale,
+                'p_business_date': '2027-03-10',
+                'p_notes': '$marker sale',
+                'p_components': [
+                  {'entered_amount_minor': 5100000},
+                ],
+                'p_base_row_version': await s11Version(
+                  client,
+                  'revenue_document',
+                  sale,
+                ),
+                'p_mutation_id': const Uuid().v4(),
+              },
+            );
+            fail('a correction inside a closed period was accepted');
+          } on PostgrestException catch (e) {
+            expect(e.code, 'KM004');
+          }
+          expect(
+            (await client
+                .from('period_locks')
+                .select('state')
+                .eq('period_key', '2027-03')
+                .eq('business_unit_id', _ccr)
+                .single())['state'],
+            'closed',
+            reason: 'reporting neither reopened nor altered the period',
+          );
+          expect(
+            (await serverPnl(client, units, pnlFrom, pnlTo)).gross,
+            mar.gross,
+          );
+          await reopenMarch();
+          closed = false;
+
+          // ── Void both: the effect leaves ──────────────────────────────────────
+          await sweepPnlFixtures(client, marker: marker);
+          await s11Refresh(tester, container);
+          mar = await serverPnl(client, units, pnlFrom, pnlTo);
+          expect(mar.gross, mar0.gross);
+          expect(mar.expenses, mar0.expenses);
+          expectPnlMatchesServer(tester, container, mar);
+
+          // ── An older financial year ────────────────────────────────────────────
+          final older = await s11Cost(client, marker, '2025-03-12', 777700);
+          await s11Range(tester, container, olderFrom, olderTo);
+          expect(find.byKey(const Key('pnl-not-downloaded')), findsOneWidget);
+          _transport.online = false;
+          try {
+            await s11Refresh(
+              tester,
+              container,
+              expected: PnlSyncPhase.failed,
+              control: const Key('pnl-download'),
+            );
+            expect(
+              find.byKey(const Key('pnl-statement')),
+              findsNothing,
+              reason: 'an interrupted download never masquerades as complete',
+            );
+            expect(
+              (await cache.markersFor(
+                container.read(principalProvider).userId,
+              )).where((m) => m.financialYear == 2024),
+              isEmpty,
+            );
+          } finally {
+            _transport.online = true;
+          }
+          await s11Refresh(
+            tester,
+            container,
+            control: const Key('pnl-download'),
+          );
+          final olderServer = await serverPnl(
+            client,
+            units,
+            olderFrom,
+            olderTo,
+          );
+          expectPnlMatchesServer(tester, container, olderServer);
+
+          // Offline afterwards: the rows beneath it are readable, the detail is not.
+          _transport.online = false;
+          try {
+            final byDept = find.byKey(const Key('pnl-exp-by-department'));
+            await s11Reach(tester, byDept);
+            await tapWhenHittable(tester, byDept);
+            for (final key in [
+              'pnl-drill-dept-$_ccr-${_seedId('dept:CCR/FB')}',
+              'pnl-drill-section-$_ccr-${_seedId('sec:CCR/FB/FOOD_PROD')}',
+              'pnl-drill-category-$_ccr-$_kirana',
+            ]) {
+              await pumpUntil(
+                tester,
+                key,
+                () => find.byKey(Key(key)).evaluate().isNotEmpty,
+              );
+              await Scrollable.ensureVisible(
+                tester.element(find.byKey(Key(key))),
+                alignment: 0.3,
+              );
+              await tester.pump(const Duration(milliseconds: 300));
+              await tapWhenHittable(tester, find.byKey(Key(key)));
+            }
+            final row = find.byKey(Key('pnl-drill-doc-$older'));
+            await pumpUntil(
+              tester,
+              'the older expense row, offline',
+              () => row.evaluate().isNotEmpty,
+            );
+            expect(uiPaise(tester, 'pnl-drill-doc-$older-amount'), 777700);
+            await Scrollable.ensureVisible(tester.element(row), alignment: 0.3);
+            await tester.pump(const Duration(milliseconds: 300));
+            await tapWhenHittable(tester, row);
+            await pumpUntil(
+              tester,
+              'older detail not downloaded while offline',
+              () =>
+                  find.text(pnlDocumentNotDownloadedText).evaluate().isNotEmpty,
+              timeout: const Duration(seconds: 60),
+            );
+            await s11BackToReport(tester);
+          } finally {
+            _transport.online = true;
+          }
+        } finally {
+          _transport.online = true;
+          if (closed) await reopenMarch();
+          await reopenMarch();
+          await sweepPnlFixtures(client, marker: marker);
+        }
+      },
+    );
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  //
+  // A confirmed capability loss while a report is open, in the real Windows executable. The
+  // signed-in person cannot withdraw their own capability, so the host does it through the
+  // administrator path while this phase waits, exactly as the Phase 2 `revoked` phase has
+  // the host revoke a grant. The two talk through a handshake file named by S11_HANDSHAKE:
+  // the phase writes `ready`, the host changes the development role and writes `applied`, the
+  // phase observes the loss through a real authority refresh and writes `verified`, the host
+  // restores the role exactly and writes `restored`.
+
+  Future<void> s11Signal(String step, String state) async => File(
+    s11Handshake,
+  ).writeAsStringSync(jsonEncode({'step': step, 'state': state}));
+
+  Future<void> s11AwaitHost(WidgetTester tester, String step, String state) =>
+      pumpUntil(tester, 'the host to report $step $state', () {
+        try {
+          final m = jsonDecode(File(s11Handshake).readAsStringSync()) as Map;
+          return m['step'] == step && m['state'] == state;
+        } on Object {
+          return false;
+        }
+      }, timeout: const Duration(minutes: 20));
+
+  Future<void> s11AuthorityUntil(
+    WidgetTester tester,
+    ProviderContainer container,
+    String what,
+    bool Function(Principal principal) done,
+  ) async {
+    for (var i = 0; i < 60; i++) {
+      await container.read(sessionProvider.notifier).refreshAuthority();
+      await tester.pump(const Duration(seconds: 2));
+      if (done(container.read(principalProvider))) return;
+    }
+    fail('the confirmed authority never showed $what');
+  }
+
+  group('slice11-revocation', skip: _phase != 'slice11-revocation', () {
+    testWidgets(
+      'a confirmed loss of each P&L capability, of unscoped authority and of '
+      'owner_settlement.view closes what is open and purges what it read',
+      (tester) async {
+        expect(s11Phone(), isFalse, reason: 'run on Windows, with the host');
+        expect(
+          s11Handshake,
+          isNotEmpty,
+          reason: 'S11_HANDSHAKE names the file',
+        );
+        const marker = '$s11Marker revocation';
+        await launch(tester);
+        var container = await s11SignIn(tester, 'giridhar@hki.com');
+        final client = Supabase.instance.client;
+        final ownerId = container.read(principalProvider).userId;
+        await sweepPnlFixtures(client, marker: marker);
+        final restaurant = await s11Restaurant(client);
+        final sale = await s11Sale(client, marker, pnlDate, 4200000);
+        final temporaryGrants = <String>[];
+
+        try {
+          // ── A scoped manager loses each P&L capability, property access intact ──
+          container = await s11SignIn(tester, 'ccr.manager@example.com');
+          final managerId = container.read(principalProvider).userId;
+          for (final code in const [
+            'reports.view',
+            'revenue.view',
+            'expense.view.all',
+          ]) {
+            final capability = Capability.fromCode(code);
+            await s11OpenPnl(tester, container);
+            await s11Range(tester, container, pnlFrom, pnlTo);
+            await s11Refresh(tester, container);
+            await s11OpenSale(tester, restaurant, sale);
+            expect(await reportingCacheRows(managerId), greaterThan(0));
+
+            if (code == 'reports.view') {
+              // A refresh that cannot reach the server is not a revocation.
+              _transport.online = false;
+              try {
+                await container
+                    .read(sessionProvider.notifier)
+                    .refreshAuthority();
+                await tester.pump(const Duration(seconds: 2));
+              } finally {
+                _transport.online = true;
+              }
+              expect(
+                find.byKey(const Key('pnl-document-revenue')),
+                findsOneWidget,
+              );
+              expect(await reportingCacheRows(managerId), greaterThan(0));
+            }
+
+            await s11Signal('manager:$code', 'ready');
+            await s11AwaitHost(tester, 'manager:$code', 'applied');
+            await s11AuthorityUntil(
+              tester,
+              container,
+              'manager without $code',
+              (p) => !p.can(capability, businessUnitId: _ccr),
+            );
+            expect(
+              container
+                  .read(principalProvider)
+                  .can(Capability.mastersView, businessUnitId: _ccr),
+              isTrue,
+              reason: 'property access remains',
+            );
+            await tester.pump(const Duration(seconds: 2));
+            expect(container.read(pnlDrillProvider), isNull);
+            expect(find.byKey(const Key('pnl-document-revenue')), findsNothing);
+            expect(find.byKey(const Key('pnl-statement')), findsNothing);
+            expect(
+              await reportingCacheRows(managerId, businessUnitId: _ccr),
+              0,
+              reason: 'the confirmed loss of $code purged the reporting cache',
+            );
+
+            await s11Signal('manager:$code', 'verified');
+            await s11AwaitHost(tester, 'manager:$code', 'restored');
+            await s11AuthorityUntil(
+              tester,
+              container,
+              'manager with $code again',
+              (p) => p.can(capability, businessUnitId: _ccr),
+            );
+            await s11Refresh(tester, container);
+            expectPnlMatchesServer(
+              tester,
+              container,
+              await serverPnl(client, [_ccr], pnlFrom, pnlTo),
+            );
+          }
+
+          // ── The Owner loses owner_settlement.view ─────────────────────────────
+          container = await s11SignIn(tester, 'giridhar@hki.com');
+          await s11EnsureFixtureStart(client);
+          await s11OpenSettlement(tester);
+          await s11RefreshSettlement(tester, container);
+          await s11SettlementMonth(tester, container, 2026, 6);
+          expect(
+            find.byKey(const Key('owner-settlement-statement')),
+            findsOneWidget,
+          );
+          expect(await s11OwnerCacheRows(ownerId), greaterThan(0));
+
+          await s11Signal('owner:owner_settlement.view', 'ready');
+          await s11AwaitHost(tester, 'owner:owner_settlement.view', 'applied');
+          await s11AuthorityUntil(
+            tester,
+            container,
+            'the Owner without owner_settlement.view',
+            (p) => !p.canAnywhere(Capability.ownerSettlementView),
+          );
+          await tester.pump(const Duration(seconds: 2));
+          expect(
+            find.byKey(const Key('owner-settlement-statement')),
+            findsNothing,
+          );
+          expect(s11SettlementEntryVisible(), isFalse);
+          expect(await s11OwnerCacheRows(ownerId), 0);
+          final refused = await container.read(
+            ownerSettlementPreviewProvider.future,
+          );
+          expect(
+            (refused as OwnerSettlementPreviewUnavailable).reason,
+            OwnerSettlementUnavailableReason.notAuthorised,
+          );
+          await s11Signal('owner:owner_settlement.view', 'verified');
+          await s11AwaitHost(tester, 'owner:owner_settlement.view', 'restored');
+          await s11AuthorityUntil(
+            tester,
+            container,
+            'the Owner with owner_settlement.view again',
+            (p) => p.canAnywhere(Capability.ownerSettlementView),
+          );
+          expect(s11SettlementEntryVisible(), isTrue);
+
+          // ── Unscoped authority lost while scoped authority remains ─────────────
+          for (final unit in [_ccr, _hki]) {
+            final granted = Map<String, dynamic>.from(
+              await client.rpc<dynamic>(
+                    'user_role_grant',
+                    params: {
+                      'p_user_id': ownerId,
+                      'p_role_code': 'manager',
+                      'p_business_unit_id': unit,
+                      'p_mutation_id': const Uuid().v4(),
+                    },
+                  )
+                  as Map,
+            );
+            temporaryGrants.add(granted['entity_id'] as String);
+          }
+          await s11AuthorityUntil(
+            tester,
+            container,
+            'the temporary scoped grants',
+            (p) =>
+                PnlAuthority.mayReadUnit(p, _ccr) &&
+                PnlAuthority.mayReadUnit(p, _hki),
+          );
+          await s11OpenPnl(tester, container);
+          if (find
+              .byKey(const Key('pnl-scope-consolidated'))
+              .evaluate()
+              .isNotEmpty) {
+            await tapWhenHittable(
+              tester,
+              find.byKey(const Key('pnl-scope-consolidated')),
+            );
+          }
+          await s11Range(tester, container, pnlFrom, pnlTo);
+          await s11Refresh(tester, container);
+          expect(
+            (container.read(pnlViewProvider).value! as PnlReportView).scope,
+            const PnlConsolidatedScope(),
+          );
+          await s11OpenSale(tester, restaurant, sale);
+
+          await s11Signal('owner:reports.view', 'ready');
+          await s11AwaitHost(tester, 'owner:reports.view', 'applied');
+          await s11AuthorityUntil(
+            tester,
+            container,
+            'the Owner without unscoped reports.view',
+            (p) =>
+                !PnlAuthority.mayReadConsolidated(p) &&
+                PnlAuthority.mayReadUnit(p, _ccr),
+          );
+          await tester.pump(const Duration(seconds: 2));
+          expect(container.read(pnlDrillProvider), isNull);
+          expect(find.byKey(const Key('pnl-document-revenue')), findsNothing);
+          expect(find.byKey(const Key('pnl-scope-consolidated')), findsNothing);
+          await tapWhenHittable(tester, find.byKey(Key('pnl-scope-$_ccr')));
+          await tester.pump(const Duration(milliseconds: 400));
+          await s11Range(tester, container, pnlFrom, pnlTo);
+          await s11Refresh(tester, container);
+          expectPnlMatchesServer(
+            tester,
+            container,
+            await serverPnl(client, [_ccr], pnlFrom, pnlTo),
+          );
+          await s11Signal('owner:reports.view', 'verified');
+          await s11AwaitHost(tester, 'owner:reports.view', 'restored');
+          await s11AuthorityUntil(
+            tester,
+            container,
+            'the Owner with unscoped reports.view again',
+            PnlAuthority.mayReadConsolidated,
+          );
+        } finally {
+          _transport.online = true;
+          if (container.read(principalProvider).userId != ownerId) {
+            container = await s11SignIn(tester, 'giridhar@hki.com');
+          }
+          for (final grant in temporaryGrants) {
+            await client.rpc<dynamic>(
+              'user_role_revoke',
+              params: {'p_grant_id': grant, 'p_mutation_id': const Uuid().v4()},
+            );
+          }
+          await sweepPnlFixtures(client, marker: marker);
+          await s11Signal('done', 'finished');
+        }
+      },
+    );
   });
 }
 
