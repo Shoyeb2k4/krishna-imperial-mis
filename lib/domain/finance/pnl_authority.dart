@@ -37,6 +37,22 @@ abstract final class PnlAuthority {
     (c) => principal.canAnywhere(c) && principal.scopedUnitsFor(c) == null,
   );
 
+  /// Who is reading, and exactly which P&L read grants they hold, for every scope.
+  ///
+  /// It changes when the person changes, and when any of the three capabilities is gained or
+  /// lost for any property or unscoped — and **only** then. A session state change for the
+  /// same person with the same authority (a stale refresh, a confirmed refresh that changed
+  /// nothing) leaves it identical, so a surface keyed on it keeps the person's chosen
+  /// property, period and open drill-down (Slice 11).
+  static String readKey(Principal principal) {
+    final grants = <String>{
+      for (final grant in principal.grants)
+        if (required.contains(grant.capability))
+          '${grant.capability.code}@${grant.businessUnitId ?? '*'}',
+    }.toList()..sort();
+    return '${principal.userId}|${grants.join(',')}';
+  }
+
   /// The properties among [candidateUnitIds] this principal may report on, in id order.
   static List<String> permittedUnits(
     Principal principal,

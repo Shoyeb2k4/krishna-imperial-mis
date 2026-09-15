@@ -13,6 +13,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:krishna_mis/app/providers.dart';
+import 'package:krishna_mis/domain/finance/pnl_authority.dart';
 import 'package:krishna_mis/core/design/tokens/app_tokens.dart';
 import 'package:krishna_mis/features/profit_and_loss/presentation/mobile_profit_and_loss_page.dart'
     show pnlMobileNavigationClearance;
@@ -29,7 +30,7 @@ void _returnToReportOnReset(WidgetRef ref, BuildContext context) {
   }
 
   ref
-    ..listen(sessionProvider.select((s) => pnlReadAuthorityKey(s.principal)), (
+    ..listen(sessionProvider.select((s) => PnlAuthority.readKey(s.principal)), (
       previous,
       next,
     ) {

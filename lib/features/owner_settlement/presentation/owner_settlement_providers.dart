@@ -68,7 +68,9 @@ final settlementMonthProvider =
 class SettlementMonthController extends Notifier<SettlementMonth> {
   @override
   SettlementMonth build() {
-    ref.watch(sessionProvider);
+    // Keyed on the person, never on the whole session: a stale or unchanged authority
+    // refresh for the same person must not move the month they chose (Slice 11, D-245).
+    ref.watch(sessionProvider.select((s) => s.principal.userId));
     return SettlementMonth.of(ref.watch(currentBusinessDateProvider));
   }
 
@@ -161,8 +163,9 @@ class OwnerSettlementSyncController
   @override
   OwnerSettlementSyncStatus build() {
     // A new person, a new status: a refresh the previous person started is not this
-    // person's result (D-074).
-    ref.watch(sessionProvider);
+    // person's result (D-074). Keyed on the person, so a session state change for the same
+    // person does not drop a refresh that is still running (D-245).
+    ref.watch(sessionProvider.select((s) => s.principal.userId));
     return const OwnerSettlementSyncStatus(OwnerSettlementSyncPhase.idle);
   }
 

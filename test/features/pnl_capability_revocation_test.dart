@@ -351,6 +351,55 @@ void main() {
     );
   });
 
+  group('the same person, the same authority, a new session state', () {
+    for (final (name, freshness) in const [
+      ('an unreachable refresh leaves it stale', AuthorityFreshness.stale),
+      ('a confirmed refresh changes nothing', AuthorityFreshness.confirmed),
+    ]) {
+      uiTest(
+        '$name: the chosen period and property stay, and the drill-down stays open',
+        (tester) async {
+          final (container, session) = await pumpWindows(tester, pnlD2());
+          // A choice the defaults would never make: September, Crystal Canopy only.
+          container
+              .read(pnlSelectionProvider.notifier)
+              .selectScope(const PnlUnitScope(pnlCcr));
+          await tester.pumpAndSettle();
+          final chosen = container.read(pnlSelectionProvider);
+          await openDocument(tester);
+          expect(container.read(pnlDrillProvider), isNotNull);
+
+          session.switchTo(
+            SessionState.ready(
+              authority: _authority(pnlD2()),
+              freshness: freshness,
+              email: 'me@example.test',
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          // PnlSelection has no value equality; its scope and period do.
+          expect(
+            (
+              container.read(pnlSelectionProvider).scope,
+              container.read(pnlSelectionProvider).period,
+            ),
+            (chosen.scope, chosen.period),
+            reason:
+                'a session state change for the same person and authority reset the '
+                'chosen property and period',
+          );
+          expect(
+            container.read(pnlDrillProvider),
+            isNotNull,
+            reason: 'and closed the open drill-down',
+          );
+          expect(find.byKey(const Key('pnl-drill-layout')), findsOneWidget);
+        },
+      );
+    }
+  });
+
   // ═══════════════════════════════════════════════════════════════════════════
   group('Android', () {
     for (final capability in lost) {

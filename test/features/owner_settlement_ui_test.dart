@@ -759,6 +759,48 @@ void main() {
 
   // ═══════════════════════════════════════════════════════════════════════════
   group(
+    'the same person, the same authority, a new session state (Slice 11)',
+    () {
+      for (final (name, freshness) in const [
+        ('an unreachable refresh leaves it stale', AuthorityFreshness.stale),
+        ('a confirmed refresh changes nothing', AuthorityFreshness.confirmed),
+      ]) {
+        uiTest('$name: the chosen month stays', (tester) async {
+          await synchroniseFor('owner-user', _ownerSnapshot());
+          final session = await pump(tester, authority: _ownerAuthority());
+          final container = ProviderScope.containerOf(
+            tester.element(find.byType(OwnerSettlementPage)),
+          );
+          final current = container.read(settlementMonthProvider);
+          await tester.tap(
+            find.byKey(const Key('owner-settlement-previous-month')),
+          );
+          await tester.pumpAndSettle();
+          final chosen = container.read(settlementMonthProvider);
+          expect((
+            chosen.year,
+            chosen.month,
+          ), isNot((current.year, current.month)));
+
+          session.become(
+            readySession(authority: _ownerAuthority(), freshness: freshness),
+          );
+          await tester.pumpAndSettle();
+
+          final after = container.read(settlementMonthProvider);
+          expect(
+            (after.year, after.month),
+            (chosen.year, chosen.month),
+            reason:
+                'a session state change for the same person and authority moved the '
+                'chosen month back to the current one',
+          );
+        });
+      }
+    },
+  );
+
+  group(
     'a confirmed loss of owner_settlement.view for the same person (Slice 11)',
     () {
       AuthoritySnapshot withoutSettlement() => AuthoritySnapshot(

@@ -147,9 +147,11 @@ final pnlSelectionProvider =
 class PnlSelectionController extends Notifier<PnlSelection> {
   @override
   PnlSelection build() {
-    // A new person starts from a clean selection: a scope the previous person chose may be
-    // one this person is not permitted to see (D-074).
-    ref.watch(sessionProvider);
+    // A new person, or a change in what they may read, starts from a clean selection: a
+    // scope the previous authority chose may be one this authority may not see (D-074). A
+    // session state change for the same person and authority — a refresh that could not
+    // reach the server, or one that changed nothing — keeps the person's choice (Slice 11).
+    ref.watch(sessionProvider.select((s) => PnlAuthority.readKey(s.principal)));
     return const PnlSelection(
       period: PnlPresetPeriod(RelativePreset.thisMonth),
     );
@@ -575,7 +577,9 @@ class PnlSyncController extends Notifier<PnlSyncStatus> {
   @override
   PnlSyncStatus build() {
     // A new person, a new status: a run the previous person started is not this person's.
-    ref.watch(sessionProvider);
+    // Keyed on the person, so a session state change for the same person does not drop a
+    // run that is still going (D-245).
+    ref.watch(sessionProvider.select((s) => s.principal.userId));
     return const PnlSyncStatus(PnlSyncPhase.idle);
   }
 

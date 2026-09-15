@@ -8229,3 +8229,37 @@ warning, and so the fragment, no longer appears.
 
 **On Android** the emulator reinstalls the application on every launch, so restart persistence
 there is a manual physical-device check (§Q.2 items 6 and 7) rather than an automated phase.
+
+## D-245 — A same-person session refresh keeps the reader's choices
+**Date:** 2026-09-15 · **Status:** Implemented / Tested — **a Slice 8/OA-3 defect found by the Slice 11 revocation phase, proven RED on the host before it was fixed**
+
+**Symptom.** In the real Windows executable, `slice11-revocation` refreshed authority for the
+same person with nothing changed, first offline and then online. Each refresh reset the P&L
+back to This Month on the default property and closed the open drill-down.
+
+**Cause.** `PnlSelectionController`, `SettlementMonthController` and both sync controllers
+watched the **whole** `sessionProvider`. A stale or unchanged authority refresh emits a new
+session state for the same person, and a Riverpod `build` that watches it runs again. That
+discarded the chosen property, period and month, and let a running refresh's status fall back
+to idle.
+
+**Decision.**
+* The P&L selection and drill-down are keyed on `PnlAuthority.readKey`: the person plus exactly
+  the P&L read grants they hold. They reset when the person changes, and when a P&L capability
+  is gained or lost (D-226, D-231). A session refresh with nothing changed leaves them alone.
+* The settlement month is keyed on the person. A lost capability already makes the preview
+  refuse (D-213), so the month does not need to reset for it.
+* Both sync controllers are keyed on the person, so a session refresh cannot drop a run that
+  is still going (D-074 unchanged: a new person, a new status).
+
+**RED first.** The P&L case (`pnl_capability_revocation_test.dart`, "the same person, the same
+authority, a new session state") failed 2 of 2. It compares `(scope, period)`, because
+`PnlSelection` has no `==` and an identity comparison would have been an invalid RED. The
+settlement case (`owner_settlement_ui_test.dart`) failed 2 of 2: the month went back from
+2026-05 to 2026-06.
+
+**GREEN.** Both pass. The P&L, drill-down, session-switch, revocation and settlement suites pass
+together, 206 tests.
+
+**Control.** With the settlement month watching the whole session again, the regression turns
+RED, 2 of 2. The fix, restored byte-identical (`cmp`), passes.
