@@ -580,3 +580,43 @@ One process launch per phase, with the same commands as §O.1:
       even for a principal who could do those from the ledger.
 - [ ] With networking off, the rows stay, and re-opening a document says it is not downloaded.
 - [ ] Recorded as physical-device acceptance, with the device named.
+
+## Q. Full reporting and Owner Accounts acceptance (Phase 5 Slice 11)
+
+### Q.1 Real-app phases against `krishna-mis-dev`
+
+One process launch per phase, run strictly one at a time, with the same commands as §O.1.
+The revocation phase also needs `--dart-define=S11_HANDSHAKE=<scratch>/slice11_handshake.json`
+and the host acting on each handshake step (D-243).
+
+- [ ] `windows-owner-settlement` / `android-owner-settlement`: "Settlement start date not
+      configured" on the clean baseline; a disposable start date through the audited RPC; the
+      June preview equal to the independent oracle; offline still readable; a reader refused
+- [ ] `slice11-shared-device` (Windows, Android): the next person inherits nothing of the
+      previous person's figures, scope, drill-down, document, freshness, coverage or settlement
+- [ ] `slice11-lifecycle` (Windows, Android): create → correct across periods → closed period →
+      void → offline and reconnect → older financial year, every figure equal to the server
+- [ ] `slice11-revocation` (Windows, host-coordinated): each P&L capability, `owner_settlement.view`
+      and unscoped `reports.view` lost while open; exact restoration read back
+- [ ] After every phase: the disposable start date removed through the administrator path, and
+      the development baseline compared and restored
+
+### Q.2 Physical Android device — **manual checklist for the project lead**
+
+Performed by a person on the Galaxy A06 (or another approved phone) with the clean dev build.
+Record each line as **PASS / FAIL / NOT TESTED**. Automation never fills these in.
+
+| # | Check | Result |
+|---|---|---|
+| 1 | Settings → Display → Font size set to the largest step: Reports → Profit & Loss has no clipped figures, and the last line scrolls clear of the [ + ] button | NOT TESTED |
+| 2 | Open the property sheet, then press Android back: the sheet closes and the report is unchanged | NOT TESTED |
+| 3 | Open Custom, then press Android back: the picker closes and the period is unchanged | NOT TESTED |
+| 4 | Open a category, then a document, then press back twice: document → list → report, one step each | NOT TESTED |
+| 5 | The date-range picker covers the screen, offers no typing, and the tapped days become the report's range | NOT TESTED |
+| 6 | With a report open, force-stop the app (Settings → Apps → Krishna Imperial MIS → Force stop) | NOT TESTED |
+| 7 | Reopen the app: still signed in as the same person, no previous person's figures shown | NOT TESTED |
+| 8 | Turn on aeroplane mode, reopen Reports: the last complete report is readable, never ₹0 | NOT TESTED |
+| 9 | Still offline: open a document from a category — it says detail needs a connection | NOT TESTED |
+| 10 | Turn aeroplane mode off and pull to refresh: it refreshes and the "synchronised as of" time moves forward | NOT TESTED |
+
+The physical pass is not claimed until every line above has actually been performed.
