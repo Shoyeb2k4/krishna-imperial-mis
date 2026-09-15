@@ -8101,3 +8101,90 @@ Offline, a re-open now says "Detail not downloaded". Online, it shows the curren
 
 **Kept.** The on-screen diagnostic stays in the acceptance offline step, so a future timeout
 there reports what the page showed instead of only that it timed out (D-075).
+
+---
+
+# Phase 5 Slice 11 — Full Reporting / Owner Accounts Acceptance (2026-09-15)
+
+## D-240 — A synchronisation superseded by a session or authority change writes nothing
+**Date:** 2026-09-15 · **Status:** Implemented / Tested — **closes D-231, proven RED first**
+
+**The defect.** A reporting or owner-settlement synchronisation holds the signed-in person's id
+from the moment it starts. If that person signs out, or a confirmed refresh withdraws a
+capability, the purge removes the cache — and the synchronisation's answer, still on the wire,
+was then written back under the old id.
+
+**Proven red** with a real file-backed database, the real cache, synchronisers, purge and
+session controller, and a server whose answer was held until released
+(`test/data/stale_sync_after_transition_test.dart`). **6 of 7 cases re-applied data**:
+reporting rows and coverage markers after sign-out, after the loss of each of `reports.view`,
+`revenue.view` and `expense.view.all`, and the owner history after sign-out and after the loss
+of `owner_settlement.view`. The network-failure control stayed green.
+
+**Why the existing authority record could not enforce it.** `AuthorityStore` is saved and
+cleared outside the purge's transaction, so a write can land after the purge commits and before
+the stored authority changes.
+
+**Decision.** A cache authority generation in `app_meta` (no schema change), advanced **inside
+the purge's own transaction** on sign-out, a user switch, the fail-closed quarantine, and a
+confirmed authority whose reporting or owner-settlement capabilities differ from the last one
+recorded. Both synchronisers read it before asking the server and re-check it **inside the
+transaction that writes**. A stale run rolls back, writes nothing, and reports
+`DatasetAbandoned` / `OwnerSettlementSyncAbandoned`. Surfaces show an abandoned run as neither a
+failure nor a success.
+
+**Control.** With the in-transaction check disabled, 6 of 7 turn RED; restored byte-identical,
+7 of 7 pass. Commit `405d985`.
+
+## D-241 — The P&L and Owner Settlement share one canonical-cache boundary
+**Date:** 2026-09-15 · **Status:** Implemented / Tested — **closes D-227, proven RED first**
+
+**The defect.** Slice 8's lock lived in the P&L feature. The settlement preview reads the P&L
+several separate times, and the settlement refresh writes the reporting cache; neither took
+the lock.
+
+**Proven red** against hand-worked coherent references
+(`test/data/canonical_cache_coherence_test.dart`):
+
+| Interleaving | Result | Coherent before | Coherent after |
+|---|---|---|---|
+| preview paused after its first P&L read, refresh committed | June 26,000.00 · cumulative 26,000.00 · per-property 23,000.00 | 6,000.00 · 26,000.00 | 23,000.00 · 23,000.00 |
+| consolidated P&L read paused between properties, refresh committed | 3,000.00 | 6,000.00 | 23,000.00 |
+
+**Decision.** `CanonicalCacheLock` in the data layer, one app-wide instance
+(`canonicalCacheLockProvider`). P&L reads, drill-down reads and the P&L sync take it as before;
+the settlement refresh and the settlement preview each run as one span under it, and the
+refresh invalidates the reporting sources while still holding it. Owner Settlement depends on
+no P&L provider.
+
+**Control.** Private locks instead of the shared one turn both cases RED; restored
+byte-identical, 3 of 3 pass. Commit `df7946f`.
+
+## D-242 — A confirmed P&L capability loss closes the open drill-down for the same person
+**Date:** 2026-09-15 · **Status:** Implemented / Tested
+
+**The defect.** The Windows drill state and the Android drill and document pages reset when the
+**user id** changed. The same person losing `reports.view`, `revenue.view`,
+`expense.view.all` or unscoped authority kept them open. Proven RED: 7 of 8 in
+`test/features/pnl_capability_revocation_test.dart` (the network-failure control green).
+
+**Decision.** Both reset on `pnlReadAuthorityKey` — the user id plus the person's scoped P&L
+read grants. Regressions for `owner_settlement.view` loss were added beside it: the preview
+refuses, the owner cache is purged, a direct read refuses, the navigation entry disappears on
+both shells, and a network failure purges nothing.
+
+**Control.** Keying on the user id again turns the suite RED; restored byte-identical, it
+passes. Commit `02639be`.
+
+## D-243 — How Slice 11 proves a live capability loss on the development project
+**Date:** 2026-09-15 · **Status:** Accepted (project-lead Decisions 2 and 4)
+
+There is no spare development identity (`unassigned@example.com` has no profile), and a scoped
+role cannot lose one capability without changing that role. Live revocation is therefore run on
+`krishna-mis-dev` only by **temporarily removing one capability from the `manager` or `owner`
+role** through the administrator path, while the real Windows executable waits, and restoring it
+exactly — checked against the role-capability hash captured before any mutation. The phase and
+the host coordinate through a handshake file (`S11_HANDSHAKE`), the pattern the Phase 2
+`revoked` phase already uses. The phase observes the loss through a real authority refresh and
+never asserts on a role name. Temporary grants the phase creates are revoked by the phase and
+their rows removed by the host, so `user_roles` returns to its captured fingerprint.
