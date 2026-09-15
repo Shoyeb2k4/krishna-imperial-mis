@@ -14,7 +14,6 @@ library;
 import 'package:krishna_mis/app/session/session_controller.dart';
 
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -163,17 +162,16 @@ class SecureSessionStorage extends LocalStorage {
   @override
   Future<void> initialize() async {}
 
+  /// The **persisted session string**, exactly as it was written — not the access token
+  /// inside it.
+  ///
+  /// The name is `supabase_flutter`'s, and misleading: its startup passes this value straight
+  /// to `auth.setInitialSession(...)` and `auth.recoverSession(...)`, which parse the whole
+  /// persisted session, and its own shipped storage returns the stored string unchanged.
+  /// Returning only the `access_token` field made every restart fail to restore the session
+  /// (Slice 11, D-244).
   @override
-  Future<String?> accessToken() async {
-    final raw = await _storage.read(key: _key);
-    if (raw == null) return null;
-    try {
-      return (jsonDecode(raw) as Map<String, dynamic>)['access_token']
-          as String?;
-    } on FormatException {
-      return null;
-    }
-  }
+  Future<String?> accessToken() => _storage.read(key: _key);
 
   @override
   Future<bool> hasAccessToken() async =>
