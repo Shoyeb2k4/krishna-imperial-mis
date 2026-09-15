@@ -26,9 +26,11 @@ import 'package:krishna_mis/data/local/app_database.dart';
 import 'package:krishna_mis/data/sync/scope_cache_purge.dart';
 import 'package:krishna_mis/domain/auth/authority.dart';
 import 'package:krishna_mis/domain/auth/capability.dart';
+import 'package:krishna_mis/domain/auth/session_state.dart';
 import 'package:krishna_mis/features/profit_and_loss/presentation/mobile_pnl_drilldown_pages.dart';
 import 'package:krishna_mis/features/profit_and_loss/presentation/mobile_profit_and_loss_page.dart';
 import 'package:krishna_mis/features/profit_and_loss/presentation/pnl_drilldown_providers.dart';
+import 'package:krishna_mis/features/profit_and_loss/presentation/pnl_drilldown_view.dart';
 import 'package:krishna_mis/features/profit_and_loss/presentation/pnl_providers.dart';
 import 'package:krishna_mis/features/profit_and_loss/presentation/profit_and_loss_page.dart';
 import 'package:timezone/data/latest.dart' as tzdata;
@@ -303,6 +305,47 @@ void main() {
 
         expect(container.read(pnlDrillProvider), isNotNull);
         expect(find.byKey(const Key('pnl-document-revenue')), findsOneWidget);
+        expect(await reportingRowsForMe(tester), rows);
+      },
+    );
+  });
+
+  group('an authority refresh that could not reach the server', () {
+    uiTest(
+      'the session goes stale for the same person, and the open drill-down stays open',
+      (tester) async {
+        final (container, session) = await pumpWindows(tester, pnlD2());
+        await openDocument(tester);
+        expect(find.byKey(const Key('pnl-document-revenue')), findsOneWidget);
+        final rows = await reportingRowsForMe(tester);
+
+        // What `refreshAuthority()` leaves behind when the server is unreachable: the same
+        // person, the same cached authority, marked stale. Nothing was confirmed, so nothing
+        // may be purged and nothing that is open may close.
+        session.switchTo(
+          SessionState.ready(
+            authority: _authority(pnlD2()),
+            freshness: AuthorityFreshness.stale,
+            email: 'me@example.test',
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          container.read(pnlDrillProvider),
+          isNotNull,
+          reason: 'a refresh that proved nothing closed the drill-down',
+        );
+        expect(find.byKey(const Key('pnl-drill-layout')), findsOneWidget);
+        expect(find.byKey(const Key('pnl-not-authorised')), findsNothing);
+        expect(
+          find.byKey(const Key('pnl-document-revenue')).evaluate().isNotEmpty ||
+              find.text(pnlDocumentNotDownloadedText).evaluate().isNotEmpty,
+          isTrue,
+          reason:
+              'the pane shows the document, or says detail needs a connection — never '
+              'a refusal and never nothing',
+        );
         expect(await reportingRowsForMe(tester), rows);
       },
     );
