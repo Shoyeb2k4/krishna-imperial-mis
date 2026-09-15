@@ -10930,6 +10930,16 @@ void main() {
               'manager with $code again',
               (p) => p.can(capability, businessUnitId: _ccr),
             );
+            // Regaining authority is a change of P&L read grants, so the reader starts again
+            // from the default report rather than inheriting a choice made under other
+            // authority (D-242, D-245). The fixture range is chosen again before comparing.
+            expect(
+              container.read(pnlSelectionProvider).period,
+              isA<PnlPresetPeriod>(),
+              reason: 'a change of P&L authority resets the chosen period',
+            );
+            await s11OpenPnl(tester, container);
+            await s11Range(tester, container, pnlFrom, pnlTo);
             await s11Refresh(tester, container);
             expectPnlMatchesServer(
               tester,
