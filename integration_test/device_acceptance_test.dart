@@ -9646,6 +9646,32 @@ void main() {
       ? refreshPhonePnl(tester, container, expected: expected, control: control)
       : refreshPnl(tester, container, expected: expected, control: control);
 
+  /// Runs a synchronisation from a control that carries no key of its own — the "Try again"
+  /// inside a failed download — and waits for it to finish, as `refreshPnl` does for a keyed
+  /// control.
+  Future<void> s11RefreshFrom(
+    WidgetTester tester,
+    ProviderContainer container,
+    Finder control, {
+    PnlSyncPhase expected = PnlSyncPhase.succeeded,
+  }) async {
+    await settlePnl(tester, container);
+    if (s11Phone()) await centrePnlControl(tester, control);
+    final before = container.read(pnlSyncProvider);
+    await tapWhenHittable(tester, control);
+    await pumpUntil(
+      tester,
+      'the P&L synchronisation to finish',
+      () {
+        final now = container.read(pnlSyncProvider);
+        return !identical(now, before) && !now.isRunning;
+      },
+      timeout: const Duration(seconds: 90),
+    );
+    expect(container.read(pnlSyncProvider).phase, expected);
+    await settlePnl(tester, container);
+  }
+
   Future<String> s11Restaurant(SupabaseClient client) async =>
       (await client
               .from('revenue_categories')
@@ -10565,10 +10591,14 @@ void main() {
           } finally {
             _transport.online = true;
           }
-          await s11Refresh(
+          // The failed download says so and offers to try again. It has no key: it is the
+          // one action inside the failed-download message.
+          final failed = find.byKey(const Key('pnl-download-failed'));
+          expect(failed, findsOneWidget);
+          await s11RefreshFrom(
             tester,
             container,
-            control: const Key('pnl-download'),
+            find.descendant(of: failed, matching: find.byType(OutlinedButton)),
           );
           final olderServer = await serverPnl(
             client,
@@ -10669,6 +10699,113 @@ void main() {
     }
     fail('the confirmed authority never showed $what');
   }
+
+  // A session must come back on its own when the application is started again. Two process
+  // launches on one Windows installation: the first signs in and synchronises a report and
+  // exits **without signing out**; the second signs nobody in. The Android emulator reinstalls
+  // the application on every launch, so there this is a manual physical-device check (§Q.2).
+  group('slice11-restart-a', skip: _phase != 'slice11-restart-a', () {
+    testWidgets(
+      'a person signs in, synchronises a report, and the process ends',
+      (tester) async {
+        expect(s11Phone(), isFalse, reason: 'run on Windows');
+        await launch(tester);
+        final container = await s11SignIn(tester, 'ccr.manager@example.com');
+        await s11OpenPnl(tester, container);
+        await s11Range(tester, container, pnlFrom, pnlTo);
+        await s11Refresh(tester, container);
+        final view = container.read(pnlViewProvider).value! as PnlReportView;
+        expect(view.scope, PnlUnitScope(_ccr));
+        expect(
+          await ReportingCache(
+            boot.database,
+          ).markersFor(container.read(principalProvider).userId),
+          isNotEmpty,
+        );
+        // Deliberately no sign-out: the next launch must restore this session on its own.
+      },
+    );
+  });
+
+  group('slice11-restart-b', skip: _phase != 'slice11-restart-b', () {
+    testWidgets(
+      'the next launch restores the same session with no sign-in, reads the cached report '
+      'offline, and refreshes once the connection returns',
+      (tester) async {
+        expect(
+          s11Phone(),
+          isFalse,
+          reason: 'run on Windows after slice11-restart-a',
+        );
+        _transport.online = false;
+        try {
+          await launch(tester);
+          await pumpUntil(
+            tester,
+            'the session to come back on its own, with no sign-in',
+            () => visible('Overview') || visible('SIGNED IN'),
+            timeout: const Duration(seconds: 60),
+          );
+          expect(
+            find.widgetWithText(FilledButton, 'Sign in'),
+            findsNothing,
+            reason:
+                'restarting the application must not ask the person to sign in again',
+          );
+          final container = ProviderScope.containerOf(
+            tester.element(find.byType(KrishnaMisApp)),
+          );
+          final session = container.read(sessionProvider);
+          expect(session, isA<SessionReady>());
+          expect(
+            (session as SessionReady).freshness,
+            AuthorityFreshness.stale,
+            reason: 'offline, the restored session works from cached authority',
+          );
+          final principal = container.read(principalProvider);
+          expect(PnlAuthority.mayReadUnit(principal, _ccr), isTrue);
+
+          // The cached report is readable with no network at all.
+          await s11OpenPnl(tester, container);
+          await s11Range(tester, container, pnlFrom, pnlTo);
+          final offlineView =
+              container.read(pnlViewProvider).value! as PnlReportView;
+          expect(offlineView.viewerUserId, principal.userId);
+          expect(find.byKey(const Key('pnl-statement')), findsOneWidget);
+          expect(find.byKey(const Key('pnl-not-authorised')), findsNothing);
+          final before = offlineView.envelope.freshness?.synchronisedAt;
+          expect(before, isNotNull);
+          final grossOffline = uiPaise(tester, 'pnl-gross');
+          await s11Refresh(tester, container, expected: PnlSyncPhase.failed);
+          expect(uiPaise(tester, 'pnl-gross'), grossOffline);
+
+          // Back online: refresh, equal to the server, freshness forward.
+          _transport.online = true;
+          await container.read(sessionProvider.notifier).refreshAuthority();
+          await tester.pump(const Duration(seconds: 2));
+          await s11Refresh(tester, container);
+          expectPnlMatchesServer(
+            tester,
+            container,
+            await serverPnl(Supabase.instance.client, [_ccr], pnlFrom, pnlTo),
+          );
+          final after =
+              (container.read(pnlViewProvider).value! as PnlReportView)
+                  .envelope
+                  .freshness
+                  ?.synchronisedAt;
+          expect(after!.isAfter(before!), isTrue);
+        } finally {
+          _transport.online = true;
+          final container = ProviderScope.containerOf(
+            tester.element(find.byType(KrishnaMisApp)),
+          );
+          await container.read(sessionProvider.notifier).signOut();
+          await tester.pump(const Duration(seconds: 2));
+        }
+      },
+    );
+  });
 
   group('slice11-revocation', skip: _phase != 'slice11-revocation', () {
     testWidgets(
