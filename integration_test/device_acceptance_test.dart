@@ -10855,11 +10855,46 @@ void main() {
               } finally {
                 _transport.online = true;
               }
+              // Nothing was confirmed, so nothing that is open closes and nothing is purged.
+              // The detail itself is never cached (D-239): it may still show the document, or
+              // say it needs a connection — never a refusal, and never nothing.
+              final detailShown =
+                  find
+                      .byKey(const Key('pnl-document-revenue'))
+                      .evaluate()
+                      .isNotEmpty ||
+                  find.text(pnlDocumentNotDownloadedText).evaluate().isNotEmpty;
+              if (!detailShown || container.read(pnlDrillProvider) == null) {
+                final keys = <String>{
+                  for (final element
+                      in find
+                          .byWidgetPredicate(
+                            (w) =>
+                                w.key is ValueKey<String> &&
+                                (w.key! as ValueKey<String>).value.startsWith(
+                                  'pnl-',
+                                ),
+                          )
+                          .evaluate())
+                    (element.widget.key! as ValueKey<String>).value,
+                }.toList()..sort();
+                debugPrint('S11 offline-refresh keys on screen: $keys');
+                debugPrint(
+                  'S11 session: ${container.read(sessionProvider).runtimeType}',
+                );
+              }
               expect(
-                find.byKey(const Key('pnl-document-revenue')),
-                findsOneWidget,
+                container.read(pnlDrillProvider),
+                isNotNull,
+                reason: 'a refresh that proved nothing closed the drill-down',
               );
+              expect(detailShown, isTrue);
+              expect(find.byKey(const Key('pnl-not-authorised')), findsNothing);
               expect(await reportingCacheRows(managerId), greaterThan(0));
+
+              // Back online, the document opens again before the capability is taken away.
+              await s11BackToReport(tester);
+              await s11OpenSale(tester, restaurant, sale);
             }
 
             await s11Signal('manager:$code', 'ready');
