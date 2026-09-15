@@ -474,6 +474,24 @@ PnlDrillRefusal _refusalFor(ReportingCoverage reason) =>
 
 /// The D2 intersection for the report's scope, decided before anything is read. A level
 /// inside a property must be inside the report's scope.
+/// Who is reading, and exactly which P&L read grants they hold. Changes when the person
+/// changes, and when any of `reports.view`, `revenue.view` or `expense.view.all` is gained or
+/// lost for any scope — so an open drill-down or document never outlives the authority it was
+/// opened under.
+String pnlReadAuthorityKey(Principal principal) {
+  const read = {
+    Capability.reportsView,
+    Capability.revenueView,
+    Capability.expenseViewAll,
+  };
+  final grants = <String>{
+    for (final grant in principal.grants)
+      if (read.contains(grant.capability))
+        '${grant.capability.code}@${grant.businessUnitId ?? '*'}',
+  }.toList()..sort();
+  return '${principal.userId}|${grants.join(',')}';
+}
+
 bool _mayRead(Principal principal, PnlDrillAnchor anchor, String? unit) {
   if (anchor.businessUnitIds.isEmpty) return false;
   if (unit != null && !anchor.businessUnitIds.contains(unit)) return false;
@@ -658,7 +676,9 @@ final pnlDrillProvider = NotifierProvider<PnlDrillController, PnlDrillState?>(
 class PnlDrillController extends Notifier<PnlDrillState?> {
   @override
   PnlDrillState? build() {
-    ref.watch(sessionProvider.select((s) => s.principal.userId));
+    // The person **and what they may read**: a confirmed loss of a P&L capability closes the
+    // drill-down as surely as a different person signing in does (Slice 11).
+    ref.watch(sessionProvider.select((s) => pnlReadAuthorityKey(s.principal)));
     ref.watch(pnlSelectionProvider);
     return null;
   }

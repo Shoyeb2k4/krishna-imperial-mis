@@ -20,7 +20,7 @@ import 'package:krishna_mis/features/profit_and_loss/presentation/pnl_drilldown_
 import 'package:krishna_mis/features/profit_and_loss/presentation/pnl_drilldown_view.dart';
 import 'package:krishna_mis/features/profit_and_loss/presentation/pnl_providers.dart';
 
-/// Returns to the P&L when the person, property or period changes.
+/// Returns to the P&L when the person, what they may read, the property or the period changes.
 void _returnToReportOnReset(WidgetRef ref, BuildContext context) {
   void back() {
     if (context.mounted) {
@@ -29,7 +29,7 @@ void _returnToReportOnReset(WidgetRef ref, BuildContext context) {
   }
 
   ref
-    ..listen(sessionProvider.select((s) => s.principal.userId), (
+    ..listen(sessionProvider.select((s) => pnlReadAuthorityKey(s.principal)), (
       previous,
       next,
     ) {

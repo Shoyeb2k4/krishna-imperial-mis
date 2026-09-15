@@ -12,6 +12,7 @@ library;
 
 import 'dart:async';
 
+import 'package:drift/drift.dart' show Variable;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -30,6 +31,9 @@ import 'package:krishna_mis/data/repositories/reporting_cache.dart';
 import 'package:krishna_mis/data/sync/owner_settlement_refresh.dart';
 import 'package:krishna_mis/data/sync/owner_settlement_sync.dart';
 import 'package:krishna_mis/data/sync/reporting_sync.dart';
+import 'package:krishna_mis/data/sync/scope_cache_purge.dart';
+import 'package:krishna_mis/data/repositories/owner_settlement_preview.dart';
+import 'package:krishna_mis/features/owner_settlement/presentation/owner_settlement_providers.dart';
 import 'package:krishna_mis/domain/auth/authority.dart';
 import 'package:krishna_mis/domain/auth/capability.dart';
 import 'package:krishna_mis/domain/auth/session_state.dart';
@@ -752,4 +756,150 @@ void main() {
       expect(find.byKey(const Key('more-owner-settlement')), findsNothing);
     });
   });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  group(
+    'a confirmed loss of owner_settlement.view for the same person (Slice 11)',
+    () {
+      AuthoritySnapshot withoutSettlement() => AuthoritySnapshot(
+        userId: 'owner-user',
+        orgId: 'test-org',
+        resolvedAt: DateTime.utc(2026, 8, 28),
+        grants: [
+          for (final g in _ownerAuthority().grants)
+            if (g.capability != Capability.ownerSettlementView) g,
+        ],
+      );
+
+      Future<int> ownerRows(
+        WidgetTester tester,
+      ) async => (await tester.runAsync(() async {
+        var total = 0;
+        for (final table in const [
+          'canonical_owner_movements',
+          'canonical_owners',
+          'canonical_ownership_shares',
+          'owner_settlement_coverage',
+        ]) {
+          total +=
+              (await db
+                      .customSelect(
+                        'SELECT COUNT(*) AS c FROM $table WHERE owner_user_id = ?',
+                        variables: [Variable<String>('owner-user')],
+                      )
+                      .getSingle())
+                  .read<int>('c');
+        }
+        return total;
+      }))!;
+
+      uiTest(
+        'the open preview refuses, the owner cache is purged, and a direct read refuses',
+        (tester) async {
+          await synchroniseFor('owner-user', _ownerSnapshot());
+          final session = await pump(tester, authority: _ownerAuthority());
+          expect(find.text('Partner Alpha'), findsOneWidget);
+          expect(await ownerRows(tester), greaterThan(0));
+
+          await tester.runAsync(
+            () => ScopeCachePurge(db).applyTo(
+              AuthorityRefresh.confirmed(withoutSettlement()),
+              previous: _ownerAuthority(),
+            ),
+          );
+          session.become(readySession(authority: withoutSettlement()));
+          await tester.pumpAndSettle();
+
+          expect(find.text('Partner Alpha'), findsNothing);
+          expect(
+            find.byKey(const Key('owner-settlement-unavailable-notAuthorised')),
+            findsOneWidget,
+          );
+          expect(await ownerRows(tester), 0);
+
+          final container = ProviderScope.containerOf(
+            tester.element(find.byType(OwnerSettlementPage)),
+          );
+          final direct = container.read(ownerSettlementPreviewProvider).value;
+          expect(direct, isA<OwnerSettlementPreviewUnavailable>());
+          expect(
+            (direct! as OwnerSettlementPreviewUnavailable).reason,
+            OwnerSettlementUnavailableReason.notAuthorised,
+          );
+          expect(
+            await tester.runAsync(
+              () => OwnerSettlementRepository(
+                db,
+                principal: withoutSettlement().principal,
+              ).coverage(),
+            ),
+            isNull,
+            reason: 'the repository refuses on its own, whoever reaches it',
+          );
+        },
+      );
+
+      uiTest('a network failure purges nothing and leaves the preview open', (
+        tester,
+      ) async {
+        await synchroniseFor('owner-user', _ownerSnapshot());
+        await pump(tester, authority: _ownerAuthority());
+        final rows = await ownerRows(tester);
+
+        await tester.runAsync(
+          () => ScopeCachePurge(db).applyTo(
+            const AuthorityRefresh.unavailable(
+              AuthorityUnavailableReason.offline,
+            ),
+            previous: _ownerAuthority(),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Partner Alpha'), findsOneWidget);
+        expect(await ownerRows(tester), rows);
+      });
+
+      for (final shell in const [AppShellKind.desktop, AppShellKind.mobile]) {
+        uiTest(
+          '${shell.name}: the navigation entry disappears when it is lost',
+          (tester) async {
+            await tester.binding.setSurfaceSize(
+              shell == AppShellKind.desktop
+                  ? const Size(1440, 900)
+                  : const Size(390, 844),
+            );
+            addTearDown(() => tester.binding.setSurfaceSize(null));
+            final session = _Session(
+              readySession(authority: _ownerAuthority()),
+            );
+            await tester.pumpWidget(
+              ProviderScope(
+                overrides: [
+                  databaseProvider.overrideWithValue(db),
+                  sessionProvider.overrideWith(() => session),
+                ],
+                child: KrishnaMisApp(shellKind: shell),
+              ),
+            );
+            await tester.pumpAndSettle();
+
+            Finder entry() => shell == AppShellKind.desktop
+                ? find.text('Owner Settlement')
+                : find.byKey(const Key('more-owner-settlement'));
+
+            if (shell == AppShellKind.mobile) {
+              await tester.tap(find.text('More').last);
+              await tester.pumpAndSettle();
+            }
+            expect(entry(), findsOneWidget);
+
+            session.become(readySession(authority: withoutSettlement()));
+            await tester.pumpAndSettle();
+            expect(entry(), findsNothing);
+          },
+        );
+      }
+    },
+  );
 }
