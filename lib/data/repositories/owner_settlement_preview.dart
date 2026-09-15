@@ -30,6 +30,7 @@
 /// to be one.
 library;
 
+import 'package:krishna_mis/data/sync/canonical_cache_lock.dart';
 import 'package:krishna_mis/data/reporting/reporting_engine.dart';
 import 'package:krishna_mis/data/repositories/owner_settlement_repository.dart';
 import 'package:krishna_mis/domain/auth/capability.dart';
@@ -115,7 +116,11 @@ final class OwnerSettlementPreviewService {
     required this.repository,
     required this.reporting,
     required this.principal,
+    required this.lock,
   });
+
+  /// The shared canonical-cache boundary (D-227).
+  final CanonicalCacheLock lock;
 
   /// The owner-keyed canonical cache, for **this** person (D-074).
   final OwnerSettlementRepository repository;
@@ -146,7 +151,20 @@ final class OwnerSettlementPreviewService {
 
   /// The preview for the calendar month [year]-[month], consolidated over
   /// [businessUnitIds] — every property the organisation's P&L covers.
+  ///
+  /// Every read — cumulative profit to the period end, cumulative profit before it, each
+  /// property's month, and the owner history — happens in **one span under the shared
+  /// canonical-cache lock**, so a refresh cannot commit between them and pair figures from
+  /// two snapshots (D-227).
   Future<OwnerSettlementPreview> preview({
+    required int year,
+    required int month,
+    required Set<String> businessUnitIds,
+  }) => lock.run(
+    () => _preview(year: year, month: month, businessUnitIds: businessUnitIds),
+  );
+
+  Future<OwnerSettlementPreview> _preview({
     required int year,
     required int month,
     required Set<String> businessUnitIds,

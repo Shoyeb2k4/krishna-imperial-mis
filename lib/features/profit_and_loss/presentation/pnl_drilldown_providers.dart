@@ -391,19 +391,21 @@ final pnlDrillLevelProvider = FutureProvider.autoDispose
           if (parent == null) {
             return const PnlDrillRefused(PnlDrillRefusal.reportChanged);
           }
-          final rows = await ref.watch(pnlReportingLockProvider).run(() async {
-            final source = await ref.watch(
-              reportingDrilldownSourceProvider.future,
-            );
-            return source.expenseDocuments(
-              scope: anchor.scope,
-              range: anchor.range,
-              businessUnitId: businessUnitId,
-              departmentId: departmentId,
-              sectionId: sectionId,
-              categoryId: categoryId,
-            );
-          });
+          final rows = await ref.watch(canonicalCacheLockProvider).run(
+            () async {
+              final source = await ref.watch(
+                reportingDrilldownSourceProvider.future,
+              );
+              return source.expenseDocuments(
+                scope: anchor.scope,
+                range: anchor.range,
+                businessUnitId: businessUnitId,
+                departmentId: departmentId,
+                sectionId: sectionId,
+                categoryId: categoryId,
+              );
+            },
+          );
           return switch (rows) {
             DrilldownRowsUnavailable(:final reason) => PnlDrillRefused(
               _refusalFor(reason),
@@ -433,17 +435,19 @@ final pnlDrillLevelProvider = FutureProvider.autoDispose
           if (parent == null) {
             return const PnlDrillRefused(PnlDrillRefusal.reportChanged);
           }
-          final rows = await ref.watch(pnlReportingLockProvider).run(() async {
-            final source = await ref.watch(
-              reportingDrilldownSourceProvider.future,
-            );
-            return source.revenueDocuments(
-              scope: anchor.scope,
-              range: anchor.range,
-              businessUnitId: businessUnitId,
-              revenueCategoryId: revenueCategoryId,
-            );
-          });
+          final rows = await ref.watch(canonicalCacheLockProvider).run(
+            () async {
+              final source = await ref.watch(
+                reportingDrilldownSourceProvider.future,
+              );
+              return source.revenueDocuments(
+                scope: anchor.scope,
+                range: anchor.range,
+                businessUnitId: businessUnitId,
+                revenueCategoryId: revenueCategoryId,
+              );
+            },
+          );
           return switch (rows) {
             DrilldownRowsUnavailable(:final reason) => PnlDrillRefused(
               _refusalFor(reason),

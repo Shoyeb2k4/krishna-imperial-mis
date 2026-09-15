@@ -108,6 +108,7 @@ final ownerSettlementPreviewProvider = FutureProvider<OwnerSettlementPreview>((
   final engine = await ref.watch(localReportingEngineProvider.future);
 
   return OwnerSettlementPreviewService(
+    lock: ref.watch(canonicalCacheLockProvider),
     repository: ref.watch(ownerSettlementRepositoryProvider),
     reporting: engine,
     principal: principal,
@@ -187,6 +188,14 @@ class OwnerSettlementSyncController
       },
       periodEnd: month.lastDay,
       today: ref.read(currentBusinessDateProvider),
+      // Inside the shared lock: the next report or drill-down read loads the coverage these
+      // runs wrote, not the markers it held before them (D-227).
+      onCommitted: () {
+        if (!ref.mounted) return;
+        ref
+          ..invalidate(localReportingSourceProvider)
+          ..invalidate(reportingDrilldownSourceProvider);
+      },
     );
     if (!ref.mounted) return;
 

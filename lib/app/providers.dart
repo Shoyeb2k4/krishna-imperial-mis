@@ -8,6 +8,7 @@ library;
 import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:krishna_mis/data/sync/canonical_cache_lock.dart';
 import 'package:krishna_mis/data/local/app_database.dart';
 import 'package:krishna_mis/data/repositories/local_master_usage_reader.dart';
 import 'package:krishna_mis/data/attachments/attachment_source.dart';
@@ -262,6 +263,12 @@ final vendorUsageProvider = FutureProvider.family<MasterUsage, String>(
 // ── Reporting (Phase 5) ─────────────────────────────────────────────────────
 
 /// The canonical reporting cache: server-owned figures, synchronised for reporting.
+/// The one serialisation boundary every canonical reporting and owner cache reader and
+/// writer shares (D-227). One instance for the whole application.
+final canonicalCacheLockProvider = Provider<CanonicalCacheLock>(
+  (ref) => CanonicalCacheLock(),
+);
+
 final reportingCacheProvider = Provider<ReportingCache>(
   (ref) => ReportingCache(ref.watch(databaseProvider)),
 );
@@ -382,6 +389,7 @@ final ownerSettlementRefresherProvider = Provider<OwnerSettlementRefresher?>((
     return null;
   }
   return OwnerSettlementRefresher(
+    lock: ref.watch(canonicalCacheLockProvider),
     ownerSync: OwnerSettlementSync(
       database: ref.watch(databaseProvider),
       gateway: gateway,

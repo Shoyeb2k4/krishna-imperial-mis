@@ -52,6 +52,7 @@ import 'dart:io';
 import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:krishna_mis/data/sync/canonical_cache_lock.dart';
 import 'package:krishna_mis/data/local/app_database.dart';
 import 'package:krishna_mis/data/remote/authority_gateway.dart';
 import 'package:krishna_mis/data/remote/owner_ledger_gateway.dart';
@@ -535,6 +536,7 @@ void main() {
         principal: authority.principal,
       );
       refresher = OwnerSettlementRefresher(
+        lock: CanonicalCacheLock(),
         ownerSync: OwnerSettlementSync(
           database: db,
           gateway: OwnerLedgerGateway(owner),
@@ -564,6 +566,7 @@ void main() {
         ),
       );
       return OwnerSettlementPreviewService(
+        lock: CanonicalCacheLock(),
         repository: repository,
         reporting: engine,
         principal: authority.principal,
@@ -783,6 +786,7 @@ void main() {
         for (final email in const [_accountant, _ccrManager]) {
           final other = await authorityOf(email);
           final preview = await OwnerSettlementPreviewService(
+            lock: CanonicalCacheLock(),
             repository: OwnerSettlementRepository(
               db,
               principal: other.principal,

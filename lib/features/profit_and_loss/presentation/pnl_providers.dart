@@ -22,7 +22,7 @@
 /// writing it. Were a synchronisation to land between two of those queries, a P&L could pair
 /// revenue from one snapshot with expenses from another — a report of a moment that never
 /// existed (D-188). Every report read and every synchronisation this surface starts takes
-/// [ReportingCacheLock], so the two are serialised.
+/// [CanonicalCacheLock], so the two are serialised.
 ///
 /// ## Nothing here calculates
 ///
@@ -33,6 +33,7 @@ library;
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:krishna_mis/data/sync/canonical_cache_lock.dart';
 import 'package:krishna_mis/app/providers.dart';
 import 'package:krishna_mis/data/remote/remote_outcome.dart';
 import 'package:krishna_mis/data/reporting/reporting_engine.dart';
@@ -432,22 +433,6 @@ Object _resolve({
 
 // ── The report ──────────────────────────────────────────────────────────────
 
-/// Serialises cache reads and cache writes started by this surface.
-final class ReportingCacheLock {
-  Future<void> _tail = Future<void>.value();
-
-  Future<T> run<T>(Future<T> Function() action) {
-    final previous = _tail;
-    final released = Completer<void>();
-    _tail = released.future;
-    return previous.then((_) => action()).whenComplete(released.complete);
-  }
-}
-
-final pnlReportingLockProvider = Provider<ReportingCacheLock>(
-  (ref) => ReportingCacheLock(),
-);
-
 final pnlViewProvider = FutureProvider<PnlView>((ref) async {
   final principal = ref.watch(sessionProvider).principal;
   final options = await ref.watch(pnlScopeOptionsProvider.future);
@@ -469,7 +454,7 @@ final pnlViewProvider = FutureProvider<PnlView>((ref) async {
     pnlSyncProvider.select((s) => s.serverHasNewer ? s.newerKey : null),
   );
 
-  final envelope = await ref.watch(pnlReportingLockProvider).run(() async {
+  final envelope = await ref.watch(canonicalCacheLockProvider).run(() async {
     // Inside the lock, so the coverage markers the engine loads belong to the same
     // cache state as the figures it then reads.
     final engine = await ref.watch(localReportingEngineProvider.future);
@@ -676,7 +661,7 @@ class PnlSyncController extends Notifier<PnlSyncStatus> {
       if (head.confirmed) newer = head.serverHasNewer;
     }
 
-    final lock = ref.read(pnlReportingLockProvider);
+    final lock = ref.read(canonicalCacheLockProvider);
     final reports = await lock.run(() async {
       final runs = <ReportingSyncReport>[
         if (normal.isNotEmpty)

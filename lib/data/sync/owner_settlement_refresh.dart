@@ -32,6 +32,7 @@
 library;
 
 import 'package:krishna_mis/data/repositories/owner_settlement_repository.dart';
+import 'package:krishna_mis/data/sync/canonical_cache_lock.dart';
 import 'package:krishna_mis/data/sync/owner_settlement_sync.dart';
 import 'package:krishna_mis/data/sync/reporting_sync.dart';
 import 'package:krishna_mis/domain/expenses/expense_number.dart'
@@ -64,7 +65,11 @@ final class OwnerSettlementRefresher {
     required this.ownerSync,
     required this.reportingSync,
     required this.repository,
+    required this.lock,
   });
+
+  /// The shared canonical-cache boundary (D-227).
+  final CanonicalCacheLock lock;
 
   final OwnerSettlementSync ownerSync;
   final ReportingSync reportingSync;
@@ -74,7 +79,27 @@ final class OwnerSettlementRefresher {
   ///
   /// [today] is the business date retention is measured from, so a year normal retention
   /// would prune is fetched **on demand** rather than silently dropped again (D-170).
+  ///
+  /// The whole refresh runs as **one span under the shared canonical-cache lock**, so no
+  /// P&L read, drill-down read or settlement preview can observe the reporting cache
+  /// between this refresh's writes (D-227). [onCommitted] runs while the lock is still
+  /// held, so a reader queued behind it re-reads the coverage these runs wrote.
   Future<OwnerSettlementRefreshReport> refresh({
+    required Set<String> businessUnitIds,
+    required BusinessDate periodEnd,
+    required BusinessDate today,
+    void Function()? onCommitted,
+  }) => lock.run(() async {
+    final report = await _refresh(
+      businessUnitIds: businessUnitIds,
+      periodEnd: periodEnd,
+      today: today,
+    );
+    onCommitted?.call();
+    return report;
+  });
+
+  Future<OwnerSettlementRefreshReport> _refresh({
     required Set<String> businessUnitIds,
     required BusinessDate periodEnd,
     required BusinessDate today,

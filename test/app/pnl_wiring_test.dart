@@ -13,6 +13,7 @@ import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:krishna_mis/data/sync/canonical_cache_lock.dart';
 import 'package:krishna_mis/app/providers.dart';
 import 'package:krishna_mis/app/routing/app_router.dart';
 import 'package:krishna_mis/app/routing/app_routes.dart';
@@ -20,7 +21,6 @@ import 'package:krishna_mis/data/local/app_database.dart';
 import 'package:krishna_mis/data/reporting/cached_reporting_source.dart';
 import 'package:krishna_mis/features/profit_and_loss/presentation/mobile_profit_and_loss_page.dart';
 import 'package:krishna_mis/features/profit_and_loss/presentation/profit_and_loss_page.dart';
-import 'package:krishna_mis/features/profit_and_loss/presentation/pnl_providers.dart';
 import 'package:timezone/data/latest.dart' as tzdata;
 
 import '../support/test_session.dart';
@@ -65,8 +65,8 @@ void main() {
       // "unavailable" rather than inventing one.
       expect(container.read(reportingSyncProvider), isNull);
       expect(
-        container.read(pnlReportingLockProvider),
-        isA<ReportingCacheLock>(),
+        container.read(canonicalCacheLockProvider),
+        isA<CanonicalCacheLock>(),
       );
     },
   );

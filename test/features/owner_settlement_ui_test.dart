@@ -16,6 +16,7 @@ import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:krishna_mis/data/sync/canonical_cache_lock.dart';
 import 'package:krishna_mis/app/app.dart';
 import 'package:krishna_mis/app/providers.dart';
 import 'package:krishna_mis/app/routing/app_router.dart';
@@ -524,6 +525,7 @@ void main() {
       _OwnerSource source,
       String userId,
     ) => OwnerSettlementRefresher(
+      lock: CanonicalCacheLock(),
       ownerSync: OwnerSettlementSync(
         database: db,
         gateway: source,

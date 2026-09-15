@@ -9,6 +9,7 @@ library;
 
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:krishna_mis/data/sync/canonical_cache_lock.dart';
 import 'package:krishna_mis/data/local/app_database.dart';
 import 'package:krishna_mis/data/remote/owner_ledger_gateway.dart';
 import 'package:krishna_mis/data/remote/remote_outcome.dart';
@@ -257,6 +258,7 @@ void main() {
     Principal? principal,
     ReportingFactsSource? source,
   }) => OwnerSettlementPreviewService(
+    lock: CanonicalCacheLock(),
     repository: repository,
     reporting: LocalReportingEngine(source ?? _Facts(_rows)),
     principal: principal ?? _owner,

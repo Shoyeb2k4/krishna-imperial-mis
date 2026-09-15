@@ -7,6 +7,7 @@ library;
 
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:krishna_mis/data/sync/canonical_cache_lock.dart';
 import 'package:krishna_mis/data/local/app_database.dart';
 import 'package:krishna_mis/data/remote/owner_ledger_gateway.dart';
 import 'package:krishna_mis/data/remote/remote_outcome.dart';
@@ -88,6 +89,7 @@ void main() {
     reporting = _Reporting();
     owner = _Owner(() => RemoteOk(_owner(start: '2026-04-01')));
     refresher = OwnerSettlementRefresher(
+      lock: CanonicalCacheLock(),
       ownerSync: OwnerSettlementSync(
         database: db,
         gateway: owner,
