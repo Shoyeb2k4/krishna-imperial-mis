@@ -8188,3 +8188,44 @@ the host coordinate through a handshake file (`S11_HANDSHAKE`), the pattern the 
 `revoked` phase already uses. The phase observes the loss through a real authority refresh and
 never asserts on a role name. Temporary grants the phase creates are revoked by the phase and
 their rows removed by the host, so `user_roles` returns to its captured fingerprint.
+
+## D-244 — The persisted session is handed back whole, so a restart restores it
+**Date:** 2026-09-15 · **Status:** Implemented / Tested — **a Phase 2 defect found by Slice 11**
+
+**Symptom.** Every Windows acceptance log began with two `supabase_flutter` warnings —
+`Error while setting initial session` and `Error while recovering session`, each a
+`FormatException` at character 1 — followed by the first 75 characters of a JWT header.
+
+**Cause, confirmed in the package source rather than assumed.** `supabase_flutter` 2.17.2 passes
+whatever `LocalStorage.accessToken()` returns straight to `auth.setInitialSession(...)` and
+`auth.recoverSession(...)`, both of which parse the **persisted session JSON**; its own shipped
+storage returns the stored string unchanged. `SecureSessionStorage.accessToken()` decoded that
+string and returned only its `access_token` field. Recovery could never parse it, so no session
+was ever restored and every launch fell back to the sign-in screen.
+
+**Why nothing noticed.** It failed closed — nobody saw anybody else's data — and the `restart`
+phase the acceptance header has listed since Phase 2 ("no sign-in at all — the session must come
+back on its own") **never existed**: git history holds no commit that ever added it. A documented
+check that nothing implemented, the family D-071 and D-077 record.
+
+**Proven RED twice.** The host contract test (`test/data/session_storage_contract_test.dart`)
+failed 2 of 3. In the real Windows executable, `slice11-restart-a` signed in and exited without
+signing out, and `slice11-restart-b` then timed out waiting for the session to come back.
+
+**Decision.** `accessToken()` returns the stored session string unchanged. The key, the platform
+secure store (Android Keystore, Windows DPAPI — D-022, D-036) and sign-out removal are unchanged.
+
+**GREEN.** The contract test passes 3 of 3. On Windows, `slice11-restart-b` restores the same
+person's session with no sign-in, reads the cached report offline, and refreshes on reconnect,
+with no session-recovery warning in the log.
+
+**Control.** The shipped adapter from `HEAD` turns the contract test RED (2 of 3); the fix,
+restored byte-identical, passes 3 of 3. Commit `1eb6a25`.
+
+**Exposure, measured rather than assumed.** The logged fragment was a JWT **header** only —
+algorithm and key id, truncated at 75 characters, no payload and no signature — and it was
+written to local acceptance logs outside the repository, never committed. With the fix the
+warning, and so the fragment, no longer appears.
+
+**On Android** the emulator reinstalls the application on every launch, so restart persistence
+there is a manual physical-device check (§Q.2 items 6 and 7) rather than an automated phase.
