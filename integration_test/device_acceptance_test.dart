@@ -8211,15 +8211,54 @@ void main() {
     await settlePnl(tester, container);
     final before = container.read(pnlSyncProvider);
     await tester.fling(phonePnlScrollable(), const Offset(0, 500), 1500);
-    await pumpUntil(
-      tester,
-      'pull-to-refresh to run the synchronisation',
-      () {
-        final now = container.read(pnlSyncProvider);
-        return !identical(now, before) && !now.isRunning;
-      },
-      timeout: const Duration(seconds: 90),
-    );
+    try {
+      await pumpUntil(
+        tester,
+        'pull-to-refresh to run the synchronisation',
+        () {
+          final now = container.read(pnlSyncProvider);
+          return !identical(now, before) && !now.isRunning;
+        },
+        timeout: const Duration(seconds: 90),
+      );
+    } catch (_) {
+      // A refresh that resolves nothing leaves the status untouched, so "the gesture never
+      // fired" and "the run returned early" look identical from out here. Say which, the way
+      // the offline drill-down step reports what was on screen (D-239, D-075).
+      final status = container.read(pnlSyncProvider);
+      final scopes = container.read(pnlScopeOptionsProvider);
+      final rules = container.read(businessDayRulesProvider);
+      final view = container.read(pnlViewProvider);
+      debugPrint(
+        'DIAG pull-to-refresh: phase=${status.phase} running=${status.isRunning} '
+        'identical=${identical(status, before)} '
+        'period=${container.read(pnlSelectionProvider).period} '
+        'scopeOptions=${scopes.hasValue
+            ? 'value'
+            : scopes.hasError
+            ? 'error:${scopes.error}'
+            : 'loading'} '
+        'rules=${rules.hasValue
+            ? 'value'
+            : rules.hasError
+            ? 'error:${rules.error}'
+            : 'loading'} '
+        'view=${view.hasValue
+            ? view.value.runtimeType
+            : view.hasError
+            ? 'error:${view.error}'
+            : 'loading'}',
+      );
+      // Does the header control refresh at all? If it does, the gesture is what did not
+      // arrive; if it does not, the run itself cannot resolve anything to fetch.
+      try {
+        await refreshPhonePnl(tester, container);
+        debugPrint('DIAG the header refresh control ran the synchronisation');
+      } catch (e) {
+        debugPrint('DIAG the header refresh control did not run it either: $e');
+      }
+      rethrow;
+    }
     expect(container.read(pnlSyncProvider).phase, PnlSyncPhase.succeeded);
     await settlePnl(tester, container);
   }
