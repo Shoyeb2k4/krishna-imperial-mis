@@ -544,6 +544,10 @@ Run on the local `Pixel_8` emulator against `krishna-mis-dev`, one process launc
 
 ### O.2 Physical Android device — **PENDING, required before Phase 5 closes** (D-230)
 
+**Automated physical-device phases ran on the Galaxy A06 (SM-A066B, Android 16 / API 36)
+on 2026-09-17 and PASS**: `android-pnl`, `android-pnl-scope`, `android-pnl-switch`. The lines
+below are the *manual* half and are performed by a person; they are not discharged by that run.
+
 On a real phone (the Galaxy A06 or another approved target), with a clean dev build:
 
 - [ ] Reports opens directly to Profit & Loss; no reports menu; Owner Settlement not reachable from it
@@ -575,6 +579,9 @@ One process launch per phase, with the same commands as §O.1:
 
 ### P.2 Physical Android device — **PENDING, with §O.2, before Phase 5 closes**
 
+**`android-pnl-drill` ran on the same physical phone on 2026-09-17 and PASSES.** The lines
+below are the manual half.
+
 - [ ] A category line opens its documents; each level adds up exactly to the line it came from.
 - [ ] A document opens read-only, with no Edit, Void, Review latest or attachment control,
       even for a principal who could do those from the ledger.
@@ -589,22 +596,27 @@ One process launch per phase, run strictly one at a time, with the same commands
 The revocation phase also needs `--dart-define=S11_HANDSHAKE=<scratch>/slice11_handshake.json`
 and the host acting on each handshake step (D-243).
 
-- [ ] `windows-owner-settlement` / `android-owner-settlement`: "Settlement start date not
+- [x] `windows-owner-settlement` / `android-owner-settlement` — **PASS**, Windows and the physical Galaxy A06 (2026-09-17): "Settlement start date not
       configured" on the clean baseline; a disposable start date through the audited RPC; the
       June preview equal to the independent oracle; offline still readable; a reader refused
-- [ ] `slice11-shared-device` (Windows, Android): the next person inherits nothing of the
+- [x] `slice11-shared-device` (Windows, Android) — **PASS** on both, the phone physical (2026-09-17): the next person inherits nothing of the
       previous person's figures, scope, drill-down, document, freshness, coverage or settlement
-- [ ] `slice11-lifecycle` (Windows, Android): create → correct across periods → closed period →
+- [x] `slice11-lifecycle` (Windows, Android) — **PASS** on both, the phone physical (2026-09-17): create → correct across periods → closed period →
       void → offline and reconnect → older financial year, every figure equal to the server
-- [ ] `slice11-revocation` (Windows, host-coordinated): each P&L capability, `owner_settlement.view`
+- [x] `slice11-revocation` (Windows, host-coordinated) — **PASS** (2026-09-17), five capabilities removed and each restored exactly: each P&L capability, `owner_settlement.view`
       and unscoped `reports.view` lost while open; exact restoration read back
-- [ ] After every phase: the disposable start date removed through the administrator path, and
-      the development baseline compared and restored
+- [x] After every phase: the disposable start date removed through the administrator path, and
+      the development baseline compared and restored — done three times; settings rows **0**,
+      role-capability hash and grant ids identical to the pre-run capture
 
 ### Q.2 Physical Android device — **manual checklist for the project lead**
 
 Performed by a person on the Galaxy A06 (or another approved phone) with the clean dev build.
 Record each line as **PASS / FAIL / NOT TESTED**. Automation never fills these in.
+
+Issued to the project lead on 2026-09-17, with a clean dev build installed on the phone
+(rebuilt with `config/dev.json` only, 0 of 6 identity passwords in it). **Every line below is
+NOT TESTED until he reports it; Slice 11 is not closed on the automated phases alone.**
 
 | # | Check | Result |
 |---|---|---|

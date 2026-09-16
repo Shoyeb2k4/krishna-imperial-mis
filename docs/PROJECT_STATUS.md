@@ -5268,3 +5268,105 @@ comparisons, export, printing, editing from reports, and finalized owner stateme
 
 **Slice 11 — full live, device and two-client acceptance — is safe to scope from this
 foundation and has not been started.**
+
+---
+
+# PHASE 5 SLICE 11 — FULL REPORTING / OWNER ACCOUNTS ACCEPTANCE: **AUTOMATED GATES COMPLETE — MANUAL PHONE PASS PENDING**
+
+Verified 2026-09-16/17 against `krishna-mis-dev` only (`loratzmactetjbqolwri`). Decisions
+**D-240 … D-248**. No schema change and no migration: local Drift schema stays **v21**, the
+ledger stays at **101** versions.
+
+**Slice 11 is NOT closed.** Every automated gate below has run and passed; the physical-device
+**manual** checklist (§Q.2, ten items) is with the project lead and is recorded as **NOT
+TESTED** until he reports each line. Slice 12 is not started.
+
+## 1 · Physical Android device acceptance — the first in this project
+
+Galaxy A06, **SM-A066B**, serial `R9ZY50M3GVX`, **Android 16 / API 36**, dev flavour against
+`krishna-mis-dev`. The Pixel_8 emulator was shut down first and `adb devices` showed exactly
+one target for every run; no emulator and physical run overlapped (D-230).
+
+| Phase | Result |
+|---|---|
+| `android-pnl` | **PASS** |
+| `android-pnl-scope` | **PASS** |
+| `android-pnl-switch` | **PASS** |
+| `android-pnl-drill` | **PASS** |
+| `android-owner-settlement` | **PASS** |
+| `slice11-shared-device` | **PASS** |
+| `slice11-lifecycle` | **PASS** |
+
+**Two failures came first and are reported as failures, not re-run into silence.** The first
+run failed at sign-in with `Failed host lookup … errno = 7`: the phone has no SIM and its
+Wi-Fi had dropped with the screen off, so nothing reached the backend. The second reached the
+P&L and timed out in pull-to-refresh; that one is **unexplained**, a diagnostic was built to
+tell its three possible causes apart, and it printed nothing across all seven later phases
+(D-248).
+
+## 2 · Windows acceptance
+
+| Phase | Result |
+|---|---|
+| `windows-owner-settlement` | **PASS** |
+| `slice11-shared-device` | **PASS** |
+| `slice11-lifecycle` | **PASS** |
+| `slice11-restart-a` / `-b` | **PASS** — re-proven on the D-246 session store, with **zero** session-recovery warnings in the log |
+| `slice11-revocation` (host-coordinated, D-243) | **PASS**, 5 m 29 s |
+
+The revocation phase ran the full handshake: five capabilities removed one at a time —
+`manager` losing `reports.view`, `revenue.view` and `expense.view.all`, then `owner` losing
+`owner_settlement.view` and `reports.view` — each observed through a real authority refresh and
+each **restored exactly**, with the role-capability hash read back as `c1b4870f…` after every
+single restore.
+
+## 3 · Verified
+
+| Gate | Status | Evidence |
+|---|---|---|
+| `dart format --set-exit-if-changed` | **Tested** | clean, 307 files |
+| `flutter analyze` | **Tested** | **No issues found** |
+| Host suite | **Tested** | **2,097 passed** |
+| Live suites, `--concurrency=1` | **Tested** | **106 passed** — reporting 13, parity 29, owner accounts 31, settlement 20, drill-down 5, owner completeness audit 8 |
+| Physical Android phases | **Tested** | 7 phases, above |
+| Windows phases | **Tested** | 7 phases, above |
+| Secret scan — tree, git history, built artefacts | **Tested** | clean, controls passing |
+| Clean Android dev build | **Tested** | rebuilt with `config/dev.json` only and installed on the phone; **0 of 6** identity passwords in it |
+| Physical Android **manual** checklist (§Q.2) | **NOT TESTED** | ten items, with the project lead |
+
+**The artefact scan earned its keep again.** It first refused: the Windows **Debug** bundle and
+`build/flutter_assets` — both acceptance intermediates — still carried a development identity
+password. Both were removed and the scan re-run clean, which is the Slice 13 lesson repeating
+(D-069): build clean, then scan the artefacts rather than assuming them.
+
+## 4 · The development project afterwards
+
+Compared against a fingerprint captured **before** the first run, not against memory:
+
+| | |
+|---|---|
+| `owner_settlement_settings` | **0 rows** — "Settlement start date not configured". The disposable `2026-05-01` fixture was removed through the administrator teardown asset **three times**: after the phone's settlement phase, after the Windows one, and after the live suites |
+| Open revenue · owner movements | **0 · 0** |
+| Open expenses | **61**, every one pre-existing |
+| Role grants | **7 rows, 5 active**, ids unchanged; the revocation phase's two temporary grants were revoked by the phase and their rows removed by the host (D-243) |
+| Role capabilities | **80 rows**, hash `c1b4870f…` — identical to the pre-run capture |
+| Closed periods · live tax rules · bands / subtypes / statuses | **0 · 4 · 0 / 0 / 0** |
+| Migration ledger | **101** |
+
+**One fingerprint moved and is not being restored.** `user_roles` row `aa7c36ee…` — the Hotel
+Krishna grant the D-187 consolidated-authority regression makes and withdraws inside the live
+parity suite — carries today's `granted_at` and `revoked_at` instead of 2026-09-13. The row,
+its id and its revoked state are unchanged, and rewriting a timestamp to make a hash match
+would be falsifying the record rather than restoring it.
+
+## 5 · Still outstanding before Slice 12
+
+1. **The §Q.2 manual physical-device checklist**, ten items, performed by the project lead on
+   the Galaxy A06 with the clean build now installed. Item 7 — the app still signed in after a
+   force-stop — is the first real test of session restore on a phone, because the emulator
+   reinstalls the application on every run (D-244).
+2. Slice 11 closure and the Slice 12 documentation pass, **not started**.
+
+Carried forward unchanged: the D-146 fresh-branch migration replay before the first staging
+deploy; D-229's wording point about the Material picker; and the production 50:50 settlement
+start date, which remains a project-lead business decision.

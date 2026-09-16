@@ -8339,3 +8339,74 @@ Restored byte-identical (`cmp`), all pass.
 
 **Dependencies.** `win32` and `ffi` become direct dependencies at the versions already
 locked (5.15.0, 2.2.0). The lockfile changed only their classification.
+
+## D-247 — The real Windows installation has a database and no key store
+**Date:** 2026-09-16 · **Status:** Recorded — forensic evidence only; answers the question
+D-246 left with the project lead
+
+**What was checked, and by whom.** The project lead inspected
+`%APPDATA%\Krishna Imperial\Krishna Imperial MIS\` on the real Windows account, outside
+any packaged process. It holds `krishna_mis.db`. **It holds no `flutter_secure_storage.dat`.**
+Nothing was renamed, moved, deleted or modified.
+
+**What that means.** On Windows the database key lives in that file (D-036, D-246). With
+the file absent, that installation's database cannot currently be opened by the app. On its
+next launch the app would find no key, and would not be able to read the existing file.
+
+**What it does not establish.** Why the file is missing. Three explanations fit the evidence,
+and none is proven:
+
+* it was never written at that location;
+* the plugin deleted it after a failed read (the D-246 hazard);
+* a process removed it before D-246 kept acceptance runs out of the shared store.
+
+The record does not choose between them.
+
+**Rules that follow.**
+
+* `krishna_mis.db` on the real installation is **not** deleted, modified, opened or
+  "recovered" by any step of this project. Recovering it is not a goal.
+* It is **not** an acceptance fixture. Acceptance uses its own data folder on Windows
+  (D-246), independent of whether that database can ever be read again.
+* D-246's isolation is judged on its own tests, never on the state of that folder.
+* It held development data from the Phase 3 clean-build check (31 Aug). No production
+  financial data exists anywhere yet, so nothing of the business is lost.
+
+## D-248 — A pull-to-refresh that did not refresh, once, on a real phone
+**Date:** 2026-09-17 · **Status:** Recorded — **not explained, and not called flaky**
+
+The first physical-device run of `android-pnl` on the Galaxy A06 reached the P&L, rendered
+the category rows, and then timed out in `pullToRefreshPnl` after ninety seconds:
+*"timed out waiting for: pull-to-refresh to run the synchronisation"*. The same phase had
+passed on the emulator throughout Slices 9 and 10.
+
+**Why it could not simply be re-run.** D-075 is explicit, and this failure is the shape that
+rule exists for. `PnlSyncController._run` returns **without touching its status** when the
+selection resolves to nothing to fetch, and the helper waits for that status to change — so
+from outside the test, *"the gesture never arrived"*, *"the run returned early"* and *"an
+awaited provider never completed"* are one symptom. Re-running and reporting the green would
+have buried whichever of the three it was.
+
+**What was ruled out first, from the evidence in the log rather than by theory.** The custom
+range had been applied: `choosePhoneCustom` asserts `pnlSelectionProvider.period` equals the
+tapped days and it passed. The gesture landed inside the right scrollable: the printed
+finders at the drag point are the phone P&L's own list. And the run before it had failed for
+a different and fully explained reason — the phone had no SIM and its Wi-Fi had dropped with
+the screen off, so every request failed DNS (`errno = 7`) and nothing reached the backend.
+
+**What was built instead of a guess.** The helper now reports, on timeout: the sync phase and
+whether it is running, whether the status is still the identical object, the selected period,
+and whether the scope-options, business-day-rules and view providers hold a value, an error or
+are still loading — and then tries the **header refresh control**. That last step is the
+discriminator: if the header refreshes, the gesture is what did not arrive; if it does not,
+the run itself cannot resolve anything to fetch. It is the D-239 pattern, where the offline
+drill-down step prints what was on screen rather than only that it timed out.
+
+**And then it did not happen again.** Six physical-device phases ran with the diagnostic
+armed — `android-pnl`, `-scope`, `-switch`, `-drill`, `android-owner-settlement`,
+`slice11-shared-device`, `slice11-lifecycle` — and it printed nothing in any of them.
+
+**So the record says the honest thing: one timeout, cause unknown.** The diagnostic stays in
+the harness rather than being removed once the suite went green, because the next occurrence
+is the one that can be explained, and a diagnostic deleted for tidiness is one nobody has
+when it matters. If it recurs, its first line answers the question this entry could not.
