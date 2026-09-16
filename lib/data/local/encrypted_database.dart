@@ -51,8 +51,8 @@ void applyEncryptionKey(CommonDatabase db, String hexKey) {
 ///
 /// App-private storage on both platforms: `getApplicationSupportDirectory()` maps to
 /// the app sandbox on Android and to `%APPDATA%\<company>\<product>` on Windows.
-Future<File> resolveDatabaseFile() async {
-  final directory = await getApplicationSupportDirectory();
+Future<File> resolveDatabaseFile({Directory? directory}) async {
+  directory ??= await getApplicationSupportDirectory();
   await directory.create(recursive: true);
   return File(p.join(directory.path, _databaseFileName));
 }
@@ -60,10 +60,11 @@ Future<File> resolveDatabaseFile() async {
 /// Opens the real, encrypted, on-disk database for the running app.
 Future<AppDatabase> openEncryptedDatabase({
   DatabaseKeyManager? keyManager,
+  Directory? directory,
 }) async {
   final manager = keyManager ?? DatabaseKeyManager();
   final key = await manager.obtainKey();
-  final file = await resolveDatabaseFile();
+  final file = await resolveDatabaseFile(directory: directory);
 
   return AppDatabase(
     LazyDatabase(() async {

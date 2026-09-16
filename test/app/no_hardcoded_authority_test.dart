@@ -230,6 +230,8 @@ void main() {
       final main = File('lib/main.dart').readAsStringSync();
       expect(main, contains('await bootstrap()'));
       expect(main, isNot(contains('transport')));
+      // The acceptance data folder is the same kind of parameter (D-246).
+      expect(main, isNot(contains('appDataDirectory')));
     });
 
     test('lib/ contains no fault-injection switch of its own', () {

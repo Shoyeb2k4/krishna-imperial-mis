@@ -448,6 +448,11 @@ FFI implementation is. `cmdkey /list` shows no credential for the application, w
 confirms it. If the residual risk above ever needs reducing, the deliberate fixes are
 application entropy passed to `CryptProtectData`, or a user-supplied passphrase.
 
+**Since D-246 the Windows session is not in that blob.** It lives in its own
+DPAPI-protected file, `krishna_mis.session.dpapi`, written atomically and never deleted on
+a failed read, because the plugin deletes its whole blob — database key included — when a
+read fails. Only the database key stays in the plugin store.
+
 **Residual risk on Windows is real and is accepted for V1**, mitigated by: requiring a
 Windows account password on the finance workstation, short application session lifetimes,
 re-authentication after idle, and no automatic sign-in. It is documented here so it is a

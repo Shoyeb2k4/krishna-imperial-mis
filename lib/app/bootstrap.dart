@@ -151,7 +151,14 @@ class BootstrapResult {
 /// unattended. Injecting the transport exercises the genuine path instead — real request
 /// construction, a real `SocketException`, the real classification in `SupabaseGateway`
 /// and the real session and sync decisions that follow from it.
-Future<BootstrapResult> bootstrap({http.Client? transport}) async {
+///
+/// `appDataDirectory` is the same kind of parameter, for the same caller: it gives the
+/// acceptance suite its own local database and session file, so a run never opens or
+/// replaces an installation somebody uses by hand (D-246). `main()` passes neither.
+Future<BootstrapResult> bootstrap({
+  http.Client? transport,
+  Directory? appDataDirectory,
+}) async {
   WidgetsFlutterBinding.ensureInitialized();
 
   final config = AppConfig.fromEnvironment();
@@ -166,7 +173,7 @@ Future<BootstrapResult> bootstrap({http.Client? transport}) async {
   tz_data.initializeTimeZones();
   tz.setLocalLocation(tz.getLocation('Asia/Kolkata'));
 
-  final database = await openEncryptedDatabase();
+  final database = await openEncryptedDatabase(directory: appDataDirectory);
 
   // The shipped seed exists so the application is usable with no backend at all — the
   // state Phase 1 shipped in. **It must not run once a backend is configured.** The seed
@@ -204,7 +211,9 @@ Future<BootstrapResult> bootstrap({http.Client? transport}) async {
       publishableKey: config.supabaseAnonKey,
       httpClient: transport,
       authOptions: FlutterAuthClientOptions(
-        localStorage: SecureSessionStorage(),
+        localStorage: SecureSessionStorage.forPlatform(
+          directory: appDataDirectory,
+        ),
         authFlowType: AuthFlowType.pkce,
       ),
     );

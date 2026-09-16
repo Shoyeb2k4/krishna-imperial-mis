@@ -17,6 +17,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:krishna_mis/data/local/session_secret_store.dart';
 import 'package:krishna_mis/domain/auth/session_state.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -147,17 +148,47 @@ class AuthGateway implements SessionAuth {
 /// Windows machine is a plain file any process belonging to that user can read. A refresh
 /// token is a bearer credential for company financial data, so it goes where the database
 /// key goes: Android Keystore, or DPAPI on Windows (D-022, D-036).
+///
+/// On Windows it no longer shares the database key's store: that store is deleted whole
+/// when a read fails, and the session is rewritten far more often than the key (D-246).
 class SecureSessionStorage extends LocalStorage {
-  SecureSessionStorage({FlutterSecureStorage? storage})
-    : _storage =
-          storage ??
-          const FlutterSecureStorage(
-            aOptions: AndroidOptions(encryptedSharedPreferences: true),
-          );
+  SecureSessionStorage({
+    SessionSecretStore? store,
+    FlutterSecureStorage? storage,
+    this._legacy,
+  }) : _store =
+           store ??
+           (storage != null
+               ? PluginSessionSecretStore(storage)
+               : sessionSecretStoreFor(Platform.operatingSystem));
 
-  final FlutterSecureStorage _storage;
+  /// What the application uses. On Windows the session lives in its own protected file,
+  /// and a session left in the shared plugin store by an earlier build is moved there
+  /// once. The move is skipped when [directory] is given: an acceptance run with its own
+  /// data folder must not take a session out of anybody else's store.
+  factory SecureSessionStorage.forPlatform({
+    String? operatingSystem,
+    Directory? directory,
+    DataProtector protector = const DpapiDataProtector(),
+    FlutterSecureStorage pluginStorage =
+        PluginSessionSecretStore.platformDefault,
+  }) {
+    final os = operatingSystem ?? Platform.operatingSystem;
+    return SecureSessionStorage(
+      store: sessionSecretStoreFor(
+        os,
+        directory: directory,
+        protector: protector,
+        pluginStorage: pluginStorage,
+      ),
+      legacy: os == 'windows' && directory == null
+          ? PluginSessionSecretStore(pluginStorage)
+          : null,
+    );
+  }
 
-  static const _key = 'krishna_mis.session.v1';
+  final SessionSecretStore _store;
+  final SessionSecretStore? _legacy;
 
   @override
   Future<void> initialize() async {}
@@ -170,17 +201,41 @@ class SecureSessionStorage extends LocalStorage {
   /// persisted session, and its own shipped storage returns the stored string unchanged.
   /// Returning only the `access_token` field made every restart fail to restore the session
   /// (Slice 11, D-244).
+  ///
+  /// A session in the older shared store is moved only when this store has never held
+  /// one. An unreadable session here is not a reason to go reading the shared store,
+  /// whose own failed read would delete the database key (D-246).
   @override
-  Future<String?> accessToken() => _storage.read(key: _key);
+  Future<String?> accessToken() async {
+    final current = await _store.read();
+    final legacy = _legacy;
+    if (current != null || legacy == null || await _store.exists()) {
+      return current;
+    }
+    final String? moved;
+    try {
+      moved = await legacy.read();
+    } on Object {
+      return null;
+    }
+    if (moved == null) return null;
+    await _store.write(moved);
+    try {
+      await legacy.delete();
+    } on Object {
+      // The copy is already in the new store; a leftover in the old one is never read
+      // again, because this store now exists.
+    }
+    return moved;
+  }
 
   @override
-  Future<bool> hasAccessToken() async =>
-      (await _storage.read(key: _key)) != null;
+  Future<bool> hasAccessToken() async => (await accessToken()) != null;
 
   @override
   Future<void> persistSession(String persistSessionString) =>
-      _storage.write(key: _key, value: persistSessionString);
+      _store.write(persistSessionString);
 
   @override
-  Future<void> removePersistedSession() => _storage.delete(key: _key);
+  Future<void> removePersistedSession() => _store.delete();
 }

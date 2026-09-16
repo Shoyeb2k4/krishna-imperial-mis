@@ -56,6 +56,10 @@ dependencies:
   intl: ^0.20.3
   path: ^1.9.1
   path_provider: ^2.1.6
+  # Windows DPAPI for the session file, kept apart from the key store (D-246). Both are
+  # already in the tree through flutter_secure_storage_windows; pinned to the locked minor.
+  win32: ^5.15.0
+  ffi: ^2.2.0
   collection: ^1.19.1
   meta: ^1.18.0
   sqlite3: ^3.5.2

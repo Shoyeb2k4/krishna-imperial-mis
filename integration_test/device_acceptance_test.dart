@@ -437,6 +437,16 @@ String _staleVersionMarker(int version) => 'seen-v$version';
 /// A second fixed id, for work the *Owner* queues before a user switch.
 const _ownerQueuedMutationId = 'b5d0e91a-7c34-4a68-8e2f-19b7d3c05a44';
 
+/// On Windows the acceptance run keeps its database and session in its own folder, so it
+/// never opens or replaces an installation somebody uses by hand (D-246). The folder is
+/// stable across launches, because the restart and accumulated-database phases depend on
+/// what an earlier launch left. Android reinstalls per run and uses the normal location.
+Directory? _acceptanceDataDirectory() => Platform.isWindows
+    ? Directory(
+        '${Directory.systemTemp.path}${Platform.pathSeparator}krishna_mis_acceptance',
+      )
+    : null;
+
 void main() {
   // A tap that lands on nothing is a *warning* by default, and the test then fails much
   // later on whatever the tap was supposed to cause — which at a financial synchronisation
@@ -451,7 +461,10 @@ void main() {
   late BootstrapResult boot;
 
   setUpAll(() async {
-    boot = await bootstrap(transport: _transport);
+    boot = await bootstrap(
+      transport: _transport,
+      appDataDirectory: _acceptanceDataDirectory(),
+    );
   });
 
   // ── Driving the real application ──────────────────────────────────────────

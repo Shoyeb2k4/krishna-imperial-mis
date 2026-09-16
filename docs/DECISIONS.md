@@ -8263,3 +8263,79 @@ together, 206 tests.
 
 **Control.** With the settlement month watching the whole session again, the regression turns
 RED, 2 of 2. The fix, restored byte-identical (`cmp`), passes.
+
+## D-246 — On Windows the session lives in its own protected file, apart from the database key
+**Date:** 2026-09-16 · **Status:** Implemented / Tested (project-lead decision: "split the
+stores") — **a Phase 1 storage hazard found by the Slice 11 revocation phase, proven RED
+first**
+
+**Symptom.** `slice11-revocation` run 4 failed before it started:
+`EncryptedDatabaseUnreadable … (sqlite 26)`. Run 3's log held the cause:
+`Failed to decrypt data … Failure on CryptUnprotectData() … Delete corrupt file:
+…flutter_secure_storage.dat`.
+
+**Cause, read from the locked plugin source.** `flutter_secure_storage_windows` **3.1.2**
+(the version in `pubspec.lock`; earlier notes that said 4.2.2 were wrong):
+
+* keeps every key in one DPAPI blob;
+* rewrites the whole blob on every change, with a non-atomic write;
+* does not serialise readers against writers;
+* **deletes the whole blob** when a read cannot decrypt it, then rethrows.
+
+The session is rewritten on every sign-in and token refresh. The database key
+(`krishna_mis.db_key.v1`) is written once per installation. They shared the blob. One
+failed session read deleted the key, a new key was generated, and the existing encrypted
+database could no longer be opened (D-022, D-036).
+
+**Proven RED on the host.** With a fake plugin that behaves the same way (clears
+everything and throws on a failed read), a failed session read changed the database key
+(`test/data/session_key_isolation_test.dart`).
+
+**Decision.**
+
+* **Windows:** the session lives in its own file, `krishna_mis.session.dpapi`, in the
+  application support folder. `ProtectedFileSessionStore`:
+  * protects it with DPAPI, current user, no entropy — the same protection the plugin
+    gives its blob, no weaker and no stronger (D-036);
+  * writes through a temporary file and renames it over the old one;
+  * runs reads and writes one at a time within the process;
+  * **never deletes the file because a read failed.** An unreadable session counts as no
+    session; the person signs in again and the next write replaces it.
+* **The database key stays in the plugin store**, unchanged.
+* **Android is unchanged:** the session stays in the Keystore-backed plugin store (D-022).
+* **Upgrade:** a session left in the plugin store by an earlier build is moved once, and
+  only while the new file has never existed. An unreadable new file is never a reason to
+  read the old store, because that read is the one that deletes the key.
+* `sessionSecretStoreFor(os)` is a plain function of the platform name, so a host test
+  asserts both production branches (D-077).
+
+**The acceptance run gets its own data folder.** `bootstrap` gains
+`Directory? appDataDirectory`, the same kind of parameter as D-058's transport. Only the
+acceptance harness passes it, on Windows only
+(`%TEMP%\krishna_mis_acceptance`). With a folder given, the session is never moved out of
+the plugin store. `main()` passes nothing, and a guard asserts `lib/main.dart` does not
+name it.
+
+**Why the acceptance could reach the project lead's store at all.** Processes started from
+the Claude desktop app run inside its MSIX package, whose file writes to Roaming are
+redirected to
+`…\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming`. Acceptance runs therefore wrote an
+overlay copy, while reads could still see the real Roaming folder. The real
+`%APPDATA%\Krishna Imperial\Krishna Imperial MIS\krishna_mis.db` (196,608 bytes,
+31 Aug) was not touched. Whether a real `flutter_secure_storage.dat` exists beside it
+could not be checked from this session and is **with the project lead to check**. The
+broken overlay database and store were moved aside, not deleted, into
+`s11-evidence-20260915`.
+
+**Tests.** 9 host tests: both platform branches; a failed session read leaves the key and
+the file; the next sign-in replaces an unreadable session with no temporary file left;
+sign-out removes the session only; an acceptance folder never takes the shared-store
+session; the one-time move; the unreadable-new-file case never reads the old store; a
+failing old store is no session; and a real DPAPI round trip on this host (not plaintext
+on disk, a damaged file kept, delete works).
+
+**Control.** With the Windows branch pointed back at the plugin store, 4 tests turn RED.
+Restored byte-identical (`cmp`), all pass.
+
+**Dependencies.** `win32` and `ffi` become direct dependencies at the versions already
+locked (5.15.0, 2.2.0). The lockfile changed only their classification.
