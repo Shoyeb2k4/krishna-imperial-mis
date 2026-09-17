@@ -21,6 +21,7 @@
 /// short session lifetimes, re-authentication after idle and no automatic sign-in.
 library;
 
+import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -39,10 +40,31 @@ class DatabaseKeyUnavailable implements Exception {
   String toString() => 'DatabaseKeyUnavailable: $reason';
 }
 
+/// Which stored key an installation opens its database with.
+///
+/// The acceptance suite is given its own data folder so it never opens or replaces a
+/// database somebody uses by hand (D-246). The **key** has to be its own too, or a run
+/// still creates, reads and can delete the real installation's entry in the shared store.
+///
+/// The folder decides, rather than a caller passing a string: `main()` passes no folder and
+/// so cannot reach the acceptance identifier, and a run given a folder cannot reach the
+/// production one. Neither invariant depends on anybody remembering.
+///
+/// Android is untouched — the harness passes a folder on Windows only, so an Android
+/// acceptance run keeps the production identifier and its Keystore-backed store (D-022).
+String databaseKeyNameFor({Directory? appDataDirectory}) =>
+    appDataDirectory == null
+    ? DatabaseKeyManager.storageKey
+    : DatabaseKeyManager.acceptanceStorageKey;
+
 class DatabaseKeyManager {
-  DatabaseKeyManager({FlutterSecureStorage? storage, Random? random})
-    : _storage = storage ?? _defaultStorage,
-      _random = random ?? Random.secure();
+  DatabaseKeyManager({
+    FlutterSecureStorage? storage,
+    Random? random,
+    String? keyName,
+  }) : _storage = storage ?? _defaultStorage,
+       _random = random ?? Random.secure(),
+       keyName = keyName ?? storageKey;
 
   /// Android: `encryptedSharedPreferences` is requested explicitly rather than left
   /// to the default, because it is what routes storage through
@@ -57,10 +79,20 @@ class DatabaseKeyManager {
 
   /// Versioned so a future key-rotation feature can migrate rather than collide.
   static const String storageKey = 'krishna_mis.db_key.v1';
+
+  /// The acceptance suite's own entry, so a run cannot create, read, replace or delete the
+  /// key of the installation a person uses by hand. Selected by the data folder, never by a
+  /// caller naming it (see [databaseKeyNameFor]).
+  static const String acceptanceStorageKey = 'krishna_mis.acceptance.db_key.v1';
+
   static const int keyLengthBytes = 32; // 256-bit
 
   final FlutterSecureStorage _storage;
   final Random _random;
+
+  /// The entry this manager reads, writes and deletes. Every operation names it, so one
+  /// installation's cleanup cannot reach another's key.
+  final String keyName;
 
   /// Returns the existing key, or creates and stores one on first run.
   ///
@@ -97,11 +129,11 @@ class DatabaseKeyManager {
   /// Removes the key. Only ever called by the explicit "sign out and erase local data"
   /// action, which refuses while the outbox holds unsynced entries. Deleting the key
   /// makes the local database permanently unreadable.
-  Future<void> deleteKey() => _storage.delete(key: storageKey);
+  Future<void> deleteKey() => _storage.delete(key: keyName);
 
   Future<String?> _read() async {
     try {
-      return await _storage.read(key: storageKey);
+      return await _storage.read(key: keyName);
     } on Exception catch (error) {
       // Deliberately does not include the exception's payload: platform channel errors
       // from secure storage have been known to echo stored material.
@@ -113,7 +145,7 @@ class DatabaseKeyManager {
 
   Future<void> _write(String value) async {
     try {
-      await _storage.write(key: storageKey, value: value);
+      await _storage.write(key: keyName, value: value);
     } on Exception catch (error) {
       throw DatabaseKeyUnavailable(
         'secure storage write failed (${error.runtimeType})',

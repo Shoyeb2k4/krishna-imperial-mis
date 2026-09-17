@@ -17,6 +17,7 @@ import 'package:krishna_mis/app/env/app_environment.dart';
 import 'package:krishna_mis/app/routing/app_router.dart';
 import 'package:krishna_mis/data/attachments/attachment_staging.dart';
 import 'package:krishna_mis/data/local/app_database.dart';
+import 'package:krishna_mis/data/local/database_key_manager.dart';
 import 'package:krishna_mis/data/local/encrypted_database.dart';
 import 'package:krishna_mis/data/local/seed/master_seed.dart';
 import 'package:krishna_mis/data/local/authority_store.dart';
@@ -173,7 +174,13 @@ Future<BootstrapResult> bootstrap({
   tz_data.initializeTimeZones();
   tz.setLocalLocation(tz.getLocation('Asia/Kolkata'));
 
-  final database = await openEncryptedDatabase(directory: appDataDirectory);
+  // The acceptance folder decides which stored key this installation opens its database
+  // with, so a run can neither create nor delete the key of an installation somebody uses
+  // by hand. `main()` passes no folder and therefore cannot reach the acceptance entry.
+  final database = await openEncryptedDatabase(
+    directory: appDataDirectory,
+    databaseKeyName: databaseKeyNameFor(appDataDirectory: appDataDirectory),
+  );
 
   // The shipped seed exists so the application is usable with no backend at all — the
   // state Phase 1 shipped in. **It must not run once a backend is configured.** The seed

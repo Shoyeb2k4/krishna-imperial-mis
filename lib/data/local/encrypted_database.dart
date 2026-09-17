@@ -61,8 +61,9 @@ Future<File> resolveDatabaseFile({Directory? directory}) async {
 Future<AppDatabase> openEncryptedDatabase({
   DatabaseKeyManager? keyManager,
   Directory? directory,
+  String? databaseKeyName,
 }) async {
-  final manager = keyManager ?? DatabaseKeyManager();
+  final manager = keyManager ?? DatabaseKeyManager(keyName: databaseKeyName);
   final key = await manager.obtainKey();
   final file = await resolveDatabaseFile(directory: directory);
 
