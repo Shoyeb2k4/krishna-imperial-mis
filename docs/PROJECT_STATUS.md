@@ -5,33 +5,24 @@ Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
-Last updated: **2026-09-14** — **PHASE 5 SLICE 10 — REPORTING BREAKDOWN + READ-ONLY TRANSACTION
-DRILL-DOWN: COMPLETE (Windows real-app and Android emulator acceptance; physical-device pass
-PENDING)** (record at the end of this file), on top of **PHASE 5 SLICE 9 — ANDROID P&L SURFACE:
-COMPLETE (emulator acceptance; physical-device pass PENDING)**, on top of
-**2026-09-13** — **PHASE 5 SLICE 8 — WINDOWS P&L SURFACE: COMPLETE**, on top of **SLICE 7 — REPORTING SECURITY CLOSURE: COMPLETE** and
-**2026-09-11** — **PHASE 5 OA-3 — OWNER SETTLEMENT UI / SECURITY SURFACE:
-COMPLETE**, on top of **OA-2 — OWNER SETTLEMENT ENGINE: COMPLETE**, **OA-1 — OWNER ACCOUNTS
-FOUNDATION: COMPLETE**, and **PHASE 5 — P&L / MIS REPORTING: SLICES 1–6 COMPLETE.**
+Last updated: **2026-09-17** — **PHASE 5 — P&L / MIS REPORTING: COMPLETE AND FORMALLY
+CLOSED at Slice 12**, with Owner Accounts OA-1 … OA-3 inside it. Slices 1–11 are closed, the
+physical Galaxy A06 acceptance is done — automated phases by the suite, the ten manual checks
+by the project lead on 17 September 2026 — and Slice 12 carries one approved code change, the
+acceptance database-key isolation (D-249). **Phase 6 is not started.**
 
-**Read the *end* of this file first.** Owner Accounts is a newly discovered real business
-requirement that arrived between Slice 6 and Slice 7: it was audited, approved with eleven
-binding decisions (**OA-D1 … OA-D11**, recorded as **D-189 … D-199**), and its foundation is
-built. It is **additive** — it corrects nothing that was accepted, edits no P&L semantics and
-builds no client screen. **The old Phase 5 Slice 7 is still not started**, and neither is
-OA-2.
-Phase 4 closed at `96fc4ed`; the project lead's Phase 5 decisions are ratified and recorded
-as **D-163 … D-173**, and five slices of twelve are closed — source parity, the canonical
-calculation specification, `LocalReportingEngine`, the canonical reporting cache with its
-cross-device delta, and the authoritative server reporting boundary with exact local/remote
-D-020 parity (D-183 … D-186), **closed on the security corrective that made the reporting
-boundary enforce `reports.view` (D-187)** — the first Slice 5 report claimed a complete
-authorization story and did not have one, and the correction is recorded rather than
-reissued. **Slice 6 is not started.** The Phase 5 record is at the **end of
-this file** and is authoritative for it; the Phase 4 closure sits immediately above it and
-remains authoritative for Phase 4, **except** that its handoff contract's revenue-only
-statement of the pull gap is corrected by D-173 — the gap is **both engines**. Everything
-before those two sections is running history, kept in the order it happened.
+**Read the *end* of this file first.** It holds the Phase 5 closure record: the feature
+inventory, the slice and OA table, every total, the backend baseline, and the carry-forward
+classification that says which later phase owns each remaining item. Everything above that
+record is running history, in the order it was written, and **a statement in it describes the
+moment it was made, not today** — where an older section disagrees with the closure record,
+the closure record wins.
+
+Phase 0 … Phase 4 are closed; Phase 4 closed at `96fc4ed`. Phase 5 delivered the canonical
+calculation specification, both reporting engines and their parity, the canonical reporting
+cache and its cross-device delta, the server reporting boundary, freshness and as-of
+semantics, the reporting capability model, the Windows and Android P&L surfaces, read-only
+drill-down, and the Owner Accounts ledger, settlement engine and preview surface.
 
 > A new session should be able to read this file and know exactly where work stopped.
 > This file — not chat history — is the checkpoint.
@@ -40,8 +31,15 @@ before those two sections is running history, kept in the order it happened.
 
 ## Current phase
 
+**Phase 5 — P&L / MIS Reporting: COMPLETE and formally closed (2026-09-17).** The
+authoritative record is *PHASE 5 — COMPLETE AND CLOSED* at the **end** of this file. Phase 6
+is not started.
+
+*The paragraphs that follow were written while Phase 4 was the current phase and are kept as
+running history.*
+
 **Phase 4 — Revenue Engine: COMPLETE (2026-09-07).** See *PHASE 4 — REVENUE ENGINE:
-COMPLETE* at the end of this file, which is the authoritative closure record. Everything
+COMPLETE* further down, which is the authoritative closure record for that phase. Everything
 below this line up to that section is the running history of Phases 2 to 4 in the order it
 was written, and **a statement in it describes the moment it was made, not today** — where
 it disagrees with the closure record, the closure record wins.
@@ -5370,3 +5368,129 @@ would be falsifying the record rather than restoring it.
 Carried forward unchanged: the D-146 fresh-branch migration replay before the first staging
 deploy; D-229's wording point about the Material picker; and the production 50:50 settlement
 start date, which remains a project-lead business decision.
+
+---
+
+# PHASE 5 — P&L / MIS REPORTING: **COMPLETE AND CLOSED**
+
+Closed 2026-09-17 at Slice 12. Master Spec **v1.2**, unchanged: Phase 5 added no financial
+semantics. Local Drift schema **v21**; migration ledger **101** versions. Decisions
+**D-163 … D-250**.
+
+## 1 · What Phase 5 built
+
+| | |
+|---|---|
+| Calculation | `domain/finance` — the one canonical specification: period math, Net Sales, Operating Profit, margin as an exact ratio, refusals as types |
+| Engines | `LocalReportingEngine` and `RemoteReportingEngine`, one orchestration over two sources, parity proven to the paisa |
+| Cache | canonical reporting cache, owner-keyed, with document-grain delta, coverage markers and one-snapshot evidence |
+| Server | `reporting_primitives` and `reporting_snapshot`, `security invoker`, one statement each |
+| Authority | `reports.view` ∩ `revenue.view` ∩ `expense.view.all` per property; all three unscoped for consolidated; `expense.view.own` never qualifies |
+| Surfaces | Windows P&L, Android P&L, and read-only drill-down to a document on both |
+| Owner Accounts | OA-1 ledger and masters, OA-2 settlement engine, OA-3 preview surface behind its own capability |
+
+**Not built, by design:** charts, exports, printing, finalized owner statements, performance
+optimisation, production deployment.
+
+## 2 · Slices and Owner Accounts
+
+| | | |
+|---|---|---|
+| 1 | source parity and the canonical-only correction | **COMPLETE** |
+| 2 | `domain/finance` | **COMPLETE** |
+| 3 | `LocalReportingEngine` | **COMPLETE** |
+| 4 | canonical reporting cache and delta | **COMPLETE** |
+| 5 | server boundary and D-020 parity, with the `reports.view` corrective | **COMPLETE** |
+| 6 | freshness, as-of and closed periods, with the one-snapshot corrective | **COMPLETE** |
+| 7 | reporting security closure | **COMPLETE** |
+| 8 | Windows P&L surface | **COMPLETE** |
+| 9 | Android P&L surface | **COMPLETE** |
+| 10 | breakdown and read-only drill-down | **COMPLETE** |
+| 11 | full reporting / Owner Accounts acceptance | **COMPLETE** |
+| 12 | closure | **COMPLETE** |
+| OA-1 | owner accounts foundation | **COMPLETE** |
+| OA-2 | owner settlement engine | **COMPLETE** |
+| OA-3 | owner settlement preview and its boundary | **COMPLETE** |
+
+## 3 · Closure evidence
+
+| Gate | Result |
+|---|---|
+| `dart format --set-exit-if-changed` | clean |
+| `flutter analyze` | **No issues found** |
+| Host suite | **2,107 passed** |
+| Live suites, `--concurrency=1` | **106 passed** — reporting 13, parity 29, owner accounts 31, settlement 20, drill-down 5, owner completeness audit 8 |
+| Windows acceptance | `windows-owner-settlement`, `slice11-shared-device`, `slice11-lifecycle`, `slice11-restart-a`/`-b`, `slice11-revocation` — **all PASS** |
+| Android emulator acceptance | the Slice 9 and Slice 10 phases, recorded in their own sections |
+| **Physical Galaxy A06** | `android-pnl`, `-scope`, `-switch`, `-drill`, `android-owner-settlement`, `slice11-shared-device`, `slice11-lifecycle` — **all PASS**; the ten §Q.2 manual checks **PASS**, reported by the project lead on 17 September 2026 |
+| Windows release build | rebuilt from this HEAD; `data/app.so` current |
+| Android dev build | rebuilt from this HEAD, `config/dev.json` only |
+| Secret scan | tree, git history and rebuilt artefacts **clean** |
+| Backend baseline | at the captured fingerprint (§5) |
+
+**The artefact scan refused twice before it passed, and both times it was right.** Acceptance
+runs compile the identity passwords into the Windows **Debug** bundle and
+`build/flutter_assets`; each was removed and the scan re-run. Build clean, *then* scan the
+artefacts — the Slice 13 lesson, twice more (D-069).
+
+## 4 · The defects Slice 11 carried, and their final disposition
+
+| | |
+|---|---|
+| **D-227** | **Closed by D-241.** One `CanonicalCacheLock` in the data layer; the P&L, the drill-down and the settlement refresh and preview all take it |
+| **D-231** | **Closed by D-240.** A cache authority generation, advanced inside the purge's own transaction and re-checked inside the writing transaction; a superseded run rolls back and reports itself abandoned |
+| **D-246** | Implemented, and completed by **D-249**: the session has its own DPAPI file, and an acceptance run now has its own database key, selected by the data folder. **Android unchanged** |
+| **D-247** | The 31 August real-installation database stays untouched — not deleted, not recovered, not migrated, never a fixture. No disposal decision is required for closure |
+| **D-229** | **Closed by D-250**: Flutter's Material date-range picker is approved for Android V1; "native picker" meant a calendar interaction rather than typed desktop entry. No rework, no new dependency |
+
+## 5 · `krishna-mis-dev` at closure
+
+| | |
+|---|---|
+| Open acceptance revenue · owner movements | **0 · 0** |
+| Open expenses | **61**, all pre-existing; nothing acceptance created remains |
+| Disposable settlement start date | **removed** — `owner_settlement_settings` holds **0 rows** |
+| Closed-period fixtures | **0** |
+| Grants · roles | **7 rows, 5 active** · **4 roles**, no temporary role or capability |
+| Role capabilities | **80 rows**, hash `c1b4870f…`, identical to the pre-run capture |
+| Tax configuration | **4** live rules · **0** bands · **0** subtypes · **0** premises statuses |
+| Attachments ↔ storage | **265 rows ↔ 265 objects**, 0 stranded |
+| Reviewed API · anon execute · client writes · tables without RLS | **57 · 0 · 0 · 0** |
+| Dead helper `expense_sees_whole_org` | **absent** |
+| Migration ledger | **101** |
+
+One fingerprint moved and is deliberately not rewritten: `user_roles` row `aa7c36ee…`, the
+grant the D-187 regression makes and withdraws inside the live parity suite, carries today's
+timestamps. Same row, same id, same revoked state — falsifying a timestamp to make a hash
+match would not be restoring anything.
+
+## 6 · Carry-forwards, classified
+
+Nothing is left as "later".
+
+| Item | Owner |
+|---|---|
+| Charts, trends, period-over-period, dashboard analytics | **A — Phase 6** |
+| Excel export, PDF, printing, and the `reports.export` / `reports.print` evaluators | **B — Phase 7** |
+| `may_read_expense` per-row reporting cost; the `org_id`-leading local expense index; any materialised aggregate | **C — Phase 8** |
+| Production signing, AAB, Play distribution, Windows installer, production Supabase configuration, and the D-146 fresh-branch migration replay before the first staging deploy | **D — Phase 9** |
+| **The production 50:50 ownership effective-from date.** Production Owner Settlement remains intentionally unconfigured until the project lead supplies the real effective-from date. Never guessed | **E — Product/business** |
+| Disposal of the D-247 forensic database — no decision required for Phase 5 | **E — Product/business** |
+| Finalized Owner Statements and their Draft/Finalized model (D-193); a per-family-member breakdown of non-chargeable consumption; wiring the owner-ledger outbox transport (D-218); OA-1's client-side NC pre-check (D-208, D-216) | **F — Owner Accounts extension** |
+
+## 7 · Open defects at closure
+
+**None.** One recorded unknown remains a question rather than a defect: **D-248**, a single
+pull-to-refresh timeout on the phone, with a diagnostic left armed that has printed nothing in
+every run since.
+
+## 8 · Phase 6 handoff
+
+Phase 6 may treat as stable: `domain/finance` and its result types; both engines and the port
+between them; the canonical reporting cache, its coverage vocabulary and its one-snapshot
+evidence; the reporting capability model; the two P&L surfaces and the presentation vocabulary
+they share; and the Owner Accounts boundary.
+
+Phase 6 **must not**: re-run tax rules, infer GST from totals, include pending, rejected or
+conflicted attempts, reinterpret the business date, mutate closed history, compute a second
+P&L, or render a chart from anything but a `PnlResult` the engines produced.

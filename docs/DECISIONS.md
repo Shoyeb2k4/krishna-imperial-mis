@@ -8410,3 +8410,92 @@ armed — `android-pnl`, `-scope`, `-switch`, `-drill`, `android-owner-settlemen
 the harness rather than being removed once the suite went green, because the next occurrence
 is the one that can be explained, and a diagnostic deleted for tidiness is one nobody has
 when it matters. If it recurs, its first line answers the question this entry could not.
+
+## D-249 — An acceptance run holds its own database key, selected by the boundary that already exists
+**Date:** 2026-09-17 · **Status:** Accepted (project-lead ruling) — **proven RED first**
+
+**What D-246 left open, found by the Slice 12 audit.** D-246 gave the acceptance suite its own
+data folder, so a run opens its own database file and its own session file. The **key** stayed
+shared: `DatabaseKeyManager` read, wrote and deleted one entry — `krishna_mis.db_key.v1` — in
+the plugin store belonging to the person using the machine. An acceptance run could therefore
+create that entry, read it, and delete it through "erase local data". Measured on this
+machine before the change, the store held exactly one entry, `krishna_mis.db_key.v1`, written
+by earlier acceptance runs.
+
+The project lead ruled: isolate it, keep the plugin, make the identifier injectable through
+the existing acceptance boundary, change no schema, and do not move the key into the session
+file.
+
+**The identifier is selected by the data folder, not passed as a string.**
+
+```
+        databaseKeyNameFor(appDataDirectory: null)   -> krishna_mis.db_key.v1
+        databaseKeyNameFor(appDataDirectory: dir)    -> krishna_mis.acceptance.db_key.v1
+```
+
+`main()` passes no folder, so a shipped binary has no reachable path to the acceptance entry;
+a run given a folder has none to the production entry. Both invariants are structural rather
+than remembered, which is the distinction this project keeps paying for (D-068, D-077).
+`DatabaseKeyManager` gained a `keyName` field so a test can inject either, and every read,
+write and delete names it — so one installation's cleanup cannot reach another's key.
+
+**Android is untouched**, as the ruling requires: the harness passes a folder on Windows only
+(`Platform.isWindows`), so an Android acceptance run keeps the production identifier and the
+Keystore-backed store (D-022). No schema, no migration, no financial semantics.
+
+**RED first, then GREEN, then a control.** Ten tests written against the intended API failed
+to compile against the shipped code — the identifier, the selector and the field did not
+exist. After the change, 10 of 10 pass. The control points the selector at the production
+identifier: **2 of 10 turn red** — the acceptance-selection test and *"an acceptance run can
+never land on the production identifier"* — and the file was restored with a byte copy and
+`cmp` (D-219).
+
+**And it is proven on the real machine, not only in Dart.** The secure store was read before
+and after two real Windows acceptance process launches, printing **key names only** and a
+hash of the production value rather than the value:
+
+```
+        before   entries: krishna_mis.db_key.v1
+                 production value SHA-256(16): 40687EF4DB29C7A1
+
+        after    entries: krishna_mis.db_key.v1, krishna_mis.acceptance.db_key.v1
+                 production value SHA-256(16): 40687EF4DB29C7A1   <- untouched
+                 acceptance value: 64 hex characters, different
+```
+
+`slice11-restart-a` created the acceptance database under the acceptance key and
+`slice11-restart-b`, a second process launch, **reopened it** — which is the "an acceptance
+restart reopens its own database using its own key" invariant, proven end to end rather than
+argued.
+
+**One operational consequence, stated because it will recur.** The acceptance database that
+existed before this change was encrypted with the production key, so it is unreadable under
+the new identifier. It was deleted before the first run — it is disposable by design, which is
+the whole point of the separate folder — and the run recreated it. A future key change to that
+folder has the same consequence and the same remedy.
+
+**A property worth keeping, found by inspecting the build.** The Windows **release** payload
+contains `krishna_mis.db_key.v1` and **not** `krishna_mis.acceptance.db_key.v1`: with `main()`
+the only caller and no folder in its hand, the acceptance branch is compiled out of the
+shipped binary altogether. The Android **debug** payload contains both strings, because a
+debug kernel is not tree-shaken — and the acceptance identifier stays unreachable there for
+the reason above, not because the string is absent. Both are stated rather than one being
+quietly presented as the general rule.
+
+## D-250 — The Android date-range picker is Flutter's Material picker, and that is what was meant
+**Date:** 2026-09-17 · **Status:** Accepted (project-lead clarification) — closes the question
+D-229 raised
+
+D-229 recorded that Android's Custom range uses Flutter's Material `showDateRangePicker` in
+calendar-only mode, and flagged that *"native picker"* might have meant the Android OS dialog
+reached through a platform channel — a different thing, needing a new dependency and its own
+approval.
+
+**The project lead has clarified: the Flutter Material date-range picker is approved for
+Android V1.** The term meant a mobile calendar interaction rather than typed desktop date
+entry, and did not require an OS/platform-channel picker.
+
+**No rework, no new dependency, no behaviour change.** What ships is what was approved:
+calendar-only, no typed entry, the tapped days read as year, month and day with no timezone,
+UTC or clock conversion, and a reversed range refused rather than swapped. The D-229 wording
+point is closed.

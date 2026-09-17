@@ -534,15 +534,17 @@ Run on the local `Pixel_8` emulator against `krishna-mis-dev`, one process launc
       --dart-define-from-file=<scratch>/identities.defines.json \
       --dart-define=PHASE=<phase>
 
-- [ ] `android-pnl`: Reports opens straight to P&L; consolidated and Crystal Canopy equal
+- [x] `android-pnl`: Reports opens straight to P&L; consolidated and Crystal Canopy equal
       `reporting_primitives` to the paisa; category lines reconcile; Custom chosen on the calendar;
       pull-to-refresh; void; offline cached read; older-FY download; fixtures voided
-- [ ] `android-pnl-scope`: one property's D2 authority (asserted by capability) reports it; the
+- [x] `android-pnl-scope`: one property's D2 authority (asserted by capability) reports it; the
       other property and consolidated are refused on the phone and withheld by the server
-- [ ] `android-pnl-switch`: Owner → scoped principal on one installation; no selection, figure
+- [x] `android-pnl-switch`: Owner → scoped principal on one installation; no selection, figure
       or cache of the Owner's survives
 
-### O.2 Physical Android device — **PENDING, required before Phase 5 closes** (D-230)
+### O.2 Physical Android device — **PASS, 17 September 2026** (D-230)
+
+**Physical-device acceptance recorded 17 September 2026** — Galaxy A06 (SM-A066B, Android 16 / API 36), observer: the project lead. The automated phases were run by the suite; the manual lines are his observation and are recorded as his (D-077, D-156).
 
 **Automated physical-device phases ran on the Galaxy A06 (SM-A066B, Android 16 / API 36)
 on 2026-09-17 and PASS**: `android-pnl`, `android-pnl-scope`, `android-pnl-switch`. The lines
@@ -550,14 +552,14 @@ below are the *manual* half and are performed by a person; they are not discharg
 
 On a real phone (the Galaxy A06 or another approved target), with a clean dev build:
 
-- [ ] Reports opens directly to Profit & Loss; no reports menu; Owner Settlement not reachable from it
-- [ ] The scope bottom sheet and the calendar picker open over the whole screen, and Android back
+- [x] Reports opens directly to Profit & Loss; no reports menu; Owner Settlement not reachable from it
+- [x] The scope bottom sheet and the calendar picker open over the whole screen, and Android back
       closes each without changing the report
-- [ ] Custom offers no typed entry; the tapped days appear as the report's range
-- [ ] Pull-to-refresh updates the freshness line; with networking off, the last complete report stays
+- [x] Custom offers no typed entry; the tapped days appear as the report's range
+- [x] Pull-to-refresh updates the freshness line; with networking off, the last complete report stays
       readable and older history says a connection is required
-- [ ] With the system font enlarged, nothing overflows and the last line scrolls clear of the [ + ]
-- [ ] Recorded as **physical-device acceptance**, with the device named. The emulator run in O.1 is
+- [x] With the system font enlarged, nothing overflows and the last line scrolls clear of the [ + ]
+- [x] Recorded as **physical-device acceptance**, with the device named. The emulator run in O.1 is
       never reported as this
 
 ## P. Reporting breakdown and read-only drill-down (Phase 5 Slice 10)
@@ -566,7 +568,7 @@ On a real phone (the Galaxy A06 or another approved target), with a clean dev bu
 
 One process launch per phase, with the same commands as §O.1:
 
-- [ ] `windows-pnl-drill` (Windows, `-d windows`):
+- [x] `windows-pnl-drill` (Windows, `-d windows`):
   - Revenue → Restaurant → the sale opens read-only.
   - Expenses → department → section → Kirana → the shared bill opens, showing ₹25,000,
     Crystal Canopy's contribution.
@@ -574,19 +576,19 @@ One process launch per phase, with the same commands as §O.1:
   - Offline, the rows stay and the detail says it is not downloaded, including for a
     document opened a moment earlier (D-239).
   - Fixtures are voided.
-- [ ] `android-pnl-drill` (emulator, `--flavor dev`): the same, with a pushed page per level
+- [x] `android-pnl-drill` (emulator, `--flavor dev`): the same, with a pushed page per level
   and Android back walking up one level at a time.
 
-### P.2 Physical Android device — **PENDING, with §O.2, before Phase 5 closes**
+### P.2 Physical Android device — **PASS, 17 September 2026**
 
 **`android-pnl-drill` ran on the same physical phone on 2026-09-17 and PASSES.** The lines
 below are the manual half.
 
-- [ ] A category line opens its documents; each level adds up exactly to the line it came from.
-- [ ] A document opens read-only, with no Edit, Void, Review latest or attachment control,
+- [x] A category line opens its documents; each level adds up exactly to the line it came from.
+- [x] A document opens read-only, with no Edit, Void, Review latest or attachment control,
       even for a principal who could do those from the ledger.
-- [ ] With networking off, the rows stay, and re-opening a document says it is not downloaded.
-- [ ] Recorded as physical-device acceptance, with the device named.
+- [x] With networking off, the rows stay, and re-opening a document says it is not downloaded.
+- [x] Recorded as physical-device acceptance, with the device named.
 
 ## Q. Full reporting and Owner Accounts acceptance (Phase 5 Slice 11)
 
@@ -615,20 +617,21 @@ Performed by a person on the Galaxy A06 (or another approved phone) with the cle
 Record each line as **PASS / FAIL / NOT TESTED**. Automation never fills these in.
 
 Issued to the project lead on 2026-09-17, with a clean dev build installed on the phone
-(rebuilt with `config/dev.json` only, 0 of 6 identity passwords in it). **Every line below is
-NOT TESTED until he reports it; Slice 11 is not closed on the automated phases alone.**
+(rebuilt with `config/dev.json` only, 0 of 6 identity passwords in it). **He performed all ten
+on the Galaxy A06 and reported every one PASS on 17 September 2026.**
 
 | # | Check | Result |
 |---|---|---|
-| 1 | Settings → Display → Font size set to the largest step: Reports → Profit & Loss has no clipped figures, and the last line scrolls clear of the [ + ] button | NOT TESTED |
-| 2 | Open the property sheet, then press Android back: the sheet closes and the report is unchanged | NOT TESTED |
-| 3 | Open Custom, then press Android back: the picker closes and the period is unchanged | NOT TESTED |
-| 4 | Open a category, then a document, then press back twice: document → list → report, one step each | NOT TESTED |
-| 5 | The date-range picker covers the screen, offers no typing, and the tapped days become the report's range | NOT TESTED |
-| 6 | With a report open, force-stop the app (Settings → Apps → Krishna Imperial MIS → Force stop) | NOT TESTED |
-| 7 | Reopen the app: still signed in as the same person, no previous person's figures shown | NOT TESTED |
-| 8 | Turn on aeroplane mode, reopen Reports: the last complete report is readable, never ₹0 | NOT TESTED |
-| 9 | Still offline: open a document from a category — it says detail needs a connection | NOT TESTED |
-| 10 | Turn aeroplane mode off and pull to refresh: it refreshes and the "synchronised as of" time moves forward | NOT TESTED |
+| 1 | Settings → Display → Font size set to the largest step: Reports → Profit & Loss has no clipped figures, and the last line scrolls clear of the [ + ] button | **PASS** |
+| 2 | Open the property sheet, then press Android back: the sheet closes and the report is unchanged | **PASS** |
+| 3 | Open Custom, then press Android back: the picker closes and the period is unchanged | **PASS** |
+| 4 | Open a category, then a document, then press back twice: document → list → report, one step each | **PASS** |
+| 5 | The date-range picker covers the screen, offers no typing, and the tapped days become the report's range | **PASS** |
+| 6 | With a report open, force-stop the app (Settings → Apps → Krishna Imperial MIS → Force stop) | **PASS** |
+| 7 | Reopen the app: still signed in as the same person, no previous person's figures shown | **PASS** |
+| 8 | Turn on aeroplane mode, reopen Reports: the last complete report is readable, never ₹0 | **PASS** |
+| 9 | Still offline: open a document from a category — it says detail needs a connection | **PASS** |
+| 10 | Turn aeroplane mode off and pull to refresh: it refreshes and the "synchronised as of" time moves forward | **PASS** |
 
-The physical pass is not claimed until every line above has actually been performed.
+**All ten performed and reported PASS by the project lead on the Galaxy A06, 17 September 2026.**
+Recorded as his observation: no automated run fills these in, and none did.

@@ -9,7 +9,7 @@ Status: **Sections 1–12 proposed (Phase 0, revised); sections 13–16 and 18�
 is built and verified; section 17 is the Phase 4 *plan*, since built — read §18–§26 for what
 shipped.** Sections 6, 5.3 and 8 carry the project lead's mandated corrections.
 Implementation status is tracked in `PROJECT_STATUS.md`.
-Last updated: 2026-09-13 — the Android P&L surface (section 38); the Windows P&L surface (section 37); Slice 7 reporting security closure (section 36); 2026-09-11 — the Owner Settlement surface and its security boundary (section 35); the Owner Settlement Engine (section 34); the Owner Ledger (section 33), with the V1 ownership vector in §33.3; Phase 5 Slice 6 corrective (section 32); Slice 5 in section 31; Slices 1-4 in sections 27-30
+Last updated: 2026-09-17 — Slice 11's corrections and the Slice 12 closure architecture (section 40); 2026-09-13 — the Android P&L surface (section 38); the Windows P&L surface (section 37); Slice 7 reporting security closure (section 36); 2026-09-11 — the Owner Settlement surface and its security boundary (section 35); the Owner Settlement Engine (section 34); the Owner Ledger (section 33), with the V1 ownership vector in §33.3; Phase 5 Slice 6 corrective (section 32); Slice 5 in section 31; Slices 1-4 in sections 27-30
 
 ---
 
@@ -3686,3 +3686,81 @@ Decisions D-233…D-238. **No schema change, no migration, local Drift schema v2
   cache lock (D-227).
 * **Not built:** owner settlement drill-down, charts, trends, comparisons, export,
   printing, editing from reports, and finalized owner statements.
+
+## 40. What Slice 11 corrected, and what Slice 12 closed — Phase 5
+
+Decisions **D-240 … D-250**. No schema change in either slice: local Drift schema stays
+**v21** and the migration ledger stays at **101** versions.
+
+### 40.1 A superseded synchronisation writes nothing (D-240, closing D-231)
+
+A reporting or owner-settlement run holds the signed-in person's id from the moment it starts.
+If that person signs out, or a confirmed refresh withdraws a reporting capability, the purge
+removes the cache — and the run's answer, still on the wire, was written back under the old id.
+Six of seven cases re-applied data when proven red.
+
+A **cache authority generation** in `app_meta` — no schema change — is advanced **inside the
+purge's own transaction** on sign-out, a user switch, the fail-closed quarantine, and a
+confirmed authority whose reporting or owner-settlement capabilities differ from the last one
+recorded. Both synchronisers read it before asking the server and re-check it **inside the
+transaction that writes**; a stale run rolls back and reports `DatasetAbandoned` /
+`OwnerSettlementSyncAbandoned`, which the surfaces show as neither failure nor success.
+
+`AuthorityStore` could not enforce this: it is saved and cleared outside the purge's
+transaction, so a write can land after the purge commits and before the stored authority
+changes.
+
+### 40.2 One canonical-cache boundary (D-241, closing D-227)
+
+Slice 8's lock lived in the P&L feature. The settlement preview reads the P&L several times
+and the settlement refresh writes the reporting cache; neither took it, so a refresh landing
+between two reads paired revenue from one snapshot with expenses from another (D-188).
+
+`CanonicalCacheLock` now lives in the data layer, with one app-wide instance
+(`canonicalCacheLockProvider`). P&L reads, drill-down reads, the P&L sync, the settlement
+refresh and the settlement preview each run as one span under it, and the refresh invalidates
+the reporting sources while still holding it. Owner Settlement depends on no P&L provider.
+
+### 40.3 A P&L on screen belongs to one person and one authority (D-242, D-245)
+
+The Windows drill state and the Android drill and document pages reset on
+`pnlReadAuthorityKey` — the person plus exactly the P&L read grants they hold — so the same
+person losing a capability closes what is open, while a session refresh that changes nothing
+leaves the chosen property, period and month alone. The selection controllers and both sync
+controllers are keyed on the person rather than on the whole session state.
+
+### 40.4 Windows secure storage, as it now stands (D-244, D-246, D-249)
+
+```
+        %APPDATA%\<Company>\<Product>\
+          flutter_secure_storage.dat     one DPAPI blob, plugin-managed
+            krishna_mis.db_key.v1            the installation's database key
+            krishna_mis.acceptance.db_key.v1 an acceptance run's own key (D-249)
+          krishna_mis.session.dpapi      the session, its own protected file (D-246)
+          krishna_mis.db                 the encrypted database
+```
+
+* **The session left the blob.** `flutter_secure_storage_windows` 3.1.2 deletes the whole blob
+  when a read fails to decrypt, and the session is rewritten on every sign-in and refresh while
+  the database key is written once. `ProtectedFileSessionStore` protects its own file with
+  DPAPI (current user, no entropy — the same protection, no weaker and no stronger), writes
+  through a temporary file and renames over the old one, serialises its own reads and writes,
+  and **never deletes the file because a read failed**.
+* **The persisted session is handed back whole** (D-244), so `recoverSession` can parse it and
+  a restart restores the session rather than falling back to the sign-in screen.
+* **The acceptance suite holds its own key** (D-249), selected by the data folder that already
+  existed rather than by a caller passing a string: `main()` passes no folder and cannot reach
+  the acceptance entry; a run given one cannot reach the production entry.
+* **Android is unchanged**: the session stays in the Keystore-backed plugin store, and an
+  Android acceptance run keeps the production identifier, because the harness passes a folder
+  on Windows only.
+
+The residual risk is D-036's and is unchanged: DPAPI binds to the Windows user account, not to
+hardware, so any process running as that user can unwrap what that user can.
+
+### 40.5 What Slice 12 is, and is not
+
+Slice 12 is closure: proving Phase 5 is complete, internally consistent, reproducible and
+documented. It adds no chart, no export, no printing, no finalized owner statement, no
+performance work, no production deployment and no financial semantics. The one code change it
+carries is D-249, which the project lead ruled must land before closure.
