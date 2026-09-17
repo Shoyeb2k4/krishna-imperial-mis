@@ -9,7 +9,9 @@ Last updated: **2026-09-17** — **PHASE 5 — P&L / MIS REPORTING: COMPLETE AND
 CLOSED at Slice 12**, with Owner Accounts OA-1 … OA-3 inside it. Slices 1–11 are closed, the
 physical Galaxy A06 acceptance is done — automated phases by the suite, the ten manual checks
 by the project lead on 17 September 2026 — and Slice 12 carries one approved code change, the
-acceptance database-key isolation (D-249). **Phase 6 is not started.**
+acceptance database-key isolation (D-249). **PHASE 6 — DASHBOARD & ANALYTICS: STARTED
+(2026-09-17).** Slices 1 (governance) and 2 (exact comparison domain rules) are complete;
+see *PHASE 6* at the end of this file.
 
 **Read the *end* of this file first.** It holds the Phase 5 closure record: the feature
 inventory, the slice and OA table, every total, the backend baseline, and the carry-forward
@@ -31,9 +33,11 @@ drill-down, and the Owner Accounts ledger, settlement engine and preview surface
 
 ## Current phase
 
-**Phase 5 — P&L / MIS Reporting: COMPLETE and formally closed (2026-09-17).** The
-authoritative record is *PHASE 5 — COMPLETE AND CLOSED* at the **end** of this file. Phase 6
-is not started.
+**Phase 6 — Dashboard & Analytics: IN PROGRESS (started 2026-09-17).** Slices 1 and 2 are
+complete; Slice 3 is next. The current record is *PHASE 6* at the **end** of this file.
+
+**Phase 5 — P&L / MIS Reporting: COMPLETE and formally closed (2026-09-17).** Its
+authoritative record is *PHASE 5 — COMPLETE AND CLOSED*, just before the Phase 6 section.
 
 *The paragraphs that follow were written while Phase 4 was the current phase and are kept as
 running history.*
@@ -5494,3 +5498,89 @@ they share; and the Owner Accounts boundary.
 Phase 6 **must not**: re-run tax rules, infer GST from totals, include pending, rejected or
 conflicted attempts, reinterpret the business date, mutate closed history, compute a second
 P&L, or render a chart from anything but a `PnlResult` the engines produced.
+
+---
+
+# PHASE 6 — DASHBOARD & ANALYTICS: STARTED (2026-09-17)
+
+Phase 5 closed at `b2a161d`. Phase 6 was scoped by an audit of the shipped code; the project
+lead ruled on its eight questions, and the rulings are recorded as **D-251 … D-261**.
+
+**The principle:** Phase 6 creates no second financial calculation model. Every dashboard
+figure is a field of a `PnlResult` the Phase 5 engines produced, or a comparison of two of them
+computed once in `domain/finance`. No widget recomputes a P&L, no GST is re-derived, no pending
+or conflicted attempt is counted, no transaction table is queried for a chart, no second
+reporting cache is created, and authorization stays `PnlAuthority`.
+
+## The approved slice plan
+
+| # | Slice | State |
+|---|---|---|
+| 1 | Governance and decisions | **COMPLETE** |
+| 2 | Exact comparison domain rules | **COMPLETE** |
+| 3 | Dashboard engine, and the performance gate | not started |
+| 4 | Authority and providers | not started |
+| 5 | Chart foundation (`fl_chart`, pinned, with a no-arithmetic guard) | not started |
+| 6 | Windows Overview dashboard | not started |
+| 7 | Android Home dashboard | not started |
+| 8 | Windows Analytics sections | not started |
+| 9 | Drill-down integration | not started |
+| 10 | Full acceptance | not started |
+| 11 | Closure | not started |
+
+**Performance gate (D-261):** before Slice 3 closes, trend series built from ordinary
+repeated reports are measured on financial-year-sized data. If they are too slow, work stops and
+the measurements are reported. No server analytics function, materialised aggregate, index or
+second cache is added without a separate decision.
+
+## Phase 6 Slice 1 — governance: **COMPLETE**
+
+* `DECISIONS.md` — D-251 … D-261.
+* `SHOYEB_MASTER_SPEC.md` — §17 amended with the dashboard period and comparison semantics,
+  change-log entry, **version unchanged at 1.2**: it defines what §17 already named and moves no
+  figure.
+* `ARCHITECTURE.md` — §41.
+* This section.
+
+## Phase 6 Slice 2 — exact comparison domain rules: **COMPLETE**
+
+Pure Dart in `lib/domain/finance/`. **No schema change, no migration, no dependency, no
+surface.** Local Drift schema stays **v21**; migration ledger stays **101**.
+
+| File | What it decides |
+|---|---|
+| `dashboard_periods.dart` | the dashboard periods — Today so far, Week to date, Month to date, Financial year to date, Custom — and each one's comparator; the calendar-edge caps; the consolidated both-sides agreement check (D-251, D-252, D-254) |
+| `pnl_comparison.dart` | rupee change, percentage change, the Operating Profit rules, the sign-change wording, and the margin movement in percentage points — exact, over paise, `BigInt` where a cross product can pass 2^63 (D-253, D-256) |
+| `dashboard_analytics.dart` | trend buckets and which measure each grain may carry; best and worst day on daily Net Sales only; Top N + Others after exact reconciliation (D-255, D-258) |
+
+The Phase 5 P&L presets (`reporting_presets.dart`) are untouched: the P&L screen keeps its
+whole-month and whole-year semantics (D-252).
+
+### Verified
+
+| Item | Status | Evidence |
+|---|---|---|
+| `dart format --set-exit-if-changed lib test integration_test tool` | **Tested** | clean |
+| `flutter analyze` | **Tested** | **No issues found** |
+| New domain tests | **Tested** | **91**: periods 34 (including a sweep of every day 2026–2029), comparison 34, analytics 23 |
+| Finance purity guard over the three new files | **Tested** | 6 checks: no storage, network, Flutter or floating-point |
+| Host suite | **Tested** | **2,204 passed** (2,107 + 91 + 6) |
+| Positive controls | **Tested** | 11 sabotages, **each failed on behaviour, not compilation**, each file restored byte-identical and compared: month cap (4 red), leap-day cap (2), custom comparator overlap (3), D-254 comparison check (1), previous-zero rule (24), sign-change rule (2), margin movement from rounded margins (1), unavailable side turned to zero (3), Top-N reconciliation (3), grain permission (2), silent tie-break (1) |
+| Live, device and build gates | **Not tested** | nothing in Slice 2 touches a surface, the server or a build |
+
+### Recorded for the project lead
+
+1. **D-256 — pending confirmation.** An ordinary figure (Net Sales, Expenses, Gross Sales, GST)
+   whose previous value is negative gets no percentage. The ruling covered Operating Profit only;
+   this is the conservative reading, added so the software did not guess.
+2. **D-255 — open: the trend grain for a Custom range.** None is offered until it is decided.
+3. **D-253 — a consequence of "exact".** The margin movement is taken from the exact margins, so
+   it can differ by 0.01 pp from the difference of the two printed margins (1/3 against 1/6:
+   +16.67 pp, while 33.33% − 16.67% prints 16.66).
+
+**Every approved dashboard analytic is representable on the Phase 5 foundation.** Nothing in
+Slice 2 needed a new server function, cache dimension or schema change.
+
+## Next exact task
+
+**Phase 6 Slice 3 — dashboard engine and the performance gate.** Not started.

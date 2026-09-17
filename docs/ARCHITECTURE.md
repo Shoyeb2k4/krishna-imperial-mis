@@ -9,7 +9,7 @@ Status: **Sections 1–12 proposed (Phase 0, revised); sections 13–16 and 18�
 is built and verified; section 17 is the Phase 4 *plan*, since built — read §18–§26 for what
 shipped.** Sections 6, 5.3 and 8 carry the project lead's mandated corrections.
 Implementation status is tracked in `PROJECT_STATUS.md`.
-Last updated: 2026-09-17 — Slice 11's corrections and the Slice 12 closure architecture (section 40); 2026-09-13 — the Android P&L surface (section 38); the Windows P&L surface (section 37); Slice 7 reporting security closure (section 36); 2026-09-11 — the Owner Settlement surface and its security boundary (section 35); the Owner Settlement Engine (section 34); the Owner Ledger (section 33), with the V1 ownership vector in §33.3; Phase 5 Slice 6 corrective (section 32); Slice 5 in section 31; Slices 1-4 in sections 27-30
+Last updated: 2026-09-17 — Phase 6 dashboard periods and comparison rules (section 41); Slice 11's corrections and the Slice 12 closure architecture (section 40); 2026-09-13 — the Android P&L surface (section 38); the Windows P&L surface (section 37); Slice 7 reporting security closure (section 36); 2026-09-11 — the Owner Settlement surface and its security boundary (section 35); the Owner Settlement Engine (section 34); the Owner Ledger (section 33), with the V1 ownership vector in §33.3; Phase 5 Slice 6 corrective (section 32); Slice 5 in section 31; Slices 1-4 in sections 27-30
 
 ---
 
@@ -3764,3 +3764,43 @@ Slice 12 is closure: proving Phase 5 is complete, internally consistent, reprodu
 documented. It adds no chart, no export, no printing, no finalized owner statement, no
 performance work, no production deployment and no financial semantics. The one code change it
 carries is D-249, which the project lead ruled must land before closure.
+
+## 41. Dashboard periods and comparisons — Phase 6 Slices 1–2
+
+Decisions D-251 … D-261. **No schema change, no migration, local Drift schema v21.**
+
+```
+        DashboardPeriods  ── business date(s) ──►  DashboardPeriodPair
+                                                   (current, comparison, capped)
+                 │
+        ReportingEngine (Phase 5, unchanged) ── once per range ──►  PnlOutcome × 2
+                 │
+        PnlComparison.compare  ──►  MoneyComparison × 5, MarginComparison
+        DashboardTrends        ──►  TrendBucket ranges, each reported like any range
+        DailyNetSalesRanking   ──►  best / worst day on Net Sales
+        TopN                   ──►  top lines + exact Others, after reconciliation
+```
+
+* **The dashboard adds rules, not a calculation model.** Every figure a comparison, trend,
+  ranking or Top-N reads is a field of a `PnlResult`. The only new arithmetic is the change
+  between two results and the grouping of lines that have already reconciled. All of it is pure
+  Dart in `domain/finance`, and the Slice 2 purity guard covers the new files.
+* **Two period vocabularies, deliberately.** `RelativePreset` is the P&L screen's (whole month,
+  whole year, D-225). `DashboardPeriodKind` is the dashboard's (to date, D-252). Neither is
+  derived from the other, so a change to one cannot move the other.
+* **Ranges are built only through `CustomRangePeriod.resolve`**, the one validated constructor,
+  so a dashboard range whose end precedes its start cannot exist.
+* **Consolidated agreement is checked on both sides** (D-254), through `pairForUnits`, which
+  takes the pairing as a function so the second check is proven rather than assumed.
+* **Exactness.** Percentages and percentage points are rationals over paise, rounded once, half
+  away from zero, at the precision the caller prints. The margin movement's cross product is
+  computed in `BigInt`, because two crore-scale paise figures multiplied pass 2^63.
+* **Unavailable is a type.** `MoneyComparisonUnavailable` carries no change, no previous figure
+  and no percentage, so no surface can print a comparison it does not have.
+* **Trend grain is enforced where buckets are made** (D-255): a daily or weekly bucket list
+  cannot be requested for Expenses or Operating Profit.
+
+Still to come in Phase 6, and not built here: the dashboard engine that reads several ranges
+inside one `CanonicalCacheLock` span with one combined freshness claim (Slice 3), providers
+keyed on `PnlAuthority.readKey` (Slice 4), the `fl_chart` presentation layer and its
+no-arithmetic guard (Slice 5), and the surfaces (Slices 6–9).

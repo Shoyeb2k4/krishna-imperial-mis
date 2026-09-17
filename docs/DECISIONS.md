@@ -8499,3 +8499,193 @@ entry, and did not require an OS/platform-channel picker.
 calendar-only, no typed entry, the tapped days read as year, month and day with no timezone,
 UTC or clock conversion, and a reversed range refused rather than swapped. The D-229 wording
 point is closed.
+
+---
+
+# Phase 6 — Dashboard & Analytics (2026-09-17)
+
+Phase 6 was scoped by an audit of the shipped code, and the project lead ruled on the eight
+questions it raised. D-251 … D-260 record those rulings as given; D-256 is a rule this
+implementation had to add and is flagged for confirmation; D-261 records the approved plan.
+
+**The principle every entry below serves:** Phase 6 creates no second financial calculation
+model. Every dashboard figure is a field of a `PnlResult` the Phase 5 engines produced, or a
+comparison of two of them computed once in `domain/finance`.
+
+## D-251 — A dashboard compares period to date with the same stretch last time
+**Date:** 2026-09-17 · **Status:** Accepted (project-lead decision 1) — implemented in Slice 2
+
+```
+  Today so far            today                 vs  the previous business date
+  Week to date            Monday .. today       vs  last Monday .. same weekday
+  Month to date           1st .. today          vs  last month's 1st .. same ordinal day,
+                                                    capped at that month's end
+  Financial year to date  1 April .. today      vs  last 1 April .. same date a year earlier
+  Custom                  from .. to (n days)   vs  the n P&L dates immediately before
+```
+
+Never the current partial period against the whole previous one. Every range is a P&L date
+range derived from a business date; no UTC instant or transaction timestamp is read.
+
+**Calendar edges, stated because they are the part that is easy to get wrong:**
+
+* **A shorter previous month caps the comparator.** 31 March compares with 1–28 February, and
+  the pair carries `comparisonCapped` and both day counts so the surface can say so.
+* **29 February has no counterpart**, so Financial year to date on 29 February 2028 compares
+  with 1 April 2026 – 28 February 2027, capped.
+* **A leap day inside a stretch is not a cap.** On 1 March 2028 the current stretch holds
+  29 February and is 336 days against 335; on 1 March 2029 the comparator holds it and is the
+  longer side. The equivalent date existed both times, so nothing is capped — the day counts
+  say it.
+
+`DashboardPeriods` in `lib/domain/finance/dashboard_periods.dart`. Every day of 2026–2029 is
+swept by a test.
+
+## D-252 — On the dashboard, an in-progress period ends today; the P&L screen is unchanged
+**Date:** 2026-09-17 · **Status:** Accepted (project-lead decision 2, and the labels rule)
+
+On the dashboard and in Phase 6 analytics, *Financial Year* means **financial year to date**,
+and an in-progress week, month or financial year ends at the property's current business
+date. A future-dated accrual appears when its P&L date enters the period, and not before.
+
+**The Phase 5 P&L screen keeps its approved semantics** — This Month is the whole calendar
+month and Financial Year the whole year (D-225). The two are separate types:
+`DashboardPeriodKind` beside `RelativePreset`, and nothing in the P&L path was edited.
+
+**Labels never make an unfinished period look finished:** *Today so far*, *Week to date*,
+*Month to date*, *Financial year to date*.
+
+## D-253 — Comparison display rules
+**Date:** 2026-09-17 · **Status:** Accepted (project-lead decision 3) — implemented in Slice 2
+
+* **Either side unavailable** — not authorised, not downloaded, one side of the P&L missing, or
+  anything else — **no numerical comparison at all.** Nothing is substituted with zero. The
+  refusal behind each side is carried.
+* **Previous figure zero:** percentage N/A; the rupee change is still shown.
+* **Operating Profit with a negative side:** no percentage. A sign change reads *Moved from loss
+  to profit* or *Moved from profit to loss*, beside the exact rupee movement. Break-even is
+  neither a profit nor a loss, so a move to or from zero is not a sign change.
+* **Operating Margin moves in percentage points**, exactly: 12.30% → 14.10% is **+1.80 pp**,
+  never "14.63% growth".
+
+All of it lives once in `lib/domain/finance/pnl_comparison.dart`, as exact rationals over
+paise, rounded once, half away from zero. The margin movement multiplies two paise figures,
+which passes 2^63 at crore scale, so it is computed in `BigInt`.
+
+**One consequence of "exact", recorded so it is not rediscovered as a defect.** The movement is
+taken from the two exact margins, not from their rounded displays. For 1/3 against 1/6 it is
+**+16.67 pp**, while the two displayed margins, 33.33% and 16.67%, differ by 16.66. A surface
+showing both margins beside the movement can therefore show a 0.01 pp visible gap. This is the
+ruling applied literally; if the project lead prefers the movement to match the two printed
+margins, that is a one-line change and a new decision.
+
+## D-254 — A consolidated comparison needs both sides to agree across properties
+**Date:** 2026-09-17 · **Status:** Accepted (project-lead decision 4) — implemented in Slice 2
+
+D-225 is applied **independently to both sides.** Every included property must resolve to the
+identical current range **and** the identical comparison range; otherwise the consolidated
+comparison is refused (`currentRangesDiffer` / `comparisonRangesDiffer`) and the reader is
+sent to Custom. No property is the master calendar, and a property whose business-day rules are
+unknown refuses rather than being defaulted.
+
+For every relative kind the comparator is a function of the current range's end, so agreeing
+current ranges imply agreeing comparators. The comparison check runs regardless, and is proven
+with an injected pairing that breaks the implication, so a future rule cannot rely on it
+silently.
+
+## D-255 — Trend grain, and what a day may be ranked on
+**Date:** 2026-09-17 · **Status:** Accepted (project-lead decision 5) — one point left open
+
+* **Daily and weekly trend points carry Net Sales only.** Accrual placement makes a single day's
+  expenses and profit misleading.
+* **Expenses and Operating Profit are trended monthly**, and a financial year to date is
+  trended monthly.
+* **Best and worst day rank daily Net Sales only**, never profit. A tie is reported in full,
+  never broken; one unavailable day refuses the whole ranking.
+
+The permission is a property of the grain and is checked when trend buckets are built, so a
+chart cannot ask for a daily profit series by accident. A clipped first or last week or month is
+marked `partial`.
+
+Grains offered per period: Today — none; Week to date — daily; Month to date — daily and
+weekly; Financial year to date — monthly.
+
+**Open: the grain for a Custom range.** A custom range can be three days or three years, and no
+rule was given, so `DashboardTrends.grainsFor(custom)` offers none. This is raised for the
+project lead rather than chosen.
+
+## D-256 — An ordinary figure with a negative previous value gets no percentage
+**Date:** 2026-09-17 · **Status:** **Implemented, pending project-lead confirmation**
+
+D-253 rules on a negative side for Operating Profit only. Net Sales, Expenses, Gross Sales and
+GST are normally non-negative, but a correction can in principle leave a period negative, and a
+percentage of a negative base reads backwards (−₹100 → +₹100 would print "−200%"). The
+comparison therefore gives **N/A (`previousNegative`)** for an ordinary figure whose previous
+value is negative, keeping the rupee change. This is the conservative reading of the profit rule,
+added so the software did not have to guess, and it is flagged rather than presented as a
+ruling.
+
+## D-257 — Charts use `fl_chart`, behind an internal presentation layer
+**Date:** 2026-09-17 · **Status:** Accepted (project-lead decision 6) — dependency added in Slice 5
+
+`fl_chart` is the one chart package. Before it is added (Slice 5): verify compatibility with
+Flutter 3.44.9 / Dart 3.12.x on Android and Windows, pin the exact version, and record it here.
+It sits behind a small internal chart layer that receives **already-computed presentation
+values**. Chart code computes no P&L, GST, money total, category total, comparison percentage,
+margin, percentage-point movement, reconciliation, authority or period range, and a structural
+guard will assert it. No other chart package.
+
+## D-258 — Top N + Others is presentation grouping over a set that already reconciles
+**Date:** 2026-09-17 · **Status:** Accepted (project-lead rule) — implemented in Slice 2
+
+The complete category set must add up exactly to its headline figure — expenses to Expenses,
+revenue categories to Net Sales — **before** anything is grouped. If it does not, no Top-N chart
+is drawn (`doesNotReconcile`). **Others is the exact sum of every line not in the top**, and it
+can hide nothing missing, unreconciled or unauthorised, because such a set is refused first.
+
+Ranking is by amount, largest first; equal amounts are ordered by the line's full identity so
+the chart never changes between two readings of the same data. Categories of different
+properties stay separate lines — nothing decides that two categories are "the same". Revenue mix
+ranks by Net Sales.
+
+`TopN` in `lib/domain/finance/dashboard_analytics.dart`.
+
+## D-259 — People without P&L authority see a neutral landing surface
+**Date:** 2026-09-17 · **Status:** Accepted (project-lead decision 7) — Slices 4, 6, 7
+
+Overview (Windows) and Home (Android) remain for everyone. A principal without the P&L
+authority `PnlAuthority` defines (D-164, D-226) sees **no** financial figure, chart or
+comparison, and no property name inferred from a default or another person's scope. They may
+see permitted navigation, existing non-financial quick actions their capabilities allow, and
+neutral account and session information. Where nothing useful remains: *"Management analytics
+are not available for your access."* No separate operational dashboard is built in Phase 6.
+
+## D-260 — Android gets the management dashboard; Windows owns the analytics workspace
+**Date:** 2026-09-17 · **Status:** Accepted (project-lead decision 8)
+
+**Android Home:** scope, period, freshness, Net Sales, Expenses, Operating Profit or Loss,
+Operating Margin, comparison indicators, the Net Sales trend, top expense categories, property
+comparison when consolidated authority exists, and *See full P&L* to Reports.
+
+**Windows Analytics:** Profit & Loss, Revenue Analysis, Expense & Department Analysis, Business
+Comparison. Not reproduced on Android in Phase 6.
+
+Both platforms use the same domain rules, providers and wording.
+
+## D-261 — The Phase 6 plan, and the performance gate
+**Date:** 2026-09-17 · **Status:** Accepted (project-lead approval)
+
+Eleven slices: (1) governance, (2) exact comparison domain rules, (3) dashboard engine and
+measurement, (4) authority and providers, (5) chart foundation, (6) Windows Overview,
+(7) Android Home, (8) Windows Analytics sections, (9) drill-down integration, (10) full
+acceptance, (11) closure.
+
+**Performance gate, before Slice 3 closes:** trend series built from ordinary repeated reports
+are measured on representative financial-year-sized data. If fast enough, the architecture is
+kept. If not, **stop and report** — no server analytics RPC, materialised aggregate, index or
+second analytics cache is added without a separate decision.
+
+**Out of Phase 6:** Owner Settlement analytics, finalized owner statements, export, PDF,
+printing, vendor analysis, value-band analysis, forecasting, targets, AI analysis, editing from
+dashboards, new server-side dashboard functions, and performance hardening not shown to be
+necessary. The production 50:50 start date is still outstanding and does not block Phase 6.

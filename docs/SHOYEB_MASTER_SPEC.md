@@ -643,6 +643,19 @@ Every figure is labelled with its **data freshness** (§21.4) so a manager alway
 whether they are looking at locally current information including unsynced entries, or
 fully synchronised information.
 
+**Dashboard periods and comparisons (amended 2026-09-17, D-251 … D-255).** The dashboard's
+periods are **to date** — *Today so far*, *Week to date*, *Month to date*, *Financial year to
+date* — and end at each property's current business date, so a future-dated accrual appears
+only once its P&L date arrives. Each is compared with the **same stretch** of the previous
+period, never the whole of it; a shorter previous month or a missing 29 February caps the
+comparator and the dashboard says so, and a custom range is compared with the equal-length
+range immediately before it. If either side is unavailable, no comparison is shown and nothing
+becomes zero. A previous figure of zero gives no percentage. Operating Profit with a loss on
+either side gives no percentage, and a change of sign is stated in words. The margin moves in
+percentage points. Daily and weekly trends show Net Sales only; expenses and profit are trended
+by month. A consolidated comparison needs every property to agree on both periods. The P&L
+screen's own period semantics are unchanged by this.
+
 ## 18. Mobile UX (Android)
 
 Android is the operational entry device; optimise for fast daily use.
@@ -900,6 +913,12 @@ transaction path (§32).
 Clean extension points are welcome. Speculative modules are not.
 
 ## 30. Change log
+
+**v1.2 amendment — 2026-09-17.** §17 records the dashboard's period and comparison semantics,
+as the project lead ruled at the start of Phase 6 (D-251 … D-255). **No other section changes**
+and the version does not move: this defines what §17's "period-over-period comparison" and
+"trend" mean on the dashboard, and changes no calculation, no figure, and nothing about the P&L
+screen's existing periods.
 
 **v1.2 amendment — 2026-09-08.** §21.4 records which of its three freshness states a
 canonical P&L can actually construct. *"Local — current, includes N unsynced entries"* is
