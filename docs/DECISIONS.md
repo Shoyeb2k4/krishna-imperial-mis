@@ -8824,3 +8824,167 @@ it claims to be.
 
 **Control, seen to fail:** with `displayTwoDecimals` pointed back at the exact movement, two
 tests turn RED, including the string-level one. Restored by byte copy and `cmp`.
+
+## D-265 — One plan, one span, one claim: how a dashboard reads
+**Date:** 2026-09-20 · **Status:** Accepted — Phase 6 Slice 3
+
+A dashboard is not one report. It is the P&L of the period so far, the same P&L for the
+stretch it is compared with, one report per trend bucket, and — where a best and worst day
+is asked for — one report per day of the period. The engine's whole substance is how those
+reads are planned, held together and described, because every figure they produce is
+already decided by `domain/finance`.
+
+**It derives nothing.** No comparison arithmetic, no bucket boundaries, no ranking, no
+grouping: `PnlComparison.compare`, `DashboardTrends.buckets`, `DashboardTrends.series`,
+`DailyNetSalesRanking.rank` and `TopN` are called, never reproduced. The directory guard
+already forbids money arithmetic here; a dedicated guard adds the complement — the
+delegation must be **present**, and constructing any of thirteen domain result types is
+refused. A guard that only forbids would pass just as happily over a file that did nothing
+at all, which is D-139's defect in reverse.
+
+**Every distinct range is read once.** A month-to-date dashboard wants a daily Net Sales
+trend *and* a best and worst day, and both are the same thirty days of single-day reports.
+The plan is therefore a **set** of ranges and the view is assembled from one map of
+results. Reading them twice would double the cost of the busiest dashboard there is for no
+second answer — measured at 37 reads rather than 67.
+
+**A refused headline refuses the view, and stops reading.** Every bucket lies inside the
+current period and is read under the same authority, so a period that cannot be
+established would refuse thirty more times at thirty times the cost. That is also the
+D-163 reading: a trend drawn under a refused headline is the half-report a dashboard must
+not show. The **comparator is still read**, so a refused current period beside an
+available previous one is still described honestly rather than blanked.
+
+**One lock span, therefore one moment.** The whole view runs inside a single
+`CanonicalCacheLock` span (D-241). A dashboard is an order of magnitude more reads than a
+P&L screen and is correspondingly more exposed to a synchronisation landing in the middle
+of it — and a trend whose first half is one snapshot and whose second half is another
+reconciles perfectly and is a picture of no moment that existed (D-188). Proven
+behaviourally: a synchronisation queued on the same lock after the view's first read does
+not commit until the view is finished, and the trend is entirely the state before it.
+
+**One freshness claim, or none.** The view claims a snapshot only when **every** read
+carried snapshot evidence and all of it was the same evidence. Deliberately not the
+headline's evidence alone: a trend bucket in an older financial year may have been
+certified by a different run, and a badge taken from the headline would date the chart
+beside it to a moment that chart does not belong to. A part that could not be established
+has no evidence and therefore withholds the claim for the whole view — *synchronised as of
+T* printed above a chart with a hole in it claims a completeness the view does not have.
+The figures are canonical either way. Coverage is combined the same way: the weakest of
+each side across every read, not the headline's.
+
+**Controls, each seen to fail and each restored byte-identical (`cmp`):** the range set
+degraded to a list (2 RED); the reads moved out of the lock span (1 RED — and the count
+guard passed, which is recorded in the guard itself rather than glossed); the
+refused-headline short-circuit removed (1 RED); the freshness badge taken from the
+headline alone (1 RED); a read placed before the span opens (1 RED).
+
+## D-266 — The Phase 6 performance gate: the existing foundation is sufficient
+**Date:** 2026-09-20 · **Status:** Accepted — the gate D-261 required, discharged
+
+D-261 set the gate: measure representative financial-year dashboard workloads on the
+existing Phase 5 reporting foundation, and **stop and report** rather than change the
+architecture if the measurement is unsuitable. It named five things not to add without a
+separate decision — a dashboard RPC, a second reporting cache, a materialised aggregate, a
+new index, a new server reporting function.
+
+**None was added.** The measurement does not support adding one.
+
+### What was measured
+
+Two financial years of trade for two properties — **4,380 revenue contributions and 2,920
+expense contributions**, a 2.5 MB database — written into the real canonical reporting
+cache, read through the real `MarkerCoverage`, `CachedReportingSource`,
+`LocalReportingEngine`, `Pnl.compute` and `DashboardEngine` under the real
+`CanonicalCacheLock`. Seven workloads, every one a dashboard the rulings actually permit,
+all consolidated across both properties, which is the heavier scope.
+
+The on-device runs use the **real SQLCipher-encrypted database** in the application's own
+storage directory, and assert it is genuinely encrypted before measuring — a measurement
+against a plaintext file would be a measurement of something the product does not do.
+
+### Windows, real encrypted database, two samples
+
+| Workload | reports | points | cold | warm |
+|---|---|---|---|---|
+| financial year to date, whole year, monthly ×3, top 5 | 14 | 36 | 119 / 134 ms | 86 / 95 ms |
+| financial year to date, mid-year, monthly ×3, top 5 | 8 | 18 | 49 / 49 ms | 45 / 42 ms |
+| **month to date, daily + weekly, ranked, top 5** | **37** | **35** | **170 / 181 ms** | **168 / 151 ms** |
+| week to date, daily, ranked | 6 | 4 | 32 / 30 ms | 25 / 31 ms |
+| custom 365 days, monthly ×3 | 14 | 36 | 74 / 71 ms | 74 / 71 ms |
+| custom 180 days, weekly | 28 | 26 | 120 / 123 ms | 122 / 125 ms |
+| custom 31 days, daily, ranked | 33 | 31 | 153 / 157 ms | 146 / 155 ms |
+| headline + comparator alone | 2 | — | 10 / 8 ms | — |
+
+### Android emulator, real encrypted database, three samples
+
+`sdk gphone16k x86_64`, Android 17 / API 37, **debug** build.
+
+| Workload | run 1 cold | run 2 cold | run 3 cold | warm (runs 2–3) |
+|---|---|---|---|---|
+| financial year to date, whole year | 319 ms | 60 ms | 67 ms | 23–24 ms |
+| financial year to date, mid-year | 53 ms | 13 ms | 14 ms | 10–12 ms |
+| **month to date, daily + weekly, ranked** | **685 ms** | **41 ms** | **38 ms** | **31–41 ms** |
+| week to date, daily, ranked | 88 ms | 6 ms | 5 ms | 5 ms |
+| custom 365 days, monthly ×3 | 69 ms | 18 ms | 19 ms | 19–21 ms |
+| custom 180 days, weekly | 29 ms | 28 ms | 29 ms | 25 ms |
+| custom 31 days, daily, ranked | 215 ms | 24 ms | 27 ms | 24 ms |
+
+**Run 1 is discarded as warm-up, and the evidence for that is in run 1 itself rather than
+in an assertion about it:** a 28-report workload cost 29 ms cold while a 14-report one
+cost 319 ms, and the heaviest cost 685 ms cold against 31 ms warm in the same run. Cost
+that does not follow the work is not the work. Runs 2 and 3 were taken on a settled
+emulator and agree closely with each other.
+
+### What the numbers say
+
+**The worst measured steady-state dashboard is 168 ms, on Windows, for 37 reports.** The
+escalation trigger this project set in `ARCHITECTURE.md` §9 is 400 ms for a one-month P&L
+on the reference Android device; the heaviest dashboard on either platform is inside it,
+and the Android figures are several times better than the Windows ones.
+
+**Cost is linear in reports and the per-report cost is the Phase 5 engine's**, which is
+what makes the figures predictable rather than a black box: two reports cost 8–10 ms on
+Windows, and 37 cost 151–181. Nothing about a dashboard is superlinear, because nothing
+about it is a new query shape — it is *n* of the P&L query already measured in Phase 5
+Slice 5.
+
+**The rulings bound the work themselves.** D-263's span thresholds are why a year-long
+custom range is 14 reports rather than 367: a 365-day Net Sales trend is monthly, not
+daily. D-255 is why a financial year to date is 12 buckets shared by three series rather
+than three sets. The grain rules turn out to be the performance design.
+
+### Remote and download cost
+
+**Not applicable to the dashboard engine**, and that is a statement rather than an
+omission: it issues no remote call. It reads the canonical cache, and the download that
+fills that cache is the unchanged Phase 5 `ReportingSync`, whose live cost against
+`krishna-mis-dev` is already recorded (Slice 5: one month 39 ms server-side and 98–185 ms
+end to end to Mumbai; a consolidated financial year 368–398 ms). Slice 3 adds no server
+function, no RPC and no new request.
+
+What Slice 3 *did* measure of that path is the **local half of a first full
+synchronisation** — applying 7,300 contributions across two financial years in one
+transaction: **527–2,718 ms on Windows, 824–6,711 ms on the emulator**, both with wide
+spread. That is a one-off cost on a fresh installation, not a per-dashboard cost, it is
+Phase 5 machinery, and it is recorded here because it is the largest single number in the
+whole measurement and somebody will otherwise find it and wonder.
+
+### One thing deliberately not optimised
+
+Each report currently reads **four** aggregates per property — revenue totals, expense
+totals, revenue by category and expenses by category — and a trend bucket needs only the
+first two. Suppressing the breakdown on bucket reads would roughly halve the query count
+of the heaviest dashboard. It is not done, because the gate's instruction was to change
+nothing the measurement does not require, and at 168 ms the measurement does not require
+it. It is recorded here so that the option is known rather than rediscovered, and so that
+a future measurement on slower hardware has somewhere obvious to start.
+
+### The limits of this evidence, stated
+
+The Android figures are from the **emulator**, not from the project lead's Galaxy A06
+(D-230), and from a **debug** build, which is slower than a release build for Dart code
+and identical for SQLite. A physical-device dashboard pass belongs with the Phase 6
+acceptance slice, exactly as D-230 placed the P&L one. The fixture is two properties and
+two financial years, which is the local retention ceiling (D-170); a device does not hold
+more than that without asking for it.

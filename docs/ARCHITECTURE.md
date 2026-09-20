@@ -3822,7 +3822,52 @@ Decisions D-251 … D-261. **No schema change, no migration, local Drift schema 
   sweep across five precisions asserts it, and a bound proves the two answers never differ by
   more than one unit at the display precision.
 
-Still to come in Phase 6, and not built here: the dashboard engine that reads several ranges
-inside one `CanonicalCacheLock` span with one combined freshness claim (Slice 3), providers
-keyed on `PnlAuthority.readKey` (Slice 4), the `fl_chart` presentation layer and its
-no-arithmetic guard (Slice 5), and the surfaces (Slices 6–9).
+Still to come in Phase 6, and not built here: providers keyed on `PnlAuthority.readKey`
+(Slice 4), the `fl_chart` presentation layer and its no-arithmetic guard (Slice 5), and the
+surfaces (Slices 6–9).
+
+## 42. The dashboard engine — Phase 6 Slice 3
+
+Decisions **D-265**, **D-266**. **No schema change, no migration, no dependency, no
+surface, no server function.** Local Drift schema stays **v21**; migration ledger stays
+**101**.
+
+```
+        DashboardRequest  (a resolved pair, a scope, trends, ranking, top N)
+             │
+        plan        every DISTINCT range the view needs, headline first
+             │
+        ┌────┴──────────────── one CanonicalCacheLock span ───────────────┐
+        │  ReportingEngine.report(...)  once per distinct range           │
+        │  a refused headline stops after the comparator                  │
+        └────┬────────────────────────────────────────────────────────────┘
+             │
+        assemble    PnlComparison · DashboardTrends.series
+                    DailyNetSalesRanking · TopN
+             │
+        DashboardView  (+ combined coverage, one freshness claim or none, read stats)
+```
+
+* **It derives nothing**, like the engine beneath it. Every figure comes from
+  `domain/finance`; `dashboard_engine_guard_test.dart` asserts both halves — that the
+  delegation is present, and that none of thirteen domain result types is constructed here.
+* **One report per distinct range.** A daily trend and a daily ranking over one period are
+  the same reads and are paid for once: 37 reports for the heaviest dashboard, not 67.
+* **One span, therefore one moment** (D-188, D-241). Proven behaviourally: a
+  synchronisation queued on the same lock after the view's first read cannot commit until
+  the view finishes. The guard counts spans; *containment* is the behaviour test's, and the
+  guard says so rather than implying more than a count can establish.
+* **One freshness claim, or none.** Every read must carry the same snapshot evidence.
+  A badge taken from the headline would date a chart drawn from an older financial year to
+  a moment that chart does not belong to. Coverage combines the same way — the weakest of
+  each side across every read.
+* **A refused headline refuses the view** and stops reading (D-163); the comparator is
+  still read, so a refused period beside an available previous one is described honestly.
+
+**The gate (D-266).** Two financial years, two properties, 7,300 contributions, the real
+encrypted database on both platforms. Worst steady-state dashboard **168 ms** (Windows, 37
+reports); Android emulator **31–41 ms** for the same workload. Cost is linear in reports
+and the per-report cost is the Phase 5 engine's. **Nothing was added** — no dashboard RPC,
+no second cache, no materialised aggregate, no index, no server function. The D-255 and
+D-263 grain rules turn out to be what bounds the work: a year-long custom range is 14
+reports because its Net Sales trend is monthly, not 367 because it is daily.

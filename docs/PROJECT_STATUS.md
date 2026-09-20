@@ -5518,7 +5518,7 @@ reporting cache is created, and authorization stays `PnlAuthority`.
 |---|---|---|
 | 1 | Governance and decisions | **COMPLETE** |
 | 2 | Exact comparison domain rules | **COMPLETE** |
-| 3 | Dashboard engine, and the performance gate | not started |
+| 3 | Dashboard engine, and the performance gate | **COMPLETE** |
 | 4 | Authority and providers | not started |
 | 5 | Chart foundation (`fl_chart`, pinned, with a no-arithmetic guard) | not started |
 | 6 | Windows Overview dashboard | not started |
@@ -5623,6 +5623,135 @@ bucket** — one point shows no direction, so it is not a trend at all — and p
 last buckets count toward it. That is the definition of a trend rather than a business rule;
 a stricter meaningfulness rule (say, one complete month) would be a separate decision.
 
+## Phase 6 Slice 3 — dashboard engine and the performance gate: **COMPLETE** (2026-09-20)
+
+Decisions **D-265**, **D-266**; `ARCHITECTURE.md` §42. **No schema change, no migration, no
+dependency, no surface, no server function.** Local Drift schema stays **v21**; migration
+ledger stays **101**.
+
+### What shipped
+
+`lib/data/reporting/dashboard_engine.dart` — `DashboardRequest`, `DashboardView`,
+`DashboardReadStats` and the engine itself:
+
+```
+        plan        every DISTINCT range the view needs, headline first
+        read        one report per range, through the Phase 5 engine,
+                    all of it inside ONE CanonicalCacheLock span
+        assemble    PnlComparison · DashboardTrends.series ·
+                    DailyNetSalesRanking · TopN
+```
+
+It derives nothing: every figure is `domain/finance`'s, and a dedicated guard asserts both
+that the delegation is present and that none of thirteen domain result types is
+constructed here.
+
+### Verified
+
+| Item | Status | Evidence |
+|---|---|---|
+| `dart format --set-exit-if-changed lib test integration_test tool` | **Tested** | clean, 320 files |
+| `flutter analyze` | **Tested** | **No issues found** |
+| Host suite | **Tested** | **2,270 passed** (2,242 + 28) |
+| Dashboard engine behaviour, on the real cache | **Tested** | 12 tests — headline, comparator, trends, ranking, Top N, refusal, coverage, freshness, one span |
+| Dashboard engine structural guard | **Tested** | 13 tests, four of them planted-violation self-checks |
+| Host performance measurement | **Tested** | 2 tests; reads and points asserted, timings reported |
+| On-device measurement, **real encrypted database** | **Tested** | Windows ×2 samples, Android emulator ×3 samples |
+| Secret scan — tree and git history | **Tested** | clean, controls passing |
+| Physical Android device | **Not tested** | emulator only; a physical pass belongs with the Phase 6 acceptance slice (D-230) |
+| Live backend | **Not exercised** | the engine issues no remote call; the download is unchanged Phase 5 `ReportingSync` |
+
+### Positive controls, each seen RED and restored byte-identical (`cmp`)
+
+| Control | Result |
+|---|---|
+| the range set degraded to a list, so a range can be read twice | **2 RED** |
+| the reads moved out of the lock span | **1 RED** — and the count guard passed, which the guard now records about itself |
+| the refused-headline short-circuit removed | **1 RED** |
+| the freshness badge taken from the headline alone | **1 RED** |
+| a read placed before the span opens | **1 RED** (the guard added for it) |
+
+### The performance gate (D-261), discharged
+
+Fixture: **4,380 revenue contributions, 2,920 expense contributions**, 2 financial years,
+2 properties, a 2.5 MB database, all consolidated — the heavier scope.
+
+**Windows, real encrypted database, two samples:**
+
+| Workload | reports | points | cold | warm |
+|---|---|---|---|---|
+| FYTD, whole year, monthly ×3, top 5 | 14 | 36 | 119 / 134 ms | 86 / 95 ms |
+| FYTD, mid-year, monthly ×3, top 5 | 8 | 18 | 49 / 49 ms | 45 / 42 ms |
+| **month to date, daily + weekly, ranked, top 5** | **37** | **35** | **170 / 181 ms** | **168 / 151 ms** |
+| week to date, daily, ranked | 6 | 4 | 32 / 30 ms | 25 / 31 ms |
+| custom 365 days, monthly ×3 | 14 | 36 | 74 / 71 ms | 74 / 71 ms |
+| custom 180 days, weekly | 28 | 26 | 120 / 123 ms | 122 / 125 ms |
+| custom 31 days, daily, ranked | 33 | 31 | 153 / 157 ms | 146 / 155 ms |
+| headline + comparator alone | 2 | — | 10 / 8 ms | — |
+
+**Android emulator** (`sdk gphone16k x86_64`, Android 17 / API 37, debug build), three
+samples. Run 1 was taken on a just-booted emulator and is discarded as warm-up — the
+evidence is inside run 1 itself: a 28-report workload cost 29 ms cold while a 14-report one
+cost 319 ms, and the heaviest cost 685 ms cold against 31 ms warm in the same run. Cost
+that does not follow the work is not the work.
+
+| Workload | run 1 cold | run 2 cold | run 3 cold | warm (runs 2–3) |
+|---|---|---|---|---|
+| FYTD, whole year | 319 ms | 60 ms | 67 ms | 23–24 ms |
+| FYTD, mid-year | 53 ms | 13 ms | 14 ms | 10–12 ms |
+| **month to date, daily + weekly, ranked** | **685 ms** | **41 ms** | **38 ms** | **31–41 ms** |
+| week to date, daily, ranked | 88 ms | 6 ms | 5 ms | 5 ms |
+| custom 365 days, monthly ×3 | 69 ms | 18 ms | 19 ms | 19–21 ms |
+| custom 180 days, weekly | 29 ms | 28 ms | 29 ms | 25 ms |
+| custom 31 days, daily, ranked | 215 ms | 24 ms | 27 ms | 24 ms |
+
+**Cold versus warm.** On Windows they are within about 15% of each other, so there is no
+material cold-start effect there. On Android the first run of a debug build is dominated by
+code warm-up and the second and third agree closely; steady state is what the table's warm
+column reports.
+
+**Number of `PnlResult` requests** is the reports column: one consolidated result per
+distinct range, each composed from one per-property computation per property. **Trend
+points** is the points column.
+
+**Remote / download.** Not applicable to the engine — it issues no remote call. The
+download that fills the cache is the unchanged Phase 5 `ReportingSync`, already measured
+live in Slice 5 (one month 39 ms server-side, 98–185 ms end to end to Mumbai; consolidated
+financial year 368–398 ms). The local half of a **first full synchronisation** of this
+fixture — 7,300 contributions in one transaction — measured **527–2,718 ms on Windows** and
+**824–6,711 ms on the emulator**, with wide spread. That is a one-off cost on a fresh
+installation, not a per-dashboard cost, and it is Phase 5 machinery.
+
+### The conclusion, and what was therefore not added
+
+**The existing Phase 5 foundation is sufficient. Nothing was added** — no dashboard RPC, no
+second reporting cache, no materialised aggregate, no new index, no new server reporting
+function.
+
+* The worst steady-state dashboard is **168 ms**, against the 400 ms escalation trigger
+  `ARCHITECTURE.md` §9 records.
+* Cost is **linear in reports**, and the per-report cost is the Phase 5 engine's: 2 reports
+  cost 8–10 ms on Windows and 37 cost 151–181 ms. Nothing about a dashboard is a new query
+  shape.
+* The grain rulings bound the work: D-263's thresholds are why a year-long custom range is
+  14 reports rather than 367, and D-255 is why a financial year to date is 12 buckets
+  shared by three series rather than three sets.
+
+**One option recorded rather than taken.** Each report reads four aggregates per property,
+and a trend bucket needs only two of them; suppressing the breakdown on bucket reads would
+roughly halve the heaviest dashboard's query count. Not done, because the gate's
+instruction was to change nothing the measurement does not require. Recorded so a future
+measurement on slower hardware has an obvious first move.
+
+### Limits of this evidence, stated
+
+The Android figures are from the **emulator** and a **debug** build, not the project lead's
+Galaxy A06 — a physical-device dashboard pass belongs with the Phase 6 acceptance slice,
+exactly where D-230 placed the P&L one. The fixture is two financial years, which is the
+local retention ceiling (D-170).
+
 ## Next exact task
 
-**Phase 6 Slice 3 — dashboard engine and the performance gate.** Not started.
+**Phase 6 Slice 4 — authority and providers.** **Not started, and not started
+automatically**: Slice 3's correctness and performance evidence is reported above and
+awaits the project lead.
