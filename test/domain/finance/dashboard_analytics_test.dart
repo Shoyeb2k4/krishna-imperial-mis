@@ -90,19 +90,45 @@ void main() {
       }
     });
 
-    test('the grains each dashboard period offers', () {
-      expect(DashboardTrends.grainsFor(DashboardPeriodKind.today), isEmpty);
-      expect(DashboardTrends.grainsFor(DashboardPeriodKind.weekToDate), [
-        TrendGrain.daily,
-      ]);
-      expect(DashboardTrends.grainsFor(DashboardPeriodKind.monthToDate), [
+    test('the Net Sales grains each relative period offers', () {
+      List<TrendGrain> net(DashboardPeriodKind k) =>
+          DashboardTrends.grainsFor(k, measure: TrendMeasure.netSales);
+      expect(net(DashboardPeriodKind.today), isEmpty);
+      expect(net(DashboardPeriodKind.weekToDate), [TrendGrain.daily]);
+      expect(net(DashboardPeriodKind.monthToDate), [
         TrendGrain.daily,
         TrendGrain.weekly,
       ]);
-      expect(
-        DashboardTrends.grainsFor(DashboardPeriodKind.financialYearToDate),
-        [TrendGrain.monthly],
-      );
+      expect(net(DashboardPeriodKind.financialYearToDate), [
+        TrendGrain.monthly,
+      ]);
+    });
+
+    test('Expenses and Operating Profit are monthly only, so shorter periods '
+        'offer them nothing', () {
+      for (final measure in const [
+        TrendMeasure.expenses,
+        TrendMeasure.operatingProfit,
+      ]) {
+        for (final kind in const [
+          DashboardPeriodKind.today,
+          DashboardPeriodKind.weekToDate,
+          DashboardPeriodKind.monthToDate,
+        ]) {
+          expect(
+            DashboardTrends.grainsFor(kind, measure: measure),
+            isEmpty,
+            reason: '$kind must offer no $measure trend',
+          );
+        }
+        expect(
+          DashboardTrends.grainsFor(
+            DashboardPeriodKind.financialYearToDate,
+            measure: measure,
+          ),
+          [TrendGrain.monthly],
+        );
+      }
     });
 
     test('a series refuses a measure its grain does not permit', () {
@@ -174,6 +200,338 @@ void main() {
         }
         expect(b.fold<int>(0, (s, x) => s + x.range.days), range.days);
       }
+    });
+  });
+
+  group('a Custom range chooses its Net Sales grain by span (D-263)', () {
+    // The boundaries of the ruling's table, each side of each threshold.
+    for (final (days, grain) in const [
+      (1, TrendGrain.daily),
+      (2, TrendGrain.daily),
+      (31, TrendGrain.daily),
+      (32, TrendGrain.weekly),
+      (100, TrendGrain.weekly),
+      (180, TrendGrain.weekly),
+      (181, TrendGrain.monthly),
+      (365, TrendGrain.monthly),
+      (1000, TrendGrain.monthly),
+    ]) {
+      test('$days days -> ${grain.name}', () {
+        final from = _d(2026, 4, 1);
+        final range = _range(from, from.addDays(days - 1));
+        expect(range.days, days);
+        expect(DashboardTrends.netSalesGrainForCustom(range), grain);
+        expect(
+          DashboardTrends.grainsFor(
+            DashboardPeriodKind.custom,
+            measure: TrendMeasure.netSales,
+            range: range,
+          ),
+          [grain],
+        );
+      });
+    }
+
+    test('a custom grain needs the range it is a property of', () {
+      expect(
+        () => DashboardTrends.grainsFor(
+          DashboardPeriodKind.custom,
+          measure: TrendMeasure.netSales,
+        ),
+        throwsArgumentError,
+      );
+    });
+
+    test(
+      'Expenses and Operating Profit stay monthly, however long the span',
+      () {
+        for (final days in const [40, 200, 800]) {
+          final from = _d(2026, 4, 1);
+          final range = _range(from, from.addDays(days - 1));
+          for (final measure in const [
+            TrendMeasure.expenses,
+            TrendMeasure.operatingProfit,
+          ]) {
+            expect(
+              DashboardTrends.grainsFor(
+                DashboardPeriodKind.custom,
+                measure: measure,
+                range: range,
+              ),
+              [TrendGrain.monthly],
+              reason: '$days days, $measure',
+            );
+          }
+        }
+      },
+    );
+
+    test('a range inside one calendar month offers no cost trend at all', () {
+      // One monthly bucket is one point, and one point shows no direction.
+      final inside = _range(_d(2026, 4, 3), _d(2026, 4, 28));
+      expect(DashboardTrends.offersMonthlyCostTrend(inside), isFalse);
+      for (final measure in const [
+        TrendMeasure.expenses,
+        TrendMeasure.operatingProfit,
+      ]) {
+        expect(
+          DashboardTrends.grainsFor(
+            DashboardPeriodKind.custom,
+            measure: measure,
+            range: inside,
+          ),
+          isEmpty,
+        );
+      }
+      // Net Sales is unaffected: 26 days is a daily trend.
+      expect(
+        DashboardTrends.grainsFor(
+          DashboardPeriodKind.custom,
+          measure: TrendMeasure.netSales,
+          range: inside,
+        ),
+        [TrendGrain.daily],
+      );
+    });
+
+    test(
+      'a whole calendar month alone is still one bucket, so still nothing',
+      () {
+        expect(
+          DashboardTrends.offersMonthlyCostTrend(
+            _range(_d(2026, 4, 1), _d(2026, 4, 30)),
+          ),
+          isFalse,
+        );
+      },
+    );
+
+    test('two days either side of a month boundary is two buckets', () {
+      // Both partial, and both real. Partial is not a reason to withhold a trend; it is
+      // a reason to label the point (D-263).
+      final crossing = _range(_d(2026, 4, 29), _d(2026, 5, 2));
+      expect(DashboardTrends.offersMonthlyCostTrend(crossing), isTrue);
+      final b = DashboardTrends.buckets(
+        crossing,
+        TrendGrain.monthly,
+        measure: TrendMeasure.expenses,
+      );
+      expect(b, hasLength(2));
+      expect(b.every((x) => x.partial), isTrue);
+    });
+
+    test('choosing a grain does not move the period or its comparison', () {
+      final outcome =
+          DashboardPeriods.forCustom(from: _d(2026, 4, 1), to: _d(2027, 1, 15))
+              as DashboardPairResolved;
+      final before = outcome.pair;
+      for (final measure in TrendMeasure.values) {
+        final grains = DashboardTrends.grainsFor(
+          DashboardPeriodKind.custom,
+          measure: measure,
+          range: before.current,
+        );
+        for (final grain in grains) {
+          DashboardTrends.buckets(before.current, grain, measure: measure);
+        }
+      }
+      expect(before.current, outcome.pair.current);
+      expect(before.comparison, outcome.pair.comparison);
+      expect(before.comparisonCapped, outcome.pair.comparisonCapped);
+    });
+
+    test('weekly buckets over a custom span are Monday-to-Sunday, clipped at '
+        'both ends and never extrapolated', () {
+      // 3 Sept 2026 is a Thursday; +60 days is 1 Nov 2026, a Sunday.
+      final range = _range(_d(2026, 9, 3), _d(2026, 11, 1));
+      expect(range.days, 60);
+      expect(DashboardTrends.netSalesGrainForCustom(range), TrendGrain.weekly);
+      final b = DashboardTrends.buckets(
+        range,
+        TrendGrain.weekly,
+        measure: TrendMeasure.netSales,
+      );
+      expect(b.first.range.from, _d(2026, 9, 3));
+      expect(b.first.range.to, _d(2026, 9, 6));
+      expect(b.first.partial, isTrue, reason: 'a Thursday start is clipped');
+      expect(b.last.range.to, _d(2026, 11, 1));
+      expect(b.last.partial, isFalse, reason: 'it ends on a Sunday');
+      // Nothing is stretched to a notional seven days.
+      expect(b.first.range.days, 4);
+      expect(b.fold<int>(0, (s, x) => s + x.range.days), range.days);
+    });
+  });
+
+  group('a bucket with no figure is a gap, never a zero (D-263)', () {
+    ReportRange bucketRange(int month) =>
+        _range(_d(2026, month, 1), _d(2026, month + 1, 1).addDays(-1));
+
+    PnlOutcome computed(int month, {required int net, required int expenses}) =>
+        PnlComputed(
+          PnlResult(
+            range: bucketRange(month),
+            businessUnitId: 'unit-ccr',
+            grossSales: _p(net),
+            gst: Money.zero,
+            netSales: _p(net),
+            expenses: _p(expenses),
+          ),
+        );
+
+    List<TrendBucket> threeMonths() => DashboardTrends.buckets(
+      _range(_d(2026, 4, 1), _d(2026, 6, 30)),
+      TrendGrain.monthly,
+      measure: TrendMeasure.expenses,
+    );
+
+    test('a refused bucket is a TrendGap carrying its refusal', () {
+      final series = DashboardTrends.series(
+        measure: TrendMeasure.expenses,
+        grain: TrendGrain.monthly,
+        buckets: threeMonths(),
+        outcomes: [
+          computed(4, net: 1000, expenses: 400),
+          const PnlRefused(PnlRefusal.revenueUnavailable),
+          computed(6, net: 3000, expenses: 900),
+        ],
+      );
+      expect(series.points, hasLength(3));
+      expect(series.hasGap, isTrue);
+      expect(series.gaps.single.range, bucketRange(5));
+      final gap = series.points[1] as TrendGap;
+      expect(gap.refusal, PnlRefusal.revenueUnavailable);
+      // The neighbours are untouched: nothing was interpolated across the hole.
+      expect((series.points[0] as TrendValue).amount, _p(400));
+      expect((series.points[2] as TrendValue).amount, _p(900));
+    });
+
+    test('a gap is not a zero, and nothing in the series pretends it is', () {
+      final series = DashboardTrends.series(
+        measure: TrendMeasure.netSales,
+        grain: TrendGrain.monthly,
+        buckets: threeMonths(),
+        outcomes: [
+          computed(4, net: 1000, expenses: 0),
+          const PnlRefused(PnlRefusal.bothSidesUnavailable),
+          computed(6, net: 3000, expenses: 0),
+        ],
+      );
+      expect(
+        series.points.whereType<TrendValue>().map((p) => p.amount),
+        [_p(1000), _p(3000)],
+        reason: 'a gap contributes no figure of any kind, not even zero',
+      );
+    });
+
+    test('a real zero is a value, and stays distinct from a gap', () {
+      final series = DashboardTrends.series(
+        measure: TrendMeasure.netSales,
+        grain: TrendGrain.monthly,
+        buckets: threeMonths(),
+        outcomes: [
+          computed(4, net: 0, expenses: 0),
+          computed(5, net: 0, expenses: 0),
+          computed(6, net: 0, expenses: 0),
+        ],
+      );
+      expect(series.hasGap, isFalse);
+      expect(
+        series.points.every((p) => p is TrendValue && p.amount == Money.zero),
+        isTrue,
+      );
+    });
+
+    test('each measure is read from its own field', () {
+      final buckets = threeMonths();
+      final outcomes = [
+        computed(4, net: 1000, expenses: 400),
+        computed(5, net: 2000, expenses: 500),
+        computed(6, net: 3000, expenses: 900),
+      ];
+      for (final (measure, expected) in <(TrendMeasure, List<int>)>[
+        (TrendMeasure.netSales, [1000, 2000, 3000]),
+        (TrendMeasure.expenses, [400, 500, 900]),
+        (TrendMeasure.operatingProfit, [600, 1500, 2100]),
+      ]) {
+        final series = DashboardTrends.series(
+          measure: measure,
+          grain: TrendGrain.monthly,
+          buckets: buckets,
+          outcomes: outcomes,
+        );
+        expect(
+          series.points.map((p) => (p as TrendValue).amount.paise),
+          expected,
+          reason: measure.name,
+        );
+      }
+    });
+
+    test('a P&L filed under the wrong bucket is a programming error', () {
+      expect(
+        () => DashboardTrends.series(
+          measure: TrendMeasure.netSales,
+          grain: TrendGrain.monthly,
+          buckets: threeMonths(),
+          outcomes: [
+            computed(4, net: 1, expenses: 0),
+            computed(4, net: 1, expenses: 0), // April's P&L filed under May
+            computed(6, net: 1, expenses: 0),
+          ],
+        ),
+        throwsArgumentError,
+      );
+    });
+
+    test('one outcome per bucket, or nothing', () {
+      expect(
+        () => DashboardTrends.series(
+          measure: TrendMeasure.netSales,
+          grain: TrendGrain.monthly,
+          buckets: threeMonths(),
+          outcomes: [computed(4, net: 1, expenses: 0)],
+        ),
+        throwsArgumentError,
+      );
+    });
+
+    test('a series refuses a measure its grain does not permit', () {
+      expect(
+        () => DashboardTrends.series(
+          measure: TrendMeasure.operatingProfit,
+          grain: TrendGrain.daily,
+          buckets: const [],
+          outcomes: const [],
+        ),
+        throwsArgumentError,
+      );
+    });
+
+    test('points from two different scopes are refused', () {
+      final buckets = threeMonths();
+      PnlOutcome forUnit(int month, String unit) => PnlComputed(
+        PnlResult(
+          range: bucketRange(month),
+          businessUnitId: unit,
+          grossSales: _p(1),
+          gst: Money.zero,
+          netSales: _p(1),
+          expenses: Money.zero,
+        ),
+      );
+      expect(
+        () => DashboardTrends.series(
+          measure: TrendMeasure.netSales,
+          grain: TrendGrain.monthly,
+          buckets: buckets,
+          outcomes: [
+            forUnit(4, 'unit-ccr'),
+            forUnit(5, 'unit-hki'),
+            forUnit(6, 'unit-ccr'),
+          ],
+        ),
+        throwsArgumentError,
+      );
     });
   });
 

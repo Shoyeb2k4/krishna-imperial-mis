@@ -15,6 +15,37 @@
 /// only**. Expenses and Operating Profit are trended by month, and a financial year to date
 /// is trended by month. The permission is a property of the grain, checked when buckets are
 /// built, so a chart cannot ask for a daily profit series by accident.
+///
+/// ## Custom ranges (D-263)
+///
+/// A custom range can be three days or three years, so its Net Sales grain comes from its
+/// own inclusive P&L-date span:
+///
+/// ```
+///     1 … 31 days     daily     Net Sales
+///     32 … 180 days   weekly    Net Sales
+///     181+ days       monthly   Net Sales
+/// ```
+///
+/// Expenses and Operating Profit stay **monthly only**, and are offered only where a
+/// monthly trend is a trend at all — a range lying inside one calendar month produces one
+/// point, and one point does not show a direction, so nothing is shown rather than a
+/// single bar labelled as a trend.
+///
+/// Weeks are Monday–Sunday and months are calendar months. The first and last bucket of a
+/// custom range are routinely clipped; they are marked [TrendBucket.partial] and are
+/// **never extrapolated** to a notional whole week or month.
+///
+/// **Choosing a grain changes nothing about the period.** Buckets are derived from a range
+/// that is already fixed; neither the selected custom period nor its comparison period is
+/// touched by which grain a chart happens to plot.
+///
+/// ## A bucket with no figure is a gap
+///
+/// A bucket whose P&L could not be established is a [TrendGap] carrying the refusal. It is
+/// never zero, never interpolated from its neighbours and never estimated — a flat segment
+/// drawn across missing data is indistinguishable from a real trading lull, and the reader
+/// has no way to tell.
 library;
 
 import 'package:krishna_mis/domain/finance/dashboard_periods.dart';
@@ -56,20 +87,75 @@ final class TrendBucket {
 }
 
 abstract final class DashboardTrends {
-  /// The trend grains a dashboard period offers.
+  /// The span at which a custom Net Sales trend stops being daily (D-263), inclusive.
+  static const customDailyMaximumDays = 31;
+
+  /// The span at which it stops being weekly (D-263), inclusive.
+  static const customWeeklyMaximumDays = 180;
+
+  /// The grain a custom range's **Net Sales** trend uses, from its inclusive day span.
+  static TrendGrain netSalesGrainForCustom(ReportRange range) =>
+      range.days <= customDailyMaximumDays
+      ? TrendGrain.daily
+      : range.days <= customWeeklyMaximumDays
+      ? TrendGrain.weekly
+      : TrendGrain.monthly;
+
+  /// Whether a monthly Expenses or Operating Profit trend is worth drawing over [range].
   ///
-  /// Custom has none yet: which grain a custom range of arbitrary length should use has
-  /// not been decided, and choosing one here would be deciding it (D-255).
-  static List<TrendGrain> grainsFor(DashboardPeriodKind kind) => switch (kind) {
-    DashboardPeriodKind.today => const [],
-    DashboardPeriodKind.weekToDate => const [TrendGrain.daily],
-    DashboardPeriodKind.monthToDate => const [
-      TrendGrain.daily,
-      TrendGrain.weekly,
-    ],
-    DashboardPeriodKind.financialYearToDate => const [TrendGrain.monthly],
-    DashboardPeriodKind.custom => const [],
-  };
+  /// It needs at least two monthly buckets. One point is not a trend — it shows no
+  /// direction and no movement — and drawing it as one would be the chart making a claim
+  /// its data cannot support. Partial first and last buckets count: they are real figures
+  /// for real, shorter periods, labelled as such, and the alternative would be inventing a
+  /// completeness rule nobody has set.
+  static bool offersMonthlyCostTrend(ReportRange range) =>
+      buckets(
+        range,
+        TrendGrain.monthly,
+        measure: TrendMeasure.expenses,
+      ).length >
+      1;
+
+  /// The trend grains [kind] offers for [measure].
+  ///
+  /// [range] is required for [DashboardPeriodKind.custom], whose grain is a property of
+  /// its span, and is ignored for every relative kind.
+  static List<TrendGrain> grainsFor(
+    DashboardPeriodKind kind, {
+    required TrendMeasure measure,
+    ReportRange? range,
+  }) {
+    if (kind == DashboardPeriodKind.custom) {
+      if (range == null) {
+        throw ArgumentError.value(
+          range,
+          'range',
+          'a custom range chooses its grain by its own span (D-263)',
+        );
+      }
+      return switch (measure) {
+        TrendMeasure.netSales => [netSalesGrainForCustom(range)],
+        TrendMeasure.expenses || TrendMeasure.operatingProfit =>
+          offersMonthlyCostTrend(range) ? const [TrendGrain.monthly] : const [],
+      };
+    }
+    final offered = switch (kind) {
+      DashboardPeriodKind.today => const <TrendGrain>[],
+      DashboardPeriodKind.weekToDate => const [TrendGrain.daily],
+      DashboardPeriodKind.monthToDate => const [
+        TrendGrain.daily,
+        TrendGrain.weekly,
+      ],
+      DashboardPeriodKind.financialYearToDate => const [TrendGrain.monthly],
+      DashboardPeriodKind.custom => const <TrendGrain>[],
+    };
+    // Expenses and Operating Profit are monthly only, so a week-to-date or month-to-date
+    // period offers them no grain at all rather than a daily one (D-255).
+    return [
+      for (final grain in offered)
+        if (grain.permits(measure)) grain,
+    ];
+  }
 
   /// The buckets tiling [range] at [grain], for a trend of [measure].
   ///
@@ -112,6 +198,125 @@ abstract final class DashboardTrends {
     }
     return List.unmodifiable(result);
   }
+
+  /// A plotted series: one point per bucket, each either a figure or a gap.
+  ///
+  /// [outcomes] is parallel to [buckets] and each computed result must be the P&L of
+  /// exactly the bucket it is filed under, for one scope. Filing a P&L under the wrong
+  /// bucket would plot a real figure in the wrong place, so it throws rather than being
+  /// tolerated.
+  static TrendSeries series({
+    required TrendMeasure measure,
+    required TrendGrain grain,
+    required List<TrendBucket> buckets,
+    required List<PnlOutcome> outcomes,
+  }) {
+    if (!grain.permits(measure)) {
+      throw ArgumentError.value(
+        measure,
+        'measure',
+        'is not trended at ${grain.name} grain (D-255)',
+      );
+    }
+    if (buckets.length != outcomes.length) {
+      throw ArgumentError(
+        'a trend needs one outcome per bucket: ${buckets.length} buckets, '
+        '${outcomes.length} outcomes',
+      );
+    }
+    final points = <TrendPoint>[];
+    String? scope;
+    var seenResult = false;
+    for (var i = 0; i < buckets.length; i++) {
+      final bucket = buckets[i];
+      switch (outcomes[i]) {
+        case PnlRefused(:final refusal):
+          // Never zero, never interpolated, never estimated (D-263).
+          points.add(TrendGap(bucket: bucket, refusal: refusal));
+        case PnlComputed(:final result):
+          if (result.range != bucket.range) {
+            throw ArgumentError.value(
+              result.range,
+              'outcomes[$i]',
+              'is not the P&L of bucket ${bucket.range}',
+            );
+          }
+          if (seenResult && result.businessUnitId != scope) {
+            throw ArgumentError('trend points from different scopes');
+          }
+          scope = result.businessUnitId;
+          seenResult = true;
+          points.add(
+            TrendValue(
+              bucket: bucket,
+              amount: switch (measure) {
+                TrendMeasure.netSales => result.netSales,
+                TrendMeasure.expenses => result.expenses,
+                TrendMeasure.operatingProfit => result.operatingProfit,
+              },
+            ),
+          );
+      }
+    }
+    return TrendSeries._(
+      measure: measure,
+      grain: grain,
+      points: List.unmodifiable(points),
+    );
+  }
+}
+
+/// One plotted point: a figure for its bucket, or the statement that there is none.
+sealed class TrendPoint {
+  const TrendPoint({required this.bucket});
+  final TrendBucket bucket;
+}
+
+/// A real figure for a real bucket. A clipped bucket is still real — see
+/// [TrendBucket.partial] — and its figure is what that shorter period actually was.
+final class TrendValue extends TrendPoint {
+  const TrendValue({required super.bucket, required this.amount});
+  final Money amount;
+
+  @override
+  String toString() => 'TrendValue(${bucket.range}: $amount)';
+}
+
+/// No figure for this bucket, and none invented for it.
+final class TrendGap extends TrendPoint {
+  const TrendGap({required super.bucket, required this.refusal});
+  final PnlRefusal refusal;
+
+  @override
+  String toString() => 'TrendGap(${bucket.range}: ${refusal.name})';
+}
+
+/// A trend, ready to plot.
+final class TrendSeries {
+  const TrendSeries._({
+    required this.measure,
+    required this.grain,
+    required this.points,
+  });
+
+  final TrendMeasure measure;
+  final TrendGrain grain;
+
+  /// In range order, one per bucket, gaps included in place.
+  final List<TrendPoint> points;
+
+  bool get hasGap => points.any((p) => p is TrendGap);
+
+  /// The buckets that could not be established, in order.
+  List<TrendBucket> get gaps => [
+    for (final p in points)
+      if (p is TrendGap) p.bucket,
+  ];
+
+  @override
+  String toString() =>
+      'TrendSeries(${measure.name} by ${grain.name}, ${points.length} points'
+      '${hasGap ? ', ${gaps.length} gaps' : ''})';
 }
 
 // ── Best and worst day ──────────────────────────────────────────────────────

@@ -5568,18 +5568,60 @@ whole-month and whole-year semantics (D-252).
 | Positive controls | **Tested** | 11 sabotages, **each failed on behaviour, not compilation**, each file restored byte-identical and compared: month cap (4 red), leap-day cap (2), custom comparator overlap (3), D-254 comparison check (1), previous-zero rule (24), sign-change rule (2), margin movement from rounded margins (1), unavailable side turned to zero (3), Top-N reconciliation (3), grain permission (2), silent tie-break (1) |
 | Live, device and build gates | **Not tested** | nothing in Slice 2 touches a surface, the server or a build |
 
-### Recorded for the project lead
+### ~~Recorded for the project lead~~ — all three answered 2026-09-20
 
-1. **D-256 — pending confirmation.** An ordinary figure (Net Sales, Expenses, Gross Sales, GST)
-   whose previous value is negative gets no percentage. The ruling covered Operating Profit only;
-   this is the conservative reading, added so the software did not guess.
-2. **D-255 — open: the trend grain for a Custom range.** None is offered until it is decided.
-3. **D-253 — a consequence of "exact".** The margin movement is taken from the exact margins, so
-   it can differ by 0.01 pp from the difference of the two printed margins (1/3 against 1/6:
-   +16.67 pp, while 33.33% − 16.67% prints 16.66).
+1. ~~**D-256 — pending confirmation.**~~ **Answered: the rule is wider than the guess.** An
+   ordinary figure shows a percentage only when `previous > 0 && current >= 0`; a negative
+   **current** value now suppresses it too, and the rupee movement is shown in every case.
+2. ~~**D-255 — open: the trend grain for a Custom range.**~~ **Answered (D-263):** Net Sales
+   daily to 31 days, weekly to 180, monthly beyond; Expenses and Operating Profit monthly only
+   and withheld below two buckets; a missing bucket is a gap, never zero.
+3. ~~**D-253 — a consequence of "exact".**~~ **Answered (D-264):** the **displayed** movement
+   is the difference of the two displayed margins, so the three figures on screen reconcile.
+   The exact movement stays canonical and is not replaced.
 
 **Every approved dashboard analytic is representable on the Phase 5 foundation.** Nothing in
 Slice 2 needed a new server function, cache dimension or schema change.
+
+## Phase 6 Slice 2 closure — the three pending rulings: **DONE** (2026-09-20)
+
+Pure Dart in `lib/domain/finance/`. **No schema change, no migration, no dependency, no
+surface.** Local Drift schema stays **v21**; migration ledger stays **101**.
+
+| Ruling | What changed |
+|---|---|
+| **D-256, final** | `currentNegative` joins the reasons; `_ordinary` shows a percentage only for `previous > 0 && current >= 0`; `eitherSideNegative` is derived once for a surface's wording. Operating Profit untouched |
+| **D-263** | `netSalesGrainForCustom` (31 / 180 day thresholds), `offersMonthlyCostTrend`, `grainsFor` now takes the measure and — for custom — the range; `TrendSeries` / `TrendValue` / `TrendGap` make "never zero, never interpolated" a type |
+| **D-264** | `displayedPointsScaled` and the display string it feeds; `pointsScaled` stays the canonical exact figure, `exactDisplayTwoDecimals` formats it |
+
+### Verified
+
+| Item | Status | Evidence |
+|---|---|---|
+| `dart format --set-exit-if-changed lib test` | **Tested** | clean, 307 files |
+| `flutter analyze` | **Tested** | **No issues found** |
+| Host suite | **Tested** | **2,242 passed** (2,204 + 38) |
+| Finance domain suites | **Tested** | 277 passed, incl. the 60,500-pair margin reconciliation sweep |
+| Secret scan — tree and git history | **Tested** | clean |
+| Live / device / build gates | **Not tested** | nothing here touches a surface, the server or a build |
+
+### Positive controls, each seen RED and restored byte-identical (`cmp`)
+
+| Control | Result |
+|---|---|
+| the D-256 current-negative branch removed | **2 RED** |
+| `displayTwoDecimals` pointed back at the exact movement | **2 RED** |
+| the custom daily threshold moved 31 → 30 | **1 RED** |
+| the too-short monthly cost-trend guard removed | **1 RED** |
+| a refused bucket turned into a zero `TrendValue` | **2 RED** |
+
+### One threshold stated rather than ruled
+
+D-263 says a monthly Expenses or Operating Profit trend is withheld when a custom range is
+"too short", and the ruling set no number. The implemented threshold is **more than one
+bucket** — one point shows no direction, so it is not a trend at all — and partial first and
+last buckets count toward it. That is the definition of a trend rather than a business rule;
+a stricter meaningfulness rule (say, one complete month) would be a separate decision.
 
 ## Next exact task
 

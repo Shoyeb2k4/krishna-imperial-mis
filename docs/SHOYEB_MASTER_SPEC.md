@@ -656,6 +656,21 @@ percentage points. Daily and weekly trends show Net Sales only; expenses and pro
 by month. A consolidated comparison needs every property to agree on both periods. The P&L
 screen's own period semantics are unchanged by this.
 
+**Negative figures, custom trends and displayed reconciliation (amended 2026-09-20,
+D-256, D-263, D-264).** Gross Sales, GST, Net Sales and Operating Expenses show a
+percentage change **only when the previous figure is above zero and the current figure is
+not below zero**; otherwise the exact rupee movement is shown without one, because a
+percentage measured against a negative base reads backwards. Operating Profit keeps the
+stricter loss and sign-change rules above. A **custom** range trends Net Sales daily up to
+31 days, weekly to 180 and monthly beyond; expenses and profit stay monthly and are shown
+only where more than one month is covered. Weeks are Monday–Sunday and months are calendar
+months; a clipped first or last bucket is labelled and **never extrapolated**, and a bucket
+whose figure cannot be established is shown as a gap — never zero, interpolated or
+estimated. Choosing a trend grain never alters the selected period or its comparator.
+Where two margins and their movement appear together, the **displayed** movement is the
+difference of the two displayed margins, so the three figures on screen reconcile; the
+exact movement remains the calculation.
+
 ## 18. Mobile UX (Android)
 
 Android is the operational entry device; optimise for fast daily use.
@@ -913,6 +928,13 @@ transaction path (§32).
 Clean extension points are welcome. Speculative modules are not.
 
 ## 30. Change log
+
+**v1.2 amendment — 2026-09-20.** §17 gains the three dashboard rules the project lead settled
+after Slice 2: which ordinary figures may carry a percentage when a side is negative (D-256),
+the trend grain a custom range uses and what a missing bucket is (D-263), and that a displayed
+margin movement reconciles with the two displayed margins beside it (D-264). **No other section
+changes** and the version does not move: all three govern what a dashboard *shows*, no monetary
+figure moves, and the canonical exact values are unchanged.
 
 **v1.2 amendment — 2026-09-17.** §17 records the dashboard's period and comparison semantics,
 as the project lead ruled at the start of Phase 6 (D-251 … D-255). **No other section changes**

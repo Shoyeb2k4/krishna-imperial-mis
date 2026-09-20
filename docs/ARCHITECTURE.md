@@ -3800,6 +3800,28 @@ Decisions D-251 … D-261. **No schema change, no migration, local Drift schema 
 * **Trend grain is enforced where buckets are made** (D-255): a daily or weekly bucket list
   cannot be requested for Expenses or Operating Profit.
 
+### The three rules settled after Slice 2 (2026-09-20)
+
+* **An ordinary figure's percentage needs a positive base** (D-256, final). Gross Sales, GST,
+  Net Sales and Operating Expenses show one only when `previous > 0 && current >= 0`; the
+  rupee movement is shown in every case. `currentNegative` joins the two reasons Slice 2 had,
+  and the three are tested in order so a doubly negative comparison names the base. Operating
+  Profit is untouched and keeps its own stricter rules.
+* **A custom range's grain is a property of its span** (D-263). `netSalesGrainForCustom` reads
+  the inclusive day count — daily to 31, weekly to 180, monthly beyond — and
+  `offersMonthlyCostTrend` withholds an Expenses or Operating Profit trend that would have one
+  bucket, because one point is not a trend. `grainsFor` therefore takes the measure, and takes
+  the range when the kind is custom.
+* **A bucket with no figure is a gap** (D-263). `TrendSeries` maps buckets and outcomes to
+  `TrendValue` or `TrendGap`; **there is no arm that builds a zero from a refusal**, which is
+  D-176's move applied to a trend point. A real zero stays a value, and a partial bucket is a
+  real value too — clipped, labelled, never extrapolated.
+* **Displayed margin movement reconciles** (D-264). `pointsScaled` stays the canonical exact
+  figure; `displayedPointsScaled` is `round(current) − round(previous)` and is what
+  `displayTwoDecimals` prints, so the three figures beside each other add up. A 60,500-pair
+  sweep across five precisions asserts it, and a bound proves the two answers never differ by
+  more than one unit at the display precision.
+
 Still to come in Phase 6, and not built here: the dashboard engine that reads several ranges
 inside one `CanonicalCacheLock` span with one combined freshness claim (Slice 3), providers
 keyed on `PnlAuthority.readKey` (Slice 4), the `fl_chart` presentation layer and its

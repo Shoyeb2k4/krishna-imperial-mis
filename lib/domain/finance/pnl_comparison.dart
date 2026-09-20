@@ -10,21 +10,39 @@
 /// * **Either side unavailable → no numbers.** Not authorised, not downloaded, one side of
 ///   the P&L missing — whatever the reason, the comparison is [MoneyComparisonUnavailable]
 ///   and carries no change, no previous figure and no percentage. Nothing becomes zero.
-/// * **Previous figure zero → percentage N/A**, the rupee change kept.
 /// * **Operating Profit with a negative side → no percentage.** A sign change is stated in
 ///   words — *Moved from loss to profit* — beside the exact rupee movement.
 /// * **Operating Margin moves in percentage points**, exactly: 12.30% → 14.10% is
 ///   +1.80 pp, never "14.63% growth".
 ///
-/// One rule is this layer's own and is recorded as such (D-256): an ordinary figure whose
-/// previous value is **negative** also gets no percentage. A percentage of a negative base
-/// reads backwards, and it is the conservative reading of the profit rule.
+/// ## Ordinary money figures, and negative values (D-256, final)
 ///
-/// ## Exact arithmetic
+/// Gross Sales, GST, Net Sales and Operating Expenses show a percentage change **only
+/// when**:
+///
+/// ```
+///     previous > 0   AND   current >= 0
+/// ```
+///
+/// so `previous == 0` gives N/A, `previous < 0` gives no percentage, and `current < 0`
+/// gives no percentage. Whenever either side is negative the exact rupee movement is still
+/// shown and a surface may word the direction; what it must not show is a conventional
+/// growth percentage, because a percentage measured against a negative base reads backwards
+/// — −₹100 → +₹100 would print "−200%" for an improvement.
+///
+/// Operating Profit keeps its own, stricter rules above; it is the one figure whose
+/// negatives are ordinary.
+///
+/// ## Exact arithmetic, and what is displayed
 ///
 /// Percentages and percentage points are exact rationals over paise, rounded once, half
 /// away from zero, at the precision the caller prints. The margin movement compares two
 /// ratios, so its cross product can pass 2^63 at crore scale; it is computed in [BigInt].
+///
+/// The **canonical** margin movement stays that exact figure. What a surface *prints*
+/// beside two printed margins is [MarginMovement.displayedPointsScaled], the difference of
+/// the two rounded margins, so the three figures on screen reconcile (D-264). The exact
+/// value is not replaced by it.
 library;
 
 import 'package:krishna_mis/domain/finance/dashboard_periods.dart';
@@ -36,12 +54,19 @@ import 'package:krishna_mis/domain/value_objects/money.dart';
 enum ComparisonSide { current, previous, both }
 
 /// Why a percentage change is not shown.
+///
+/// The first three are the ordinary-figure rule (D-256), reported in the order they are
+/// tested, so a comparison whose two sides are both negative names the base — which is the
+/// condition a reader can do something about.
 enum PercentNotApplicableReason {
   /// The previous figure was zero. There is no base to measure against.
   previousZero,
 
   /// An ordinary figure's previous value was negative (D-256).
   previousNegative,
+
+  /// An ordinary figure's current value is negative (D-256).
+  currentNegative,
 
   /// Operating Profit: at least one side was a loss.
   negativeSide,
@@ -144,8 +169,14 @@ final class MoneyComparisonAvailable extends MoneyComparison {
   /// Only Operating Profit ever carries anything but [ProfitTransition.none].
   final ProfitTransition transition;
 
-  /// `current − previous`, exactly.
+  /// `current − previous`, exactly. Always shown, whatever the percentage does (D-256).
   Money get change => current - previous;
+
+  /// Either figure is below zero, so no conventional growth percentage is shown.
+  ///
+  /// Derived here rather than by each surface, so wording that depends on it cannot be
+  /// written against a different test from the one that suppressed the percentage.
+  bool get eitherSideNegative => current.isNegative || previous.isNegative;
 }
 
 // ── The margin compared ─────────────────────────────────────────────────────
@@ -173,21 +204,40 @@ final class MarginComparisonUnavailable extends MarginComparison {
   String get displayTwoDecimals => 'N/A';
 }
 
-/// The exact change between two margins, in percentage points.
+/// The change between two margins, in percentage points — exactly, and as displayed.
+///
+/// **The canonical figure is [pointsScaled]**, taken from the two exact ratios:
 ///
 /// ```
 ///   pp = (p1/n1 − p0/n0) × 100 = (p1·n0 − p0·n1) × 100 ÷ (n1·n0)
 /// ```
 ///
-/// Taken from the two exact ratios, never from their rounded displays — so 1/3 against 1/6
-/// moves +16.67 pp, even though 33.33% − 16.67% would print 16.66.
+/// **What a surface prints is [displayedPointsScaled]** — the difference of the two
+/// *rounded* margins, at the same precision those margins are printed to (D-264). The two
+/// answer different questions and both are kept:
+///
+/// ```
+///   exact current  1/3        printed  33.33%
+///   exact previous 1/6        printed  16.67%
+///
+///   pointsScaled(2)           1667     +16.67 pp   the exact movement
+///   displayedPointsScaled(2)  1666     +16.66 pp   what reconciles on screen
+/// ```
+///
+/// Showing the exact movement beside two rounded margins leaves a visible 0.01 pp that a
+/// reader cannot account for, and a management report whose three printed figures do not
+/// add up invites exactly the wrong kind of doubt. This is presentation reconciliation
+/// only: the exact value is still here, and nothing downstream computes from the rounded
+/// one. Each rounding moves a figure by at most half a unit, so the two can never differ by
+/// more than one unit at the display precision — asserted, not assumed.
 final class MarginMovement extends MarginComparison {
   const MarginMovement({required this.current, required this.previous});
 
   final MarginRatio current;
   final MarginRatio previous;
 
-  /// Percentage points × 10^[scale], rounded once, half away from zero.
+  /// The **exact** movement in percentage points × 10^[scale], rounded once, half away
+  /// from zero. The canonical figure; not what a surface prints.
   int pointsScaled(int scale) {
     final p1 = BigInt.from(current.operatingProfitPaise);
     final n1 = BigInt.from(current.netSalesPaise);
@@ -199,8 +249,20 @@ final class MarginMovement extends MarginComparison {
     );
   }
 
+  /// The movement **as displayed**: the difference of the two margins each rounded to
+  /// [scale], so `displayed = displayCurrent − displayPrevious` by construction.
+  int displayedPointsScaled(int scale) =>
+      current.percentageScaled(scale) - previous.percentageScaled(scale);
+
+  /// What a surface prints beside the two printed margins. Reconciles with them exactly.
   @override
-  String get displayTwoDecimals => '${_signedTwoDecimals(pointsScaled(2))} pp';
+  String get displayTwoDecimals =>
+      '${_signedTwoDecimals(displayedPointsScaled(2))} pp';
+
+  /// The exact movement, formatted. Available for a diagnostic or an export that states
+  /// the unrounded figure; never the one shown beside two rounded margins.
+  String get exactDisplayTwoDecimals =>
+      '${_signedTwoDecimals(pointsScaled(2))} pp';
 }
 
 // ── The comparison of two P&L results ───────────────────────────────────────
@@ -303,23 +365,36 @@ final class PnlComparison {
     }
   }
 
-  static MoneyComparison _ordinary(Money current, Money previous) =>
-      MoneyComparisonAvailable(
-        current: current,
-        previous: previous,
-        percentChange: previous.isZero
-            ? const PercentChangeNotApplicable(
-                PercentNotApplicableReason.previousZero,
-              )
-            : previous.isNegative
-            ? const PercentChangeNotApplicable(
-                PercentNotApplicableReason.previousNegative,
-              )
-            : PercentChangeRatio(
-                changePaise: (current - previous).paise,
-                previousPaise: previous.paise,
-              ),
+  /// Gross Sales, GST, Net Sales and Operating Expenses (D-256, final).
+  ///
+  /// A percentage only when `previous > 0 && current >= 0`. The rupee movement is carried
+  /// in every case.
+  static MoneyComparison _ordinary(Money current, Money previous) {
+    final PercentChange percent;
+    if (previous.isZero) {
+      percent = const PercentChangeNotApplicable(
+        PercentNotApplicableReason.previousZero,
       );
+    } else if (previous.isNegative) {
+      percent = const PercentChangeNotApplicable(
+        PercentNotApplicableReason.previousNegative,
+      );
+    } else if (current.isNegative) {
+      percent = const PercentChangeNotApplicable(
+        PercentNotApplicableReason.currentNegative,
+      );
+    } else {
+      percent = PercentChangeRatio(
+        changePaise: (current - previous).paise,
+        previousPaise: previous.paise,
+      );
+    }
+    return MoneyComparisonAvailable(
+      current: current,
+      previous: previous,
+      percentChange: percent,
+    );
+  }
 
   static MoneyComparison _profit(Money current, Money previous) {
     final transition = previous.isNegative && current.isPositive

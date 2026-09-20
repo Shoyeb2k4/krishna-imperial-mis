@@ -14,6 +14,7 @@ library;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:krishna_mis/domain/finance/dashboard_periods.dart';
+import 'package:krishna_mis/domain/finance/operating_margin.dart';
 import 'package:krishna_mis/domain/finance/pnl.dart';
 import 'package:krishna_mis/domain/finance/pnl_comparison.dart';
 import 'package:krishna_mis/domain/value_objects/business_date.dart';
@@ -245,6 +246,123 @@ void main() {
       );
     });
 
+    // ── D-256, final ────────────────────────────────────────────────────────
+    //
+    //   percentage only when   previous > 0  AND  current >= 0
+    //
+    // Every row states the rupee movement it still expects, because that is the half the
+    // ruling keeps in every case.
+    for (final (label, current, previous, change, reason)
+        in <(String, int, int, int, PercentNotApplicableReason?)>[
+          ('both positive, growth', 150, 100, 50, null),
+          ('both positive, decline', 60, 100, -40, null),
+          ('current exactly zero is still a percentage', 0, 100, -100, null),
+          (
+            'previous zero',
+            100,
+            0,
+            100,
+            PercentNotApplicableReason.previousZero,
+          ),
+          (
+            'previous negative',
+            100,
+            -100,
+            200,
+            PercentNotApplicableReason.previousNegative,
+          ),
+          (
+            'current negative',
+            -100,
+            100,
+            -200,
+            PercentNotApplicableReason.currentNegative,
+          ),
+          (
+            'both negative names the base',
+            -50,
+            -100,
+            50,
+            PercentNotApplicableReason.previousNegative,
+          ),
+        ]) {
+      test('D-256: $label', () {
+        for (final m in [
+          _available(
+            _compare(
+              _computed(true, net: current),
+              _computed(false, net: previous),
+            ).netSales,
+          ),
+          _available(
+            _compare(
+              _computed(true, expenses: current),
+              _computed(false, expenses: previous),
+            ).expenses,
+          ),
+        ]) {
+          expect(
+            m.change,
+            _p(change),
+            reason: 'the rupee movement is always shown',
+          );
+          if (reason == null) {
+            expect(m.percentChange, isA<PercentChangeRatio>());
+          } else {
+            expect(m.percentChange, isA<PercentChangeNotApplicable>());
+            expect(
+              (m.percentChange as PercentChangeNotApplicable).reason,
+              reason,
+            );
+            expect(m.percentChange.displayTwoDecimals, 'N/A');
+          }
+        }
+      });
+    }
+
+    test('D-256 applies to all four ordinary figures, and not to profit', () {
+      // Gross, GST, Net and Expenses all negative on the current side; Operating Profit
+      // keeps its own stricter rule and reports the sign change instead.
+      final c = _compare(
+        _computed(true, gross: -300, gst: -100, net: -200, expenses: 50),
+        _computed(false, gross: 300, gst: 100, net: 200, expenses: 50),
+      );
+      for (final m in [c.grossSales, c.gst, c.netSales]) {
+        expect(
+          (_available(m).percentChange as PercentChangeNotApplicable).reason,
+          PercentNotApplicableReason.currentNegative,
+        );
+      }
+      // Operating Profit: -250 against +150, a profit that became a loss.
+      final profit = _available(c.operatingProfit);
+      expect(profit.transition, ProfitTransition.profitToLoss);
+      expect(
+        (profit.percentChange as PercentChangeNotApplicable).reason,
+        PercentNotApplicableReason.signChanged,
+      );
+    });
+
+    test('an ordinary figure says when either side is negative', () {
+      expect(
+        _available(
+          _compare(
+            _computed(true, net: -1),
+            _computed(false, net: 100),
+          ).netSales,
+        ).eitherSideNegative,
+        isTrue,
+      );
+      expect(
+        _available(
+          _compare(
+            _computed(true, net: 1),
+            _computed(false, net: 100),
+          ).netSales,
+        ).eitherSideNegative,
+        isFalse,
+      );
+    });
+
     test('ordinary figures carry no profit wording', () {
       final m = _available(
         _compare(
@@ -400,14 +518,34 @@ void main() {
       expect((c.margin as MarginMovement).displayTwoDecimals, '-50.00 pp');
     });
 
-    test('the movement is exact, not the difference of rounded margins', () {
-      // current 1/3 = 33.333...%, previous 1/6 = 16.666...%.
-      // exact movement 16.666...pp -> 16.67 pp; rounded margins give 33.33-16.67 = 16.66.
+    test(
+      'the canonical movement is exact, taken from the two exact ratios',
+      () {
+        // current 1/3 = 33.333...%, previous 1/6 = 16.666...%.
+        // exact movement 16.666...pp -> 16.67 pp.
+        final c = _compare(
+          _computed(true, net: 3, expenses: 2),
+          _computed(false, net: 6, expenses: 5),
+        );
+        final m = c.margin as MarginMovement;
+        expect(m.pointsScaled(2), 1667);
+        expect(m.exactDisplayTwoDecimals, '+16.67 pp');
+      },
+    );
+
+    test('D-264: what is displayed is the difference of the two displays', () {
+      // The ruling's own example: 33.33% and 16.67% must show +16.66 pp on screen.
       final c = _compare(
         _computed(true, net: 3, expenses: 2),
         _computed(false, net: 6, expenses: 5),
       );
-      expect((c.margin as MarginMovement).pointsScaled(2), 1667);
+      final m = c.margin as MarginMovement;
+      expect(m.current.displayTwoDecimals, '33.33%');
+      expect(m.previous.displayTwoDecimals, '16.67%');
+      expect(m.displayedPointsScaled(2), 1666);
+      expect(m.displayTwoDecimals, '+16.66 pp');
+      // And the exact figure is still here, not replaced by the rounded one.
+      expect(m.pointsScaled(2), 1667);
     });
 
     test('equal margins read 0.00 pp', () {
@@ -450,6 +588,114 @@ void main() {
         _computed(false, net: 400, expenses: 300),
       );
       expect((c.margin as MarginMovement).pointsScaled(2), -5000);
+    });
+  });
+
+  group('D-264: the three printed margin figures always reconcile', () {
+    // Every pair of margins the sweep can build, at every precision a surface might
+    // print. The property is exact and has no exceptions: what is shown as the movement
+    // is, by construction, the difference of what is shown as the two margins.
+    const nets = [1, 3, 6, 7, 9, 100, 3333, -400, -7, 999999, 2147483647];
+    const profits = [0, 1, -1, 2, 5, 33, -33, 1234, -1234, 999998];
+
+    test('displayed movement == displayed current - displayed previous', () {
+      var pairs = 0;
+      for (final scale in const [0, 1, 2, 3, 4]) {
+        for (final n1 in nets) {
+          for (final p1 in profits) {
+            for (final n0 in nets) {
+              for (final p0 in profits) {
+                final m = MarginMovement(
+                  current: MarginRatio(
+                    operatingProfitPaise: p1,
+                    netSalesPaise: n1,
+                  ),
+                  previous: MarginRatio(
+                    operatingProfitPaise: p0,
+                    netSalesPaise: n0,
+                  ),
+                );
+                expect(
+                  m.displayedPointsScaled(scale),
+                  m.current.percentageScaled(scale) -
+                      m.previous.percentageScaled(scale),
+                  reason:
+                      'scale $scale: $p1/$n1 against $p0/$n0 does not reconcile',
+                );
+                pairs++;
+              }
+            }
+          }
+        }
+      }
+      expect(pairs, 60_500, reason: 'the sweep must actually sweep');
+    });
+
+    test('the printed strings reconcile, parsed back', () {
+      // Belt and braces: the property above is about the scaled integers. This one reads
+      // the actual strings a surface puts on screen and adds them up.
+      int hundredthsOf(String percent) {
+        final body = percent.replaceAll('%', '').replaceAll(' pp', '');
+        final negative = body.startsWith('-');
+        final digits = body.replaceAll('+', '').replaceAll('-', '').split('.');
+        final value = int.parse(digits[0]) * 100 + int.parse(digits[1]);
+        return negative ? -value : value;
+      }
+
+      for (final (n1, p1, n0, p0) in const [
+        (3, 2, 6, 5), // the ruling's example
+        (10000, 1230, 10000, 1410),
+        (7, 1, 9, 2),
+        (-400, 100, 400, 100),
+        (3333, -1234, 9, 5),
+      ]) {
+        final m = MarginMovement(
+          current: MarginRatio(operatingProfitPaise: p1, netSalesPaise: n1),
+          previous: MarginRatio(operatingProfitPaise: p0, netSalesPaise: n0),
+        );
+        expect(
+          hundredthsOf(m.displayTwoDecimals),
+          hundredthsOf(m.current.displayTwoDecimals) -
+              hundredthsOf(m.previous.displayTwoDecimals),
+          reason:
+              '${m.current.displayTwoDecimals} - '
+              '${m.previous.displayTwoDecimals} != ${m.displayTwoDecimals}',
+        );
+      }
+    });
+
+    test('displayed and exact never differ by more than one unit', () {
+      // Each of the three roundings moves its figure by at most half a unit, so the two
+      // answers can differ by at most one. Stated as a bound rather than assumed, because
+      // a wider gap would mean one of the roundings is not what it claims to be.
+      for (final scale in const [0, 2, 4]) {
+        for (final n1 in nets) {
+          for (final p1 in profits) {
+            for (final n0 in nets) {
+              for (final p0 in profits) {
+                final m = MarginMovement(
+                  current: MarginRatio(
+                    operatingProfitPaise: p1,
+                    netSalesPaise: n1,
+                  ),
+                  previous: MarginRatio(
+                    operatingProfitPaise: p0,
+                    netSalesPaise: n0,
+                  ),
+                );
+                final gap =
+                    (m.displayedPointsScaled(scale) - m.pointsScaled(scale))
+                        .abs();
+                expect(
+                  gap <= 1,
+                  isTrue,
+                  reason: 'scale $scale: $p1/$n1 vs $p0/$n0 differ by $gap',
+                );
+              }
+            }
+          }
+        }
+      }
     });
   });
 

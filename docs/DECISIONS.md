@@ -8689,3 +8689,138 @@ second analytics cache is added without a separate decision.
 printing, vendor analysis, value-band analysis, forecasting, targets, AI analysis, editing from
 dashboards, new server-side dashboard functions, and performance hardening not shown to be
 necessary. The production 50:50 start date is still outstanding and does not block Phase 6.
+
+## D-256 (closed) — An ordinary figure shows a percentage only against a positive base
+**Date:** 2026-09-20 · **Status:** **Accepted (project-lead ruling)** — the final form of the
+rule Slice 2 implemented and flagged. The earlier entry stands as written, because this log is
+append-only.
+
+Slice 2 recorded D-256 as *implemented, pending confirmation*: it suppressed the percentage for
+an ordinary figure whose **previous** value was negative, on the conservative reading of the
+Operating Profit rule, and said plainly that the ruling had covered profit only. The project
+lead has now settled it, and the settled rule is wider than the one that was guessed.
+
+**For Gross Sales, GST, Net Sales and Operating Expenses**, a percentage change is shown only
+when:
+
+```
+        previous > 0   AND   current >= 0
+```
+
+| | |
+|---|---|
+| `previous == 0` | percentage **N/A**; the exact rupee movement is still shown |
+| `previous < 0` | no percentage |
+| `current < 0` | no percentage — **this is the half Slice 2 did not have** |
+
+Whenever either side is negative the exact rupee movement is shown, a surface may word the
+direction, and no conventional growth percentage appears. −₹100 improving to +₹100 would
+otherwise print "−200%" for an improvement, and a current figure crossing below zero produces a
+percentage that is arithmetically defined and reads as nonsense.
+
+**Operating Profit is unchanged** and keeps its stricter rules (D-253): a loss on either side
+gives no percentage, and a sign change is stated in words. It is the one figure whose negatives
+are ordinary.
+
+**How it is enforced.** One `PercentNotApplicableReason` per condition, tested in the order
+above, so a comparison whose two sides are both negative names the **base** — the condition a
+reader can act on. `currentNegative` joins `previousZero` and `previousNegative`. The rupee
+movement is on `MoneyComparisonAvailable.change` and is never gated on any of them, and
+`eitherSideNegative` is derived here so a surface's wording cannot be written against a
+different test from the one that suppressed the percentage.
+
+**Control, seen to fail:** with the current-negative branch removed, two comparison tests turn
+RED. Restored by byte copy and `cmp` (D-219).
+
+## D-263 — A custom range's trend grain comes from its own span, and a missing bucket is a gap
+**Date:** 2026-09-20 · **Status:** Accepted (project-lead ruling) — closes the point D-255 left
+open
+
+D-255 set the trend grain for every relative period and deliberately left Custom open, because
+a custom range can be three days or three years and choosing a rule would have been deciding
+one. The project lead has decided it.
+
+**Net Sales, by inclusive P&L-date span:**
+
+```
+        1 … 31 days      daily
+        32 … 180 days    weekly
+        181+ days        monthly
+```
+
+**Expenses and Operating Profit stay monthly only**, at every span — D-255's reason is
+unchanged, and a longer custom range does not make a daily cost point any less distorted by
+accrual placement.
+
+**Where a monthly cost trend is too short, nothing is shown.** The threshold is that a trend
+needs **more than one bucket**: one point shows no direction and no movement, so drawing it as
+a trend would be the chart making a claim its data cannot support. A range lying inside one
+calendar month — including a whole calendar month on its own — therefore offers no Expenses or
+Operating Profit trend at all, while its Net Sales trend is unaffected. Partial first and last
+buckets **count** toward the two: they are real figures for real, shorter periods, and
+requiring a complete month instead would be inventing a completeness rule nobody has set. If a
+stricter meaningfulness rule is ever wanted, it is one line and a new decision.
+
+**Buckets.** Weeks are Monday–Sunday (D-165) and months are calendar months. A custom range
+routinely clips its first and last bucket; each is marked `partial` and is **never
+extrapolated** to a notional whole week or month. The buckets tile the range exactly — no gap,
+no overlap, and their day counts sum to the range's.
+
+**A bucket with no figure is a gap, and that is now a type rather than a rule to remember.**
+`TrendSeries` is built from buckets and their outcomes: a computed bucket becomes a
+`TrendValue` carrying the measure read from its own field, and a **refused** bucket becomes a
+`TrendGap` carrying the refusal. There is no path by which a missing bucket becomes zero,
+because there is no arm that constructs one — the same move D-176 made for an unavailable side
+of the P&L, and the same reason: a flat segment drawn across missing data is indistinguishable
+from a real trading lull and the reader has no way to tell. A **real** zero stays a
+`TrendValue` and stays distinct from a gap.
+
+Filing a P&L under a bucket that is not its own range, supplying a different number of outcomes
+from buckets, or mixing two scopes each throws. Plotting a real figure in the wrong place is
+the failure mode worth refusing outright.
+
+**Choosing a grain never moves the period.** Buckets are derived from a range that is already
+fixed, so neither the selected custom period nor its comparator is touched by which grain a
+chart happens to plot. Asserted rather than argued, because it is the kind of coupling that
+would be introduced by a convenience later.
+
+**Controls, each seen to fail and each restored byte-identical:** the daily threshold moved
+from 31 to 30 (1 RED); the too-short guard removed so a one-bucket cost trend is offered
+anyway (1 RED); a refused bucket turned into a zero `TrendValue` (2 RED).
+
+## D-264 — A displayed margin movement reconciles with the two displayed margins
+**Date:** 2026-09-20 · **Status:** Accepted (project-lead ruling) — closes the point D-253
+raised
+
+Slice 2 recorded a consequence of "exact" and flagged it: the margin movement is taken from the
+two **exact** ratios, so 1/3 against 1/6 moves +16.67 pp while the two *printed* margins,
+33.33% and 16.67%, differ by 16.66. A surface showing all three leaves a visible 0.01 pp a
+reader cannot account for.
+
+**The ruling.** The exact rational margins and the exact movement stay canonical in
+`domain/finance`. **What is displayed** at the configured precision is:
+
+```
+        displayed movement  =  displayed current  −  displayed previous
+```
+
+so the three figures on screen add up. `MarginMovement.pointsScaled` remains the exact figure
+and is not replaced; `displayedPointsScaled` is the displayed one, and it is what
+`displayTwoDecimals` prints, because that string is the one that sits beside the two printed
+margins. `exactDisplayTwoDecimals` formats the canonical figure for a diagnostic or an export
+that states the unrounded movement.
+
+**This is presentation reconciliation only.** Nothing downstream computes from the rounded
+value, and no canonical figure is replaced by one.
+
+**Proven, not asserted.** A sweep of **60,500** margin pairs — including negative net sales,
+negative profit, halfway cases and 32-bit-crossing figures — at precisions 0 to 4 asserts
+`displayed == round(current) − round(previous)` exactly, with no exception. A second test reads
+the actual strings a surface prints, parses them back and adds them up. A third bounds the two
+answers against each other: each of the three roundings moves its figure by at most half a
+unit, so displayed and exact can never differ by more than **one** unit at the display
+precision — stated as a bound because a wider gap would mean one of the roundings is not what
+it claims to be.
+
+**Control, seen to fail:** with `displayTwoDecimals` pointed back at the exact movement, two
+tests turn RED, including the string-level one. Restored by byte copy and `cmp`.
