@@ -9087,3 +9087,106 @@ the controller reports it as neither success nor failure, and the P&L re-reads u
 authority. It is noted because the dashboard's key is stricter and the difference should be
 read as deliberate rather than as drift, and because if the P&L surface is ever touched
 again the same key is the simpler thing to have (D-127).
+
+## D-268 — A chart states a figure it was given, never one it read off a position
+**Date:** 2026-09-21 · **Status:** Implemented / Tested — Phase 6 Slice 5
+
+Charts are presentation. The rule that makes that true rather than intended is about the
+**direction** of one conversion:
+
+```
+        exact Money  ──derive──▶  double coordinate      allowed, one way
+        double coordinate  ──▶  Money                    does not exist in the layer
+```
+
+`ChartAmount` carries the exact figure **and** the string the application's own formatter
+produced from it; the plotted coordinate is a getter over the figure, and there is no
+constructor taking a `double`. So a tooltip, an axis tick and a readout are not numbers a
+renderer handed back — they are the figure `domain/finance` computed, printed the way every
+other surface prints it. This is the move D-094 made for `RevenueTaxFacts` and D-150 for the
+revenue attachment schema: make the mistake unavailable rather than discouraged.
+
+**A tooltip is a lookup.** fl_chart reports *which* mark was touched, so the exact figure is
+found by index in the points the domain supplied. Exactly one place in the layer converts a
+coordinate to anything, and it converts to a **category index** that carries no money —
+`ChartSelection.indexAt`, named so a reviewer sees it rather than finding it. A guard asserts
+that it is the only one.
+
+**What the layer may not do**, each asserted over the directory rather than per file: reach a
+report, a database or a server; decide authority, coverage or freshness; resolve tax; call
+`Pnl.compute`, `PnlComparison.compare`, `DashboardTrends.*`, `DailyNetSalesRanking`, `TopN.*`
+or `Money.sum`; sort anything; or derive or format a date. A position's name arrives as a
+label from the surface that owns the application's date wording, so the layer cannot grow a
+second date format.
+
+**A gap is a gap, and a zero is a zero.** A `TrendGap` becomes a `ChartAbsent` carrying **no
+amount at all**: the line breaks at `FlSpot.nullSpot`, and the bar chart draws **no rod**. A
+break-even month draws a rod *at* zero. A zero-height rod is exactly what break-even looks
+like, so a month nobody could establish must not render as one (D-263).
+
+**The value axis is anchored at zero.** A truncated axis exaggerates variation, and this is a
+management report rather than a pitch (spec §20). It is also what gives an Operating Profit
+chart a baseline to draw a loss beneath. The baseline is an **explicit reference line**, not
+whichever grid line happens to land there — a generated grid does not promise to include zero
+at all, which is a real finding rather than a precaution: the first implementation coloured a
+grid line at zero, and once the tick step was chosen so that axis labels resolve, zero stopped
+being generated for a range whose minimum is not a multiple of the step.
+
+**Never colour alone** (spec §20): a series carries a marker shape and a dash pattern beside
+its colour and is named in the legend; profit and loss are stated by the side of the baseline,
+by the sign on the figure, by the word in the readout and by the word in the description.
+Break-even is its own word, because it is neither.
+
+**A refused domain result draws no financial data.** A `TopNRefused` — a category set that did
+not reconcile — and a trend of nothing but gaps both render a stated reason in place of a
+plot, never an empty plot area, which a reader cannot tell apart from a flat zero (D-163).
+
+**One interaction model for both platforms.** fl_chart reports a Windows hover and an Android
+touch through the same callback, and arrow keys move the same selection, so there is no second
+interaction model to keep in step — the discipline D-232 settled for the P&L wording. Animation
+is off: a financial chart gains nothing from motion, and a running animation makes an assertion
+read a figure that is on its way somewhere (D-152).
+
+**Controls, each seen RED and restored byte-identical (`cmp`):** a `TrendGap` converted to a
+zero point; a tooltip built by formatting the plotted `double`; the ranked adapter re-ranking
+and re-summing the domain's lines; and `ChartAmount` reduced to its coordinate.
+
+## D-269 — fl_chart 1.2.0, pinned, and what was verified before it was added
+**Date:** 2026-09-21 · **Status:** Accepted — the dependency decision D-257 required
+
+**Verified before adding**, against this repository's toolchain (Flutter 3.44.9, Dart 3.12.2)
+rather than from the package's description:
+
+| Required behaviour | Mechanism, read in the package source |
+|---|---|
+| a gap that breaks a line | `FlSpot.nullSpot`, and the renderer breaks at it |
+| bars above and below zero | `BarChartRodData(fromY:, toY:)`, with a negative `toY` |
+| a tooltip that states an exact figure | `GetBarTooltipItem` gives `groupIndex`; `TouchLineBarSpot` gives `spotIndex` — **both hand back an index**, which is what lets a tooltip read the prepared figure rather than the coordinate |
+| accessibility | fl_chart publishes none, so the layer wraps every chart in one `Semantics` node carrying the whole description |
+
+fl_chart 1.2.0 itself requires Flutter >= 3.27.4 and Dart >= 3.6.2. It brings `equatable`
+transitively and nothing else. **No STOP condition was reached**: every approved behaviour is
+representable, including horizontal bars (`rotationQuarterTurns`).
+
+**Pinned exactly — `fl_chart: 1.2.0`, not a caret.** A chart package's rendering is what
+several assertions read, so an unreviewed minor bump is a silent change to what a manager
+sees. A guard asserts the pin, the lockfile, the recorded toolchain, that no second charting
+package exists in `pubspec.yaml` or `pubspec.lock`, and that **nothing outside the chart layer
+imports `package:fl_chart`** — so replacing the package is never a change to a screen.
+
+**One implementation choice inside an approved family, stated rather than buried.** The three
+ranked horizontal families — revenue mix, top expense categories, department spending — are
+composed from the design system's own text and a proportional fill rather than plotted on a
+rotated axis. A ranked bar chart is a **list with a bar**, and two requirements decide it: a
+category reads *Crystal Canopy Rooftop · Kirana & Pulses*, which as an axis tick at 360dp
+either truncates the name or takes a third of the plot from the bars; and **money must never
+be truncated or wrapped**, because a truncated amount is a wrong amount (the rule `MoneyText`
+has carried since Phase 1). So the name sits on its own line above the figure at phone width,
+and in its own slot beside it at desktop width, and a test asserts the two never share a line
+at 360dp.
+
+This is **not** a second charting library and not a rejection of the package — fl_chart draws
+the other three families and could draw these. It is the right primitive for a ranked list,
+it lives in the same layer under the same models, formatters, selection and description, and
+it is reversible in one file. **Flagged for the project lead** rather than presented as
+settled.

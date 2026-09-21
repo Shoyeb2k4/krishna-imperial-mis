@@ -50,6 +50,14 @@ dependencies:
   crypto: ^3.0.3
   image: ^4.2.0
 
+  # Charts. Presentation only: it is handed values `domain/finance` already computed and
+  # renders them (D-257, D-268). Pinned exactly rather than carets, because a chart
+  # package's rendering is what several acceptance assertions read — an unreviewed minor
+  # bump is a silent change to what a manager sees. Verified against Flutter 3.44.9 /
+  # Dart 3.12.2; 1.2.0 itself requires Flutter >=3.27.4, sdk >=3.6.2. It brings `equatable`
+  # transitively and nothing else. There is no second charting package in this project.
+  fl_chart: 1.2.0
+
   # Domain support
   uuid: ^4.6.0 # UUID v7, client-generated, time-ordered (D-008)
   timezone: ^0.11.1 # IANA zones for DST-safe business-date derivation (D-019)

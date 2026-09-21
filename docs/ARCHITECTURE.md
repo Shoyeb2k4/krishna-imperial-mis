@@ -60,7 +60,7 @@ record. Both apps converge on Postgres through the sync engine described in §5.
 | IDs | UUID v7 (client-generated, time-ordered) | index locality + sortability |
 | Excel | evaluated in Phase 7 | must support Windows and Android |
 | PDF + print | `pdf` + `printing` | `printing` covers the Windows print dialog |
-| Charts | `fl_chart` (evaluate) styled by our tokens | no default chart theme ships |
+| Charts | **fl_chart 1.2.0**, pinned, styled by our tokens | evaluated and adopted in Phase 6 Slice 5 (D-269); no default chart theme ships, and nothing outside `core/design/charts` imports it |
 
 **Single Flutter package**, not a melos monorepo. Layer boundaries are enforced by folder
 structure plus import lint rules in CI rather than by package splits.
@@ -3920,3 +3920,68 @@ and the per-report cost is the Phase 5 engine's. **Nothing was added** — no da
 no second cache, no materialised aggregate, no index, no server function. The D-255 and
 D-263 grain rules turn out to be what bounds the work: a year-long custom range is 14
 reports because its Net Sales trend is monthly, not 367 because it is daily.
+
+## 44. The chart foundation — Phase 6 Slice 5
+
+Decisions **D-268**, **D-269**. **No schema change, no migration, no server or API change,
+and no screen.** Local Drift schema stays **v21**; migration ledger stays **101**.
+
+```
+        domain/finance  ──decided figures──▶  chart adapters  ──▶  chart widgets
+        TrendSeries                           TrendChartData        TrendLineChart
+        TopNOutcome                           RankedBarChartData    ProfitBarChart
+        PnlResult lines                       ComparisonChartData   RankedBarChart
+                                                                    ComparisonBarChart
+```
+
+* **One direction only.** `ChartAmount` holds the exact `Money` and the string the
+  application's formatter produced from it; its coordinate is a **getter** over that
+  figure. There is no constructor taking a `double`, so money cannot be reconstructed from
+  a position — the move D-094 made for `RevenueTaxFacts` and D-150 for the revenue
+  attachment schema, applied to pixels.
+* **A tooltip is a lookup, not a conversion.** fl_chart reports *which* mark was touched —
+  `spotIndex`, `touchedBarGroupIndex` — and the figure is looked up in the points the
+  domain supplied. Exactly one place in the layer converts a coordinate to anything, and it
+  converts to a **category index**, which carries no money (`ChartSelection.indexAt`).
+* **Coordinates are paise**, so they stay whole. A `double` holds every integer below 2^53
+  exactly, which is about ₹90,07,19,92,54,740 — past anything this business will record.
+* **A gap is a gap.** A `TrendGap` becomes `ChartAbsent`, which carries **no amount at
+  all**; the line breaks at `FlSpot.nullSpot` and the bar chart draws no rod. A break-even
+  month draws a rod *at* zero, so the two never render the same (D-263).
+* **The value axis is anchored at zero**, always. A truncated axis exaggerates variation,
+  and this is a management report. It is also what gives an Operating Profit chart a
+  baseline to draw a loss beneath, and the baseline is an explicit reference line rather
+  than whichever grid line happens to land there — a generated grid does not promise to
+  include zero at all.
+* **Axis labels are resolved, never parsed.** A tick's label is formatted from that tick's
+  own integer paise, and `ChartAxis.labelFor` answers only for a coordinate the axis itself
+  produced. `ChartBounds` sets the tick step to a quarter of the data span so the data's own
+  minimum and maximum land exactly on positions fl_chart generates.
+* **Never colour alone** (spec §20). Each series carries a marker shape and a dash pattern
+  beside its colour and is named in the legend; a profit or a loss is stated by the side of
+  the baseline, by the sign on the figure, by the word in the readout and by the word in the
+  description. Break-even is its own word.
+* **Nothing is recomputed.** The layer calls none of `Pnl.compute`, `PnlComparison.compare`,
+  `DashboardTrends.*`, `DailyNetSalesRanking`, `TopN.*` or `Money.sum`, sorts nothing, and
+  derives no date — a position's name arrives as a label from the surface that owns the
+  application's date wording. A refused domain result draws **no financial data**.
+* **One interaction model.** fl_chart reports a Windows hover and an Android touch through
+  the same callback, and arrow keys move the same selection, so there is no second
+  interaction model to keep in step (the discipline D-232 settled for the P&L wording).
+* **Animation is off.** A financial chart gains nothing from motion, and a running animation
+  makes an assertion read a figure that is on its way somewhere (D-152).
+
+**The ranked families are composed, not plotted.** Revenue mix, top expense categories and
+department spending are a **list with a bar**: a category reads *Crystal Canopy Rooftop ·
+Kirana & Pulses*, which as an axis tick at 360dp either truncates the name or takes a third
+of the plot from the bars, and **money must never be truncated or wrapped** — a truncated
+amount is a wrong amount. So each line is real text with a proportional fill: at phone width
+the name sits on its own line above the figure, and at desktop width the two occupy separate
+slots. fl_chart can draw horizontal bars (`rotationQuarterTurns`), so this is the right
+primitive for a ranked list rather than a workaround for something the package cannot do,
+and the same models, formatters, selection and description serve it (D-269).
+
+**Slice 5 wires the foundation into no screen.** A guard asserts that nothing outside
+`lib/core/design/charts` imports it, and that assertion is the one Slice 6 must deliberately
+change. A second guard asserts no file outside the layer imports `package:fl_chart`, so
+replacing the package is never a change to a screen.

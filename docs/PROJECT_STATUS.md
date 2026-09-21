@@ -5520,7 +5520,7 @@ reporting cache is created, and authorization stays `PnlAuthority`.
 | 2 | Exact comparison domain rules | **COMPLETE** |
 | 3 | Dashboard engine, and the performance gate | **COMPLETE** |
 | 4 | Authority and providers | **COMPLETE** |
-| 5 | Chart foundation (`fl_chart`, pinned, with a no-arithmetic guard) | not started |
+| 5 | Chart foundation (`fl_chart`, pinned, with a no-arithmetic guard) | **COMPLETE** |
 | 6 | Windows Overview dashboard | not started |
 | 7 | Android Home dashboard | not started |
 | 8 | Windows Analytics sections | not started |
@@ -5838,8 +5838,91 @@ dashboard requirement, STOP before introducing another* — was not reached. Eve
 requirement is expressible as `PnlAuthority` already states it, and the scope options are
 the same provider rather than a parallel one.
 
+## Phase 6 Slice 5 — chart foundation: **COMPLETE** (2026-09-21)
+
+Decisions **D-268**, **D-269**; `ARCHITECTURE.md` §44. **No schema change, no migration, no
+server or API change, and no screen.** Local Drift schema stays **v21**; migration ledger
+stays **101**. Written test-first: `test/core/chart_models_test.dart` was written and run
+against an API that did not exist, and failed to compile.
+
+### The dependency
+
+**`fl_chart: 1.2.0`, pinned exactly.** Verified against this toolchain (Flutter 3.44.9,
+Dart 3.12.2) before it was added, by reading the package rather than its description: gaps
+via `FlSpot.nullSpot`, negative bars via `BarChartRodData(fromY/toY)`, and tooltip callbacks
+that hand back an **index** (`spotIndex`, `touchedBarGroupIndex`) — which is what lets a
+tooltip state the prepared figure instead of the coordinate. It publishes no accessibility,
+so the layer wraps every chart in one `Semantics` node. It brings `equatable` and nothing
+else. **No STOP condition was reached**: every approved behaviour is representable, including
+horizontal bars.
+
+### What shipped
+
+`lib/core/design/charts/` only — models, adapters, theme, frame, selection, semantics and
+four widgets covering the six approved families. **Nothing is wired into a screen**, and a
+guard asserts that; it is the assertion Slice 6 must deliberately change.
+
+| | |
+|---|---|
+| exactness | `ChartAmount` holds the exact `Money` and the formatter's string; the coordinate is a **getter** over it, and no constructor takes a `double` |
+| tooltips | looked up by the touched index, never formatted from a coordinate |
+| one conversion | `ChartSelection.indexAt` — a position to a **category index**, which carries no money. A guard asserts it is the only one |
+| gaps | `ChartAbsent` carries no amount; the line breaks at `FlSpot.nullSpot`, the bar draws **no rod**, and break-even draws a rod *at* zero |
+| the axis | anchored at zero always; the baseline is an explicit reference line, not a grid line that happens to land there |
+| never colour alone | marker shape, dash pattern, legend name, the side of the baseline, the sign on the figure, and the word — *profit*, *loss*, *break-even* |
+| refusals | a refused `TopN` and an all-gap trend draw a stated reason, never an empty plot |
+| animation | off, so an assertion never reads a figure on its way somewhere (D-152) |
+
+### Verified
+
+| Item | Status | Evidence |
+|---|---|---|
+| `dart format --set-exit-if-changed lib test integration_test tool` | **Tested** | clean, 0 changed |
+| `flutter analyze` | **Tested** | **No issues found** |
+| Chart models | **Tested** | **24** tests |
+| Chart widgets | **Tested** | **20** tests — rods, spots, readout text, geometry at 360dp |
+| Structural guards | **Tested** | **26** tests, 8 of them planted-violation self-checks |
+| Host suite | **Tested** | **2,389 passed, 0 skipped** (2,319 + 70) |
+| Windows build | **Tested** | `flutter build windows --release` → `krishna_mis.exe` |
+| Android build | **Tested** | `flutter build apk --debug --flavor dev` → `app-dev-debug.apk` |
+| Secret scan — tree, git history and built artefacts | **Tested** | clean, the scanner's own controls passing |
+| Schema / migrations / server | **Unchanged** | `git diff` over `supabase/` and `lib/data/local/` is empty |
+| Live backend, device acceptance | **Not exercised** | Slice 5 adds no remote call and no surface |
+
+### Positive controls, each seen RED and restored byte-identical (`cmp`)
+
+| Control | Result |
+|---|---|
+| a `TrendGap` converted to a zero point | **10 RED** |
+| a tooltip built by formatting the plotted `double` | **3 RED** — the tooltip assertion and two structural guards |
+| the ranked adapter re-ranking and re-summing the domain's lines | **5 RED** — both guards, plus membership, geometry and the hover readout |
+| `ChartAmount` reduced to its coordinate, with the exact source removed | **RED at compile** — 9 errors across `lib/` and the tests. That is the control working: with no exact source, the axis has nothing to build from and the label has nowhere to come from |
+
+Each was restored with a byte copy and verified with `cmp` (D-219), and the suite was
+re-run green after each.
+
+### One number checked rather than assumed
+
+2,389 is not 2,319 + 86, and the gap was measured rather than explained away: a worktree at
+`fcd464b` confirms the Slice 4 baseline is **2,319**, and `test/core/` already held
+`money_formatter_test.dart` (**16** tests). The three chart files therefore contribute
+**70**, and 2,319 + 70 = 2,389. Nothing was lost.
+
+### One implementation choice, flagged rather than buried (D-269)
+
+The three ranked horizontal families are composed from the design system's own text and a
+proportional fill rather than plotted on a rotated axis. A ranked bar chart is a **list with
+a bar**, and two requirements decide it: a category reads *Crystal Canopy Rooftop · Kirana &
+Pulses*, which as an axis tick at 360dp either truncates the name or takes a third of the
+plot from the bars; and **money must never be truncated or wrapped**, because a truncated
+amount is a wrong amount.
+
+This is **not** a second charting library and not a rejection of fl_chart, which draws the
+other three families and could draw these (`rotationQuarterTurns`). It lives in the same
+layer under the same models, formatters, selection and description, and it is reversible in
+one file. **For the project lead to confirm or redirect.**
+
 ## Next exact task
 
-**Phase 6 Slice 5 — chart foundation (`fl_chart`, pinned, with a no-arithmetic guard).**
-**Not started, and not started automatically**: Slice 4's evidence is reported above and
-awaits the project lead.
+**Phase 6 Slice 6 — Windows Overview dashboard. Not started, and not started
+automatically**: Slice 5's evidence is reported above and awaits the project lead.
