@@ -3822,9 +3822,58 @@ Decisions D-251 … D-261. **No schema change, no migration, local Drift schema 
   sweep across five precisions asserts it, and a bound proves the two answers never differ by
   more than one unit at the display precision.
 
-Still to come in Phase 6, and not built here: providers keyed on `PnlAuthority.readKey`
-(Slice 4), the `fl_chart` presentation layer and its no-arithmetic guard (Slice 5), and the
-surfaces (Slices 6–9).
+Still to come in Phase 6, and not built here: the `fl_chart` presentation layer and its
+no-arithmetic guard (Slice 5), and the surfaces (Slices 6–9).
+
+## 43. Dashboard authority and providers — Phase 6 Slice 4
+
+Decision **D-267**. **No schema change, no migration, no server or API change, no chart and
+no screen.** Local Drift schema stays **v21**; migration ledger stays **101**.
+
+```
+        sessionProvider ──► PnlAuthority.readKey  ── keys ──┬─ dashboardSelectionProvider
+                                                            ├─ dashboardSyncProvider
+                        └─► pnlScopeOptionsProvider          └─ stamped on every state
+                                    │
+        dashboardSelectionProvider ─┤
+        businessDayRulesProvider ───┼──► DashboardPeriods.forUnits / forCustom
+        reportingClockProvider ─────┘            │
+                                                 ▼
+                                    dashboardRequestFor  (grains from grainsFor)
+                                                 ▼
+                          dashboardViewProvider ──► DashboardEngine.build  (Slice 3)
+                                                 ▼
+                                          DashboardState
+                                                 │
+                    dashboardShownTo(state, principal)  ── authority key, not person
+                                                 ▼
+                               dashboardPresentation(state, sync, principal)
+                            loading · available(+refreshFailure) · unavailable(reason)
+```
+
+* **One financial authorization model.** The dashboard reads the **same** scope-options
+  provider the P&L does, so it cannot offer a property the P&L would refuse. The guard
+  asserts the provider names no `Capability.` and no role name at all — it has no way to
+  decide what qualifies for itself.
+* **Authority identity is dashboard identity.** Every state carries the authority's
+  `readKey`, captured before anything is read, and is shown to no other authority. That
+  covers a different person *and* the same person whose capabilities have moved — the
+  second is the one a person key misses, and is D-231's defect.
+* **Selection survives what it should.** Keyed on the authority: a no-change session
+  refresh keeps the reader's property and period (D-245); a different person or a changed
+  capability starts clean, so a revoked property cannot remain selected.
+* **Periods are the planner's.** `DashboardPeriods` resolves every date under each
+  property's own business-date rules, with both ranges required to agree across a
+  consolidated scope (D-254). The guard forbids date arithmetic in the provider.
+* **One dashboard path.** Every figure comes from one `DashboardEngine.build`; the guard
+  forbids a second reporting path and forbids the provider reassembling any part of the
+  view.
+* **Freshness is passed through, never made.** Null stays null when the engine can name no
+  one snapshot (D-188).
+* **Five states, no zeros.** Loading, available (with a refresh failure reported beside a
+  dashboard that is still complete), not authorised, period unavailable, required data
+  unavailable. `dashboardPresentation` is pure, so a surface cannot reach a different
+  answer from the tested one.
 
 ## 42. The dashboard engine — Phase 6 Slice 3
 

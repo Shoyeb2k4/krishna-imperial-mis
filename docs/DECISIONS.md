@@ -8988,3 +8988,102 @@ and identical for SQLite. A physical-device dashboard pass belongs with the Phas
 acceptance slice, exactly as D-230 placed the P&L one. The fixture is two properties and
 two financial years, which is the local retention ceiling (D-170); a device does not hold
 more than that without asking for it.
+
+## D-267 — The dashboard's authority is the P&L's, and authority identity is part of dashboard identity
+**Date:** 2026-09-21 · **Status:** Accepted — Phase 6 Slice 4, written test-first
+
+Slice 4 connects the Slice 3 engine to the session. It builds no chart and no screen, and
+— the point of the slice — it introduces **no second financial authorization model**.
+
+**The scopes are not merely decided the same way; they are the same provider.** A dashboard
+reads `pnlScopeOptionsProvider`, so it cannot offer a property the P&L would refuse, and a
+later change to what qualifies cannot move one surface and leave the other behind. The rule
+is [D-164 as corrected by D-187] unchanged: `reports.view` ∩ `revenue.view` ∩
+`expense.view.all` for a property, all three **unscoped** for consolidated. A structural
+guard asserts the provider names no `Capability.` at all, so it has no way to decide the
+question for itself, and no role name appears anywhere in the feature.
+
+Four ways a property might have been offered and is not: because another person selected it
+(the options carry a viewer and the selection is keyed on the authority), because it is in
+the cache (the units come from the master graph and are filtered by the rule), because a
+role implies it (no role is read), or because some **other** capability names it — a
+principal holding `masters.view` on Crystal Canopy plus every Owner Accounts capability is
+offered nothing, which is tested.
+
+### Authority identity, not merely the person
+
+Every `DashboardState` carries the [PnlAuthority.readKey] of the authority it was assembled
+under, and `dashboardShownTo` refuses to show it to any other. The comparison is the **key**
+rather than the user id, and that is the whole of the difference from the P&L's own guard:
+the same person whose qualifying capabilities have moved is a different authority, and their
+previous dashboard must stop being visible at once rather than when the next read happens to
+finish.
+
+That matters because a provider re-reading **keeps its previous value while it loads** —
+right when a synchronisation lands, and wrong the moment authority changes. D-231 recorded
+exactly this defect on the P&L, where a consolidated report stayed on screen for a
+Crystal-Canopy-only principal for as long as a synchronisation held the lock. The key is
+captured **before** anything is read, so an assembly that spans a change is stamped with the
+authority that started it and can never become the visible dashboard.
+
+The selection is keyed the same way: a different person, or the same person whose qualifying
+capabilities have changed, starts from a clean selection; a session state change that leaves
+the authority identical keeps the reader's chosen property and period (D-245). A selected
+property whose authority is withdrawn therefore resolves to a still-permitted scope, or —
+when there is none — to an explicit refusal. It never keeps showing the revoked property.
+
+**The sync controller is keyed on the authority too**, which is a deliberate divergence from
+`PnlSyncController`'s person key: a status describing a scope this authority cannot read is
+not this authority's status, and keying on the person would leave a capability change with a
+run stuck at *synchronising* and the next run refusing to start behind it. The data layer is
+the real guarantee either way — D-240's cache authority generation abandons a run whose
+reporting capabilities have moved — and this is the surface saying the same thing.
+
+### Five states, and not one of them is a zero
+
+| | |
+|---|---|
+| loading | including the moment after an authority change, when the previous dashboard is deliberately not visible |
+| available | a complete dashboard, **and separately** whether the last refresh failed |
+| not authorised | no qualifying scope, or a scope this authority may not read |
+| period unavailable | the properties disagree about a range (D-254), a calendar could not be read (D-225), or a custom range ends before it starts |
+| required data unavailable | the engine could not stand behind the figures |
+
+`dashboardPresentation` is a pure function of those, so a surface cannot arrive at a
+different answer from the one that is tested. **Where a complete dashboard exists and a
+refresh fails, the dashboard is retained and the failure is reported beside it** — a failed
+run writes nothing (D-048), so the figures are still the last complete canonical snapshot.
+Where none exists, the answer is unavailable, never fabricated figures (D-163).
+
+### What is delegated, and asserted to be
+
+Periods are the Slice 2 planner's (`DashboardPeriods.forUnits` / `forCustom`), with both the
+current range and the comparator required to agree across the properties in scope (D-254);
+the guard forbids every shape of date arithmetic in the provider. Which series a period may
+carry is `DashboardTrends.grainsFor`'s answer (D-255, D-263), so the provider cannot ask for
+a trend the rulings do not permit. Figures come from **one** `DashboardEngine.build`; the
+guard forbids a second reporting path and forbids the provider reassembling any part of the
+view itself. Freshness is the engine's combined claim passed through — when the engine can
+name no one snapshot the provider names none either, and constructing a claim here is
+forbidden.
+
+### Written test-first, and the controls that make it mean something
+
+The test file was written and run before the providers existed, and failed to compile
+against the API it describes. Three deliberate breaks were then made and each was seen RED
+before being restored byte-identical (`cmp`):
+
+| Control | Result |
+|---|---|
+| authority identity reduced to the person alone | **3 RED** — capability revocation, in-flight isolation, and the guard |
+| `expense.view.own` made to qualify, in `PnlAuthority` itself | **1 RED** — which is also the proof that the dashboard genuinely depends on that rule rather than restating it |
+| stale publication allowed after a switch or revocation | **4 RED** — user switch, capability revocation, in-flight isolation, and the guard |
+
+### Recorded, and deliberately not changed
+
+`PnlSyncController` keys its status on the **person**, so a capability change mid-run is not
+detected at the surface. It is not a defect: `ReportingSync` abandons the run under D-240,
+the controller reports it as neither success nor failure, and the P&L re-reads under the new
+authority. It is noted because the dashboard's key is stricter and the difference should be
+read as deliberate rather than as drift, and because if the P&L surface is ever touched
+again the same key is the simpler thing to have (D-127).

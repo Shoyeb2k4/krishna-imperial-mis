@@ -5519,7 +5519,7 @@ reporting cache is created, and authorization stays `PnlAuthority`.
 | 1 | Governance and decisions | **COMPLETE** |
 | 2 | Exact comparison domain rules | **COMPLETE** |
 | 3 | Dashboard engine, and the performance gate | **COMPLETE** |
-| 4 | Authority and providers | not started |
+| 4 | Authority and providers | **COMPLETE** |
 | 5 | Chart foundation (`fl_chart`, pinned, with a no-arithmetic guard) | not started |
 | 6 | Windows Overview dashboard | not started |
 | 7 | Android Home dashboard | not started |
@@ -5750,8 +5750,96 @@ Galaxy A06 — a physical-device dashboard pass belongs with the Phase 6 accepta
 exactly where D-230 placed the P&L one. The fixture is two financial years, which is the
 local retention ceiling (D-170).
 
+## Phase 6 Slice 4 — authority and providers: **COMPLETE** (2026-09-21)
+
+Decision **D-267**; `ARCHITECTURE.md` §43. **No schema change, no migration, no server or
+API change, no chart and no screen.** Local Drift schema stays **v21**; migration ledger
+stays **101**.
+
+Written **test-first**: `test/features/dashboard_providers_test.dart` was written and run
+against an API that did not exist, and failed to compile, before any provider was written.
+
+### What shipped
+
+`lib/features/dashboard/presentation/dashboard_providers.dart` only:
+
+| | |
+|---|---|
+| selection | `dashboardSelectionProvider`, keyed on `PnlAuthority.readKey` |
+| scopes | **`pnlScopeOptionsProvider`, reused** — the same provider the P&L uses |
+| periods | `DashboardPeriods.forUnits` / `forCustom` under each property's own rules |
+| request | `dashboardRequestFor`, whose grains are `DashboardTrends.grainsFor`'s answer |
+| engine | `dashboardEngineProvider` → one `DashboardEngine.build` |
+| state | `DashboardState` — not authorised · period unavailable · ready, each stamped with the authority key |
+| visibility | `dashboardShownTo`, comparing the **authority key**, not the person |
+| presentation | `dashboardPresentation` — loading · available(+refresh failure) · unavailable(reason) |
+| synchronisation | `dashboardSyncProvider`, the unchanged Phase 5 `ReportingSync` |
+
+### The eighteen required proofs
+
+| | Proof | Where |
+|---|---|---|
+| 1 | qualifying one-property authority — and it is selected automatically | ✔ |
+| 2 | qualifying two-property authority; consolidated is **not** implied by two scoped grants | ✔ |
+| 3 | consolidated authority, and it is the default (the existing P&L convention) | ✔ |
+| 4 | `expense.view.own` never qualifies | ✔ |
+| 5 | `reports.view` alone does not qualify | ✔ |
+| 6 | revenue-side only does not qualify | ✔ |
+| 7 | expense-side only does not qualify | ✔ |
+| 8 | user A → user B cannot expose A's dashboard | ✔ |
+| 9 | capability revocation invalidates the dashboard at once | ✔ |
+| 10 | a selected revoked property resolves to a permitted scope, or to nothing | ✔ (two tests) |
+| 11 | a stale in-flight assembly is not the visible dashboard | ✔ (real lock held) |
+| 12 | a no-authority principal receives no financial result | ✔ |
+| 13 | the planner's own pair, not provider arithmetic | ✔ (behavioural + guard) |
+| 14 | a consolidated D-225/D-254 mismatch refuses the period | ✔ (state + availability) |
+| 15 | a failed refresh retains the complete dashboard, failure reported separately | ✔ |
+| 16 | missing data is unavailable, never zero | ✔ |
+| 17 | freshness comes from the engine, not recomputed | ✔ (three tests + guard) |
+| 18 | Owner Accounts capabilities alone grant nothing here | ✔ |
+
+### Verified
+
+| Item | Status | Evidence |
+|---|---|---|
+| `dart format --set-exit-if-changed lib test integration_test tool` | **Tested** | clean, 323 files |
+| `flutter analyze` | **Tested** | **No issues found** |
+| Host suite | **Tested** | **2,319 passed** (2,270 + 49) |
+| Dashboard providers, through the real chain | **Tested** | 34 tests |
+| Dashboard surface guard | **Tested** | 15 tests, six of them planted-violation self-checks |
+| Secret scan — tree and git history | **Tested** | clean, controls passing |
+| Schema / migrations / server API | **Unchanged** | `git diff` over `supabase/` and `lib/data/local/` is empty |
+| Chart or screen | **Not built** | asserted by the guard over the whole feature directory |
+| Live backend, device acceptance | **Not exercised** | Slice 4 adds no remote call and no surface |
+
+### Positive controls, each seen RED and restored byte-identical (`cmp`)
+
+| Control | Result |
+|---|---|
+| authority identity reduced to the person alone | **3 RED** — revocation, in-flight isolation, guard |
+| `expense.view.own` made to qualify, in `PnlAuthority` itself | **1 RED** — proving the dashboard depends on that rule rather than restating it |
+| stale publication allowed after a switch or revocation | **4 RED** — user switch, revocation, in-flight isolation, guard |
+
+### One deliberate divergence from the P&L, recorded
+
+`DashboardSyncController` keys its status on the **authority**, where `PnlSyncController`
+keys on the person. A status describing a scope this authority cannot read is not this
+authority's status, and a person key would leave a capability change with a run stuck at
+*synchronising* and the next refusing to start behind it.
+
+**This is not a P&L defect.** `ReportingSync` abandons a run whose reporting capabilities
+have moved (D-240), the controller reports it as neither success nor failure, and the P&L
+re-reads under the new authority. It is recorded so the difference reads as deliberate.
+
+### Nothing was found that the existing authority model cannot represent
+
+The slice's stop condition — *if the Phase 5 authority model cannot represent an approved
+dashboard requirement, STOP before introducing another* — was not reached. Every
+requirement is expressible as `PnlAuthority` already states it, and the scope options are
+the same provider rather than a parallel one.
+
 ## Next exact task
 
-**Phase 6 Slice 4 — authority and providers.** **Not started, and not started
-automatically**: Slice 3's correctness and performance evidence is reported above and
+**Phase 6 Slice 5 — chart foundation (`fl_chart`, pinned, with a no-arithmetic guard).**
+**Not started, and not started automatically**: Slice 4's evidence is reported above and
 awaits the project lead.
