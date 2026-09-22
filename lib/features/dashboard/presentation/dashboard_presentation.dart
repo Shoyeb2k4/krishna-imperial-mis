@@ -29,10 +29,12 @@ import 'package:krishna_mis/domain/finance/dashboard_periods.dart';
 import 'package:krishna_mis/domain/finance/operating_margin.dart';
 import 'package:krishna_mis/domain/finance/pnl.dart';
 import 'package:krishna_mis/domain/finance/pnl_comparison.dart';
+import 'package:krishna_mis/domain/finance/reporting_period.dart';
 import 'package:krishna_mis/domain/finance/reporting_source.dart';
 import 'package:krishna_mis/domain/value_objects/money.dart';
 import 'package:krishna_mis/domain/value_objects/business_date.dart';
 import 'package:krishna_mis/features/dashboard/presentation/dashboard_providers.dart';
+import 'package:krishna_mis/features/profit_and_loss/presentation/pnl_presentation.dart';
 import 'package:krishna_mis/features/profit_and_loss/presentation/pnl_providers.dart';
 
 // ── Messages shown instead of a dashboard ──────────────────────────────────
@@ -374,6 +376,12 @@ String _displayZone(Map<String, BusinessDayRule> rules, DashboardReady ready) {
   return rules[unit]?.timeZoneId ?? 'UTC';
 }
 
+/// What the organisation scope is called, wherever it is named.
+///
+/// One sentence, so the Overview's chip, the phone's selector and the phone's sheet
+/// cannot become three descriptions of one thing (D-232).
+const String dashboardConsolidatedScopeLabel = 'Both properties (consolidated)';
+
 // ── Period wording ──────────────────────────────────────────────────────────
 
 /// `Month to date · 1 Sep 2026 – 19 Sep 2026`.
@@ -551,6 +559,39 @@ TrendChartData dashboardTrendChartData(TrendSeries series) =>
       series,
       bucketLabel: (bucket) => dashboardBucketLabel(bucket, series.grain),
     );
+
+// ── Custom dates from a calendar picker ─────────────────────────────────────
+
+/// `19 Sep 2026`, as every reporting surface prints a day.
+String dashboardDateLabel(BusinessDate date) => reportDateLabel(date);
+
+/// The range a date-range picker opens on: the custom range already chosen, otherwise the
+/// period being reported, otherwise nothing and the picker opens on today.
+DateTimeRange? dashboardPickerRange(
+  DashboardPeriodChoice period, {
+  ReportRange? current,
+}) {
+  final (from, to) = switch (period) {
+    DashboardCustomPeriod(:final from, :final to) => (from, to),
+    DashboardRelativePeriod() when current != null => (
+      current.from,
+      current.to,
+    ),
+    _ => (null, null),
+  };
+  if (from == null || to == null || from > to) return null;
+  return DateTimeRange(start: pnlCalendarDay(from), end: pnlCalendarDay(to));
+}
+
+/// The explicit P&L dates a calendar picker returned, or null when it was dismissed.
+///
+/// **Delegated, not copied.** The rule — the tapped day *is* the P&L date, read by year,
+/// month and day, never converted through a timezone, UTC or the device clock, and the two
+/// ends never swapped — is one rule and has one implementation (D-229, D-250). A second
+/// copy here is exactly the drift D-119 and D-131 each record.
+({BusinessDate from, BusinessDate to})? dashboardCustomDatesFrom(
+  DateTimeRange? picked,
+) => pnlCustomDatesFrom(picked);
 
 // ── Opening behaviour ───────────────────────────────────────────────────────
 

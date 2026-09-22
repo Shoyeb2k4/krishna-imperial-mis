@@ -771,7 +771,7 @@ class _ScopeBar extends ConsumerWidget {
         if (options.consolidatedAllowed)
           ChoiceChip(
             key: const Key('dashboard-scope-consolidated'),
-            label: const Text('Both properties (consolidated)'),
+            label: const Text(dashboardConsolidatedScopeLabel),
             selected: selected == const PnlConsolidatedScope(),
             onSelected: (_) =>
                 controller.selectScope(const PnlConsolidatedScope()),

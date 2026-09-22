@@ -9340,3 +9340,114 @@ behaviour is therefore proven through `dashboardTrendChartData` — the one adap
 surface itself uses — from a series carrying a refused bucket, and it is proven again in the
 chart layer's own suite. If a later slice makes coverage finer than a financial year, a
 gap becomes reachable and the acceptance for it belongs there.
+
+---
+
+# Phase 6 Slice 7 — Android Home Dashboard (2026-09-23)
+
+## D-274 — The phone's Home is the same dashboard, arranged for a thumb
+**Date:** 2026-09-23 · **Status:** Accepted
+
+D-260 gives Android the management dashboard and keeps the analytics workspace on
+Windows. Slice 7 builds it, and the whole of the design is what it **reuses**.
+
+**It is a second arrangement, not a second dashboard.** `MobileHomePage` reads the same
+Slice 4 providers, the same `PnlAuthority`, the same `DashboardEngine`, the same
+`CanonicalCacheLock` span, the same coverage and the same freshness claim as the
+Overview. It computes no figure, decides no authority, derives no date and resolves no
+tax; the Slice 6 surface guard — now run over both surfaces (D-275) — asserts all of
+that over the file rather than over a reviewer's attention.
+
+**Every sentence is the shared one.** Wording, range and instant formatting and category
+ordering live in `dashboard_presentation.dart`, which both surfaces arrange and neither
+writes. Slice 7 found one sentence that had escaped it — *Both properties
+(consolidated)*, written as a literal in the Overview's chip and twice more on the phone
+— and moved it to `dashboardConsolidatedScopeLabel`. Three copies of one sentence is the
+drift D-119 and D-131 each record, caught before it drifted rather than after.
+
+**Content, and what is deliberately absent.** Scope, period, freshness; Net Sales with
+Gross Sales and GST secondary to it, Operating Expenses, Operating Profit or Loss and
+Operating Margin, each with its comparison; the Net Sales trend; property comparison when
+the reader holds consolidated authority; top expense categories; and *See full P&L*.
+**Revenue mix, department spending and the monthly profit trend are not on the phone**
+(D-260) — the engine still carries them, and the surface does not show them, which a test
+asserts from both sides.
+
+**The one navigation is named, never numbered.** *See full P&L* switches the shell to
+`AppRouter.mobileReportsBranch`, a constant declared beside the branch list it indexes.
+It is **not** drill-down: opening a figure's transactions from a dashboard is Slice 9's,
+and nothing here duplicates the P&L's own breakdown.
+
+**The phone's own controls, and the rules they inherit.** The property is chosen in a
+bottom sheet and the period in a horizontal chip strip, both presented on the **root**
+navigator so no choice sits behind the bottom bar or the docked [ + ]; a consolidated
+period the properties disagree about is offered disabled and refused (D-254); Custom is
+the Material calendar with typed entry off (D-229, D-250), and dismissing it changes
+nothing. A reader without qualifying authority sees the approved neutral line, **no
+property name, no scope selector and no period strip** (D-259), and the page carries no
+`MoneyText` at all.
+
+## D-275 — A rule about a surface runs over every surface
+**Date:** 2026-09-23 · **Status:** Accepted — **a gap in the Slice 6 guard, closed before
+the second surface was written**
+
+Slice 6's `dashboard_surface_guard_test.dart` bound most of its rules to a single `page`
+variable holding `overview_page.dart`. That was correct while the feature had one screen
+and silently wrong the moment it had two: every calculation, mutation, Owner Accounts,
+export, clock, trend-gap and ranked-family rule would have stopped short of
+`mobile_home_page.dart`, and nothing would have said so.
+
+**Decision.** The guard holds `_surfaces = [_overview, _home]` and iterates it. A rule
+about a dashboard screen is written once and evaluated on both, so the next surface is
+covered by construction rather than by somebody remembering to add it — the same move
+D-162 made when it replaced an enumerated privilege list with a question about the
+catalogue.
+
+Two rules are deliberately **per surface**, because the two screens differ: the Overview
+draws four chart families and the phone three, and the phone shows `topExpenseCategories`
+while neither `topRevenueCategories` nor `departmentSpending` may appear on it (D-260).
+
+**And navigation is now narrowed rather than forbidden.** Slice 6 asserted the feature
+contains no `goBranch(`. The phone has exactly one, so the rule became: the Overview has
+none, the phone has **exactly one**, and it names `AppRouter.mobileReportsBranch`. A
+further guard parses `app_router.dart`, slices the mobile router from its own declaration
+to the desktop one, extracts the branch order and asserts the declared constant is the
+index Reports actually occupies — so the two cannot drift into a button that opens the
+wrong tab.
+
+**One mechanical finding, recorded because it is the third of its shape.** The phrase
+assertions collapse whitespace runs to one space (D-153), which is not enough for a
+phrase `dart format` may wrap **inside** a call: the wrap introduces a space that was
+never written. `_dense` strips whitespace entirely for those. A guard that fails on a line
+break is a guard somebody eventually deletes.
+
+## D-276 — What rendering the phone found
+**Date:** 2026-09-23 · **Status:** Recorded
+
+**A real layout defect, at a size and a font scale nobody had rendered at.** At 360dp with
+the system font scale at 1.6, the Gross Sales / GST pair under Net Sales overflowed its
+card by **56 pixels**. `_Secondary` was already a `Wrap` and its comment already said the
+pair *"flows onto a second line instead"* of money being ellipsised — but each pair was a
+`Row` inside that `Wrap`, and a `Row` cannot flow. `RenderWrap` gives its children a
+**bounded** main-axis constraint, so a pair wider than the card overflowed rather than
+wrapping.
+
+The pair is now a `Wrap` of its own, so the label goes on one line and the figure on the
+next, whole. **The figure is the half that may never be shortened** (D-269), so the layout
+gives way rather than the money. This is the D-123 and D-273 family a third time, and the
+lesson is the same each time: a layout is correct at the sizes something has actually
+rendered at, and nowhere else.
+
+**A smoke assertion that outlived what it described.** `routing_smoke_test.dart` proved
+Home was still underneath the quick-add sheet by finding the text *"Phase 6 — Dashboard &
+Analytics"* — the **placeholder's** caption. With the real dashboard on that branch the
+caption is gone, so the test failed for the right reason and the assertion now names the
+page. A test that identifies a screen by a caption is a test that breaks when the screen
+becomes real.
+
+**Five positive controls, each seen RED and restored byte-identically** (`cp` then `cmp`,
+D-219): the secondary pair back to a `Row` (the raised-font-scale test); *See full P&L*
+pointed at branch 0 (the navigation test **and** the guard); the freshness line replaced
+by a fixed sentence (the server-newer test); a movement worded by the page instead of by
+`dashboardMoneyMovement` (the comparison test); and `departmentSpending` rendered on the
+phone (the D-260 guard).

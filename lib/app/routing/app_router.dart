@@ -11,6 +11,7 @@ import 'package:go_router/go_router.dart';
 import 'package:krishna_mis/app/routing/app_routes.dart';
 import 'package:krishna_mis/app/shell/desktop_shell.dart';
 import 'package:krishna_mis/app/shell/mobile_shell.dart';
+import 'package:krishna_mis/features/dashboard/presentation/mobile_home_page.dart';
 import 'package:krishna_mis/features/dashboard/presentation/overview_page.dart';
 import 'package:krishna_mis/features/expenses/presentation/expense_ledger_page.dart';
 import 'package:krishna_mis/features/transactions/presentation/transactions_page.dart';
@@ -23,6 +24,13 @@ import 'package:krishna_mis/features/profit_and_loss/presentation/profit_and_los
 enum AppShellKind { mobile, desktop }
 
 abstract final class AppRouter {
+  /// Where Reports sits among the Android shell's branches.
+  ///
+  /// Named so a surface that sends somebody to the full profit & loss states the
+  /// destination rather than a number, and so the number lives beside the branch list it
+  /// describes. A guard asserts the two agree (Phase 6 Slice 7).
+  static const int mobileReportsBranch = 2;
+
   static GoRouter create({
     required AppShellKind shellKind,
     String? initialLocation,
@@ -40,14 +48,10 @@ abstract final class AppRouter {
         branches: [
           _branch(
             AppRoutes.home,
-            const PlaceholderPage(
-              eyebrow: 'Krishna Imperial MIS',
-              title: 'Home',
-              arrivesIn: 'Phase 6 — Dashboard & Analytics',
-              summary:
-                  'Net sales, operating expenses, operating profit and margin for the '
-                  'selected period, each drilling down to its source transactions.',
-            ),
+            // The management dashboard on a phone (Phase 6 Slice 7). The tab is for
+            // everyone; the page and its providers decide P&L authority themselves and
+            // show a reader without it the approved neutral state (D-259, D-260, D-267).
+            const MobileHomePage(),
           ),
           _branch(
             AppRoutes.transactions,

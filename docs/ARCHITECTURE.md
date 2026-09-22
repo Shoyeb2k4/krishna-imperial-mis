@@ -9,7 +9,7 @@ Status: **Sections 1–12 proposed (Phase 0, revised); sections 13–16 and 18�
 is built and verified; section 17 is the Phase 4 *plan*, since built — read §18–§26 for what
 shipped.** Sections 6, 5.3 and 8 carry the project lead's mandated corrections.
 Implementation status is tracked in `PROJECT_STATUS.md`.
-Last updated: 2026-09-17 — Phase 6 dashboard periods and comparison rules (section 41); Slice 11's corrections and the Slice 12 closure architecture (section 40); 2026-09-13 — the Android P&L surface (section 38); the Windows P&L surface (section 37); Slice 7 reporting security closure (section 36); 2026-09-11 — the Owner Settlement surface and its security boundary (section 35); the Owner Settlement Engine (section 34); the Owner Ledger (section 33), with the V1 ownership vector in §33.3; Phase 5 Slice 6 corrective (section 32); Slice 5 in section 31; Slices 1-4 in sections 27-30
+Last updated: 2026-09-23 — the Android Home dashboard (section 46); 2026-09-22 — the Windows Overview (section 45); 2026-09-17 — Phase 6 dashboard periods and comparison rules (section 41); Slice 11's corrections and the Slice 12 closure architecture (section 40); 2026-09-13 — the Android P&L surface (section 38); the Windows P&L surface (section 37); Slice 7 reporting security closure (section 36); 2026-09-11 — the Owner Settlement surface and its security boundary (section 35); the Owner Settlement Engine (section 34); the Owner Ledger (section 33), with the V1 ownership vector in §33.3; Phase 5 Slice 6 corrective (section 32); Slice 5 in section 31; Slices 1-4 in sections 27-30
 
 ---
 
@@ -4031,3 +4031,49 @@ Local Drift schema stays **v21**; the migration ledger stays at **101** versions
   tested size.
 * **Drill-down is Slice 9.** The sections carry selection callbacks and no route: nothing
   duplicates the P&L drill-down and no temporary detail screen exists.
+
+## 46. The Android Home — Phase 6 Slice 7
+
+Decisions **D-274 … D-276**; `RELEASE_CHECKLIST.md` §R. **No schema change, no migration,
+no Supabase or server change, no new dependency.** Local Drift schema stays **v21**; the
+migration ledger stays at **101** versions.
+
+```
+        Home branch (mobile router)  ──►  MobileHomePage
+              │
+        dashboardViewProvider (Slice 4) ──► DashboardEngine.build (Slice 3)
+              │
+        dashboardPresentation ──► DashboardAvailable ──► DashboardView
+              │
+        mobile_home_page.dart  ── arranges ──►  dashboard_presentation.dart  ── words
+              │                                      (shared with the Overview)
+              └── core/design/charts  ── draws prepared values (Slice 5)
+```
+
+* **One dashboard, two arrangements.** The phone reads the same providers, authority,
+  engine, lock span, coverage and freshness as the Overview (§45) and computes nothing.
+  The Slice 6 surface guard now runs every rule over **both** files, so the phone is
+  covered by construction rather than by a second copy of the guard (D-275).
+* **One vocabulary.** Every sentence, range label, instant label and category ordering
+  comes from `dashboard_presentation.dart`. Slice 7 moved the last stray literal —
+  *Both properties (consolidated)* — into it as `dashboardConsolidatedScopeLabel`.
+* **Content** (D-260): scope, period and freshness; Net Sales with Gross Sales and GST
+  secondary to it, Operating Expenses, Operating Profit or Loss and Operating Margin,
+  each with its comparison; the Net Sales trend; property comparison when consolidated
+  authority exists; top expense categories; and *See full P&L*. **Revenue mix, department
+  spending and the monthly profit trend stay on the Windows workspace.**
+* **Portrait first.** A single scrolling column at 360, 390 and 430dp and in landscape,
+  with the last item clearing the docked [ + ]. Money is never truncated or wrapped away:
+  a headline figure scales down on its own line, and the Gross/GST pair flows onto a
+  second line rather than overflowing (D-276).
+* **Controls.** The property in a bottom sheet, the period in a horizontal chip strip —
+  the only sideways scroll on the page — and Custom through the Material calendar with
+  typed entry off (D-229, D-250). Both overlays open on the **root** navigator, so
+  nothing sits behind the bottom bar or the [ + ].
+* **Refusals.** Not authorised, a period the properties disagree about, a report not
+  downloaded and one side unavailable are each their own sentence; a reader without
+  qualifying authority sees no property name, no scope selector, no period strip and no
+  `MoneyText` (D-259, D-163). A failed refresh keeps the figures and reports beside them.
+* **The one navigation.** *See full P&L* switches the shell to
+  `AppRouter.mobileReportsBranch`, a named constant a guard checks against the router's
+  own branch order. Drill-down from a dashboard figure is Slice 9's.

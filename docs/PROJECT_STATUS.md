@@ -5,10 +5,15 @@ Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
-Last updated: **2026-09-22** — **PHASE 6 SLICE 6 — WINDOWS OVERVIEW DASHBOARD: COMPLETE**,
-with D-269 resolved by the project lead in favour of the composed ranked lists. Slices 1–6
-of Phase 6 are done; Slice 7 (Android Home) is not started. See *Phase 6 Slice 6* at the end
-of this file.
+Last updated: **2026-09-23** — **PHASE 6 SLICE 7 — ANDROID HOME DASHBOARD: COMPLETE**, with
+one real layout defect found by rendering at a raised font scale (D-276) and the Slice 6
+surface guard widened to cover every surface (D-275). Slices 1–7 of Phase 6 are done; Slice 8
+(Windows Analytics sections) is not started. **A physical Android device pass for the Home
+dashboard is PENDING** and belongs to the Phase 6 acceptance slice (D-230, checklist §R.2).
+See *Phase 6 Slice 7* at the end of this file.
+
+Previously: **2026-09-22** — **PHASE 6 SLICE 6 — WINDOWS OVERVIEW DASHBOARD: COMPLETE**,
+with D-269 resolved by the project lead in favour of the composed ranked lists.
 
 Previously: **2026-09-17** — **PHASE 5 — P&L / MIS REPORTING: COMPLETE AND FORMALLY
 CLOSED at Slice 12**, with Owner Accounts OA-1 … OA-3 inside it. Slices 1–11 are closed, the
@@ -5527,7 +5532,7 @@ reporting cache is created, and authorization stays `PnlAuthority`.
 | 4 | Authority and providers | **COMPLETE** |
 | 5 | Chart foundation (`fl_chart`, pinned, with a no-arithmetic guard) | **COMPLETE** |
 | 6 | Windows Overview dashboard | **COMPLETE** |
-| 7 | Android Home dashboard | not started |
+| 7 | Android Home dashboard | **COMPLETE** |
 | 8 | Windows Analytics sections | not started |
 | 9 | Drill-down integration | not started |
 | 10 | Full acceptance | not started |
@@ -6029,5 +6034,97 @@ own and in the re-run; no Slice 6 code is on its path.
 
 ## Next exact task
 
-**Phase 6 Slice 7 — Android Home dashboard. Not started, and not started automatically**:
-Slice 6's evidence is reported above and awaits the project lead.
+*Superseded — Slice 7 is complete. The current record is* **Phase 6 Slice 7** *below.*
+
+---
+
+## Phase 6 Slice 7 — Android Home dashboard: **COMPLETE** (2026-09-23)
+
+Starting HEAD `3f39ab5`. Decisions **D-274 … D-276**; `ARCHITECTURE.md` §46;
+`RELEASE_CHECKLIST.md` §R. **No schema change, no migration, no Supabase or server change,
+no new dependency.** Local Drift schema stays **v21**; the migration ledger stays at **101**
+versions.
+
+### What shipped
+
+The Android **Home** tab is the management dashboard. It is the Slice 6 dashboard arranged
+for a phone, not a second one.
+
+| | |
+|---|---|
+| `lib/features/dashboard/presentation/mobile_home_page.dart` | the phone surface — it arranges and formats, and computes nothing |
+| `lib/app/routing/app_router.dart` | Home is `MobileHomePage`; `AppRouter.mobileReportsBranch` names where Reports sits |
+| `dashboard_presentation.dart` | gains `dashboardConsolidatedScopeLabel`, the one sentence three sites had been writing separately |
+| `dashboard_surface_guard_test.dart` | every surface rule now runs over **both** surfaces (D-275) |
+
+Content, in the approved order (D-260): scope, period and freshness; Net Sales with Gross
+Sales and GST secondary to it, Operating Expenses, Operating Profit or Loss and Operating
+Margin, each with its comparison; the Net Sales trend; property comparison when the reader
+holds consolidated authority; top expense categories; and *See full P&L*. **Revenue mix,
+department spending and the monthly profit trend are not on the phone** — the engine still
+carries them and the surface does not show them.
+
+### Verified
+
+| Item | Status | Evidence |
+|---|---|---|
+| `dart format --set-exit-if-changed lib test integration_test tool` | **Tested** | clean, 345 files, 0 changed |
+| `flutter analyze` | **Tested** | **No issues found** |
+| Host suite | **Tested** | **2,486 passed** (2,449 + 28 phone acceptance + 9 guard) |
+| Android Home acceptance, real provider chain in the real phone shell | **Tested** | 28 tests at 360×740, 390×844, 430×932, landscape and 1.6× text |
+| Dashboard surface guard, over both surfaces | **Tested** | 38 tests, 12 of them planted-violation self-checks |
+| Positive controls | **Tested** | **5 sabotages, each seen RED**, each restored by byte copy and `cmp` |
+| Android dev debug build | **Tested** | `app-dev-debug.apk`, 243,844,757 bytes; `MobileHomePage`, `dashboard-home-page`, `dashboard-see-full-pnl` and `mobileReportsBranch` all present in `kernel_blob.bin` |
+| Windows release build | **Tested** | rebuilt after the shared-label change; `Both properties (consolidated)` present in `data/app.so` |
+| Secret scan — tree, git history, built artefacts | **Tested** | clean, the scanner's own controls passing |
+| Schema / migrations / server | **Unchanged** | `git diff` over `supabase/` and `lib/data/local/` is empty; schema v21, ledger 101 |
+| **Physical Android device** | **Not tested** | PENDING before Phase 6 closes (D-230, §R.2) |
+| Live backend | **Not exercised** | Slice 7 adds no remote call |
+
+### The five positive controls, each seen RED and restored byte-identically
+
+| Control | Result |
+|---|---|
+| the Gross/GST pair back to a `Row` | **1 RED** — the raised-font-scale layout test |
+| *See full P&L* pointed at branch 0 | **2 RED** — the navigation test and the surface guard |
+| the freshness line replaced by a fixed sentence | **1 RED** — the server-newer test |
+| a movement worded by the page instead of by `dashboardMoneyMovement` | **1 RED** — the comparison test |
+| `departmentSpending` rendered on the phone | **1 RED** — the D-260 guard |
+
+### What rendering and the guard found (D-275, D-276)
+
+**A real layout defect.** At 360dp with the system font scale at 1.6, the Gross Sales /
+GST pair overflowed its card by **56 pixels**. `_Secondary` was a `Wrap` whose comment
+already promised the pair would flow onto a second line — but each pair was a `Row` inside
+it, and `RenderWrap` gives a child a **bounded** main-axis constraint, so a `Row` cannot
+flow. The pair is a `Wrap` of its own now: the label goes on one line and the figure on the
+next, whole, because the figure is the half that may never be shortened (D-269). The
+D-123 and D-273 family, a third time.
+
+**A guard that stopped at one file.** Slice 6 bound most of its surface rules to
+`overview_page.dart`, so every calculation, mutation, Owner Accounts, export, clock,
+trend-gap and ranked-family rule would have stopped short of the new phone surface. The
+guard iterates both surfaces now, and navigation is narrowed rather than forbidden: the
+Overview has no `goBranch(`, the phone has exactly one, and a further guard parses the
+router to prove the named constant is the branch Reports actually occupies.
+
+**One sentence written three times.** *Both properties (consolidated)* was a literal in the
+Overview's chip and twice more on the phone. It is `dashboardConsolidatedScopeLabel` now —
+the drift D-119 and D-131 each record, caught before it drifted.
+
+**A smoke assertion that outlived what it described.** `routing_smoke_test.dart` proved
+Home was still underneath the quick-add sheet by finding the **placeholder's** caption.
+With the real dashboard on that branch it failed, for the right reason, and now names the
+page instead.
+
+### Carried forward, unchanged
+
+* **A physical Android device pass** for the Home dashboard, before Phase 6 closes (D-230).
+* Phase 8: the `may_read_expense` per-row reporting cost and the `org_id`-leading local
+  expense index (D-223).
+* The production 50:50 ownership start date remains a project-lead decision.
+
+## Next exact task
+
+**Phase 6 Slice 8 — Windows Analytics sections. Not started, and not started
+automatically**: Slice 7's evidence is reported above and awaits the project lead.

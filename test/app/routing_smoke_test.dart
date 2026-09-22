@@ -91,11 +91,10 @@ void main() {
 
         expect(find.text('Add Expense'), findsOneWidget);
         expect(find.text('Add Sale'), findsOneWidget);
-        // Home is still underneath — recording a bill never costs the user their place.
-        expect(
-          find.textContaining('Phase 6 — Dashboard & Analytics'),
-          findsOneWidget,
-        );
+        // Home is still underneath — recording a bill never costs the user their
+        // place. Since Slice 7 that is the real dashboard rather than a placeholder,
+        // so the assertion names the page instead of a phase caption.
+        expect(find.byKey(const Key('dashboard-home-page')), findsOneWidget);
       },
     );
 

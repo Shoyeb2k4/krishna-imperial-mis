@@ -635,3 +635,43 @@ on the Galaxy A06 and reported every one PASS on 17 September 2026.**
 
 **All ten performed and reported PASS by the project lead on the Galaxy A06, 17 September 2026.**
 Recorded as his observation: no automated run fills these in, and none did.
+
+## R. Android Home dashboard (Phase 6 Slice 7)
+
+### R.1 Host acceptance — **DONE**
+
+Slice 7's acceptance is 28 widget tests through the **real** provider chain, rendered
+inside the real mobile router and `MobileShell` at 360×740, 390×844, 430×932, landscape
+and at a 1.6 system font scale (`test/features/dashboard_mobile_home_test.dart`). Every
+paisa is synchronised into the canonical cache and read back by the engine; only the
+remote transport and "now" are substituted.
+
+- [x] The figures on screen are the engine's, for one property and consolidated.
+- [x] Gross Sales and GST are secondary to Net Sales; a loss is labelled and signed.
+- [x] Every movement is the domain comparison; a withheld percentage is not printed and
+      its reason is stated; the margin moves in points and the three figures reconcile.
+- [x] The Net Sales trend, property comparison and top expense categories are present;
+      revenue mix, department spending and the profit bar chart are **absent** (D-260).
+- [x] The scope sheet and the calendar picker open on the root navigator; a disagreeing
+      consolidated period is disabled and refused.
+- [x] No authority names no property and renders no money; not downloaded is not zero; a
+      failed refresh keeps the figures and reports beside them.
+- [x] *See full P&L* switches the shell to the Reports branch.
+- [x] Nothing overflows at any tested size or font scale, and the last item clears the
+      docked [ + ].
+
+### R.2 Physical Android device — **PENDING** (D-230)
+
+**Not run, and not claimed.** A host widget test is not a phone. The Home dashboard needs
+the same physical-device pass the P&L (§O.2) and the drill-down (§P.2) were given, on the
+Galaxy A06 or another approved target, and it belongs to the **Phase 6 acceptance slice**
+rather than to Slice 7.
+
+- [ ] Home opens to the dashboard on the real device, with the property, period and
+      freshness readable at the device's own font scale.
+- [ ] The scope sheet and the date picker open over the bottom bar and the [ + ], and
+      Android back closes each without changing the selection.
+- [ ] Pull-to-refresh runs the synchronisation and the "synchronised as of" time moves.
+- [ ] Aeroplane mode: the last complete dashboard stays readable and never becomes ₹0.
+- [ ] *See full P&L* lands on the Reports tab showing the P&L.
+- [ ] Recorded as physical-device acceptance, with the device named.
