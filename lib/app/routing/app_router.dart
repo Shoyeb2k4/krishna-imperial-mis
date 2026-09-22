@@ -11,6 +11,7 @@ import 'package:go_router/go_router.dart';
 import 'package:krishna_mis/app/routing/app_routes.dart';
 import 'package:krishna_mis/app/shell/desktop_shell.dart';
 import 'package:krishna_mis/app/shell/mobile_shell.dart';
+import 'package:krishna_mis/features/dashboard/presentation/overview_page.dart';
 import 'package:krishna_mis/features/expenses/presentation/expense_ledger_page.dart';
 import 'package:krishna_mis/features/transactions/presentation/transactions_page.dart';
 import 'package:krishna_mis/features/masters/presentation/masters_page.dart';
@@ -77,14 +78,10 @@ abstract final class AppRouter {
         branches: [
           _branch(
             AppRoutes.overview,
-            const PlaceholderPage(
-              eyebrow: 'Krishna Imperial MIS',
-              title: 'Overview',
-              arrivesIn: 'Phase 6 — Dashboard & Analytics',
-              summary:
-                  'Business-unit comparison, trends and period-over-period movement '
-                  'for Crystal Canopy Rooftop and Hotel Krishna Imperial.',
-            ),
+            // The management dashboard (Phase 6 Slice 6). The shell shows the destination
+            // to everyone; the page and its providers decide P&L authority themselves and
+            // show a reader without it the approved neutral state (D-259, D-267).
+            const OverviewPage(shellKind: AppShellKind.desktop),
           ),
           _branch(
             AppRoutes.transactions,

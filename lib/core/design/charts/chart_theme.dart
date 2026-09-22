@@ -89,6 +89,14 @@ abstract final class ChartTheme {
     dashed: true,
   );
 
+  /// Operating Profit as one series among others — the property comparison. A profit
+  /// chart drawn on its own colours each bar by sign instead (see [bySign]).
+  static const ChartSeriesStyle operatingProfit = ChartSeriesStyle(
+    name: 'Operating Profit',
+    color: AppColors.brassMuted,
+    marker: ChartMarker.diamond,
+  );
+
   static const ChartSeriesStyle comparison = ChartSeriesStyle(
     name: 'Previous period',
     color: AppColors.inkFaint,

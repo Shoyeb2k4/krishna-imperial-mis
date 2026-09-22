@@ -48,6 +48,7 @@ import 'package:krishna_mis/domain/finance/dashboard_analytics.dart';
 import 'package:krishna_mis/domain/finance/dashboard_periods.dart';
 import 'package:krishna_mis/domain/finance/pnl.dart';
 import 'package:krishna_mis/domain/finance/pnl_comparison.dart';
+import 'package:krishna_mis/domain/finance/property_comparison.dart';
 import 'package:krishna_mis/domain/finance/reporting_period.dart';
 import 'package:krishna_mis/domain/finance/reporting_source.dart';
 import 'package:krishna_mis/domain/value_objects/business_date.dart';
@@ -85,6 +86,7 @@ final class DashboardRequest {
     this.trends = const [],
     this.rankDailyNetSales = false,
     this.topN = 0,
+    this.compareProperties = false,
   });
 
   /// The period and its comparator, already resolved by `domain/finance` from each
@@ -103,6 +105,12 @@ final class DashboardRequest {
 
   /// How many lines a Top N grouping keeps; zero asks for none (D-258).
   final int topN;
+
+  /// Split the headline into its properties (Slice 6).
+  ///
+  /// Costs **no read**: it is a grouping of the category lines the headline result
+  /// already carries, and it refuses by itself when the report covers one property.
+  final bool compareProperties;
 }
 
 // ── What comes back ─────────────────────────────────────────────────────────
@@ -144,6 +152,8 @@ final class DashboardView {
     this.ranking,
     this.topExpenseCategories,
     this.topRevenueCategories,
+    this.departmentSpending,
+    this.propertyComparison,
     this.freshness,
   });
 
@@ -165,6 +175,13 @@ final class DashboardView {
 
   final TopNOutcome<ExpenseHierarchyLine>? topExpenseCategories;
   final TopNOutcome<RevenueCategoryLine>? topRevenueCategories;
+
+  /// The largest departments, grouped exactly from the same category lines (D-258).
+  final TopNOutcome<ExpenseHierarchyLine>? departmentSpending;
+
+  /// Each property's own figures inside a consolidated headline, or the refusal that
+  /// explains why there are none. Null when none was asked for.
+  final PropertyComparisonOutcome? propertyComparison;
 
   /// The weakest coverage of each side across **every** read, so a view whose oldest trend
   /// bucket is not downloaded says so rather than reporting the headline's coverage.
@@ -270,6 +287,12 @@ final class DashboardEngine {
       topRevenueCategories: headline == null || request.topN < 1
           ? null
           : TopN.revenueCategories(headline, n: request.topN),
+      departmentSpending: headline == null || request.topN < 1
+          ? null
+          : TopN.departments(headline, n: request.topN),
+      propertyComparison: headline == null || !request.compareProperties
+          ? null
+          : PropertyComparison.of(headline),
       revenueCoverage: _weakest(envelopes.values.map((e) => e.revenueCoverage)),
       expenseCoverage: _weakest(envelopes.values.map((e) => e.expenseCoverage)),
       freshness: _sharedFreshness(envelopes.values),

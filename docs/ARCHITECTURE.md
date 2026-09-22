@@ -3985,3 +3985,49 @@ and the same models, formatters, selection and description serve it (D-269).
 `lib/core/design/charts` imports it, and that assertion is the one Slice 6 must deliberately
 change. A second guard asserts no file outside the layer imports `package:fl_chart`, so
 replacing the package is never a change to a screen.
+
+## 45. The Windows Overview — Phase 6 Slice 6
+
+Decisions **D-270 … D-273**. **No schema change, no migration, no server or API change.**
+Local Drift schema stays **v21**; the migration ledger stays at **101** versions.
+
+```
+        dashboardViewProvider (Slice 4)  ──►  DashboardEngine.build (Slice 3)
+                    │                                   │
+        dashboardPresentation ──► DashboardAvailable ──► DashboardView
+                    │                                   │
+        overview_page.dart  ── arranges ──►  dashboard_presentation.dart  ── words
+                    │
+                    └── core/design/charts  ── draws prepared values (Slice 5)
+```
+
+* **It arranges, and nothing else.** Every figure is a field of a result `domain/finance`
+  produced: the P&L from `Pnl.compute`, the movements from `PnlComparison`, the buckets and
+  their gaps from `DashboardTrends`, the ranked lines and Others from `TopN`, the
+  per-property split from `PropertyComparison`. The Slice 6 guard forbids money arithmetic,
+  sorting, ranking, navigation, mutation, export, Owner Accounts and storage in the feature.
+* **Content, in order** (§17): header with scope, period, freshness and refresh; four
+  headline figures — Net Sales with Gross Sales and GST secondary to it, Operating
+  Expenses, Operating Profit or Loss, Operating Margin; the Net Sales trend; the monthly
+  Operating Profit trend where the planner offers one; property comparison when
+  consolidated; revenue mix; top expense categories; department spending.
+* **Periods are the dashboard's, not the P&L screen's** (D-252): *Today so far*, *Week to
+  date*, *Month to date*, *Financial year to date*, *Custom*. A period the properties
+  disagree about is disabled and refused, and the reader is sent to Custom (D-254).
+* **Comparisons are rendered, never computed.** The rupee movement always; a percentage only
+  where the domain produced one, with the reason stated when it did not (D-253, D-256); the
+  margin in percentage points, printed beside the previous margin so the three figures on
+  screen reconcile (D-264).
+* **Nothing is ever ₹0 that is not ₹0.** Not authorised, not downloaded, one side
+  unavailable and a refused period are each their own state; a reader without qualifying
+  authority sees the approved neutral line and no property name, no scope chip and no chart
+  (D-163, D-259).
+* **Freshness is the engine's combined claim, or none.** Where the view cannot be shown to
+  belong to one snapshot, no time is stated and none is invented (D-188).
+* **A failed refresh never blanks a complete dashboard.** A failed run writes nothing
+  (D-048), so the figures stay and the failure is reported beside them.
+* **Layout.** Four metrics across at 1366 and above, two then one as the window narrows; the
+  analytical panels in two columns where the width allows. No horizontal page scroll at any
+  tested size.
+* **Drill-down is Slice 9.** The sections carry selection callbacks and no route: nothing
+  duplicates the P&L drill-down and no temporary detail screen exists.

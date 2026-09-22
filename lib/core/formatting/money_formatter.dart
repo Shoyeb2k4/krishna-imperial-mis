@@ -30,6 +30,12 @@ enum MoneySignStyle {
 
   /// `(₹1,200.00)` — conventional in financial statements.
   parentheses,
+
+  /// `+₹1,200.00` / `-₹1,200.00`, and no sign at all on zero.
+  ///
+  /// For a **movement** rather than a balance: period-over-period change, where the
+  /// direction is the point and an unsigned rise reads as a total (Phase 6 Slice 6).
+  explicit,
 }
 
 /// Formats [Money] for display. Stateless and pure; safe to use anywhere.
@@ -57,6 +63,11 @@ final class MoneyFormatter {
   /// Accounting style: negatives in parentheses.
   static const MoneyFormatter accounting = MoneyFormatter(
     signStyle: MoneySignStyle.parentheses,
+  );
+
+  /// A period-over-period movement: `+₹1,200.00`, `-₹1,200.00`, `₹0.00`.
+  static const MoneyFormatter movement = MoneyFormatter(
+    signStyle: MoneySignStyle.explicit,
   );
 
   /// Bare digits with no currency symbol, for spreadsheet cells that carry their own
@@ -90,10 +101,15 @@ final class MoneyFormatter {
     }
 
     final body = showSymbol ? '$symbol$digits' : digits;
-    if (!negative) return body;
+    if (!negative) {
+      // A zero movement has no direction, so it carries no sign.
+      return signStyle == MoneySignStyle.explicit && !money.isZero
+          ? '+$body'
+          : body;
+    }
 
     return switch (signStyle) {
-      MoneySignStyle.minus => '-$body',
+      MoneySignStyle.minus || MoneySignStyle.explicit => '-$body',
       MoneySignStyle.parentheses => '($body)',
     };
   }

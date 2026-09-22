@@ -191,6 +191,9 @@ DashboardRequest dashboardRequestFor({
     trends: trends,
     rankDailyNetSales: daily,
     topN: dashboardTopN,
+    // Free: a grouping of the lines the headline already carries, which refuses by itself
+    // when the report covers one property (Slice 6).
+    compareProperties: true,
   );
 }
 

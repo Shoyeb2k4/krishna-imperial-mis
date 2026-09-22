@@ -15,13 +15,13 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:krishna_mis/core/formatting/report_dates.dart';
 import 'package:krishna_mis/domain/finance/pnl.dart';
 import 'package:krishna_mis/domain/finance/reporting_period.dart';
 import 'package:krishna_mis/domain/finance/reporting_presets.dart';
 import 'package:krishna_mis/domain/finance/reporting_source.dart';
 import 'package:krishna_mis/domain/value_objects/business_date.dart';
 import 'package:krishna_mis/features/profit_and_loss/presentation/pnl_providers.dart';
-import 'package:timezone/timezone.dart' as tz;
 
 // ── Messages shown instead of a figure ─────────────────────────────────────
 
@@ -373,31 +373,14 @@ DateTime pnlCalendarDay(BusinessDate date) =>
 
 // ── Display formatting ──────────────────────────────────────────────────────
 
-const _months = [
-  'Jan',
-  'Feb',
-  'Mar',
-  'Apr',
-  'May',
-  'Jun',
-  'Jul',
-  'Aug',
-  'Sep',
-  'Oct',
-  'Nov',
-  'Dec',
-];
+// One place in the application turns a reporting date into words
+// (`core/formatting/report_dates.dart`). These keep their names so every Phase 5 call
+// site and assertion is untouched, and they delegate rather than holding a second month
+// table (D-232's rule, applied to dates).
 
-String pnlDateLabel(BusinessDate d) =>
-    '${d.day} ${_months[d.month - 1]} ${d.year}';
+String pnlDateLabel(BusinessDate d) => reportDateLabel(d);
 
-String pnlRangeLabel(ReportRange range) => range.from == range.to
-    ? pnlDateLabel(range.from)
-    : '${pnlDateLabel(range.from)} – ${pnlDateLabel(range.to)}';
+String pnlRangeLabel(ReportRange range) => reportRangeLabel(range);
 
-String pnlInstantLabel(DateTime instant, String zone) {
-  final local = tz.TZDateTime.from(instant, tz.getLocation(zone));
-  final hh = local.hour.toString().padLeft(2, '0');
-  final mm = local.minute.toString().padLeft(2, '0');
-  return '${local.day} ${_months[local.month - 1]} ${local.year}, $hh:$mm ${local.timeZoneName}';
-}
+String pnlInstantLabel(DateTime instant, String zone) =>
+    reportInstantLabel(instant, zone);

@@ -5,7 +5,12 @@ Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
-Last updated: **2026-09-17** — **PHASE 5 — P&L / MIS REPORTING: COMPLETE AND FORMALLY
+Last updated: **2026-09-22** — **PHASE 6 SLICE 6 — WINDOWS OVERVIEW DASHBOARD: COMPLETE**,
+with D-269 resolved by the project lead in favour of the composed ranked lists. Slices 1–6
+of Phase 6 are done; Slice 7 (Android Home) is not started. See *Phase 6 Slice 6* at the end
+of this file.
+
+Previously: **2026-09-17** — **PHASE 5 — P&L / MIS REPORTING: COMPLETE AND FORMALLY
 CLOSED at Slice 12**, with Owner Accounts OA-1 … OA-3 inside it. Slices 1–11 are closed, the
 physical Galaxy A06 acceptance is done — automated phases by the suite, the ten manual checks
 by the project lead on 17 September 2026 — and Slice 12 carries one approved code change, the
@@ -5521,7 +5526,7 @@ reporting cache is created, and authorization stays `PnlAuthority`.
 | 3 | Dashboard engine, and the performance gate | **COMPLETE** |
 | 4 | Authority and providers | **COMPLETE** |
 | 5 | Chart foundation (`fl_chart`, pinned, with a no-arithmetic guard) | **COMPLETE** |
-| 6 | Windows Overview dashboard | not started |
+| 6 | Windows Overview dashboard | **COMPLETE** |
 | 7 | Android Home dashboard | not started |
 | 8 | Windows Analytics sections | not started |
 | 9 | Drill-down integration | not started |
@@ -5922,7 +5927,106 @@ other three families and could draw these (`rotationQuarterTurns`). It lives in 
 layer under the same models, formatters, selection and description, and it is reversible in
 one file. **For the project lead to confirm or redirect.**
 
+### D-269 resolved (2026-09-22)
+
+**The project lead ruled: keep the composed implementation.** Revenue mix, top expense
+categories and department spending stay ranked lists with a proportional fill, and are
+**not** to be replaced with rotated `fl_chart` axes in V1 — the complete category or
+department name, the exact INR value, the rank, the proportional magnitude and
+accessibility rank above maintaining a conventional axis. No rework, no new dependency, no
+change to any domain or dashboard semantics. Recorded as **D-269 (final)**.
+
+---
+
+## Phase 6 Slice 6 — Windows Overview dashboard: **COMPLETE** (2026-09-22)
+
+Decisions **D-270 … D-273**; `ARCHITECTURE.md` §45. **No schema change, no migration, no
+Supabase or server change, no new dependency.** Local Drift schema stays **v21**; the
+migration ledger stays at **101** versions.
+
+### What shipped
+
+The Windows Overview placeholder is replaced by the management dashboard, built entirely on
+the Slice 2–5 foundation.
+
+| | |
+|---|---|
+| `lib/features/dashboard/presentation/overview_page.dart` | the surface — it arranges and formats, and computes nothing |
+| `lib/features/dashboard/presentation/dashboard_presentation.dart` | every word the dashboard says, shared with the Android Home before that surface exists (D-232's rule, applied early) |
+| `lib/domain/finance/property_comparison.dart` | the per-property split, through `Pnl.compute` (D-270) |
+| `lib/core/formatting/report_dates.dart` | one place turns a reporting date into words; the P&L delegates to it (D-271) |
+| `DashboardView.propertyComparison` · `.departmentSpending` | carried by the Slice 3 engine, at **no extra read** |
+| `MoneyFormatter.movement` | `+₹1,200.00` for a period-over-period change |
+
+Content, in the approved order: header (scope · period · freshness · refresh); Net Sales,
+Operating Expenses, Operating Profit/Loss and Operating Margin, with Gross Sales and GST
+secondary to Net Sales; the Net Sales trend; the monthly Operating Profit trend where the
+planner offers one; property comparison when consolidated; revenue mix; top expense
+categories; department spending. Nothing decorative was added.
+
+**Drill-down is Slice 9.** The sections carry selection callbacks and no route, and the
+guard forbids navigation in the feature.
+
+### Verified
+
+| Item | Status | Evidence |
+|---|---|---|
+| `dart format --set-exit-if-changed lib test integration_test tool` | **Tested** | clean, 343 files |
+| `flutter analyze` | **Tested** | **No issues found** |
+| Host suite | **Tested** | **2,449 passed** (2,389 + 60) |
+| Windows Overview acceptance, real provider chain | **Tested** | 33 tests — the 25 required proofs, at 1366×768, 1024×700 and 1920×1080 |
+| Per-property split, pure domain | **Tested** | 10 tests |
+| Dashboard surface guard, narrowed for a surface | **Tested** | 29 tests, 9 of them planted-violation self-checks |
+| Chart-layer guard, narrowed for a wired surface | **Tested** | 27 tests |
+| Positive controls | **Tested** | **5 sabotages, each seen RED**, each restored by byte copy and `cmp` |
+| Windows release build | **Tested** | `flutter build windows --release` → `krishna_mis.exe` |
+| Secret scan — tree, git history, built artefacts | **Tested** | clean, the scanner's own controls passing |
+| Schema / migrations / server | **Unchanged** | `git diff` over `supabase/` and `lib/data/local/` is empty; schema v21, ledger 101 |
+| Android build · device acceptance | **Not tested** | Slice 6 is the Windows surface; Slice 7 is Android and Slice 10 owns cross-platform acceptance |
+| Real `krishna_mis.exe` visual acceptance | **Not run** | no Overview device phase exists yet; the surface is proven by the widget and provider suites |
+
+### The five positive controls, each seen RED and restored byte-identically
+
+| Control | Result |
+|---|---|
+| an unavailable comparison rendered as ₹0.00 | **1 RED** |
+| the single-property refusal removed from `PropertyComparison` | **5 RED** — 3 domain, 2 surface |
+| the authority identity dropped from the display guard | **4 RED** — 3 provider, 1 guard; **and 1 more after the vacuous assertion it exposed was fixed** |
+| a `TrendGap` joined up as a zero point | **11 RED** |
+| the wording working out its own percentage | **3 RED** — 2 behavioural, 1 guard |
+
+### What rendering and the controls found (D-273)
+
+**A layout defect at 1366×768.** Four metrics across leave a ~245-pixel column, and
+*Gross ₹13,23,420.00 · GST ₹6,302.00* overflowed it by 85 pixels. Money is never
+ellipsised, so the pair now wraps. Found by rendering, not by review — the D-123 family at
+a width nobody had rendered at.
+
+**One of this slice's own assertions was vacuous, and a control found it.** The
+authority-switch test asserted no dashboard body was on screen after the switch, and stayed
+**green** with the display guard deliberately removed: at that moment the provider holds no
+previous value at all, so the test measured Riverpod's reload rather than the rule. It now
+exercises the rule directly and goes red under the control.
+
+**Two guard defects, both found by running the guard.** `customSelect` matched
+`customSelected`, a local on the period bar (the D-069 false-positive family); and
+`dart format` reflowed a phrase assertion across two lines and turned it red for a line
+break (D-153), so phrase assertions now match against whitespace-collapsed source.
+
+### Recorded, and not staged
+
+**A trend gap is not reachable end to end today.** Reporting coverage is recorded per
+financial year, so every bucket shares its coverage with the headline: a year that is not
+downloaded refuses the headline too. The gap behaviour is proven through
+`dashboardTrendChartData` — the one adapter the surface uses — from a series carrying a
+refused bucket, and again in the chart layer's own suite. It is stated rather than faked.
+
+**One full-suite run reported a single failure that is not one.**
+`financial_cache_retention_test.dart` — *"the revoked share is not left legible in the
+database file"* — timed out at 30 s under load, as it did once in Slice 9. It passes on its
+own and in the re-run; no Slice 6 code is on its path.
+
 ## Next exact task
 
-**Phase 6 Slice 6 — Windows Overview dashboard. Not started, and not started
-automatically**: Slice 5's evidence is reported above and awaits the project lead.
+**Phase 6 Slice 7 — Android Home dashboard. Not started, and not started automatically**:
+Slice 6's evidence is reported above and awaits the project lead.

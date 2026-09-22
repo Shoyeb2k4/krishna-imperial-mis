@@ -445,15 +445,23 @@ void main() {
     });
   });
 
-  // ── Slice 5 wires nothing ───────────────────────────────────────────────
+  // ── Who may wire the charts in ──────────────────────────────────────────
 
-  test('Slice 5 builds the foundation and wires it into no screen', () {
+  /// **Deliberately changed in Slice 6.** It asserted the layer was wired into no screen
+  /// at all, and said in as many words that it was the assertion Slice 6 would have to
+  /// change. It is narrowed rather than deleted (D-237's move): the charts are the
+  /// dashboard's presentation, so a surface that draws one belongs to the dashboard
+  /// feature, and a transaction ledger or a master screen that started plotting money
+  /// would still be caught.
+  test('only the dashboard surfaces draw charts', () {
+    const permitted = ['lib/features/dashboard/'];
     final wired = <String>[];
     for (final file in Directory(
       'lib',
     ).listSync(recursive: true).whereType<File>()) {
       final path = file.path.replaceAll(r'\', '/');
       if (!path.endsWith('.dart') || path.startsWith(_dir)) continue;
+      if (permitted.any(path.startsWith)) continue;
       if (file.readAsStringSync().contains('core/design/charts/')) {
         wired.add(path);
       }
@@ -462,10 +470,24 @@ void main() {
       wired,
       isEmpty,
       reason:
-          'the Windows Overview and the Android Home are Slices 6 and 7. This list '
-          'is expected to be non-empty from Slice 6, and this assertion is the one '
-          'that must be deliberately changed then',
+          'the chart layer is the dashboard presentation. A surface outside '
+          'lib/features/dashboard/ that draws one is a second analytics surface nobody '
+          'approved (D-257, D-260)',
     );
+  });
+
+  test('and the dashboard actually draws them', () {
+    // The complement, so the rule above cannot be satisfied by there being no charts at
+    // all — which is how a narrowed guard quietly stops checking anything (D-139).
+    final drawing = Directory('lib/features/dashboard')
+        .listSync(recursive: true)
+        .whereType<File>()
+        .where(
+          (f) =>
+              f.path.endsWith('.dart') &&
+              f.readAsStringSync().contains('core/design/charts/'),
+        );
+    expect(drawing, isNotEmpty);
   });
 
   // ── the guards fail when they should ────────────────────────────────────
@@ -514,10 +536,19 @@ void main() {
       expect(planted.contains('fl_chart: ^'), isTrue);
     });
 
-    test('a planted screen wiring is seen', () {
+    test('a planted chart on a surface outside the dashboard is seen', () {
+      const permitted = ['lib/features/dashboard/'];
       const planted =
           "import 'package:krishna_mis/core/design/charts/charts.dart';";
+      // The rule is the pair: the import, and a path the exclusion does not cover.
+      const ledger =
+          'lib/features/expenses/presentation/expense_ledger_page.dart';
       expect(planted.contains('core/design/charts/'), isTrue);
+      expect(permitted.any(ledger.startsWith), isFalse);
+      expect(
+        permitted.any('lib/features/dashboard/presentation/x.dart'.startsWith),
+        isTrue,
+      );
     });
   });
 }

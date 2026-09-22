@@ -9190,3 +9190,153 @@ the other three families and could draw these. It is the right primitive for a r
 it lives in the same layer under the same models, formatters, selection and description, and
 it is reversible in one file. **Flagged for the project lead** rather than presented as
 settled.
+
+## D-269 (final) — The three ranked families keep their composed implementation
+**Date:** 2026-09-22 · **Status:** **Accepted (project-lead ruling)** — resolves the point
+Slice 5 flagged. The earlier entry stands as written, because this log is append-only.
+
+Slice 5 built revenue mix, top expense categories and department spending from the design
+system's own text and a proportional fill rather than on a rotated `fl_chart` axis, and
+flagged the choice for confirmation rather than presenting it as settled.
+
+**The ruling: keep it. These three are not to be replaced with rotated `fl_chart` axes in
+V1.**
+
+They are **ranked financial lists with proportional magnitude**, and the presentation
+ranks, in this order:
+
+```
+        the complete category or department name
+        the exact INR value
+        the rank
+        the proportional magnitude
+        accessibility
+```
+
+above maintaining a conventional chart axis. **A long hospitality category name is not
+truncated to create axis space, and money is never truncated** — a truncated amount is a
+wrong amount, which is the rule `MoneyText` has carried since Phase 1.
+
+The proportional fill stays **presentation-only** and consumes already-prepared values: it
+ranks nothing, sums nothing and reconciles nothing, because `TopN` did all three before the
+adapter saw the lines (D-258, D-268).
+
+**Reversible in the presentation layer, and it alters no semantics.** The domain results,
+the dashboard engine, the ranking, the grouping and the figures are untouched by it; the
+three families sit in the same chart layer under the same models, formatters, selection and
+description as the cartesian ones. `fl_chart` remains the one chart package (D-257) and
+draws the other three families.
+
+
+---
+
+# Phase 6 Slice 6 — Windows Overview Dashboard (2026-09-22)
+
+## D-270 — A per-property figure is a domain split, not a widget sum
+**Date:** 2026-09-22 · **Status:** Accepted
+
+The approved Overview shows Net Sales, Expenses and Operating Profit **per property**
+beside each other, and nothing in the Slice 2–5 foundation produced them: a consolidated
+[PnlResult] carries its category lines but no per-property totals.
+
+Two ways to get them, and only one is this project's:
+
+* **group in the widget** — the surface sums `revenueByCategory` and `expenseByHierarchy`
+  by business unit. Rejected. That is arithmetic over money in the thing that draws it,
+  and it would be a second answer to *what did Crystal Canopy earn* (D-020, spec §21.1);
+* **group in `domain/finance`** — which is where every other exact grouping in this
+  product already lives, one level down, as `PnlDrilldown.departments`.
+
+**Decision: `PropertyComparison.of(result)` in `lib/domain/finance/`.**
+
+**Each property's figures come from `Pnl.compute`.** The per-property primitives are handed
+to the one canonical calculator rather than having `netSales − expenses` and the exact
+margin ratio written out a second time — the duplication D-119 and D-131 each record, found
+after it had already drifted.
+
+**It refuses rather than showing a split it cannot stand behind**, on three conditions:
+a report covering one property has nothing to compare and is not drawn as a chart of one
+bar; a breakdown that does not reconcile exactly is refused, because a property missing a
+line would simply appear smaller than it is (D-236's rule applied to the dimension a reader
+is least able to check); and the grouped parts are checked to add **back** to the headline
+on every primitive, so the grouping is proven rather than assumed. The order is
+business-unit id, never figure order, and no property is labelled a winner.
+
+**The engine carries it, and the department ranking, at no cost.** `DashboardView` gains
+`propertyComparison` and `departmentSpending`; both are pure functions of the headline
+result the engine already holds, so **neither adds a read** and the D-266 performance gate
+is untouched. Putting them there rather than in the page is what keeps the Slice 4 rule —
+*there is one dashboard path, through the engine* — true of the surface as well as of the
+providers.
+
+## D-271 — One place turns a reporting date into words
+**Date:** 2026-09-22 · **Status:** Accepted
+
+Money has had one such place since Phase 1. Dates did not: `pnl_presentation.dart` held a
+private month table, and the dashboard needed the same wording plus a compact form for a
+chart position. A second table would have been a second answer to *what is this day
+called*, which is the drift D-232 settled for the P&L wording.
+
+`lib/core/formatting/report_dates.dart` now holds it. `pnlDateLabel`, `pnlRangeLabel` and
+`pnlInstantLabel` keep their names and delegate, so every Phase 5 call site and assertion is
+untouched and the P&L's wording is byte-identical. The dashboard uses the same helper, plus
+`reportDayLabel`, `reportMonthLabel` and `reportShortRangeLabel` for a bucket's name.
+
+**And `MoneyFormatter` gains one variant.** A period-over-period movement needs an explicit
+`+`, and an unsigned rise reads as a total. `MoneySignStyle.explicit` gives `+₹1,200.00`,
+`-₹1,200.00` and — because a zero movement has no direction — `₹0.00`. It is added to the
+one place money becomes text rather than by a surface prefixing a character to a formatted
+string.
+
+## D-272 — Two guards narrowed for Slice 6, and two defects found in doing it
+**Date:** 2026-09-22 · **Status:** Accepted
+
+Slice 4's guard asserted the dashboard feature builds **no screen**. Slice 5's asserted the
+chart layer is **wired into no screen**, and said in as many words that it was the
+assertion Slice 6 would have to change. Both are narrowed rather than bypassed, which is
+the move D-237 made when Slice 10 needed the breakdowns the Slice 8 P&L guard forbade.
+
+| | Now |
+|---|---|
+| the providers | still no widget, no chart, no `Widget build(` |
+| the surface | may draw; may not calculate, navigate, mutate, export, print, name an Owner Accounts value, or reach storage |
+| the charts | may be drawn **only** from `lib/features/dashboard/`, and a complement asserts the dashboard actually draws them — so the rule cannot be satisfied by there being no charts at all (D-139) |
+
+**Two defects in the guard itself, both found by running it.**
+
+*A token that matched a local variable.* `customSelect` matched `customSelected`, the
+period bar's own flag, and reported the page as reaching a database. It is
+`customSelect(` now — the false positive D-069 records, in a new file.
+
+*A phrase assertion that the formatter broke.* `dart format` reflowed
+`if (view.propertyComparison case final PropertyComparisonReady split)` across two lines
+and the guard went red for a line break. Phrase assertions are matched against source with
+runs of whitespace collapsed, which is D-153's finding — an invariant phrased as a sentence
+the source must contain has to survive the source being re-wrapped.
+
+## D-273 — What rendering the Overview found, and what it could not reach
+**Date:** 2026-09-22 · **Status:** Recorded
+
+**A layout defect at a real Windows size.** Four headline metrics across a 1366-wide window
+leave a column about 245 logical pixels wide, and *Gross ₹13,23,420.00 · GST ₹6,302.00* is
+85 pixels too long for it. Money is never ellipsised, so the pair is a `Wrap` and flows onto
+a second line. Found by rendering at 1366×768, not by review — the D-123 family, met again
+at a width nobody had rendered at.
+
+**One of my own assertions was vacuous, and a control found it.** The Overview's
+authority-switch test asserted that no dashboard body is on screen after the authority
+changes. With the display guard deliberately removed it **stayed green**: at that moment
+the provider holds no previous value at all, so the test was measuring Riverpod's reload
+rather than the rule. It now exercises the rule directly — the Owner's assembled dashboard
+offered to the next authority must not be shown — and goes red under the control. The
+fourth or fifth time this project has found a check by expecting red and getting green
+(D-071, D-074, D-094, D-139, D-180, D-232).
+
+**A trend gap is not reachable end to end today, and that is stated rather than staged.**
+Reporting coverage is recorded per financial year, so every bucket inside a period shares
+its coverage with the headline: a year that is not downloaded refuses the headline too, and
+there is no arrangement in which one bucket of a computed report is missing. The gap
+behaviour is therefore proven through `dashboardTrendChartData` — the one adapter the
+surface itself uses — from a series carrying a refused bucket, and it is proven again in the
+chart layer's own suite. If a later slice makes coverage finer than a financial year, a
+gap becomes reachable and the acceptance for it belongs there.
