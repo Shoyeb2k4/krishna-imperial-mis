@@ -5940,8 +5940,9 @@ change to any domain or dashboard semantics. Recorded as **D-269 (final)**.
 
 ## Phase 6 Slice 6 — Windows Overview dashboard: **COMPLETE** (2026-09-22)
 
-Decisions **D-270 … D-273**; `ARCHITECTURE.md` §45. **No schema change, no migration, no
-Supabase or server change, no new dependency.** Local Drift schema stays **v21**; the
+Implementation commit **`00a4017`**; starting HEAD `8e0699c`. Decisions **D-270 … D-273**;
+`ARCHITECTURE.md` §45. **No schema change, no migration, no Supabase or server change, no
+new dependency.** Local Drift schema stays **v21**; the
 migration ledger stays at **101** versions.
 
 ### What shipped
