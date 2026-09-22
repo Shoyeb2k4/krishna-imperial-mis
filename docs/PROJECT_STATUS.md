@@ -6040,7 +6040,7 @@ own and in the re-run; no Slice 6 code is on its path.
 
 ## Phase 6 Slice 7 — Android Home dashboard: **COMPLETE** (2026-09-23)
 
-Starting HEAD `3f39ab5`. Decisions **D-274 … D-276**; `ARCHITECTURE.md` §46;
+Starting HEAD `3f39ab5`; implementation commit `fc78d09`. Decisions **D-274 … D-276**; `ARCHITECTURE.md` §46;
 `RELEASE_CHECKLIST.md` §R. **No schema change, no migration, no Supabase or server change,
 no new dependency.** Local Drift schema stays **v21**; the migration ledger stays at **101**
 versions.
