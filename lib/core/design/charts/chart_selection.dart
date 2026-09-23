@@ -74,6 +74,17 @@ final class ChartSelection {
     return KeyEventResult.handled;
   }
 
+  /// Whether [event] asks to open the selected position: Enter, or Space.
+  ///
+  /// Opening is a separate act from selecting (Phase 6 Slice 9). Hovering over a point or
+  /// moving along the series with the arrow keys selects; only a tap, Enter or Space opens,
+  /// so a pointer passing over a chart never navigates anywhere.
+  static bool isActivation(KeyEvent event) =>
+      event is KeyDownEvent &&
+      (event.logicalKey == LogicalKeyboardKey.enter ||
+          event.logicalKey == LogicalKeyboardKey.numpadEnter ||
+          event.logicalKey == LogicalKeyboardKey.space);
+
   /// The category a horizontal position names.
   ///
   /// This is the **only** conversion from a coordinate in the whole layer, and it is a

@@ -175,13 +175,14 @@ Map<String, dynamic> _cost(
   int amount, {
   String category = 'kirana',
   String department = 'dept',
+  String section = 'section',
 }) => {
   'id': 'ec-${++_seq}',
   'expense_id': 'ex-$_seq',
   'allocation_id': 'al-$_seq',
   'business_unit_id': unit,
   'department_id': '$unit-$department',
-  'section_id': '$unit-section',
+  'section_id': '$unit-$section',
   'category_id': '$unit-$category',
   'vendor_id': null,
   'pnl_date': date,
@@ -265,6 +266,30 @@ void main() {
       _longDepartment,
       _ccr,
     ]);
+    // The kitchen department has its own section and categories. A cost booked to a
+    // department must carry a section and category that really live under it: the
+    // server's composite hierarchy keys make any other row impossible (D-040, D-280).
+    await insert('sections', 'id, org_id, code, name, department_id', [
+      '$_ccr-kitchen-section',
+      'test-org',
+      'CCR-KS',
+      'Kitchen',
+      '$_ccr-kitchen',
+    ]);
+    for (final (code, name) in const [
+      ('gas', 'Cylinder & Coal'),
+      ('milk', 'Milk & Dahi'),
+      ('paneer', 'Paneer / Dairy'),
+      ('veg', 'Vegetables & Fruits'),
+    ]) {
+      await insert('expense_categories', 'id, org_id, code, name, section_id', [
+        '$_ccr-$code',
+        'test-org',
+        code.toUpperCase(),
+        name,
+        '$_ccr-kitchen-section',
+      ]);
+    }
     for (final (unit, code, name) in const [
       (_ccr, 'restaurant', 'Restaurant'),
       (_ccr, 'nandbhog', 'Nandbhog'),
@@ -960,19 +985,30 @@ void main() {
       tester,
     ) async {
       crystalCanopySeptember();
-      // Enough categories that Others is real: five ranked lines plus a remainder.
-      for (final (day, amount) in const [
-        ('2026-09-14', 400000),
-        ('2026-09-15', 300000),
-        ('2026-09-16', 200000),
-        ('2026-09-17', 100000),
+      // Enough categories that Others is real: with Kirana and Water, four kitchen
+      // categories make six lines — five ranked lines plus a remainder. Each lives under
+      // the kitchen's own section, as the server requires (D-040, D-280).
+      for (final (day, amount, category) in const [
+        ('2026-09-14', 400000, 'gas'),
+        ('2026-09-15', 300000, 'milk'),
+        ('2026-09-16', 200000, 'paneer'),
+        ('2026-09-17', 100000, 'veg'),
       ]) {
         gateway.expense.add(
-          _cost(_ccr, day, amount, category: 'water', department: 'kitchen'),
+          _cost(
+            _ccr,
+            day,
+            amount,
+            category: category,
+            department: 'kitchen',
+            section: 'kitchen-section',
+          ),
         );
       }
       final c = await pump(tester, grants: _d2(_ccr));
       final top = (await readyOf(c)).view.topExpenseCategories! as TopNGrouped;
+      expect(top.top.length, 5);
+      expect(top.others, isNotNull, reason: 'six lines: a real Others');
 
       expect(find.byKey(const Key('dashboard-top-expenses')), findsOneWidget);
       // Whatever the domain grouped is what is drawn, including its Others figure.
@@ -993,8 +1029,9 @@ void main() {
           _ccr,
           '2026-09-14',
           750000,
-          category: 'water',
+          category: 'gas',
           department: 'kitchen',
+          section: 'kitchen-section',
         ),
       );
       final c = await pump(tester, grants: _d2(_ccr));

@@ -22,11 +22,14 @@
 /// screen that listed every analysis would stop being the thing a manager glances at on a
 /// rooftop.
 ///
-/// ## The one navigation, and why it is not drill-down
+/// ## Where things go
 ///
-/// *See full P&L* switches the shell to the Reports branch. It is a top-level destination
-/// the phone already has, not a breakdown: drill-down from a dashboard figure to its
-/// transactions is Slice 9's, and nothing here duplicates the P&L's own.
+/// *See full P&L* switches the shell to the Reports branch, as it always has. A figure
+/// opens what is beneath it through the one shared adapter (`dashboard_drill.dart`, Phase 6
+/// Slice 9): Net Sales, Expenses, a Net Sales trend point and a top expense category push
+/// the existing Phase 5 drill-down pages onto the Home branch, so Android back walks up one
+/// level at a time; Operating Profit, the margin and a property open the existing P&L. This
+/// file builds no location and routes nowhere else itself.
 ///
 /// ## Custom dates
 ///
@@ -51,6 +54,7 @@ import 'package:krishna_mis/domain/finance/reporting_period.dart';
 import 'package:krishna_mis/domain/finance/property_comparison.dart';
 import 'package:krishna_mis/domain/masters/master_graph.dart';
 import 'package:krishna_mis/domain/value_objects/money.dart';
+import 'package:krishna_mis/features/dashboard/presentation/dashboard_drill.dart';
 import 'package:krishna_mis/features/dashboard/presentation/dashboard_presentation.dart';
 import 'package:krishna_mis/features/dashboard/presentation/dashboard_providers.dart';
 import 'package:krishna_mis/features/profit_and_loss/presentation/pnl_providers.dart';
@@ -513,6 +517,21 @@ class _Dashboard extends ConsumerWidget {
     final period = dashboardPeriodLine(ready.pair);
     final comparedWith = dashboardComparisonRangeLabel(ready.pair);
     final netSales = _seriesFor(view, TrendMeasure.netSales);
+    // What each figure opens, from the same adapter the Windows surfaces use.
+    final targets = DashboardDrillTargets.of(
+      ready,
+      ref.watch(principalProvider),
+    );
+    void open(DashboardDrillTarget? target) {
+      if (target != null) {
+        openDashboardTarget(
+          context,
+          ref,
+          target,
+          origin: DashboardDrillOrigin.home,
+        );
+      }
+    }
 
     return Column(
       key: const Key('dashboard-body'),
@@ -540,7 +559,12 @@ class _Dashboard extends ConsumerWidget {
               amount: result.netSales,
               movement: dashboardMoneyMovement(view.comparison.netSales),
               comparedWith: comparedWith,
-              secondary: _Secondary(gross: result.grossSales, gst: result.gst),
+              secondary: _Secondary(
+                gross: result.grossSales,
+                gst: result.gst,
+                onOpen: () => open(targets.pnl()),
+              ),
+              onOpen: () => open(targets.netSales()),
             ),
             const Divider(height: AppSpacing.lg, color: AppColors.hairline),
             _MobileMetric(
@@ -549,6 +573,7 @@ class _Dashboard extends ConsumerWidget {
               amount: result.expenses,
               movement: dashboardMoneyMovement(view.comparison.expenses),
               comparedWith: comparedWith,
+              onOpen: () => open(targets.expenses()),
             ),
             const Divider(height: AppSpacing.lg, color: AppColors.hairline),
             _MobileMetric(
@@ -558,6 +583,7 @@ class _Dashboard extends ConsumerWidget {
               emphasis: MoneyEmphasis.bySign,
               movement: dashboardMoneyMovement(view.comparison.operatingProfit),
               comparedWith: comparedWith,
+              onOpen: () => open(targets.pnl()),
             ),
             const Divider(height: AppSpacing.lg, color: AppColors.hairline),
             _MarginMetric(
@@ -565,6 +591,7 @@ class _Dashboard extends ConsumerWidget {
               movement: dashboardMarginMovement(view.comparison.margin),
               previous: dashboardPreviousMarginLabel(view.comparison.margin),
               comparedWith: comparedWith,
+              onOpen: () => open(targets.pnl()),
             ),
           ],
         ),
@@ -577,6 +604,7 @@ class _Dashboard extends ConsumerWidget {
                 title: dashboardTrendTitle(netSales),
                 periodLabel: period,
                 data: dashboardTrendChartData(netSales),
+                onActivated: (i) => open(targets.trendPoint(netSales, i)),
               ),
             ],
           ),
@@ -584,12 +612,27 @@ class _Dashboard extends ConsumerWidget {
         if (view.propertyComparison
             case final PropertyComparisonReady split) ...[
           const SizedBox(height: AppSpacing.lg),
-          _PropertyComparison(split: split, period: period),
+          _PropertyComparison(
+            split: split,
+            period: period,
+            onProperty: (unitId) => open(targets.property(unitId)),
+          ),
         ],
         if (view.topExpenseCategories
             case final TopNOutcome<ExpenseHierarchyLine> top) ...[
           const SizedBox(height: AppSpacing.lg),
-          _TopExpenses(top: top, period: period, result: result),
+          _TopExpenses(
+            top: top,
+            period: period,
+            result: result,
+            onRow: (i) {
+              final all = DashboardDrillTargets.ranked(
+                top,
+                targets.expenseCategory,
+              );
+              if (i >= 0 && i < all.length) open(all[i]);
+            },
+          ),
         ],
         const SizedBox(height: AppSpacing.lg),
         const _SeeFullPnl(),
@@ -622,6 +665,7 @@ class _MobileMetric extends StatelessWidget {
     required this.comparedWith,
     this.emphasis = MoneyEmphasis.neutral,
     this.secondary,
+    this.onOpen,
   });
 
   final String keyName;
@@ -631,11 +675,13 @@ class _MobileMetric extends StatelessWidget {
   final DashboardMovement movement;
   final String comparedWith;
   final Widget? secondary;
+  final VoidCallback? onOpen;
 
   @override
   Widget build(BuildContext context) => _MetricShell(
     keyName: keyName,
     label: label,
+    onOpen: onOpen,
     semantics: dashboardMetricSemantics(
       label: label,
       amount: amount,
@@ -662,17 +708,20 @@ class _MarginMetric extends StatelessWidget {
     required this.movement,
     required this.previous,
     required this.comparedWith,
+    this.onOpen,
   });
 
   final String margin;
   final DashboardMovement movement;
   final String previous;
   final String comparedWith;
+  final VoidCallback? onOpen;
 
   @override
   Widget build(BuildContext context) => _MetricShell(
     keyName: 'margin',
     label: 'Operating Margin',
+    onOpen: onOpen,
     semantics:
         'Operating Margin. $margin. '
         '${movement.semanticsWith(comparedWith)}'
@@ -703,6 +752,7 @@ class _MetricShell extends StatelessWidget {
     required this.movement,
     required this.comparedWith,
     this.secondary,
+    this.onOpen,
   });
 
   final String keyName;
@@ -713,10 +763,25 @@ class _MetricShell extends StatelessWidget {
   final String comparedWith;
   final Widget? secondary;
 
+  /// Opens what is beneath this figure (Phase 6 Slice 9). Null leaves it a plain figure.
+  final VoidCallback? onOpen;
+
   @override
-  Widget build(BuildContext context) => Semantics(
+  Widget build(BuildContext context) {
+    final shell = _shell();
+    final open = onOpen;
+    if (open == null) return shell;
+    return InkWell(
+      key: Key('dashboard-$keyName-open'),
+      onTap: open,
+      child: shell,
+    );
+  }
+
+  Widget _shell() => Semantics(
     key: Key('dashboard-kpi-$keyName'),
     label: semantics,
+    button: onOpen != null,
     container: true,
     child: ExcludeSemantics(
       child: Column(
@@ -774,13 +839,27 @@ class _MetricShell extends StatelessWidget {
 /// A [Wrap], so money is never ellipsised to fit a phone: the pair flows onto a second
 /// line instead (the D-123 family, met on the Overview at 1366 and here at 360).
 class _Secondary extends StatelessWidget {
-  const _Secondary({required this.gross, required this.gst});
+  const _Secondary({required this.gross, required this.gst, this.onOpen});
 
   final Money gross;
   final Money gst;
 
+  /// Opens the P&L: Gross Sales and GST have no transaction list of their own.
+  final VoidCallback? onOpen;
+
   @override
-  Widget build(BuildContext context) => Wrap(
+  Widget build(BuildContext context) {
+    final pair = _pair();
+    final open = onOpen;
+    if (open == null) return pair;
+    return InkWell(
+      key: const Key('dashboard-gross-gst-open'),
+      onTap: open,
+      child: pair,
+    );
+  }
+
+  Widget _pair() => Wrap(
     spacing: AppSpacing.md,
     runSpacing: AppSpacing.xxs,
     children: [
@@ -836,10 +915,17 @@ class _Pair extends StatelessWidget {
 // ── Property comparison and the ranked section ──────────────────────────────
 
 class _PropertyComparison extends ConsumerWidget {
-  const _PropertyComparison({required this.split, required this.period});
+  const _PropertyComparison({
+    required this.split,
+    required this.period,
+    required this.onProperty,
+  });
 
   final PropertyComparisonReady split;
   final String period;
+
+  /// Opens one property's P&L, by its canonical id.
+  final ValueChanged<String> onProperty;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -850,6 +936,7 @@ class _PropertyComparison extends ConsumerWidget {
         ComparisonBarChart(
           title: 'Property comparison',
           periodLabel: period,
+          onActivated: (i) => onProperty(split.properties[i].businessUnitId),
           styles: const [
             ChartTheme.netSales,
             ChartTheme.expenses,
@@ -880,11 +967,15 @@ class _TopExpenses extends ConsumerWidget {
     required this.top,
     required this.period,
     required this.result,
+    required this.onRow,
   });
 
   final TopNOutcome<ExpenseHierarchyLine> top;
   final String period;
   final PnlResult result;
+
+  /// Opens a row, by its position in the domain's order.
+  final ValueChanged<int> onRow;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -896,6 +987,7 @@ class _TopExpenses extends ConsumerWidget {
         RankedBarChart(
           title: 'Top expense categories',
           periodLabel: period,
+          onActivated: onRow,
           data: RankedBarChartData.fromTopN<ExpenseHierarchyLine>(
             top,
             label: (line) => [

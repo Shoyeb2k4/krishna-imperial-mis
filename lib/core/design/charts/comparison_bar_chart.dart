@@ -29,6 +29,7 @@ class ComparisonBarChart extends StatefulWidget {
     super.key,
     this.height,
     this.onSelectionChanged,
+    this.onActivated,
   });
 
   final String title;
@@ -40,6 +41,10 @@ class ComparisonBarChart extends StatefulWidget {
 
   final double? height;
   final ValueChanged<ChartPoint?>? onSelectionChanged;
+
+  /// The **group** a reader opened — by tap, Enter, Space or the Open action — never by
+  /// hovering. Null when the surface opens nothing (Phase 6 Slice 9).
+  final ValueChanged<int>? onActivated;
 
   @override
   State<ComparisonBarChart> createState() => _ComparisonBarChartState();
@@ -75,6 +80,13 @@ class _ComparisonBarChartState extends State<ComparisonBarChart> {
       _series = seriesIndex;
     });
     widget.onSelectionChanged?.call(next.pointIn(points));
+  }
+
+  void _activate(int? groupIndex) {
+    final open = widget.onActivated;
+    if (open == null || groupIndex == null) return;
+    if (groupIndex < 0 || groupIndex >= widget.data.groups.length) return;
+    open(groupIndex);
   }
 
   /// Owned here so a chart is reachable from the keyboard on the finance
@@ -118,16 +130,29 @@ class _ComparisonBarChartState extends State<ComparisonBarChart> {
           ? 'A property with no figure for this period draws no bar, and is not '
                 'shown as zero.'
           : null,
+      action: widget.onActivated == null
+          ? null
+          : ChartOpenAction(
+              point: _selection.pointIn(points),
+              onOpen: () => _activate(_selection.index),
+            ),
       child: LayoutBuilder(
         builder: (context, constraints) {
           final narrow = constraints.maxWidth < ChartTheme.narrowWidth;
           return Focus(
             focusNode: focusNode,
-            onKeyEvent: (node, event) => _selection.handleKey(
-              event,
-              points,
-              onChange: (index) => _select(index ?? 0, _series),
-            ),
+            onKeyEvent: (node, event) {
+              if (ChartSelection.isActivation(event) &&
+                  widget.onActivated != null) {
+                _activate(_selection.index);
+                return KeyEventResult.handled;
+              }
+              return _selection.handleKey(
+                event,
+                points,
+                onChange: (index) => _select(index ?? 0, _series),
+              );
+            },
             child: SizedBox(
               height:
                   widget.height ??
@@ -248,6 +273,7 @@ class _ComparisonBarChartState extends State<ComparisonBarChart> {
           final spot = response?.spot;
           if (!event.isInterestedForInteractions || spot == null) return;
           _select(spot.touchedBarGroupIndex, spot.touchedRodDataIndex);
+          if (event is FlTapUpEvent) _activate(spot.touchedBarGroupIndex);
         },
         touchTooltipData: BarTouchTooltipData(
           getTooltipColor: (_) => AppColors.ink,

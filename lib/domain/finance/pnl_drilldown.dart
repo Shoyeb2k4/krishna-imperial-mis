@@ -370,6 +370,15 @@ abstract final class PnlDrilldown {
       )
       .firstOrNull;
 
+  /// The headline revenue figures as a parent for the revenue category level — the three
+  /// canonical sums as the result holds them, with the rows behind them (Phase 6 Slice 9).
+  static RevenueTotals revenueOf(PnlResult result) => RevenueTotals(
+    gross: result.grossSales,
+    tax: result.gst,
+    net: result.netSales,
+    contributions: result.revenueContributions,
+  );
+
   /// The headline expense figure as a parent for the department level.
   static ExpenseTotals expensesOf(PnlResult result) => ExpenseTotals(
     amount: result.expenses,

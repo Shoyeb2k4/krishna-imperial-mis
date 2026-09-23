@@ -22,8 +22,14 @@
 /// The wording of every state is shared with the Android Home surface
 /// (`dashboard_presentation.dart`), so the two cannot describe one dashboard differently.
 ///
-/// **Drill-down is Slice 9.** The sections carry selection callbacks and no navigation:
-/// nothing here duplicates the P&L drill-down, and no temporary detail screen is invented.
+/// ## Opening a figure (Phase 6 Slice 9)
+///
+/// Every figure that has something beneath it opens it through the one shared adapter
+/// (`dashboard_drill.dart`): Net Sales and Expenses open the existing Phase 5 drill-down,
+/// Operating Profit, the margin, Gross Sales and GST and a property open the existing P&L.
+/// This file builds no location and routes nowhere itself. The drill-down is shown in
+/// place of the dashboard, which stays mounted underneath so Back returns to it exactly as
+/// it was.
 library;
 
 import 'package:flutter/material.dart';
@@ -39,9 +45,14 @@ import 'package:krishna_mis/domain/finance/dashboard_analytics.dart';
 import 'package:krishna_mis/domain/finance/pnl.dart';
 import 'package:krishna_mis/domain/finance/pnl_comparison.dart';
 import 'package:krishna_mis/domain/finance/property_comparison.dart';
+import 'package:krishna_mis/features/dashboard/presentation/dashboard_drill.dart';
+import 'package:krishna_mis/features/dashboard/presentation/dashboard_drill_view.dart';
 import 'package:krishna_mis/features/dashboard/presentation/dashboard_presentation.dart';
 import 'package:krishna_mis/features/dashboard/presentation/dashboard_providers.dart';
 import 'package:krishna_mis/features/dashboard/presentation/dashboard_widgets.dart';
+
+/// Where this surface's figures open from.
+const _origin = DashboardDrillOrigin.overview;
 
 class OverviewPage extends ConsumerStatefulWidget {
   const OverviewPage({required this.shellKind, super.key});
@@ -76,6 +87,30 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
       principal: ref.watch(principalProvider),
     );
 
+    // A figure opened from here is shown in place of the dashboard. The dashboard stays
+    // mounted underneath, so Back finds its scope, period and scroll position unchanged.
+    final drill = ref.watch(dashboardDrillProvider);
+    final drilling = drill != null && drill.origin == _origin;
+
+    return IndexedStack(
+      index: drilling ? 1 : 0,
+      sizing: StackFit.expand,
+      children: [
+        _dashboard(density, stateAsync, sync, presentation),
+        if (drilling)
+          DashboardDrillPane(drill: drill, shellKind: widget.shellKind)
+        else
+          const SizedBox.shrink(),
+      ],
+    );
+  }
+
+  Widget _dashboard(
+    AppDensity density,
+    AsyncValue<DashboardState> stateAsync,
+    DashboardSyncStatus sync,
+    DashboardPresentation presentation,
+  ) {
     return ListView(
       key: const Key('dashboard-page'),
       padding: EdgeInsets.all(density.pagePadding),
@@ -144,6 +179,15 @@ class _Dashboard extends ConsumerWidget {
     final result = view.resultOrNull!;
     final period = dashboardPeriodLine(ready.pair);
     final comparedWith = dashboardComparisonRangeLabel(ready.pair);
+    final targets = DashboardDrillTargets.of(
+      ready,
+      ref.watch(principalProvider),
+    );
+    void open(DashboardDrillTarget? target) {
+      if (target != null) {
+        openDashboardTarget(context, ref, target, origin: _origin);
+      }
+    }
 
     return Column(
       key: const Key('dashboard-body'),
@@ -155,16 +199,28 @@ class _Dashboard extends ConsumerWidget {
           result: result,
           comparison: view.comparison,
           comparedWith: comparedWith,
+          targets: targets,
+          open: open,
         ),
         const SizedBox(height: AppSpacing.xl),
-        _Trends(view: view, period: period),
+        _Trends(view: view, period: period, targets: targets, open: open),
         if (view.propertyComparison
             case final PropertyComparisonReady split) ...[
           const SizedBox(height: AppSpacing.xl),
-          _PropertyComparison(split: split, period: period),
+          _PropertyComparison(
+            split: split,
+            period: period,
+            targets: targets,
+            open: open,
+          ),
         ],
         const SizedBox(height: AppSpacing.xl),
-        _RankedSections(view: view, period: period),
+        _RankedSections(
+          view: view,
+          period: period,
+          targets: targets,
+          open: open,
+        ),
       ],
     );
   }
@@ -177,11 +233,15 @@ class _Headline extends StatelessWidget {
     required this.result,
     required this.comparison,
     required this.comparedWith,
+    required this.targets,
+    required this.open,
   });
 
   final PnlResult result;
   final PnlComparison comparison;
   final String comparedWith;
+  final DashboardDrillTargets targets;
+  final ValueChanged<DashboardDrillTarget?> open;
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(
@@ -204,7 +264,9 @@ class _Headline extends StatelessWidget {
           secondary: DashboardGrossAndGst(
             gross: result.grossSales,
             gst: result.gst,
+            onOpen: () => open(targets.pnl()),
           ),
+          onOpen: () => open(targets.netSales()),
         ),
         DashboardMoneyMetric(
           keyName: 'expenses',
@@ -212,6 +274,7 @@ class _Headline extends StatelessWidget {
           amount: result.expenses,
           movement: dashboardMoneyMovement(comparison.expenses),
           comparedWith: comparedWith,
+          onOpen: () => open(targets.expenses()),
         ),
         DashboardMoneyMetric(
           keyName: 'operating',
@@ -220,12 +283,14 @@ class _Headline extends StatelessWidget {
           emphasis: MoneyEmphasis.bySign,
           movement: dashboardMoneyMovement(comparison.operatingProfit),
           comparedWith: comparedWith,
+          onOpen: () => open(targets.pnl()),
         ),
         DashboardMarginMetric(
           margin: result.margin.displayTwoDecimals,
           movement: dashboardMarginMovement(comparison.margin),
           previous: dashboardPreviousMarginLabel(comparison.margin),
           comparedWith: comparedWith,
+          onOpen: () => open(targets.pnl()),
         ),
       ];
       return DashboardGrid(across: across, children: blocks);
@@ -236,10 +301,17 @@ class _Headline extends StatelessWidget {
 // ── Trends ──────────────────────────────────────────────────────────────────
 
 class _Trends extends StatelessWidget {
-  const _Trends({required this.view, required this.period});
+  const _Trends({
+    required this.view,
+    required this.period,
+    required this.targets,
+    required this.open,
+  });
 
   final DashboardView view;
   final String period;
+  final DashboardDrillTargets targets;
+  final ValueChanged<DashboardDrillTarget?> open;
 
   TrendSeries? _series(TrendMeasure measure) {
     for (final series in view.trends) {
@@ -264,6 +336,7 @@ class _Trends extends StatelessWidget {
               title: dashboardTrendTitle(netSales),
               periodLabel: period,
               data: dashboardTrendChartData(netSales),
+              onActivated: (i) => open(targets.trendPoint(netSales, i)),
             ),
           ],
         ),
@@ -275,6 +348,7 @@ class _Trends extends StatelessWidget {
               title: dashboardTrendTitle(profit),
               periodLabel: period,
               data: dashboardTrendChartData(profit),
+              onActivated: (i) => open(targets.trendPoint(profit, i)),
             ),
           ],
         ),
@@ -302,10 +376,17 @@ class _Trends extends StatelessWidget {
 /// a chart of one bar. No property is labelled a winner, and the order is the domain's —
 /// business-unit id, never figure order.
 class _PropertyComparison extends ConsumerWidget {
-  const _PropertyComparison({required this.split, required this.period});
+  const _PropertyComparison({
+    required this.split,
+    required this.period,
+    required this.targets,
+    required this.open,
+  });
 
   final PropertyComparisonReady split;
   final String period;
+  final DashboardDrillTargets targets;
+  final ValueChanged<DashboardDrillTarget?> open;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -316,6 +397,10 @@ class _PropertyComparison extends ConsumerWidget {
         ComparisonBarChart(
           title: 'Property comparison',
           periodLabel: period,
+          // A property opens its own P&L for the same period — in the domain's id order,
+          // never ranked.
+          onActivated: (i) =>
+              open(targets.property(split.properties[i].businessUnitId)),
           styles: const [
             ChartTheme.netSales,
             ChartTheme.expenses,
@@ -344,10 +429,21 @@ class _PropertyComparison extends ConsumerWidget {
 // ── Ranked sections ─────────────────────────────────────────────────────────
 
 class _RankedSections extends ConsumerWidget {
-  const _RankedSections({required this.view, required this.period});
+  const _RankedSections({
+    required this.view,
+    required this.period,
+    required this.targets,
+    required this.open,
+  });
 
   final DashboardView view;
   final String period;
+  final DashboardDrillTargets targets;
+  final ValueChanged<DashboardDrillTarget?> open;
+
+  /// A ranked row's target, or nothing — Others and a refused set open nothing.
+  static DashboardDrillTarget? _at(List<DashboardDrillTarget?> all, int i) =>
+      i >= 0 && i < all.length ? all[i] : null;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -371,6 +467,15 @@ class _RankedSections extends ConsumerWidget {
               RankedBarChart(
                 title: 'Revenue mix',
                 periodLabel: '$period · by Net Sales',
+                onActivated: (i) => open(
+                  _at(
+                    DashboardDrillTargets.ranked(
+                      revenue,
+                      targets.revenueCategory,
+                    ),
+                    i,
+                  ),
+                ),
                 data: RankedBarChartData.fromTopN<RevenueCategoryLine>(
                   revenue,
                   label: (line) =>
@@ -398,6 +503,15 @@ class _RankedSections extends ConsumerWidget {
                       RankedBarChart(
                         title: 'Top expense categories',
                         periodLabel: period,
+                        onActivated: (i) => open(
+                          _at(
+                            DashboardDrillTargets.ranked(
+                              expenses,
+                              targets.expenseCategory,
+                            ),
+                            i,
+                          ),
+                        ),
                         data: RankedBarChartData.fromTopN<ExpenseHierarchyLine>(
                           expenses,
                           label: (line) =>
@@ -414,6 +528,15 @@ class _RankedSections extends ConsumerWidget {
                       RankedBarChart(
                         title: 'Department spending',
                         periodLabel: period,
+                        onActivated: (i) => open(
+                          _at(
+                            DashboardDrillTargets.ranked(
+                              departments,
+                              targets.department,
+                            ),
+                            i,
+                          ),
+                        ),
                         data: RankedBarChartData.fromTopN<ExpenseHierarchyLine>(
                           departments,
                           label: (line) =>

@@ -40,6 +40,7 @@ class RankedBarChart extends StatefulWidget {
     required this.data,
     super.key,
     this.onSelectionChanged,
+    this.onActivated,
   });
 
   /// Keys a surface or a test finds a line by.
@@ -52,6 +53,11 @@ class RankedBarChart extends StatefulWidget {
   final String periodLabel;
   final RankedBarChartData data;
   final ValueChanged<ChartPoint?>? onSelectionChanged;
+
+  /// The row a reader opened — by tap, Enter or Space — never by hovering. Null when the
+  /// surface opens nothing (Phase 6 Slice 9). Whether a row can be opened at all is the
+  /// surface's answer: an Others remainder is not a line anybody can open.
+  final ValueChanged<int>? onActivated;
 
   @override
   State<RankedBarChart> createState() => _RankedBarChartState();
@@ -82,6 +88,13 @@ class _RankedBarChartState extends State<RankedBarChart> {
     if (next == _selection) return;
     setState(() => _selection = next);
     widget.onSelectionChanged?.call(next.pointIn(points));
+  }
+
+  void _activate(int? index) {
+    final open = widget.onActivated;
+    if (open == null || index == null) return;
+    if (index < 0 || index >= _points.length) return;
+    open(index);
   }
 
   @override
@@ -115,8 +128,14 @@ class _RankedBarChartState extends State<RankedBarChart> {
         builder: (context, constraints) {
           final narrow = constraints.maxWidth < ChartTheme.narrowWidth;
           return Focus(
-            onKeyEvent: (node, event) =>
-                _selection.handleKey(event, points, onChange: _select),
+            onKeyEvent: (node, event) {
+              if (ChartSelection.isActivation(event) &&
+                  widget.onActivated != null) {
+                _activate(_selection.index);
+                return KeyEventResult.handled;
+              }
+              return _selection.handleKey(event, points, onChange: _select);
+            },
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               mainAxisSize: MainAxisSize.min,
@@ -128,6 +147,12 @@ class _RankedBarChartState extends State<RankedBarChart> {
                     narrow: narrow,
                     selected: _selection.index == i,
                     onSelect: () => _select(i),
+                    onOpen: widget.onActivated == null
+                        ? null
+                        : () {
+                            _select(i);
+                            _activate(i);
+                          },
                   ),
               ],
             ),
@@ -145,6 +170,7 @@ class _RankedRow extends StatelessWidget {
     required this.narrow,
     required this.selected,
     required this.onSelect,
+    this.onOpen,
   });
 
   final int index;
@@ -152,6 +178,9 @@ class _RankedRow extends StatelessWidget {
   final bool narrow;
   final bool selected;
   final VoidCallback onSelect;
+
+  /// A tap opens the row when the surface can open it; hovering only ever selects.
+  final VoidCallback? onOpen;
 
   @override
   Widget build(BuildContext context) {
@@ -187,7 +216,7 @@ class _RankedRow extends StatelessWidget {
       child: GestureDetector(
         key: RankedBarChart.rowKey(index),
         behavior: HitTestBehavior.opaque,
-        onTap: onSelect,
+        onTap: onOpen ?? onSelect,
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
           decoration: BoxDecoration(

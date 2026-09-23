@@ -19,21 +19,17 @@
 /// (`dashboardSelectionProvider`), which is how switching between them costs no second read
 /// of a result that is still valid (D-277).
 ///
-/// ## Drill-down intents, for Slice 9
+/// ## What a figure opens
 ///
-/// Full analytics drill-down is Slice 9. What Slice 8 fixes now is **what a row means**: an
-/// [AnalyticsDrillIntent] for each prepared line, built in the domain's own order, with the
-/// exact Others remainder mapping to none — because Others is a remainder, not a line
-/// anybody can open. Nothing here navigates, and no detail screen is invented.
+/// Slice 8 fixed what a row means here, as `AnalyticsDrillIntent`. Slice 9 made it the one
+/// shared dashboard adapter (`dashboard_drill.dart`), used by the Overview, the analysis
+/// sections and the Android Home alike, so the Slice 8 types are gone rather than kept as a
+/// second vocabulary for the same thing.
 library;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:krishna_mis/app/providers.dart';
-import 'package:krishna_mis/domain/finance/dashboard_analytics.dart';
-import 'package:krishna_mis/domain/finance/pnl.dart';
 import 'package:krishna_mis/domain/finance/pnl_authority.dart';
-import 'package:krishna_mis/domain/finance/property_comparison.dart';
-import 'package:meta/meta.dart';
 
 /// The calendar a section's periods follow.
 enum AnalyticsPeriodModel {
@@ -85,124 +81,3 @@ class AnalyticsSectionController extends Notifier<AnalyticsSection> {
 
   void select(AnalyticsSection section) => state = section;
 }
-
-// ── What a row means, for Slice 9 ───────────────────────────────────────────
-
-@immutable
-sealed class AnalyticsDrillIntent {
-  const AnalyticsDrillIntent(this.businessUnitId);
-
-  final String businessUnitId;
-}
-
-/// One revenue category of one property.
-final class AnalyticsRevenueCategoryIntent extends AnalyticsDrillIntent {
-  const AnalyticsRevenueCategoryIntent(
-    super.businessUnitId,
-    this.revenueCategoryId,
-  );
-
-  final String revenueCategoryId;
-
-  @override
-  bool operator ==(Object other) =>
-      other is AnalyticsRevenueCategoryIntent &&
-      other.businessUnitId == businessUnitId &&
-      other.revenueCategoryId == revenueCategoryId;
-
-  @override
-  int get hashCode => Object.hash(businessUnitId, revenueCategoryId);
-}
-
-/// One Department + Section + Category bucket of one property — the grain the P&L
-/// drill-down already opens at (Slice 10).
-final class AnalyticsExpenseCategoryIntent extends AnalyticsDrillIntent {
-  const AnalyticsExpenseCategoryIntent(
-    super.businessUnitId, {
-    required this.departmentId,
-    required this.sectionId,
-    required this.categoryId,
-  });
-
-  final String? departmentId;
-  final String? sectionId;
-  final String? categoryId;
-
-  @override
-  bool operator ==(Object other) =>
-      other is AnalyticsExpenseCategoryIntent &&
-      other.businessUnitId == businessUnitId &&
-      other.departmentId == departmentId &&
-      other.sectionId == sectionId &&
-      other.categoryId == categoryId;
-
-  @override
-  int get hashCode =>
-      Object.hash(businessUnitId, departmentId, sectionId, categoryId);
-}
-
-/// One department of one property.
-final class AnalyticsDepartmentIntent extends AnalyticsDrillIntent {
-  const AnalyticsDepartmentIntent(super.businessUnitId, this.departmentId);
-
-  final String? departmentId;
-
-  @override
-  bool operator ==(Object other) =>
-      other is AnalyticsDepartmentIntent &&
-      other.businessUnitId == businessUnitId &&
-      other.departmentId == departmentId;
-
-  @override
-  int get hashCode => Object.hash(businessUnitId, departmentId);
-}
-
-/// One property's figures inside a consolidated report.
-final class AnalyticsPropertyIntent extends AnalyticsDrillIntent {
-  const AnalyticsPropertyIntent(super.businessUnitId);
-
-  @override
-  bool operator ==(Object other) =>
-      other is AnalyticsPropertyIntent &&
-      other.businessUnitId == businessUnitId;
-
-  @override
-  int get hashCode => businessUnitId.hashCode;
-}
-
-/// The intents for a ranked outcome's rows, in the domain's order, Others last as null.
-///
-/// Empty for a refusal: a set that did not reconcile draws no rows, so there is nothing to
-/// open (D-258).
-List<AnalyticsDrillIntent?> analyticsRankedIntents<L>(
-  TopNOutcome<L> outcome,
-  AnalyticsDrillIntent Function(L line) intent,
-) => switch (outcome) {
-  TopNRefused<L>() => const [],
-  TopNGrouped<L>(:final top, :final others) => [
-    for (final line in top) intent(line.line),
-    if (others != null) null,
-  ],
-};
-
-AnalyticsDrillIntent analyticsRevenueIntent(RevenueCategoryLine line) =>
-    AnalyticsRevenueCategoryIntent(line.businessUnitId, line.revenueCategoryId);
-
-AnalyticsDrillIntent analyticsExpenseIntent(ExpenseHierarchyLine line) =>
-    AnalyticsExpenseCategoryIntent(
-      line.businessUnitId,
-      departmentId: line.departmentId,
-      sectionId: line.sectionId,
-      categoryId: line.categoryId,
-    );
-
-AnalyticsDrillIntent analyticsDepartmentIntent(ExpenseHierarchyLine line) =>
-    AnalyticsDepartmentIntent(line.businessUnitId, line.departmentId);
-
-/// One intent per property, in the domain's id order — never figure order.
-List<AnalyticsDrillIntent> analyticsPropertyIntents(
-  PropertyComparisonReady split,
-) => [
-  for (final property in split.properties)
-    AnalyticsPropertyIntent(property.businessUnitId),
-];

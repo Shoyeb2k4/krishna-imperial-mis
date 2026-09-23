@@ -14,6 +14,15 @@
 /// the cache, and every level is shown only when `PnlDrilldown` says its children add up
 /// exactly to the parent on screen. Authority is `PnlAuthority`, decided again here before
 /// anything is read. The fetched document comes from `ReportDocumentReader`, in memory only.
+///
+/// ## Two places a drill-down can be opened from (Phase 6 Slice 9)
+///
+/// From the P&L, a drill-down belongs to the report on that screen, exactly as Slice 10
+/// built it. From a dashboard or analytics figure it is opened with a **resolved** P&L date
+/// range and a scope ([PnlDrillOrigin.dashboard]), and the report beneath it is read here —
+/// by the destination, through the same Phase 5 engine, after the same authority check —
+/// for exactly that range. The dashboard hands over canonical ids and a range, never a
+/// figure: nothing it prepared is treated as the truth of what a level holds.
 library;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -22,15 +31,27 @@ import 'package:krishna_mis/domain/auth/capability.dart';
 import 'package:krishna_mis/domain/expenses/expense_contribution.dart';
 import 'package:krishna_mis/domain/expenses/expense_document_detail.dart';
 import 'package:krishna_mis/domain/finance/pnl.dart';
+import 'package:krishna_mis/data/reporting/reporting_engine.dart';
 import 'package:krishna_mis/domain/finance/pnl_authority.dart';
 import 'package:krishna_mis/domain/finance/pnl_drilldown.dart';
 import 'package:krishna_mis/domain/finance/reporting_period.dart';
 import 'package:krishna_mis/domain/finance/reporting_source.dart';
+import 'package:krishna_mis/domain/revenue/revenue_contribution.dart';
 import 'package:krishna_mis/domain/revenue/revenue_entry.dart';
 import 'package:krishna_mis/features/profit_and_loss/presentation/pnl_providers.dart';
 import 'package:meta/meta.dart';
 
 // ── Anchors and locations ───────────────────────────────────────────────────
+
+/// Where a drill-down was opened from.
+enum PnlDrillOrigin {
+  /// The P&L screen: the drill-down belongs to the report on that screen (Slice 10).
+  pnl,
+
+  /// A dashboard or analytics figure: the drill-down carries its own resolved range and
+  /// scope, and the destination reads the report for exactly them (Phase 6 Slice 9).
+  dashboard,
+}
 
 /// The report a drill-down belongs to: who, which properties, which P&L dates.
 @immutable
@@ -39,6 +60,7 @@ final class PnlDrillAnchor {
     required this.viewerUserId,
     required this.businessUnitIds,
     required this.range,
+    this.origin = PnlDrillOrigin.pnl,
   });
 
   static PnlDrillAnchor of(PnlReportView view) => PnlDrillAnchor(
@@ -47,11 +69,27 @@ final class PnlDrillAnchor {
     range: view.range,
   );
 
+  /// An anchor for a figure a dashboard or analytics surface showed, carrying the exact
+  /// resolved range the figure represents. The range is passed, never re-derived from a
+  /// clock, so a business-day boundary cannot move the drill-down between the click and
+  /// what is shown.
+  static PnlDrillAnchor dashboard({
+    required String viewerUserId,
+    required ReportingScope scope,
+    required ReportRange range,
+  }) => PnlDrillAnchor(
+    viewerUserId: viewerUserId,
+    businessUnitIds: scope.ordered,
+    range: range,
+    origin: PnlDrillOrigin.dashboard,
+  );
+
   final String viewerUserId;
 
   /// Sorted, so two anchors of one report are equal however they were built.
   final List<String> businessUnitIds;
   final ReportRange range;
+  final PnlDrillOrigin origin;
 
   ReportingScope get scope => ReportingScope(businessUnitIds);
   bool get isConsolidated => businessUnitIds.length > 1;
@@ -62,7 +100,8 @@ final class PnlDrillAnchor {
       other.viewerUserId == viewerUserId &&
       other.businessUnitIds.join(',') == businessUnitIds.join(',') &&
       other.range.from == range.from &&
-      other.range.to == range.to;
+      other.range.to == range.to &&
+      other.origin == origin;
 
   @override
   int get hashCode => Object.hash(
@@ -70,6 +109,7 @@ final class PnlDrillAnchor {
     businessUnitIds.join(','),
     range.from,
     range.to,
+    origin,
   );
 }
 
@@ -86,6 +126,28 @@ sealed class PnlDrillLocation {
   PnlDrillLocation? get parent;
 }
 
+/// Revenue → Revenue Category, for a drill-down opened from a dashboard figure.
+///
+/// On the P&L screen the revenue categories are the statement's own lines, so this level
+/// is never opened there. A dashboard's Net Sales has no statement beneath it, and this is
+/// the level that stands in for one (Phase 6 Slice 9).
+final class PnlRevenueCategoriesAt extends PnlDrillLocation {
+  const PnlRevenueCategoriesAt(super.anchor);
+
+  @override
+  String? get businessUnitId => null;
+
+  @override
+  PnlDrillLocation? get parent => null;
+
+  @override
+  bool operator ==(Object other) =>
+      other is PnlRevenueCategoriesAt && other.anchor == anchor;
+
+  @override
+  int get hashCode => Object.hash('revenue-categories', anchor);
+}
+
 /// Revenue → Revenue Category → Documents.
 final class PnlRevenueDocumentsAt extends PnlDrillLocation {
   const PnlRevenueDocumentsAt(
@@ -98,8 +160,12 @@ final class PnlRevenueDocumentsAt extends PnlDrillLocation {
   final String businessUnitId;
   final String revenueCategoryId;
 
+  /// From the P&L the level above is the statement itself; from a dashboard it is the
+  /// revenue category level.
   @override
-  PnlDrillLocation? get parent => null;
+  PnlDrillLocation? get parent => anchor.origin == PnlDrillOrigin.dashboard
+      ? PnlRevenueCategoriesAt(anchor)
+      : null;
 
   @override
   bool operator ==(Object other) =>
@@ -267,6 +333,19 @@ final class PnlExpenseLevelView extends PnlDrillView {
   final List<ExpenseHierarchyLine> children;
 }
 
+/// Revenue categories, and the revenue totals they add up to exactly.
+final class PnlRevenueLevelView extends PnlDrillView {
+  const PnlRevenueLevelView({
+    required this.location,
+    required this.parent,
+    required this.children,
+  });
+
+  final PnlRevenueCategoriesAt location;
+  final RevenueTotals parent;
+  final List<RevenueCategoryLine> children;
+}
+
 /// A revenue category's documents, and the category line they add up to exactly.
 final class PnlRevenueDocumentsView extends PnlDrillView {
   const PnlRevenueDocumentsView({
@@ -293,24 +372,75 @@ final class PnlExpenseDocumentsView extends PnlDrillView {
   final List<ExpenseDocumentLine> documents;
 }
 
+/// The report beneath a drill-down opened from a dashboard figure: exactly the anchor's
+/// scope and resolved range, read through the Phase 5 engine inside one canonical-cache
+/// span — the same call the P&L screen makes (Phase 6 Slice 9).
+///
+/// Read only by [pnlDrillLevelProvider], and only after authority has been decided again
+/// for the person signed in now. A dashboard never reads this itself.
+final pnlDashboardDrillReportProvider = FutureProvider.autoDispose
+    .family<ReportEnvelope, PnlDrillAnchor>((ref, anchor) {
+      final period = CustomRangePeriod(
+        from: anchor.range.from,
+        to: anchor.range.to,
+      );
+      return ref.watch(canonicalCacheLockProvider).run(() async {
+        final engine = await ref.watch(localReportingEngineProvider.future);
+        return anchor.isConsolidated
+            ? engine.report(ReportRequest(period: period, scope: anchor.scope))
+            : engine.reportForUnit(
+                period: period,
+                businessUnitId: anchor.businessUnitIds.single,
+                scope: anchor.scope,
+              );
+      });
+    });
+
 /// One level, read for the person signed in now.
 final pnlDrillLevelProvider = FutureProvider.autoDispose
     .family<PnlDrillView, PnlDrillLocation>((ref, location) async {
       final principal = ref.watch(sessionProvider).principal;
-      final view = await ref.watch(pnlViewProvider.future);
       final anchor = location.anchor;
 
-      if (view is! PnlReportView ||
-          view.viewerUserId != principal.userId ||
-          PnlDrillAnchor.of(view) != anchor) {
-        return const PnlDrillRefused(PnlDrillRefusal.reportChanged);
-      }
-      if (!_mayRead(principal, anchor, location.businessUnitId)) {
-        return const PnlDrillRefused(PnlDrillRefusal.notAuthorised);
-      }
-      final result = view.envelope.resultOrNull;
-      if (result == null) {
-        return const PnlDrillRefused(PnlDrillRefusal.reportChanged);
+      final PnlResult? result;
+      switch (anchor.origin) {
+        case PnlDrillOrigin.pnl:
+          final view = await ref.watch(pnlViewProvider.future);
+          if (view is! PnlReportView ||
+              view.viewerUserId != principal.userId ||
+              PnlDrillAnchor.of(view) != anchor) {
+            return const PnlDrillRefused(PnlDrillRefusal.reportChanged);
+          }
+          if (!_mayRead(principal, anchor, location.businessUnitId)) {
+            return const PnlDrillRefused(PnlDrillRefusal.notAuthorised);
+          }
+          result = view.envelope.resultOrNull;
+          if (result == null) {
+            return const PnlDrillRefused(PnlDrillRefusal.reportChanged);
+          }
+
+        case PnlDrillOrigin.dashboard:
+          // A drill-down made for somebody else is nobody's now (D-074), and authority is
+          // the person's current authority: a navigation intent grants nothing.
+          if (anchor.viewerUserId != principal.userId) {
+            return const PnlDrillRefused(PnlDrillRefusal.reportChanged);
+          }
+          if (!_mayRead(principal, anchor, location.businessUnitId)) {
+            return const PnlDrillRefused(PnlDrillRefusal.notAuthorised);
+          }
+          final envelope = await ref.watch(
+            pnlDashboardDrillReportProvider(anchor).future,
+          );
+          result = envelope.resultOrNull;
+          if (result == null) {
+            return PnlDrillRefused(
+              envelope.revenueCoverage == ReportingCoverage.notAuthorised ||
+                      envelope.expenseCoverage ==
+                          ReportingCoverage.notAuthorised
+                  ? PnlDrillRefusal.notAuthorised
+                  : PnlDrillRefusal.notDownloaded,
+            );
+          }
       }
       final leaves = result.expenseByHierarchy;
 
@@ -335,6 +465,21 @@ final pnlDrillLevelProvider = FutureProvider.autoDispose
       }
 
       switch (location) {
+        case PnlRevenueCategoriesAt():
+          final parent = PnlDrilldown.revenueOf(result);
+          final children = result.revenueByCategory;
+          if (!PnlDrilldown.revenueChildrenReconcile(
+            parent,
+            children.map((c) => c.totals),
+          )) {
+            return const PnlDrillRefused(PnlDrillRefusal.unreconciled);
+          }
+          return PnlRevenueLevelView(
+            location: location,
+            parent: parent,
+            children: children,
+          );
+
         case PnlExpenseDepartmentsAt():
           return level(
             PnlDrilldown.expensesOf(result),

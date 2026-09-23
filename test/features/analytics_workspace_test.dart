@@ -51,6 +51,8 @@ import 'package:krishna_mis/domain/value_objects/business_date.dart';
 import 'package:krishna_mis/domain/value_objects/money.dart';
 import 'package:krishna_mis/features/dashboard/presentation/dashboard_presentation.dart';
 import 'package:krishna_mis/features/dashboard/presentation/dashboard_providers.dart';
+import 'package:krishna_mis/features/profit_and_loss/presentation/pnl_drilldown_providers.dart';
+import 'package:krishna_mis/features/dashboard/presentation/dashboard_drill.dart';
 import 'package:krishna_mis/features/analytics/presentation/analytics_navigation.dart';
 import 'package:krishna_mis/features/analytics/presentation/analytics_page.dart';
 import 'package:krishna_mis/features/analytics/presentation/business_comparison.dart';
@@ -1697,7 +1699,7 @@ void main() {
   });
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // What a row means — fixed now for Slice 9
+  // What a row means — Slice 8's meaning, now the one shared adapter (Slice 9)
   // ═══════════════════════════════════════════════════════════════════════════
 
   group('what a row means', () {
@@ -1708,53 +1710,83 @@ void main() {
       hotelKrishnaSeptember();
       moreCategories();
       final c = await pumpAt(tester, AnalyticsSection.expenses);
-      final view = (await readyOf(c)).view;
+      final ready = await readyOf(c);
+      final view = ready.view;
+      final targets = DashboardDrillTargets.of(
+        ready,
+        c.read(principalProvider),
+      );
+      final anchor = PnlDrillAnchor.dashboard(
+        viewerUserId: _me,
+        scope: view.scope,
+        range: ready.pair.current,
+      );
 
-      final revenue = analyticsRankedIntents(
+      final revenue = DashboardDrillTargets.ranked(
         view.topRevenueCategories!,
-        analyticsRevenueIntent,
+        targets.revenueCategory,
       );
       expect(
         revenue.first,
-        const AnalyticsRevenueCategoryIntent(_ccr, '$_ccr-restaurant'),
+        DashboardDrillLevel(
+          PnlRevenueDocumentsAt(
+            anchor,
+            businessUnitId: _ccr,
+            revenueCategoryId: '$_ccr-restaurant',
+          ),
+        ),
       );
 
       final grouped =
           view.topExpenseCategories! as TopNGrouped<ExpenseHierarchyLine>;
-      final categories = analyticsRankedIntents(
+      final categories = DashboardDrillTargets.ranked(
         grouped,
-        analyticsExpenseIntent,
+        targets.expenseCategory,
       );
-      expect(
-        categories.length,
-        grouped.top.length + (grouped.others == null ? 0 : 1),
-      );
-      expect(categories.last, grouped.others == null ? isNotNull : isNull);
+      expect(grouped.others, isNotNull, reason: 'six lines: a real Others');
+      expect(categories.length, grouped.top.length + 1);
+      expect(categories.last, isNull, reason: 'Others opens nothing');
+      final first = grouped.top.first.line;
       expect(
         categories.first,
-        AnalyticsExpenseCategoryIntent(
-          grouped.top.first.line.businessUnitId,
-          departmentId: grouped.top.first.line.departmentId,
-          sectionId: grouped.top.first.line.sectionId,
-          categoryId: grouped.top.first.line.categoryId,
+        DashboardDrillLevel(
+          PnlExpenseDocumentsAt(
+            anchor,
+            businessUnitId: first.businessUnitId,
+            departmentId: first.departmentId!,
+            sectionId: first.sectionId!,
+            categoryId: first.categoryId!,
+          ),
         ),
       );
 
-      final departments = analyticsRankedIntents(
+      final departments = DashboardDrillTargets.ranked(
         view.departmentSpending!,
-        analyticsDepartmentIntent,
+        targets.department,
       );
-      expect(departments.whereType<AnalyticsDepartmentIntent>(), isNotEmpty);
+      expect(departments.whereType<DashboardDrillLevel>(), isNotEmpty);
+      for (final target in departments.whereType<DashboardDrillLevel>()) {
+        expect(target.location, isA<PnlExpenseSectionsAt>());
+      }
 
       final split = view.propertyComparison! as PropertyComparisonReady;
-      expect(analyticsPropertyIntents(split), const [
-        AnalyticsPropertyIntent(_ccr),
-        AnalyticsPropertyIntent(_hki),
-      ]);
       expect(
-        analyticsRankedIntents<ExpenseHierarchyLine>(
+        [for (final p in split.properties) targets.property(p.businessUnitId)],
+        [
+          DashboardPnlHandoff(
+            scope: const PnlUnitScope(_ccr),
+            range: ready.pair.current,
+          ),
+          DashboardPnlHandoff(
+            scope: const PnlUnitScope(_hki),
+            range: ready.pair.current,
+          ),
+        ],
+      );
+      expect(
+        DashboardDrillTargets.ranked<ExpenseHierarchyLine>(
           const TopNRefused(TopNRefusal.doesNotReconcile),
-          analyticsExpenseIntent,
+          targets.expenseCategory,
         ),
         isEmpty,
       );

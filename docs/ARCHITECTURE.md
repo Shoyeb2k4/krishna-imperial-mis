@@ -9,7 +9,7 @@ Status: **Sections 1–12 proposed (Phase 0, revised); sections 13–16 and 18�
 is built and verified; section 17 is the Phase 4 *plan*, since built — read §18–§26 for what
 shipped.** Sections 6, 5.3 and 8 carry the project lead's mandated corrections.
 Implementation status is tracked in `PROJECT_STATUS.md`.
-Last updated: 2026-09-23 — the Windows Analytics workspace (section 47); the Android Home dashboard (section 46); 2026-09-22 — the Windows Overview (section 45); 2026-09-17 — Phase 6 dashboard periods and comparison rules (section 41); Slice 11's corrections and the Slice 12 closure architecture (section 40); 2026-09-13 — the Android P&L surface (section 38); the Windows P&L surface (section 37); Slice 7 reporting security closure (section 36); 2026-09-11 — the Owner Settlement surface and its security boundary (section 35); the Owner Settlement Engine (section 34); the Owner Ledger (section 33), with the V1 ownership vector in §33.3; Phase 5 Slice 6 corrective (section 32); Slice 5 in section 31; Slices 1-4 in sections 27-30
+Last updated: 2026-09-23 — dashboard drill-down integration (section 48); the Windows Analytics workspace (section 47); the Android Home dashboard (section 46); 2026-09-22 — the Windows Overview (section 45); 2026-09-17 — Phase 6 dashboard periods and comparison rules (section 41); Slice 11's corrections and the Slice 12 closure architecture (section 40); 2026-09-13 — the Android P&L surface (section 38); the Windows P&L surface (section 37); Slice 7 reporting security closure (section 36); 2026-09-11 — the Owner Settlement surface and its security boundary (section 35); the Owner Settlement Engine (section 34); the Owner Ledger (section 33), with the V1 ownership vector in §33.3; Phase 5 Slice 6 corrective (section 32); Slice 5 in section 31; Slices 1-4 in sections 27-30
 
 ---
 
@@ -4129,3 +4129,57 @@ versions.
 * **Not built:** a percentage share per category and a per-category period comparison — neither is
   prepared by the domain, and both are flagged (D-278). No value-band, subtype, vendor, occupancy,
   forecast, target or budget analysis; no export, printing or Owner Accounts.
+
+## 48. Dashboard drill-down integration — Phase 6 Slice 9
+
+Decisions **D-280 (closed) … D-285**. **No schema change, no migration, no Supabase or server
+change, no financial-calculation change, no new dependency.** Local Drift schema stays **v21**;
+the migration ledger stays at **101** versions.
+
+```
+    a figure (Overview · Analytics sections · Android Home)
+          │  index or tap — never hover (D-284)
+          ▼
+    DashboardDrillTargets.of(ready, principal)       dashboard_drill.dart — the ONE adapter
+          │  canonical ids + scope + RESOLVED range; no name, no figure, no clock
+          ▼
+    openDashboardTarget(origin)
+      ├─ DashboardDrillLevel(location) ──► Windows: dashboardDrillProvider → DashboardDrillPane
+      │                                    Android: pushPnlDrillLevel → MobilePnlDrillPage
+      │        │
+      │        ▼  pnlDrillLevelProvider  (origin = dashboard)
+      │           viewer check → PnlAuthority again → pnlDashboardDrillReportProvider
+      │           → the Phase 5 levels, reconciliation, rows and immutable detail, unchanged
+      │
+      └─ DashboardPnlHandoff(scope, range) ──► pnlSelection.selectScope + selectCustom
+                                               → Analytics › Profit & Loss / Android Reports
+```
+
+* **Dashboards produce intent, and only intent.** No surface builds a location, reads a
+  drill-down row, reads a document or routes anywhere itself. The adapter is the one place
+  targets are built and opened, for both platforms. A guard holds this structurally, and
+  planted violations prove the guard fails when it should.
+* **The range is the figure's own.** The headline uses the pair's `current` range; a trend point
+  uses its bucket's range, clipped exactly as the planner clipped it. Nothing in the adapter
+  reads a clock, a calendar or a business-day rule.
+* **The destination is authoritative.** A dashboard-origin anchor (D-282) is refused for a
+  different person. It is also refused for anyone the P&L authority would refuse now: first by
+  the destination's own check, then again by the Slice 7 cache adapter. The report beneath it is
+  read by the destination through the P&L's own engine call.
+* **What has transactions opens the drill-down:** Net Sales, Operating Expenses, a Net Sales or
+  expense trend point, a revenue category, a top expense category and a department. A dashboard
+  enters revenue at `PnlRevenueCategoriesAt`, a level added for this origin only.
+* **What has none opens the P&L:** Operating Profit, the margin, Gross Sales and GST, a profit
+  trend point and a property. Each is handed to the P&L as an explicit Custom period through its
+  existing contract (D-283). The P&L's presets are untouched.
+* **Read-only, and online for detail, exactly as Phase 5.** The document is the immutable body.
+  Every open fetches again (D-239), including the Windows pane's `select`. Offline, full detail is
+  "not downloaded", and a report changed since synchronisation is refused, never substituted.
+* **Back.**
+  * On Windows, the pane replaces the surface it was opened from inside an `IndexedStack`. The
+    surface stays mounted, so its section, scope, period and scroll position return unchanged.
+  * On Android, each level is a pushed page on the Home branch, so each back press goes up one
+    level.
+  * A change of person or authority closes the drill-down on both platforms.
+* **Not built:** a percentage share per category, a per-category period comparison (D-281), a GST
+  transaction list, "profit documents", and any Owner Accounts route.

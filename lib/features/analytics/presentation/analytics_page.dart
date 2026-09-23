@@ -29,6 +29,14 @@
 /// is still there when they come back from Revenue Analysis. The workspace is built the
 /// first time an analysis section is opened, not before — a reader who only looks at the
 /// P&L starts no dashboard synchronisation.
+///
+/// ## Opening a figure (Phase 6 Slice 9)
+///
+/// A figure in an analysis section opens through the shared adapter
+/// (`dashboard_drill.dart`) into the existing Phase 5 drill-down, shown in place of the
+/// section it was opened from. The section stays mounted underneath, so Back returns to the
+/// same section, scope, period and place on the page. The Profit & Loss section keeps its
+/// own Phase 5 drill-down and is not touched.
 library;
 
 import 'package:flutter/material.dart';
@@ -42,6 +50,8 @@ import 'package:krishna_mis/features/analytics/presentation/analytics_presentati
 import 'package:krishna_mis/features/analytics/presentation/business_comparison.dart';
 import 'package:krishna_mis/features/analytics/presentation/expense_analysis.dart';
 import 'package:krishna_mis/features/analytics/presentation/revenue_analysis.dart';
+import 'package:krishna_mis/features/dashboard/presentation/dashboard_drill.dart';
+import 'package:krishna_mis/features/dashboard/presentation/dashboard_drill_view.dart';
 import 'package:krishna_mis/features/dashboard/presentation/dashboard_presentation.dart';
 import 'package:krishna_mis/features/dashboard/presentation/dashboard_providers.dart';
 import 'package:krishna_mis/features/dashboard/presentation/dashboard_widgets.dart';
@@ -168,6 +178,41 @@ class _AnalyticsWorkspaceState extends ConsumerState<AnalyticsWorkspace> {
         presentation is! DashboardUnavailable ||
         presentation.reason != DashboardUnavailableReason.notAuthorised;
 
+    // A figure opened from this section is shown in place of it; the section stays mounted
+    // underneath so Back finds it exactly as it was.
+    final drill = ref.watch(dashboardDrillProvider);
+    final drilling =
+        drill != null &&
+        drill.origin == DashboardDrillOrigin.ofSection(section);
+
+    return IndexedStack(
+      index: drilling ? 1 : 0,
+      sizing: StackFit.expand,
+      children: [
+        _workspace(
+          density,
+          section,
+          stateAsync,
+          sync,
+          presentation,
+          authorised,
+        ),
+        if (drilling)
+          DashboardDrillPane(drill: drill, shellKind: widget.shellKind)
+        else
+          const SizedBox.shrink(),
+      ],
+    );
+  }
+
+  Widget _workspace(
+    AppDensity density,
+    AnalyticsSection section,
+    AsyncValue<DashboardState> stateAsync,
+    DashboardSyncStatus sync,
+    DashboardPresentation presentation,
+    bool authorised,
+  ) {
     return ListView(
       key: const Key('analytics-workspace'),
       padding: EdgeInsets.all(density.pagePadding),

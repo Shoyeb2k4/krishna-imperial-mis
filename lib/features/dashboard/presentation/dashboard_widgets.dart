@@ -327,35 +327,49 @@ class DashboardGrossAndGst extends StatelessWidget {
   const DashboardGrossAndGst({
     required this.gross,
     required this.gst,
+    this.onOpen,
     super.key,
   });
 
   final Money gross;
   final Money gst;
 
+  /// Opens the P&L for the same scope and period (Phase 6 Slice 9). Gross Sales and GST
+  /// have no transaction list of their own.
+  final VoidCallback? onOpen;
+
   /// A [Wrap], not a [Row]: at four metrics across a 1366-wide window a column is about
   /// 245 logical pixels, and "Gross ₹13,23,420.00 · GST ₹6,302.00" does not fit on one
   /// line of it. Money is never ellipsised, so the pair flows onto a second line instead
   /// — the lesson D-123 records, met again at a new width.
   @override
-  Widget build(BuildContext context) => Wrap(
-    spacing: AppSpacing.md,
-    runSpacing: AppSpacing.xxs,
-    children: [
-      _Pair(
-        label: 'Gross',
-        amount: gross,
-        amountKey: const Key('dashboard-gross-sales'),
-        semanticPrefix: 'Gross Sales',
-      ),
-      _Pair(
-        label: 'GST',
-        amount: gst,
-        amountKey: const Key('dashboard-gst'),
-        semanticPrefix: 'G S T',
-      ),
-    ],
-  );
+  Widget build(BuildContext context) {
+    final pair = Wrap(
+      spacing: AppSpacing.md,
+      runSpacing: AppSpacing.xxs,
+      children: [
+        _Pair(
+          label: 'Gross',
+          amount: gross,
+          amountKey: const Key('dashboard-gross-sales'),
+          semanticPrefix: 'Gross Sales',
+        ),
+        _Pair(
+          label: 'GST',
+          amount: gst,
+          amountKey: const Key('dashboard-gst'),
+          semanticPrefix: 'G S T',
+        ),
+      ],
+    );
+    final open = onOpen;
+    if (open == null) return pair;
+    return InkWell(
+      key: const Key('dashboard-gross-gst-open'),
+      onTap: open,
+      child: pair,
+    );
+  }
 }
 
 class _Pair extends StatelessWidget {
@@ -401,6 +415,7 @@ class DashboardMoneyMetric extends StatelessWidget {
     required this.comparedWith,
     this.emphasis = MoneyEmphasis.neutral,
     this.secondary,
+    this.onOpen,
     super.key,
   });
 
@@ -412,10 +427,14 @@ class DashboardMoneyMetric extends StatelessWidget {
   final String comparedWith;
   final Widget? secondary;
 
+  /// What opening this figure does, from the shared adapter (Phase 6 Slice 9).
+  final VoidCallback? onOpen;
+
   @override
   Widget build(BuildContext context) => DashboardMetricShell(
     keyName: keyName,
     label: label,
+    onOpen: onOpen,
     semantics: dashboardMetricSemantics(
       label: label,
       amount: amount,
@@ -447,6 +466,7 @@ class DashboardMarginMetric extends StatelessWidget {
     required this.previous,
     required this.comparedWith,
     this.keyName = 'margin',
+    this.onOpen,
     super.key,
   });
 
@@ -456,10 +476,14 @@ class DashboardMarginMetric extends StatelessWidget {
   final String previous;
   final String comparedWith;
 
+  /// What opening this figure does, from the shared adapter (Phase 6 Slice 9).
+  final VoidCallback? onOpen;
+
   @override
   Widget build(BuildContext context) => DashboardMetricShell(
     keyName: keyName,
     label: 'Operating Margin',
+    onOpen: onOpen,
     semantics:
         'Operating Margin. $margin. '
         '${movement.semanticsWith(comparedWith)}'
@@ -490,6 +514,7 @@ class DashboardMetricShell extends StatelessWidget {
     required this.movement,
     required this.comparedWith,
     this.secondary,
+    this.onOpen,
     super.key,
   });
 
@@ -501,10 +526,25 @@ class DashboardMetricShell extends StatelessWidget {
   final String comparedWith;
   final Widget? secondary;
 
+  /// Opens what is beneath this figure (Phase 6 Slice 9). Null leaves it a plain figure.
+  final VoidCallback? onOpen;
+
   @override
-  Widget build(BuildContext context) => Semantics(
+  Widget build(BuildContext context) {
+    final shell = _shell();
+    final open = onOpen;
+    if (open == null) return shell;
+    return InkWell(
+      key: Key('dashboard-$keyName-open'),
+      onTap: open,
+      child: shell,
+    );
+  }
+
+  Widget _shell() => Semantics(
     key: Key('dashboard-kpi-$keyName'),
     label: semantics,
+    button: onOpen != null,
     container: true,
     child: ExcludeSemantics(
       child: DecoratedBox(

@@ -8,6 +8,10 @@
 /// A drill-down belongs to one report for one person. Signing in as somebody else, or
 /// changing the property or period, returns to the P&L rather than leaving a page up for a
 /// report that is no longer on screen.
+///
+/// The same pages serve a drill-down opened from the Android Home (Phase 6 Slice 9). That
+/// one carries its own resolved range, so a change to the P&L's selection is not a reason
+/// to leave it; a change of person or authority still is, and it returns to Home.
 library;
 
 import 'package:flutter/material.dart';
@@ -21,45 +25,71 @@ import 'package:krishna_mis/features/profit_and_loss/presentation/pnl_drilldown_
 import 'package:krishna_mis/features/profit_and_loss/presentation/pnl_drilldown_view.dart';
 import 'package:krishna_mis/features/profit_and_loss/presentation/pnl_providers.dart';
 
-/// Returns to the P&L when the person, what they may read, the property or the period changes.
-void _returnToReportOnReset(WidgetRef ref, BuildContext context) {
+/// Returns to the report when the person or what they may read changes — and, for a
+/// drill-down opened from the P&L, when its property or period changes.
+void _returnToReportOnReset(
+  WidgetRef ref,
+  BuildContext context,
+  PnlDrillLocation location,
+) {
   void back() {
     if (context.mounted) {
       Navigator.of(context).popUntil((route) => route.isFirst);
     }
   }
 
-  ref
-    ..listen(sessionProvider.select((s) => PnlAuthority.readKey(s.principal)), (
-      previous,
-      next,
-    ) {
-      if (previous != next) back();
-    })
-    ..listen(pnlSelectionProvider, (previous, next) {
+  ref.listen(sessionProvider.select((s) => PnlAuthority.readKey(s.principal)), (
+    previous,
+    next,
+  ) {
+    if (previous != next) back();
+  });
+  if (location.anchor.origin == PnlDrillOrigin.pnl) {
+    ref.listen(pnlSelectionProvider, (previous, next) {
       if (!identical(previous, next)) back();
     });
+  }
 }
 
 /// Opens [location] as a page on top of the current one.
-void pushPnlDrillLevel(BuildContext context, PnlDrillLocation location) =>
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => MobilePnlDrillPage(location: location),
-      ),
-    );
+void pushPnlDrillLevel(
+  BuildContext context,
+  PnlDrillLocation location, {
+  String reportLabel = pnlReportLabel,
+  VoidCallback? onRefresh,
+}) => Navigator.of(context).push(
+  MaterialPageRoute<void>(
+    builder: (_) => MobilePnlDrillPage(
+      location: location,
+      reportLabel: reportLabel,
+      onRefresh: onRefresh,
+    ),
+  ),
+);
 
 class MobilePnlDrillPage extends ConsumerWidget {
-  const MobilePnlDrillPage({required this.location, super.key});
+  const MobilePnlDrillPage({
+    required this.location,
+    this.reportLabel = pnlReportLabel,
+    this.onRefresh,
+    super.key,
+  });
 
   final PnlDrillLocation location;
 
+  /// The report this drill-down returns to.
+  final String reportLabel;
+
+  /// The synchronisation a Refresh starts. The P&L's own when null.
+  final VoidCallback? onRefresh;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    _returnToReportOnReset(ref, context);
+    _returnToReportOnReset(ref, context, location);
     final crumbs = pnlDrillCrumbs(
       location,
       ref.watch(masterGraphProvider).value,
+      reportLabel: reportLabel,
     );
 
     return Scaffold(
@@ -98,13 +128,24 @@ class MobilePnlDrillPage extends ConsumerWidget {
                 AppSpacing.lg,
                 pnlMobileNavigationClearance,
               ),
-              onOpen: (next) => pushPnlDrillLevel(context, next),
+              reportLabel: reportLabel,
+              onRefresh: onRefresh,
+              onOpen: (next) => pushPnlDrillLevel(
+                context,
+                next,
+                reportLabel: reportLabel,
+                onRefresh: onRefresh,
+              ),
               onSelect: (request) {
                 // Each open asks the server again, never a copy held from before (D-239).
                 ref.invalidate(pnlDocumentDetailProvider(request));
                 Navigator.of(context).push(
                   MaterialPageRoute<void>(
-                    builder: (_) => MobilePnlDocumentPage(request: request),
+                    builder: (_) => MobilePnlDocumentPage(
+                      request: request,
+                      reportLabel: reportLabel,
+                      onRefresh: onRefresh,
+                    ),
                   ),
                 );
               },
@@ -119,13 +160,20 @@ class MobilePnlDrillPage extends ConsumerWidget {
 }
 
 class MobilePnlDocumentPage extends ConsumerWidget {
-  const MobilePnlDocumentPage({required this.request, super.key});
+  const MobilePnlDocumentPage({
+    required this.request,
+    this.reportLabel = pnlReportLabel,
+    this.onRefresh,
+    super.key,
+  });
 
   final PnlDocumentRequest request;
+  final String reportLabel;
+  final VoidCallback? onRefresh;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    _returnToReportOnReset(ref, context);
+    _returnToReportOnReset(ref, context, request.location);
     return Scaffold(
       key: const Key('pnl-document-page'),
       backgroundColor: AppColors.paper,
@@ -140,7 +188,11 @@ class MobilePnlDocumentPage extends ConsumerWidget {
       // Clear of the docked [ + ] action, so the last line is never behind it.
       body: Padding(
         padding: const EdgeInsets.only(bottom: pnlMobileNavigationClearance),
-        child: PnlDocumentDetail(request: request),
+        child: PnlDocumentDetail(
+          request: request,
+          reportLabel: reportLabel,
+          onRefresh: onRefresh,
+        ),
       ),
     );
   }

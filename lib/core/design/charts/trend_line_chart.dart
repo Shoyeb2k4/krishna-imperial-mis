@@ -37,6 +37,7 @@ class TrendLineChart extends StatefulWidget {
     this.style = ChartTheme.netSales,
     this.height,
     this.onSelectionChanged,
+    this.onActivated,
   });
 
   final String title;
@@ -47,6 +48,10 @@ class TrendLineChart extends StatefulWidget {
 
   /// The point a reader is looking at, for a surface that wants to mirror it elsewhere.
   final ValueChanged<ChartPoint?>? onSelectionChanged;
+
+  /// The position a reader opened — by tap, Enter, Space or the Open action — never by
+  /// hovering. Null when the surface opens nothing (Phase 6 Slice 9).
+  final ValueChanged<int>? onActivated;
 
   @override
   State<TrendLineChart> createState() => _TrendLineChartState();
@@ -79,6 +84,15 @@ class _TrendLineChartState extends State<TrendLineChart> {
     if (next == _selection) return;
     setState(() => _selection = next);
     widget.onSelectionChanged?.call(next.pointIn(_points));
+  }
+
+  void _activate(int? index) {
+    final open = widget.onActivated;
+    if (open == null || index == null) return;
+    if (_selection.movedTo(index, _points).pointIn(_points) is! ChartPlotted) {
+      return;
+    }
+    open(index);
   }
 
   /// Owned here so a chart is reachable from the keyboard on the finance
@@ -124,13 +138,25 @@ class _TrendLineChartState extends State<TrendLineChart> {
         spansZero: spansZero,
       ),
       footnote: _footnote(ready),
+      action: widget.onActivated == null
+          ? null
+          : ChartOpenAction(
+              point: _selection.pointIn(points),
+              onOpen: () => _activate(_selection.index),
+            ),
       child: LayoutBuilder(
         builder: (context, constraints) {
           final narrow = constraints.maxWidth < ChartTheme.narrowWidth;
           return Focus(
             focusNode: focusNode,
-            onKeyEvent: (node, event) =>
-                _selection.handleKey(event, points, onChange: _select),
+            onKeyEvent: (node, event) {
+              if (ChartSelection.isActivation(event) &&
+                  widget.onActivated != null) {
+                _activate(_selection.index);
+                return KeyEventResult.handled;
+              }
+              return _selection.handleKey(event, points, onChange: _select);
+            },
             child: SizedBox(
               height:
                   widget.height ??
@@ -245,6 +271,7 @@ class _TrendLineChartState extends State<TrendLineChart> {
             return;
           }
           _select(spots.first.spotIndex);
+          if (event is FlTapUpEvent) _activate(spots.first.spotIndex);
         },
         touchTooltipData: LineTouchTooltipData(
           getTooltipColor: (_) => AppColors.ink,

@@ -29,6 +29,7 @@ import 'package:krishna_mis/domain/finance/pnl.dart';
 import 'package:krishna_mis/domain/finance/property_comparison.dart';
 import 'package:krishna_mis/domain/value_objects/money.dart';
 import 'package:krishna_mis/features/analytics/presentation/analytics_presentation.dart';
+import 'package:krishna_mis/features/dashboard/presentation/dashboard_drill.dart';
 import 'package:krishna_mis/features/dashboard/presentation/dashboard_presentation.dart';
 import 'package:krishna_mis/features/dashboard/presentation/dashboard_providers.dart';
 import 'package:krishna_mis/features/dashboard/presentation/dashboard_widgets.dart';
@@ -43,7 +44,27 @@ class BusinessComparisonSection extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final view = ready.view;
     if (view.propertyComparison case final PropertyComparisonReady split) {
-      return _Comparison(split: split, period: dashboardPeriodLine(ready.pair));
+      // A property opens its own P&L for the same period, through the shared adapter
+      // (Phase 6 Slice 9). Only a property this consolidated view covers.
+      final opens = DashboardDrillTargets.of(
+        ready,
+        ref.watch(principalProvider),
+      );
+      return _Comparison(
+        split: split,
+        period: dashboardPeriodLine(ready.pair),
+        onProperty: (unitId) {
+          if (opens.property(unitId)
+              case final DashboardDrillTarget destination) {
+            openDashboardTarget(
+              context,
+              ref,
+              destination,
+              origin: DashboardDrillOrigin.businessComparison,
+            );
+          }
+        },
+      );
     }
     final refusal = switch (view.propertyComparison) {
       PropertyComparisonRefused(:final reason) => reason,
@@ -60,10 +81,17 @@ class BusinessComparisonSection extends ConsumerWidget {
 }
 
 class _Comparison extends ConsumerWidget {
-  const _Comparison({required this.split, required this.period});
+  const _Comparison({
+    required this.split,
+    required this.period,
+    required this.onProperty,
+  });
 
   final PropertyComparisonReady split;
   final String period;
+
+  /// Opens one property's P&L, by its canonical id.
+  final ValueChanged<String> onProperty;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -105,12 +133,29 @@ class _Comparison extends ConsumerWidget {
                     const _Cell(child: Text('', style: AppTypography.overline)),
                     for (final column in columns)
                       _Cell(
-                        child: Text(
-                          column.name,
-                          key: Key('analytics-comparison-${column.key}-name'),
-                          style: AppTypography.overline,
-                          textAlign: TextAlign.right,
-                        ),
+                        child: column.key == 'total'
+                            ? Text(
+                                column.name,
+                                key: Key(
+                                  'analytics-comparison-${column.key}-name',
+                                ),
+                                style: AppTypography.overline,
+                                textAlign: TextAlign.right,
+                              )
+                            : InkWell(
+                                key: Key(
+                                  'analytics-comparison-${column.key}-open',
+                                ),
+                                onTap: () => onProperty(column.key),
+                                child: Text(
+                                  column.name,
+                                  key: Key(
+                                    'analytics-comparison-${column.key}-name',
+                                  ),
+                                  style: AppTypography.overline,
+                                  textAlign: TextAlign.right,
+                                ),
+                              ),
                       ),
                   ],
                 ),
@@ -171,6 +216,8 @@ class _Comparison extends ConsumerWidget {
             ComparisonBarChart(
               title: 'Net Sales, expenses and operating result by property',
               periodLabel: period,
+              onActivated: (i) =>
+                  onProperty(split.properties[i].businessUnitId),
               styles: const [
                 ChartTheme.netSales,
                 ChartTheme.expenses,

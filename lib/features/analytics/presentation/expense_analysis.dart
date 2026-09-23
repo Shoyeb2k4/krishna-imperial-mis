@@ -29,6 +29,7 @@ import 'package:krishna_mis/domain/finance/dashboard_analytics.dart';
 import 'package:krishna_mis/domain/finance/pnl.dart';
 import 'package:krishna_mis/features/analytics/presentation/analytics_presentation.dart';
 import 'package:krishna_mis/features/analytics/presentation/analytics_widgets.dart';
+import 'package:krishna_mis/features/dashboard/presentation/dashboard_drill.dart';
 import 'package:krishna_mis/features/dashboard/presentation/dashboard_presentation.dart';
 import 'package:krishna_mis/features/dashboard/presentation/dashboard_providers.dart';
 import 'package:krishna_mis/features/dashboard/presentation/dashboard_widgets.dart';
@@ -65,6 +66,28 @@ class ExpenseAnalysisSection extends ConsumerWidget {
         ? '${dashboardPropertyName(graph, unitId)} · '
         : '';
 
+    // What each figure opens, from the one shared adapter (Phase 6 Slice 9).
+    final opens = DashboardDrillTargets.of(ready, ref.watch(principalProvider));
+    void open(DashboardDrillTarget? destination) {
+      if (destination != null) {
+        openDashboardTarget(
+          context,
+          ref,
+          destination,
+          origin: DashboardDrillOrigin.expenseAnalysis,
+        );
+      }
+    }
+
+    void openRow<L>(
+      TopNOutcome<L> outcome,
+      DashboardDrillTarget? Function(L line) destination,
+      int i,
+    ) {
+      final all = DashboardDrillTargets.ranked(outcome, destination);
+      if (i >= 0 && i < all.length) open(all[i]);
+    }
+
     final ranked = <Widget>[
       if (categories != null)
         DashboardPanel(
@@ -73,6 +96,7 @@ class ExpenseAnalysisSection extends ConsumerWidget {
             RankedBarChart(
               title: 'Top expense categories',
               periodLabel: period,
+              onActivated: (i) => openRow(categories, opens.expenseCategory, i),
               data: RankedBarChartData.fromTopN<ExpenseHierarchyLine>(
                 categories,
                 label: (line) =>
@@ -89,6 +113,7 @@ class ExpenseAnalysisSection extends ConsumerWidget {
             RankedBarChart(
               title: 'Department spending',
               periodLabel: period,
+              onActivated: (i) => openRow(departments, opens.department, i),
               data: RankedBarChartData.fromTopN<ExpenseHierarchyLine>(
                 departments,
                 label: (line) =>
@@ -116,6 +141,7 @@ class ExpenseAnalysisSection extends ConsumerWidget {
                   amount: result.expenses,
                   movement: dashboardMoneyMovement(view.comparison.expenses),
                   strong: true,
+                  onOpen: () => open(opens.expenses()),
                 ),
               ],
             ),
@@ -131,6 +157,7 @@ class ExpenseAnalysisSection extends ConsumerWidget {
                 periodLabel: period,
                 style: ChartTheme.expenses,
                 data: dashboardTrendChartData(trend),
+                onActivated: (i) => open(opens.trendPoint(trend, i)),
               )
             else
               AnalyticsNote(

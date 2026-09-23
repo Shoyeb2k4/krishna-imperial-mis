@@ -21,6 +21,7 @@ final class AnalyticsSummaryLine {
     required this.amount,
     required this.movement,
     this.strong = false,
+    this.onOpen,
   });
 
   /// Keys are `analytics-$keyName-value`, `analytics-$keyName-movement` and
@@ -32,6 +33,9 @@ final class AnalyticsSummaryLine {
 
   /// The line the others lead to — Net Sales under Gross Sales and GST.
   final bool strong;
+
+  /// What opening this line does, from the shared adapter (Phase 6 Slice 9).
+  final VoidCallback? onOpen;
 }
 
 class AnalyticsRuledSummary extends StatelessWidget {
@@ -91,9 +95,21 @@ class _SummaryRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final row = _row();
+    final open = line.onOpen;
+    if (open == null) return row;
+    return InkWell(
+      key: Key('analytics-${line.keyName}-open'),
+      onTap: open,
+      child: row,
+    );
+  }
+
+  Widget _row() {
     final movement = line.movement;
     return Semantics(
       key: Key('analytics-${line.keyName}'),
+      button: line.onOpen != null,
       label: dashboardMetricSemantics(
         label: line.label,
         amount: line.amount,

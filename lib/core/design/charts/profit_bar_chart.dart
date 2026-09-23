@@ -34,6 +34,7 @@ class ProfitBarChart extends StatefulWidget {
     super.key,
     this.height,
     this.onSelectionChanged,
+    this.onActivated,
   });
 
   final String title;
@@ -41,6 +42,10 @@ class ProfitBarChart extends StatefulWidget {
   final TrendChartData data;
   final double? height;
   final ValueChanged<ChartPoint?>? onSelectionChanged;
+
+  /// The position a reader opened — by tap, Enter, Space or the Open action — never by
+  /// hovering. Null when the surface opens nothing (Phase 6 Slice 9).
+  final ValueChanged<int>? onActivated;
 
   @override
   State<ProfitBarChart> createState() => _ProfitBarChartState();
@@ -73,6 +78,15 @@ class _ProfitBarChartState extends State<ProfitBarChart> {
     if (next == _selection) return;
     setState(() => _selection = next);
     widget.onSelectionChanged?.call(next.pointIn(_points));
+  }
+
+  void _activate(int? index) {
+    final open = widget.onActivated;
+    if (open == null || index == null) return;
+    if (_selection.movedTo(index, _points).pointIn(_points) is! ChartPlotted) {
+      return;
+    }
+    open(index);
   }
 
   /// Owned here so a chart is reachable from the keyboard on the finance
@@ -113,13 +127,25 @@ class _ProfitBarChartState extends State<ProfitBarChart> {
       semanticsLabel: semantics,
       readout: ChartReadout(point: _selection.pointIn(points), spansZero: true),
       footnote: ChartSemantics.footnote(points),
+      action: widget.onActivated == null
+          ? null
+          : ChartOpenAction(
+              point: _selection.pointIn(points),
+              onOpen: () => _activate(_selection.index),
+            ),
       child: LayoutBuilder(
         builder: (context, constraints) {
           final narrow = constraints.maxWidth < ChartTheme.narrowWidth;
           return Focus(
             focusNode: focusNode,
-            onKeyEvent: (node, event) =>
-                _selection.handleKey(event, points, onChange: _select),
+            onKeyEvent: (node, event) {
+              if (ChartSelection.isActivation(event) &&
+                  widget.onActivated != null) {
+                _activate(_selection.index);
+                return KeyEventResult.handled;
+              }
+              return _selection.handleKey(event, points, onChange: _select);
+            },
             child: SizedBox(
               height:
                   widget.height ??
@@ -245,6 +271,7 @@ class _ProfitBarChartState extends State<ProfitBarChart> {
           final spot = response?.spot;
           if (!event.isInterestedForInteractions || spot == null) return;
           _select(spot.touchedBarGroupIndex);
+          if (event is FlTapUpEvent) _activate(spot.touchedBarGroupIndex);
         },
         touchTooltipData: BarTouchTooltipData(
           getTooltipColor: (_) => AppColors.ink,

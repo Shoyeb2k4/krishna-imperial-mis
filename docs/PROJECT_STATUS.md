@@ -5,14 +5,22 @@ Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
-Last updated: **2026-09-23** — **PHASE 6 SLICE 8 — WINDOWS ANALYTICS SECTIONS: COMPLETE**. The
-desktop Analytics destination is a workspace: the existing Profit & Loss, embedded unchanged,
-beside Revenue Analysis, Expense & Department Analysis and Business Comparison, all three over
-the dashboard's one prepared view (D-277 … D-280). Slices 1–8 of Phase 6 are done; Slice 9
-(drill-down integration) is not started. **Three points are flagged for the project lead**
-(shared period selection; no category share; no per-category comparison). **The physical
-Android Home pass remains PENDING** for Slice 10 (D-230, checklist §R.2). See *Phase 6 Slice 8*
-at the end of this file.
+Last updated: **2026-09-23** — **PHASE 6 SLICE 9 — DRILL-DOWN INTEGRATION: COMPLETE**.
+
+* Dashboard and analytics figures now open the existing Phase 5 read-only drill-down, or the
+  existing P&L.
+* One shared adapter serves Windows and Android. It hands over canonical ids and the exact
+  resolved range, never a figure, and the destination re-checks authority (D-281 … D-285).
+* The D-280 Overview fixture is corrected.
+* **One point is flagged for the project lead:** a hand-off replaces the P&L's current selection
+  with a Custom range.
+* Slices 1–9 of Phase 6 are done. Slice 10 (full acceptance) is not started.
+* **The physical Android pass remains PENDING** for Slice 10 (D-230, checklist §R.2).
+
+See *Phase 6 Slice 9* at the end of this file.
+
+Previously: **2026-09-23** — **PHASE 6 SLICE 8 — WINDOWS ANALYTICS SECTIONS: COMPLETE**
+(D-277 … D-280).
 
 Previously: **2026-09-23** — **PHASE 6 SLICE 7 — ANDROID HOME DASHBOARD: COMPLETE**, with one
 real layout defect found by rendering at a raised font scale (D-276).
@@ -5539,7 +5547,7 @@ reporting cache is created, and authorization stays `PnlAuthority`.
 | 6 | Windows Overview dashboard | **COMPLETE** |
 | 7 | Android Home dashboard | **COMPLETE** |
 | 8 | Windows Analytics sections | **COMPLETE** |
-| 9 | Drill-down integration | not started |
+| 9 | Drill-down integration | **COMPLETE** |
 | 10 | Full acceptance | not started |
 | 11 | Closure | not started |
 
@@ -6230,5 +6238,91 @@ analytics guards enforce one set of rules.
 
 ## Next exact task
 
-**Phase 6 Slice 9 — drill-down integration. Not started, and not started automatically**:
-Slice 8's evidence is reported above and awaits the project lead.
+*Superseded — Slice 9 is complete. The current record is* **Phase 6 Slice 9** *below.*
+
+---
+
+## Phase 6 Slice 9 — Drill-down integration: **COMPLETE** (2026-09-23)
+
+Starting HEAD `abe4392`. Decisions **D-280 (closed) … D-285**; `ARCHITECTURE.md` §48. **No schema
+change, no migration, no Supabase or server change, no financial-calculation change, no new
+dependency.** Local Drift schema stays **v21**; the migration ledger stays at **101**.
+
+### First, the D-280 fixture correction
+
+The Overview harness no longer books a kitchen cost to a section and category that live under
+another department. The kitchen has its own section and four categories. Totals and test intent
+are preserved, and test 18's Others assertion is now unconditional. This was test data only, and
+the Overview and dashboard-guard suites re-ran green (72).
+
+### What shipped
+
+| | |
+|---|---|
+| `dashboard_drill.dart` | the one shared adapter: `DashboardDrillTargets` (targets from canonical ids and resolved ranges), `openDashboardTarget`, the Windows `dashboardDrillProvider` |
+| `dashboard_drill_view.dart` | the Windows pane: back, range, breadcrumb, level list, immutable document — all Phase 5 widgets |
+| `pnl_drilldown_providers.dart` | `PnlDrillOrigin`, `PnlDrillAnchor.dashboard`, `PnlRevenueCategoriesAt`, `pnlDashboardDrillReportProvider`, the dashboard branch of the level provider (D-282) |
+| `pnl_drilldown_view.dart`, `mobile_pnl_drilldown_pages.dart` | a `reportLabel` and an `onRefresh`, defaulting to Phase 5's own |
+| charts | `onActivated` and the Open action — opening is not selecting (D-284) |
+| surfaces | the Overview, the three analysis sections and the Android Home call the adapter; the Slice 8 `AnalyticsDrillIntent` types are retired into it |
+
+### Navigation, as approved
+
+| Figure | Opens |
+|---|---|
+| Net Sales · a Net Sales trend point | revenue categories, over the period or the exact bucket |
+| Operating Expenses · a monthly expense point | departments |
+| revenue mix / category row | that category's documents |
+| top expense category | its Department + Section + Category documents |
+| department row | that department's sections |
+| Operating Profit · Operating Margin · Gross/GST · a profit trend point | the existing P&L, as an explicit Custom period (D-283) |
+| a property (Overview, Home, Business Comparison) | that property's P&L for the same period |
+| See full P&L (Android) | Reports, unchanged |
+| Others | nothing |
+
+### Verified
+
+| Item | Status | Evidence |
+|---|---|---|
+| `dart format --set-exit-if-changed lib test integration_test tool` | **Tested** | 360 files, 0 changed |
+| `flutter analyze` | **Tested** | No issues found |
+| Host suite | **Tested** | **2,601 passed** (2,554 + 35 drill-down + 12 guard) |
+| Slice 9 drill-down suite | **Tested** | 35 tests through both real routers: proofs 1–34, plus Gross/GST, the expense headline and monthly point, and Android Operating Profit |
+| Slice 9 guard | **Tested** | 12 tests, 5 of them planted-violation self-checks |
+| Existing Phase 5 drill-down, P&L and dashboard suites | **Tested** | green inside the full run, unmodified except the retired Slice 8 intent test (rewritten to the adapter) |
+| Positive controls | **Tested** | 6 sabotages, each seen RED and restored byte-identical (`cmp`) |
+| Windows release build | **Tested** | `flutter build windows --release` with `config/dev.json`; the drill-down pane and adapter present in `data/app.so` |
+| Android dev debug build | **Tested** | `app-dev-debug.apk`, 243,895,929 bytes |
+| Secret scan — tree, git history, built artefacts | **Tested** | clean |
+| Schema / migrations / server | **Unchanged** | nothing under `supabase/` or `lib/data/local/` touched |
+| Real-device and real-executable acceptance of drill-down | **Not tested** | Slice 10 |
+
+### The six positive controls
+
+| Control | Result |
+|---|---|
+| the clicked period rebuilt from the device's "today" instead of passed | **13 RED** (incl. the guard) |
+| a display name ("Restaurant") where the category id belongs | **7 RED** |
+| the destination's viewer and authority checks removed | **2 RED** (12, 22). 21 and 23 stayed green because the Slice 7 cache adapter refuses independently (D-285) |
+| the ledger's `RevenueActions` composed onto the report detail | **3 RED** (27 and two guard rules) |
+| the D-239 re-fetch removed from the Windows pane | **1 RED** (29) |
+| a second document query planted in the adapter | **2 RED** (guard) |
+
+### Flagged for the project lead
+
+**A hand-off to the P&L replaces the P&L's current selection** with the Custom range it was
+opened for (D-283). The presets do not change, and the P&L does not follow the dashboard
+afterwards. Keeping the previous selection would need a transient second P&L selection, which is
+a decision.
+
+### Carried forward, unchanged
+
+* Real-executable and physical-device acceptance of the dashboard and drill-down, in Slice 10
+  (D-230, checklist §R.2).
+* Phase 8: the `may_read_expense` per-row reporting cost and the `org_id`-leading local expense
+  index (D-223).
+* The production 50:50 ownership start date remains a project-lead decision.
+
+## Next exact task
+
+**Phase 6 Slice 10 — full acceptance. Not started, and not started automatically.**

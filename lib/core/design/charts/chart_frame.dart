@@ -6,7 +6,7 @@
 /// differently — the rule D-232 settled for the P&L surfaces, applied to charts.
 library;
 
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:krishna_mis/core/design/charts/chart_theme.dart';
 import 'package:krishna_mis/core/design/charts/chart_values.dart';
 import 'package:krishna_mis/core/design/tokens/app_tokens.dart';
@@ -22,6 +22,7 @@ class ChartFrame extends StatelessWidget {
     this.series = const [],
     this.readout,
     this.footnote,
+    this.action,
   });
 
   final String title;
@@ -40,14 +41,36 @@ class ChartFrame extends StatelessWidget {
   /// A note under the plot — a gap count, a partial-bucket caveat.
   final String? footnote;
 
+  /// A control under the chart that opens the selected point, when a surface can open one
+  /// (Phase 6 Slice 9). Kept outside the plot's excluded semantics, so it is announced and
+  /// reachable like any other button.
+  final Widget? action;
+
   final Widget child;
 
   /// The node carrying [semanticsLabel]. Keyed so a surface or a test can assert the
   /// description a chart actually publishes, rather than the nearest Semantics above it.
   static const Key semanticsKey = Key('chart-semantics');
 
+  /// The key of [ChartOpenAction], for a surface or a test.
+  static const Key openKey = Key('chart-open');
+
   @override
-  Widget build(BuildContext context) => Semantics(
+  Widget build(BuildContext context) {
+    final framed = _framed();
+    final open = action;
+    if (open == null) return framed;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        framed,
+        Align(alignment: Alignment.centerRight, child: open),
+      ],
+    );
+  }
+
+  Widget _framed() => Semantics(
     key: semanticsKey,
     label: semanticsLabel,
     container: true,
@@ -100,6 +123,26 @@ class ChartFrame extends StatelessWidget {
       ),
     ),
   );
+}
+
+/// Opens the point a reader has selected. Offered only for a point that has a figure: a
+/// gap has nothing beneath it to open (D-263).
+class ChartOpenAction extends StatelessWidget {
+  const ChartOpenAction({required this.point, required this.onOpen, super.key});
+
+  final ChartPoint? point;
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) => switch (point) {
+    ChartPlotted(:final label) => TextButton.icon(
+      key: ChartFrame.openKey,
+      onPressed: onOpen,
+      icon: const Icon(Icons.open_in_new, size: 16),
+      label: Text('Open $label'),
+    ),
+    _ => const SizedBox.shrink(),
+  };
 }
 
 /// Names each series in words, with its non-colour cue beside it.

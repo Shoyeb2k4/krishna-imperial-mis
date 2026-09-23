@@ -14,6 +14,13 @@
 /// It computes nothing. Every figure is a field of a line the providers produced, and every
 /// total shown under children is the parent figure itself, shown only once the domain has
 /// confirmed the children add up to it exactly.
+///
+/// ## Opened from the P&L, or from a dashboard figure
+///
+/// The same levels, rows, bodies and refusals serve a drill-down opened from a dashboard or
+/// analytics figure (Phase 6 Slice 9). What differs is only where it returns to — the
+/// [reportLabel] a surface passes — and which synchronisation a Refresh starts, which the
+/// surface supplies as `onRefresh`. Nothing about what a level holds is decided twice.
 library;
 
 import 'package:flutter/material.dart';
@@ -48,15 +55,21 @@ const pnlDocumentChangedText =
 /// Shown when the server withholds a document.
 const pnlDocumentNotAvailableText = 'Not available to you.';
 
+/// Where a drill-down opened from the P&L returns to.
+const pnlReportLabel = 'Profit & Loss';
+
 /// A level's refusal, in words.
-PnlStateMessage pnlDrillMessage(PnlDrillRefusal reason) => switch (reason) {
-  PnlDrillRefusal.reportChanged => const PnlStateMessage(
-    key: Key('pnl-drill-report-changed'),
+PnlStateMessage pnlDrillMessage(
+  PnlDrillRefusal reason, {
+  String reportLabel = pnlReportLabel,
+}) => switch (reason) {
+  PnlDrillRefusal.reportChanged => PnlStateMessage(
+    key: const Key('pnl-drill-report-changed'),
     icon: Icons.undo,
     title: 'This report changed',
     message:
         'The person, property or period changed since this level was opened. Return to '
-        'Profit & Loss.',
+        '$reportLabel.',
   ),
   PnlDrillRefusal.notAuthorised => const PnlStateMessage(
     key: Key('pnl-drill-not-authorised'),
@@ -84,14 +97,15 @@ PnlStateMessage pnlDrillMessage(PnlDrillRefusal reason) => switch (reason) {
 
 /// A document's refusal, in words.
 PnlStateMessage pnlDocumentMessage(
-  PnlDocumentRefusal reason,
-) => switch (reason) {
-  PnlDocumentRefusal.reportChanged => const PnlStateMessage(
-    key: Key('pnl-document-report-changed'),
+  PnlDocumentRefusal reason, {
+  String reportLabel = pnlReportLabel,
+}) => switch (reason) {
+  PnlDocumentRefusal.reportChanged => PnlStateMessage(
+    key: const Key('pnl-document-report-changed'),
     icon: Icons.undo,
     title: 'This report changed',
     message:
-        'This row is no longer in the report on screen. Return to Profit & Loss.',
+        'This row is no longer in the report on screen. Return to $reportLabel.',
   ),
   PnlDocumentRefusal.notAvailable => const PnlStateMessage(
     key: Key('pnl-document-not-available'),
@@ -124,15 +138,21 @@ final class PnlDrillCrumb {
   final String label;
   final Key key;
 
-  /// The level this crumb opens, or null for the P&L itself.
+  /// The level this crumb opens, or null for the report itself — or for a level that
+  /// cannot be opened on its own.
   final PnlDrillLocation? target;
 }
 
-/// The path to [location], from the P&L. The last crumb is [location] itself.
+/// The path to [location], from the report it was opened from. The last crumb is
+/// [location] itself.
+///
+/// [reportLabel] names that report: the P&L, or the dashboard or analytics section a figure
+/// was opened from (Phase 6 Slice 9).
 List<PnlDrillCrumb> pnlDrillCrumbs(
   PnlDrillLocation location,
-  MasterGraph? graph,
-) {
+  MasterGraph? graph, {
+  String reportLabel = pnlReportLabel,
+}) {
   String dept(String id) =>
       graph?.department(id)?.name ?? 'Department not on this device';
   String section(String id) =>
@@ -140,11 +160,19 @@ List<PnlDrillCrumb> pnlDrillCrumbs(
   String category(String id) =>
       graph?.expenseCategory(id)?.name ?? 'Expense category not on this device';
 
-  const report = PnlDrillCrumb(
-    label: 'Profit & Loss',
-    key: Key('pnl-crumb-report'),
+  final report = PnlDrillCrumb(
+    label: reportLabel,
+    key: const Key('pnl-crumb-report'),
   );
   final anchor = location.anchor;
+  // From a dashboard, Revenue is a level of its own; from the P&L it is the statement.
+  final revenue = PnlDrillCrumb(
+    label: 'Revenue',
+    key: const Key('pnl-crumb-revenue'),
+    target: anchor.origin == PnlDrillOrigin.dashboard
+        ? PnlRevenueCategoriesAt(anchor)
+        : null,
+  );
   final expenses = PnlDrillCrumb(
     label: 'Expenses',
     key: const Key('pnl-crumb-expenses'),
@@ -152,9 +180,17 @@ List<PnlDrillCrumb> pnlDrillCrumbs(
   );
 
   return switch (location) {
+    PnlRevenueCategoriesAt() => [
+      report,
+      PnlDrillCrumb(
+        label: 'Revenue',
+        key: const Key('pnl-crumb-revenue'),
+        target: location,
+      ),
+    ],
     PnlRevenueDocumentsAt(:final revenueCategoryId) => [
       report,
-      const PnlDrillCrumb(label: 'Revenue', key: Key('pnl-crumb-revenue')),
+      revenue,
       PnlDrillCrumb(
         label:
             graph?.revenueCategory(revenueCategoryId)?.name ??
@@ -239,18 +275,21 @@ class PnlDrillBreadcrumb extends ConsumerWidget {
     required this.location,
     required this.onReport,
     required this.onOpen,
+    this.reportLabel = pnlReportLabel,
     super.key,
   });
 
   final PnlDrillLocation location;
   final VoidCallback onReport;
   final ValueChanged<PnlDrillLocation> onOpen;
+  final String reportLabel;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final crumbs = pnlDrillCrumbs(
       location,
       ref.watch(masterGraphProvider).value,
+      reportLabel: reportLabel,
     );
     return Wrap(
       key: const Key('pnl-drill-breadcrumb'),
@@ -297,6 +336,8 @@ class PnlDrillLevelList extends ConsumerWidget {
     this.selected,
     this.compact = true,
     this.padding = EdgeInsets.zero,
+    this.reportLabel = pnlReportLabel,
+    this.onRefresh,
     super.key,
   });
 
@@ -305,6 +346,12 @@ class PnlDrillLevelList extends ConsumerWidget {
   final ValueChanged<PnlDocumentRequest> onSelect;
   final VoidCallback onReportChanged;
   final PnlDocumentRequest? selected;
+
+  /// The report this drill-down returns to.
+  final String reportLabel;
+
+  /// The synchronisation a Refresh starts. The P&L's own when null.
+  final VoidCallback? onRefresh;
 
   /// Amounts beside labels (Windows) or under them (phone).
   final bool compact;
@@ -322,15 +369,43 @@ class PnlDrillLevelList extends ConsumerWidget {
     final List<Widget> children = switch (level) {
       AsyncValue(hasValue: true, value: final PnlDrillRefused refused) => [
         PnlDrillMessageView(
-          message: pnlDrillMessage(refused.reason),
+          message: pnlDrillMessage(refused.reason, reportLabel: reportLabel),
           actionLabel: refused.reason == PnlDrillRefusal.reportChanged
-              ? 'Return to Profit & Loss'
+              ? 'Return to $reportLabel'
               : 'Refresh',
           onAction: refused.reason == PnlDrillRefusal.reportChanged
               ? onReportChanged
               : refused.reason == PnlDrillRefusal.notAuthorised
               ? null
-              : () => ref.read(pnlSyncProvider.notifier).refresh(),
+              : onRefresh ?? () => ref.read(pnlSyncProvider.notifier).refresh(),
+        ),
+      ],
+      AsyncValue(hasValue: true, value: final PnlRevenueLevelView view) => [
+        for (final line in view.children)
+          PnlDrillRow(
+            keyName:
+                'pnl-drill-revenue-category-${line.businessUnitId}-${line.revenueCategoryId}',
+            label:
+                graph?.revenueCategory(line.revenueCategoryId)?.name ??
+                'Revenue category not on this device',
+            detail: consolidated ? unitName(line.businessUnitId) : '',
+            amounts: [line.totals.gross, line.totals.tax, line.totals.net],
+            compact: compact,
+            onTap: () => onOpen(
+              PnlRevenueDocumentsAt(
+                view.location.anchor,
+                businessUnitId: line.businessUnitId,
+                revenueCategoryId: line.revenueCategoryId,
+              ),
+            ),
+          ),
+        const Divider(height: AppSpacing.md, color: AppColors.hairline),
+        PnlDrillRow(
+          keyName: 'pnl-drill-total',
+          label: 'Total',
+          amounts: [view.parent.gross, view.parent.tax, view.parent.net],
+          strong: true,
+          compact: compact,
         ),
       ],
       AsyncValue(hasValue: true, value: final PnlExpenseLevelView view) => [
@@ -704,9 +779,20 @@ class PnlDrillMessageView extends StatelessWidget {
 
 /// The document behind a row, rendered by an immutable body with no action composed in.
 class PnlDocumentDetail extends ConsumerWidget {
-  const PnlDocumentDetail({required this.request, super.key});
+  const PnlDocumentDetail({
+    required this.request,
+    this.reportLabel = pnlReportLabel,
+    this.onRefresh,
+    super.key,
+  });
 
   final PnlDocumentRequest request;
+
+  /// The report this drill-down returns to.
+  final String reportLabel;
+
+  /// The synchronisation "Refresh report" starts. The P&L's own when null.
+  final VoidCallback? onRefresh;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -745,7 +831,10 @@ class PnlDocumentDetail extends ConsumerWidget {
         ListView(
           children: [
             PnlDrillMessageView(
-              message: pnlDocumentMessage(refused.reason),
+              message: pnlDocumentMessage(
+                refused.reason,
+                reportLabel: reportLabel,
+              ),
               actionLabel: switch (refused.reason) {
                 PnlDocumentRefusal.changed => 'Refresh report',
                 PnlDocumentRefusal.notDownloaded => 'Try again',
@@ -753,7 +842,8 @@ class PnlDocumentDetail extends ConsumerWidget {
               },
               onAction: switch (refused.reason) {
                 PnlDocumentRefusal.changed =>
-                  () => ref.read(pnlSyncProvider.notifier).refresh(),
+                  onRefresh ??
+                      () => ref.read(pnlSyncProvider.notifier).refresh(),
                 PnlDocumentRefusal.notDownloaded => () => ref.invalidate(
                   pnlDocumentDetailProvider(request),
                 ),

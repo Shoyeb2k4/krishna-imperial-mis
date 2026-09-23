@@ -9582,3 +9582,162 @@ the corrected fixture's costs had merged into one category and there was no Othe
 assertion was conditional (`if (others != null)`). It is now unconditional, over a fixture with six
 lines, and it names the figure it expects. A test that can pass by finding nothing to check is the
 family D-071 and D-273 record.
+
+---
+
+# Phase 6 Slice 9 — Drill-down Integration (2026-09-23)
+
+## D-280 (closed) — The Overview fixture now describes rows the server can hold
+**Date:** 2026-09-23 · **Status:** Implemented / Tested (project-lead instruction) — the entry
+above stands as written, because this log is append-only.
+
+The project lead ruled that the impossible fixture must not stay in the canonical Overview
+harness. `test/features/dashboard_overview_test.dart` now uses the analytics fixture's valid
+composite hierarchy:
+
+* the kitchen department has its own section, `$ccr-kitchen-section`;
+* four categories live under that section: Cylinder & Coal, Milk & Dahi, Paneer / Dairy and
+  Vegetables & Fruits;
+* `_cost` takes the section, so every kitchen cost names the kitchen's own section and category.
+
+**Test data only.** No production or domain code changed.
+
+**Totals are preserved.** Test 18 keeps the same four costs, on the same dates, for the same
+₹10,000.00 in total. They are now spread over four kitchen categories instead of piled onto one
+invalid Water row. Test 19's ₹7,500.00 moves from kitchen/Water to kitchen/Cylinder & Coal.
+
+**Test 18 is now unconditional.** Its comment said "five ranked lines plus a remainder", but its
+four costs had merged into one line. It now asserts five lines and a non-null Others. That is
+D-280's own weak-assertion finding, closed where it started.
+
+The Overview and dashboard-guard suites were re-run green (72).
+
+## D-281 — The project lead's Slice 9 rulings on the Slice 8 flags
+**Date:** 2026-09-23 · **Status:** Accepted (project-lead decision)
+
+1. **Shared Phase 6 period: approved.** Four surfaces share one period selection
+   (`dashboardSelectionProvider`): the Windows Overview, Revenue Analysis, Expense & Department
+   Analysis and Business Comparison. The selection is keyed on the authority (D-267), so it
+   never crosses principals and never survives a revoked scope.
+   **The Profit & Loss stays independent.** It keeps its whole-month, whole-financial-year and
+   Custom semantics (D-225, D-252).
+2. **No displayed percentage share per category in Phase 6 V1.** Each category keeps its exact
+   INR value, exact label and proportional fill (D-278).
+3. **No per-category previous-period comparison in Phase 6.** It would be a future analytics
+   extension needing explicit domain scope, and is never to be built in widgets or navigation
+   code.
+
+## D-282 — A dashboard figure opens the Phase 5 drill-down through a second anchor origin
+**Date:** 2026-09-23 · **Status:** Implemented / Tested — Phase 6 Slice 9
+
+**The coupling found in the real code.** The Slice 10 drill-down belongs to the report on the P&L
+screen: `pnlDrillLevelProvider` refuses any anchor that is not
+`PnlDrillAnchor.of(pnlViewProvider)`. A dashboard figure over Month to date, or over one trend
+bucket, is not that report. Reusing the engine unchanged would have meant writing the
+dashboard's range into the P&L's selection before every drill-down. That is a P&L state rewrite,
+which the brief said to stop before.
+
+**Decision.** `PnlDrillAnchor` gains an `origin`:
+
+* `pnl` is the default, so every Phase 5 call site is unchanged;
+* `dashboard` anchors carry their own viewer, scope and resolved range.
+
+For a dashboard anchor, the level provider works in this order:
+
+1. It refuses a different person (`reportChanged`, D-074).
+2. It decides the D2 intersection again for the person signed in now, including unscoped
+   consolidation. This happens **before any read**.
+3. Only then does it read the report through `pnlDashboardDrillReportProvider`. That provider
+   makes the P&L screen's own engine call (`reportForUnit` / `report` over a
+   `CustomRangePeriod`) inside one canonical-cache span.
+
+From there, every level, reconciliation, document row, document fetch and refusal is the
+unchanged Phase 5 code.
+
+**Why the destination reads rather than reusing the dashboard's figures.** `DashboardView` keeps
+no per-bucket results. The brief also forbids treating prepared totals as query truth. The intent
+therefore carries ids and a range, never a figure, and the destination is authoritative for what
+a level holds.
+
+**One level is added, for this origin only.** On the P&L, the revenue categories are the
+statement's own lines. A dashboard's Net Sales has no such lines beneath it, so a dashboard opens
+`PnlRevenueCategoriesAt` as its revenue level.
+
+* Its parent is `PnlDrilldown.revenueOf(result)`.
+* It reconciles gross, GST and net exactly, using the existing `revenueChildrenReconcile`.
+* For dashboard anchors only, `PnlRevenueDocumentsAt.parent` and the Revenue crumb point at this
+  level.
+* On the P&L, both behave exactly as before.
+
+**The shared view gains labels, not logic.** The breadcrumb, level list, document detail and
+mobile pages take two new parameters:
+
+* a `reportLabel`, naming where Back returns to (for example, "Back to Revenue Analysis");
+* an `onRefresh`, so a refresh runs the dashboard's own synchronisation rather than the P&L's.
+
+The defaults reproduce Phase 5 exactly. The mobile pages still return to the P&L when its
+selection changes, but only for P&L-origin drill-downs; a dashboard drill-down carries its own
+range.
+
+## D-283 — A hand-off to the P&L is an explicit Custom period, through the P&L's own contract
+**Date:** 2026-09-23 · **Status:** Implemented / Tested — **one consequence flagged**
+
+Some figures have no transactions of their own:
+
+* Operating Profit
+* Operating Margin
+* Gross Sales and GST
+* a profit trend point
+* a property
+
+These open the existing P&L:
+
+1. `selectScope(scope)` and `selectCustom(from, to)` are called with the exact resolved range.
+2. The Analytics section switches to Profit & Loss.
+3. On Windows, a hand-off from the Overview goes to `/analytics`. On Android, the shell switches
+   to the Reports branch.
+
+No P&L preset, resolver or provider changed, and there is no second P&L state model. The P&L
+does not follow the dashboard afterwards, and This Month is still the whole calendar month
+(proof 33).
+
+**Flagged:** a hand-off replaces whatever the P&L was last showing with the Custom range it was
+opened for. That is what "open the P&L for this period" means under the existing contract. If
+the project lead would rather the P&L keep its previous selection and show the hand-off range
+only temporarily, that needs a second, transient P&L selection, which is a decision for them.
+
+## D-284 — Opening a chart point is a separate act from selecting it
+**Date:** 2026-09-23 · **Status:** Implemented / Tested
+
+The chart layer only reported selection, and selection follows the pointer: a ranked row selects
+on hover. Navigating on selection would send a reader somewhere because the mouse crossed a row.
+Each chart therefore gains `onActivated`:
+
+* **Ranked rows** open on tap. Hover still only selects.
+* **Trend, profit and comparison charts** open on any of:
+  * a tap on a mark;
+  * Enter or Space;
+  * the explicit, keyed **Open ⟨label⟩** action under the plot (`ChartOpenAction`,
+    `ChartFrame.openKey`). It sits outside the plot's excluded semantics, so screen readers
+    announce it.
+* **A gap has no Open action and opens nothing** (D-263).
+
+The chart layer still resolves only an index. What that index means is decided by the surface's
+shared adapter.
+
+## D-285 — Findings while building Slice 9
+**Date:** 2026-09-23 · **Status:** Recorded
+
+**A guard word met a variable name.** The analytics guard forbids the substring `target`,
+meaning targets and budgets. The first wiring named a local variable `targets`, and the guard
+refused it. The variables were renamed (`opens`, `destination`) and the guard was left alone:
+the rule is right, and the name was incidental.
+
+**Control C found two layers, not one.** Removing the destination's viewer and authority checks
+turned proofs 12 and 22 red. Proofs 21 and 23 (capability revocation) stayed green. That is not
+luck: the Slice 7 cache adapter (D-220) independently refuses a reader who lacks authority, so
+the report beneath the drill-down still came back `notAuthorised`. The destination check is the
+first gate, not the only one, and both gates stay.
+
+**The dashboard sync invalidates the drill-down source** (Slice 4 code). The new "no drill-down
+reads" rule therefore forbids *reading or watching* that source, not naming it.

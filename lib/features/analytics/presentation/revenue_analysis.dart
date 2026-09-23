@@ -15,7 +15,7 @@
 /// (D-258). A category that does not reconcile draws no rows at all.
 ///
 /// Not here, deliberately: value-band, supply-subtype, vendor, occupancy, forecast or
-/// target analysis — none is part of the canonical reporting model this reads.
+/// destination analysis — none is part of the canonical reporting model this reads.
 library;
 
 import 'package:flutter/material.dart';
@@ -27,6 +27,7 @@ import 'package:krishna_mis/domain/finance/dashboard_analytics.dart';
 import 'package:krishna_mis/domain/finance/pnl.dart';
 import 'package:krishna_mis/features/analytics/presentation/analytics_presentation.dart';
 import 'package:krishna_mis/features/analytics/presentation/analytics_widgets.dart';
+import 'package:krishna_mis/features/dashboard/presentation/dashboard_drill.dart';
 import 'package:krishna_mis/features/dashboard/presentation/dashboard_presentation.dart';
 import 'package:krishna_mis/features/dashboard/presentation/dashboard_providers.dart';
 import 'package:krishna_mis/features/dashboard/presentation/dashboard_widgets.dart';
@@ -59,6 +60,19 @@ class RevenueAnalysisSection extends ConsumerWidget {
         ? '${dashboardPropertyName(graph, unitId)} · '
         : '';
 
+    // What each figure opens, from the one shared adapter (Phase 6 Slice 9).
+    final opens = DashboardDrillTargets.of(ready, ref.watch(principalProvider));
+    void open(DashboardDrillTarget? destination) {
+      if (destination != null) {
+        openDashboardTarget(
+          context,
+          ref,
+          destination,
+          origin: DashboardDrillOrigin.revenueAnalysis,
+        );
+      }
+    }
+
     return Column(
       key: const Key('analytics-revenue'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -76,12 +90,14 @@ class RevenueAnalysisSection extends ConsumerWidget {
                   label: 'Gross Sales',
                   amount: result.grossSales,
                   movement: dashboardMoneyMovement(comparison.grossSales),
+                  onOpen: () => open(opens.pnl()),
                 ),
                 AnalyticsSummaryLine(
                   keyName: 'revenue-gst',
                   label: 'Less GST',
                   amount: result.gst,
                   movement: dashboardMoneyMovement(comparison.gst),
+                  onOpen: () => open(opens.pnl()),
                 ),
                 AnalyticsSummaryLine(
                   keyName: 'revenue-net-sales',
@@ -89,6 +105,7 @@ class RevenueAnalysisSection extends ConsumerWidget {
                   amount: result.netSales,
                   movement: dashboardMoneyMovement(comparison.netSales),
                   strong: true,
+                  onOpen: () => open(opens.netSales()),
                 ),
               ],
             ),
@@ -103,6 +120,7 @@ class RevenueAnalysisSection extends ConsumerWidget {
                 title: dashboardTrendTitle(trend),
                 periodLabel: period,
                 data: dashboardTrendChartData(trend),
+                onActivated: (i) => open(opens.trendPoint(trend, i)),
               )
             else
               AnalyticsNote(
@@ -119,6 +137,13 @@ class RevenueAnalysisSection extends ConsumerWidget {
               RankedBarChart(
                 title: 'Revenue mix by category',
                 periodLabel: '$period · by Net Sales',
+                onActivated: (i) {
+                  final all = DashboardDrillTargets.ranked(
+                    mix,
+                    opens.revenueCategory,
+                  );
+                  if (i >= 0 && i < all.length) open(all[i]);
+                },
                 data: RankedBarChartData.fromTopN<RevenueCategoryLine>(
                   mix,
                   label: (line) =>
