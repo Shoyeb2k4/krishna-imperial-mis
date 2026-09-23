@@ -453,8 +453,17 @@ void main() {
   /// dashboard's presentation, so a surface that draws one belongs to the dashboard
   /// feature, and a transaction ledger or a master screen that started plotting money
   /// would still be caught.
-  test('only the dashboard surfaces draw charts', () {
-    const permitted = ['lib/features/dashboard/'];
+  //
+  // Slice 8 narrows it once more, to the one other surface D-260 approved: the Windows
+  // Analytics workspace, which draws the same charts over the same prepared view (D-277).
+  // Only its three analysis sections may draw; the workspace page and its state may not.
+  test('only the dashboard and analytics surfaces draw charts', () {
+    const permitted = [
+      'lib/features/dashboard/',
+      'lib/features/analytics/presentation/revenue_analysis.dart',
+      'lib/features/analytics/presentation/expense_analysis.dart',
+      'lib/features/analytics/presentation/business_comparison.dart',
+    ];
     final wired = <String>[];
     for (final file in Directory(
       'lib',
@@ -470,9 +479,9 @@ void main() {
       wired,
       isEmpty,
       reason:
-          'the chart layer is the dashboard presentation. A surface outside '
-          'lib/features/dashboard/ that draws one is a second analytics surface nobody '
-          'approved (D-257, D-260)',
+          'the chart layer is the dashboard presentation. A surface outside the '
+          'dashboard and the three analytics sections that draws one is a second '
+          'analytics surface nobody approved (D-257, D-260, D-277)',
     );
   });
 
@@ -488,6 +497,18 @@ void main() {
               f.readAsStringSync().contains('core/design/charts/'),
         );
     expect(drawing, isNotEmpty);
+    // And each permitted analytics section really does draw one.
+    for (final path in const [
+      'lib/features/analytics/presentation/revenue_analysis.dart',
+      'lib/features/analytics/presentation/expense_analysis.dart',
+      'lib/features/analytics/presentation/business_comparison.dart',
+    ]) {
+      expect(
+        File(path).readAsStringSync(),
+        contains('core/design/charts/'),
+        reason: '$path is permitted to draw a chart and no longer does',
+      );
+    }
   });
 
   // ── the guards fail when they should ────────────────────────────────────

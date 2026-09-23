@@ -138,7 +138,11 @@ void main() {
 
       await tester.tap(find.text('Analytics').first);
       await tester.pumpAndSettle();
-      expect(find.textContaining('Profit & Loss'), findsOneWidget);
+      // The Analytics workspace opens on its Profit & Loss section (Phase 6 Slice 8): the
+      // P&L page itself, and the section selector naming it.
+      expect(find.byKey(const Key('pnl-page')), findsOneWidget);
+      expect(find.byKey(const Key('analytics-sections')), findsOneWidget);
+      expect(find.textContaining('Profit & Loss'), findsNWidgets(2));
     });
 
     testWidgets('is not the phone UI stretched', (tester) async {

@@ -5,12 +5,17 @@ Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
-Last updated: **2026-09-23** — **PHASE 6 SLICE 7 — ANDROID HOME DASHBOARD: COMPLETE**, with
-one real layout defect found by rendering at a raised font scale (D-276) and the Slice 6
-surface guard widened to cover every surface (D-275). Slices 1–7 of Phase 6 are done; Slice 8
-(Windows Analytics sections) is not started. **A physical Android device pass for the Home
-dashboard is PENDING** and belongs to the Phase 6 acceptance slice (D-230, checklist §R.2).
-See *Phase 6 Slice 7* at the end of this file.
+Last updated: **2026-09-23** — **PHASE 6 SLICE 8 — WINDOWS ANALYTICS SECTIONS: COMPLETE**. The
+desktop Analytics destination is a workspace: the existing Profit & Loss, embedded unchanged,
+beside Revenue Analysis, Expense & Department Analysis and Business Comparison, all three over
+the dashboard's one prepared view (D-277 … D-280). Slices 1–8 of Phase 6 are done; Slice 9
+(drill-down integration) is not started. **Three points are flagged for the project lead**
+(shared period selection; no category share; no per-category comparison). **The physical
+Android Home pass remains PENDING** for Slice 10 (D-230, checklist §R.2). See *Phase 6 Slice 8*
+at the end of this file.
+
+Previously: **2026-09-23** — **PHASE 6 SLICE 7 — ANDROID HOME DASHBOARD: COMPLETE**, with one
+real layout defect found by rendering at a raised font scale (D-276).
 
 Previously: **2026-09-22** — **PHASE 6 SLICE 6 — WINDOWS OVERVIEW DASHBOARD: COMPLETE**,
 with D-269 resolved by the project lead in favour of the composed ranked lists.
@@ -5533,7 +5538,7 @@ reporting cache is created, and authorization stays `PnlAuthority`.
 | 5 | Chart foundation (`fl_chart`, pinned, with a no-arithmetic guard) | **COMPLETE** |
 | 6 | Windows Overview dashboard | **COMPLETE** |
 | 7 | Android Home dashboard | **COMPLETE** |
-| 8 | Windows Analytics sections | not started |
+| 8 | Windows Analytics sections | **COMPLETE** |
 | 9 | Drill-down integration | not started |
 | 10 | Full acceptance | not started |
 | 11 | Closure | not started |
@@ -6126,5 +6131,104 @@ page instead.
 
 ## Next exact task
 
-**Phase 6 Slice 8 — Windows Analytics sections. Not started, and not started
-automatically**: Slice 7's evidence is reported above and awaits the project lead.
+*Superseded — Slice 8 is complete. The current record is* **Phase 6 Slice 8** *below.*
+
+---
+
+## Phase 6 Slice 8 — Windows Analytics sections: **COMPLETE** (2026-09-23)
+
+Starting HEAD `e9435bd`. Decisions **D-277 … D-280**; `ARCHITECTURE.md` §47. **No schema
+change, no migration, no Supabase or server change, no new dependency.** Local Drift schema
+stays **v21**; the migration ledger stays at **101** versions.
+
+### What shipped
+
+The desktop **Analytics** destination is now a workspace with four sections behind one
+segmented selector (the Transactions pattern, D-120):
+
+| Section | What it is | Period model |
+|---|---|---|
+| Profit & Loss | the existing Phase 5 `ProfitAndLossPage`, embedded once, unchanged | P&L presets (whole month / whole FY, D-225) |
+| Revenue Analysis | ruled Gross / GST / Net summary with comparisons; Net Sales trend at the planner's grain; revenue mix as composed ranked rows | dashboard, to date (D-251, D-252) |
+| Expense & Department Analysis | ruled Operating Expenses with comparison; **monthly** expense trend or a statement of why there is none; top categories with the domain's exact Others; department spending | dashboard, to date |
+| Business Comparison | ruled table per property and combined — Net Sales, Expenses, Operating Profit / Loss (in words), Margin — in id order, neutral ink; grouped chart secondary; consolidated scope only | dashboard, to date |
+
+| File | |
+|---|---|
+| `lib/features/analytics/presentation/analytics_page.dart` | the page, the selector and the workspace; the one `dashboardPresentation` check |
+| `analytics_navigation.dart` | `AnalyticsSection` with its `periodModel`; the section provider keyed on authority; `AnalyticsDrillIntent` for Slice 9 |
+| `analytics_presentation.dart` · `analytics_widgets.dart` | the sections' own wording; the ruled summary |
+| `revenue_analysis.dart` · `expense_analysis.dart` · `business_comparison.dart` | the three sections — they arrange, and compute nothing |
+| `lib/features/dashboard/presentation/dashboard_widgets.dart` | the Overview's building blocks, moved so both surfaces use one copy (D-279) |
+
+### Verified
+
+| Item | Status | Evidence |
+|---|---|---|
+| `dart format --set-exit-if-changed lib test integration_test tool` | **Tested** | clean, 356 files, 0 changed |
+| `flutter analyze` | **Tested** | **No issues found** |
+| Host suite | **Tested** | **2,554 passed** (2,486 + 38 workspace + 29 analytics guard + 1 dashboard guard) |
+| Analytics workspace, real provider chain | **Tested** | 38 tests — the brief's 1 … 38, at 1366×768, 1024×700 and 1920×1080 |
+| Analytics surface guard | **Tested** | 29 tests (39 … 44 and the section rules), 12 of them planted-violation self-checks |
+| Overview after the building-block move | **Tested** | its widget suite passes unchanged |
+| Positive controls | **Tested** | **7 sabotages, each seen RED**, each restored by byte copy and `cmp` |
+| Windows release build | **Tested** | `flutter build windows --release` with `config/dev.json`; the section names and `analytics-workspace` present in `data/app.so` |
+| Secret scan — tree, git history, built artefacts | **Tested** | clean |
+| Schema / migrations / server | **Unchanged** | nothing under `supabase/` or `lib/data/local/` touched |
+| Real `krishna_mis.exe` acceptance of the workspace | **Not tested** | no device phase for Analytics yet; belongs to the Phase 6 acceptance slice (Slice 10) |
+| Physical Android device (Home dashboard) | **Not tested** | still PENDING for Slice 10 (D-230, §R.2) — not affected by this Windows slice |
+
+### The seven positive controls, each seen RED and restored byte-identically
+
+| Control | Result |
+|---|---|
+| Net Sales calculated in the Revenue widget (`grossSales - gst`) | **2 RED** — the guard's arithmetic and canonical-sum rules |
+| Business Comparison allowed in a single-property scope | **1 RED** — test 26 |
+| a daily Expense trend | **2 RED** — the guard and test 20/21 |
+| Others recomputed in the presentation | **2 RED** — the guard's arithmetic and Top-N rules |
+| an unavailable previous period shown as ₹0 | **1 RED** — test 18 |
+| "winner" wording on the comparison | **2 RED** — the guard and test 30 |
+| a chart imported by the workspace page (not a permitted section) | **1 RED** — the narrowed chart guard |
+
+### What building it found (D-279, D-280)
+
+**A fixture described a row the database cannot hold.** The Overview suite books a Water cost
+to a kitchen department Water does not live under — impossible on the server (D-040). The
+embedded P&L keys category rows on that guarantee, so the impossible row produced *Duplicate
+keys found*. The product is right; the analytics fixture now gives the kitchen its own section
+and categories. The Overview fixture is left alone (D-127).
+
+**A test that could pass by finding nothing.** The first "exact Others" assertion was
+conditional and the fixture had no Others to check. It is now unconditional over six lines.
+
+**Three guards narrowed deliberately, not bypassed:** the dashboard guard's scope-options rule
+follows the scope bar into the shared file; the chart-layer guard admits the three analytics
+section files (and only those) with a complement that each really draws; the P&L guard and the
+routing smoke tests now expect the Analytics branch to be the workspace, with the P&L inside it.
+The guard token lists moved to `test/support/surface_guard_tokens.dart` so the dashboard and
+analytics guards enforce one set of rules.
+
+### Flagged for the project lead (D-277, D-278)
+
+1. **The Overview and the analysis sections share one period selection.** Choosing a period in
+   Revenue Analysis also changes the Overview. That is what "no second read of a still-valid
+   result" costs. A separate workspace period is possible and is a decision.
+2. **No percentage share per category.** No prepared share exists, and rounded per-line shares
+   would not add to 100.00% on screen (the D-264 problem). The rows show exact rupees and
+   proportion as geometry.
+3. **No per-category period comparison.** Not prepared by the domain; it would be new domain
+   arithmetic.
+
+### Carried forward, unchanged
+
+* **A physical Android device pass** for the Home dashboard, in Slice 10 (D-230). Not marked
+  complete.
+* Real-executable acceptance of the Analytics workspace, in Slice 10.
+* Phase 8: the `may_read_expense` per-row reporting cost and the `org_id`-leading local expense
+  index (D-223).
+* The production 50:50 ownership start date remains a project-lead decision.
+
+## Next exact task
+
+**Phase 6 Slice 9 — drill-down integration. Not started, and not started automatically**:
+Slice 8's evidence is reported above and awaits the project lead.

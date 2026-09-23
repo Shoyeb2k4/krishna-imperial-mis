@@ -639,9 +639,18 @@ void main() {
       expect(mobile, isNot(contains('ProfitAndLossPage(shellKind')));
 
       final desktop = router.substring(desktopStart);
+      // Since Phase 6 Slice 8 the desktop Analytics branch is the Analytics workspace,
+      // which embeds this same page as its Profit & Loss section — asserted there, in
+      // the analytics surface guard, so the P&L is still the Phase 5 page and not a copy.
       expect(
         desktop,
-        contains('ProfitAndLossPage(shellKind: AppShellKind.desktop)'),
+        contains('AnalyticsPage(shellKind: AppShellKind.desktop)'),
+      );
+      expect(
+        File(
+          'lib/features/analytics/presentation/analytics_page.dart',
+        ).readAsStringSync(),
+        contains('ProfitAndLossPage(shellKind: widget.shellKind)'),
       );
       expect(desktop, isNot(contains('MobileProfitAndLossPage')));
     },

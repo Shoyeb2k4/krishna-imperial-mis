@@ -11,6 +11,7 @@ import 'package:go_router/go_router.dart';
 import 'package:krishna_mis/app/routing/app_routes.dart';
 import 'package:krishna_mis/app/shell/desktop_shell.dart';
 import 'package:krishna_mis/app/shell/mobile_shell.dart';
+import 'package:krishna_mis/features/analytics/presentation/analytics_page.dart';
 import 'package:krishna_mis/features/dashboard/presentation/mobile_home_page.dart';
 import 'package:krishna_mis/features/dashboard/presentation/overview_page.dart';
 import 'package:krishna_mis/features/expenses/presentation/expense_ledger_page.dart';
@@ -19,7 +20,6 @@ import 'package:krishna_mis/features/masters/presentation/masters_page.dart';
 import 'package:krishna_mis/features/owner_settlement/presentation/owner_settlement_page.dart';
 import 'package:krishna_mis/features/placeholder/placeholder_page.dart';
 import 'package:krishna_mis/features/profit_and_loss/presentation/mobile_profit_and_loss_page.dart';
-import 'package:krishna_mis/features/profit_and_loss/presentation/profit_and_loss_page.dart';
 
 enum AppShellKind { mobile, desktop }
 
@@ -96,10 +96,12 @@ abstract final class AppRouter {
           ),
           _branch(
             AppRoutes.analytics,
-            // Profit & Loss, as spec §19 places it under Analytics (Phase 5 Slice 8). The
-            // sidebar shows the destination to holders of reports.view; the page and its
-            // providers decide P&L authority themselves, and refuse if reached otherwise.
-            const ProfitAndLossPage(shellKind: AppShellKind.desktop),
+            // The Analytics workspace, as spec §19 lays it out (Phase 6 Slice 8): the
+            // existing Profit & Loss page embedded unchanged, beside Revenue Analysis,
+            // Expense & Department Analysis and Business Comparison. The sidebar shows the
+            // destination to holders of reports.view; every section decides P&L authority
+            // itself, and refuses if reached otherwise.
+            const AnalyticsPage(shellKind: AppShellKind.desktop),
           ),
           _branch(
             AppRoutes.reports,

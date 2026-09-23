@@ -9451,3 +9451,134 @@ pointed at branch 0 (the navigation test **and** the guard); the freshness line 
 by a fixed sentence (the server-newer test); a movement worded by the page instead of by
 `dashboardMoneyMovement` (the comparison test); and `departmentSpending` rendered on the
 phone (the D-260 guard).
+
+---
+
+# Phase 6 Slice 8 — Windows Analytics Sections (2026-09-23)
+
+## D-277 — The Analytics workspace: the P&L embedded, three sections over one prepared view
+**Date:** 2026-09-23 · **Status:** Accepted — **one point flagged for the project lead**
+
+Spec §19 puts four sections under Analytics: Profit & Loss, Revenue Analysis, Expense &
+Department Analysis and Business Comparison. The desktop Analytics branch is now
+`AnalyticsPage`, which puts them behind one segmented selector — the pattern Transactions
+already uses for Expenses and Sales (D-120).
+
+**The Profit & Loss is not rebuilt.** It is `ProfitAndLossPage`, embedded exactly once and
+unchanged, with its own presets, selection, drill-down and synchronisation. A guard asserts it
+appears once, that no analytics file names the P&L's calculator or state, and that the router's
+Analytics branch is the workspace rather than the bare page.
+
+**Two period models, stated in the navigation state.** `AnalyticsSection.periodModel` is
+`pnlPresets` for the P&L — whole months and whole financial years (D-225) — and
+`dashboardToDate` for the three analysis sections (D-251, D-252). The workspace says so in a
+caption above its controls, so the two calendars are never confused and neither is quietly
+changed to match the other.
+
+**The three analysis sections share the dashboard's selection and its one prepared view.** They
+read `dashboardViewProvider`, go through `dashboardPresentation` once, and are handed the ready
+view; moving between them reads nothing again, which a test asserts by object identity and by the
+transport's request count. Authority is Slice 4's, unchanged: the state is stamped with the
+authority that assembled it (D-267), so a different person, or the same person with a moved
+capability, never sees the previous analysis.
+
+**Flagged:** sharing the dashboard's selection means the Overview and the three analysis sections
+move together — choosing *Financial year to date* in Revenue Analysis also sets the Overview to
+it. That is what "no second read of a result that is still valid" costs, and it treats the
+dashboard period as one choice across the Phase 6 surfaces. If the project lead would rather the
+workspace keep its own period, that is a provider family and a second synchronisation target, and
+a decision.
+
+**Two further mechanics.** The section choice is keyed on the authority, so a new authority opens
+on the Profit & Loss rather than wherever the previous one left off; and the analysis workspace is
+built the first time an analysis section is opened, so a reader who only looks at the P&L starts no
+dashboard synchronisation. Both halves stay mounted in an `IndexedStack` after that, so a P&L the
+reader was drilling into is still there when they come back.
+
+**Drill-down stays Slice 9's.** What Slice 8 fixes is what a row *means*: `AnalyticsDrillIntent`
+values built from the prepared lines in the domain's order, with the exact Others remainder mapping
+to none. Nothing navigates, no detail screen is invented, and no drill-down query is duplicated.
+
+## D-278 — What each analysis section shows, and what it deliberately does not
+**Date:** 2026-09-23 · **Status:** Accepted — **two omissions flagged for the project lead**
+
+**Revenue Analysis.** A ruled summary — Gross Sales, less GST, Net Sales, each against the
+comparable stretch — the Net Sales trend at the planner's grain (D-255, D-263), and the revenue mix
+by category as D-269's composed ranked rows. The three sums are the canonical result's own, so
+Gross = GST + Net by construction; GST is never derived from Gross on screen. Where the planner
+offers no trend (Today so far), the section says why instead of drawing an empty plot.
+
+**Expense & Department Analysis.** Operating Expenses against the comparable stretch, the
+**monthly** expense trend where the period offers one, the top expense categories (Top 5 + Others)
+and department spending. A daily or weekly expense series is never requested — accrual dating makes
+it describe when a bill was dated rather than what was spent — and where a period has fewer than two
+months the section states that there is one monthly point and no trend.
+
+**Business Comparison.** A ruled table — Net Sales, Operating Expenses, Operating Profit / Loss and
+Operating Margin — for each property and for both together, every cell a field of the per-property
+`PnlResult` `PropertyComparison` computed through `Pnl.compute` (D-270). Properties are in the
+domain's id order and a note says so; every figure is in neutral ink, and an operating result
+carries the word *Profit*, *Loss* or *Break-even* beside it (spec §20). The grouped chart is
+secondary: the exact figures are visible in the table without hovering anything. It is shown only
+for a consolidated scope. A reader without consolidated authority gets an explicit unavailable
+state that names no property; a reader who has chosen one property is offered *Compare both
+properties*.
+
+**Not built, and why — flagged rather than decided.**
+
+* **No percentage share.** No prepared share exists, and a share computed and rounded per line
+  would not add up to 100.00% on screen — the problem D-264 settled for margins, met again. The
+  ranked rows state each category's exact contribution and show its proportion as geometry. A share
+  figure is a new domain rule and a decision.
+* **No per-category period comparison.** `PnlComparison` compares headline figures; nothing
+  compares one category with itself across two periods. Building it is new domain arithmetic, not
+  presentation.
+
+Out of scope, as the brief directed: value-band, supply-subtype, vendor, occupancy, forecast,
+target and budget analysis. A guard asserts no section names them.
+
+## D-279 — One set of Windows building blocks, and one set of guard rules
+**Date:** 2026-09-23 · **Status:** Accepted
+
+The Overview's scope bar, period bar, refresh control, headline metrics, panels, grid and state
+messages were private to `overview_page.dart`. The Analytics workspace needs the same controls over
+the same providers, so they moved into `dashboard_widgets.dart` rather than being copied — the drift
+D-119, D-131 and D-232 each record. Every key is the one Slice 6 shipped, and the Overview's widget
+suite passes unchanged over the moved code.
+
+**One dashboard guard rule narrowed, deliberately.** Slice 6 asserted that the Overview file itself
+reads `pnlScopeOptionsShownTo(`. The scope bar now lives in the shared file, so the rule is: the
+shared file reads the options, the Overview uses the shared bar and reads no options itself, and the
+Android Home still reads its own. The calculation and navigation rules are extended to the shared
+file. D-237's move — narrowed, not bypassed.
+
+**The guard token lists are shared too.** The dashboard guard's lists — calculation, navigation,
+mutation, Owner Accounts, export, storage — moved into `test/support/surface_guard_tokens.dart`, and
+the new analytics guard enforces those same lists rather than a copy that could drift.
+
+**And the chart-layer guard is narrowed a second time.** Slice 6 permitted charts only under
+`lib/features/dashboard/`. The three analytics section files — and only those, not the workspace
+page or its state — are now permitted too, and the complement asserts each of them really draws
+one. Planting a chart import in the workspace page turns the rule red.
+
+## D-280 — A fixture that described a row the database cannot hold
+**Date:** 2026-09-23 · **Status:** Recorded
+
+The Overview suite books a *Water* cost to a *kitchen* department — but Water lives under the
+ordinary section, not the kitchen. The server's composite hierarchy keys make that row impossible
+(D-040), so the reporting cache can never receive it. The Overview never noticed, because it keys
+nothing on the hierarchy. The Analytics workspace mounts the Phase 5 P&L beside it, and the P&L keys
+its category rows on the guarantee D-040 provides: the impossible row gave two rows one key, and
+Flutter reported *Duplicate keys found*.
+
+The product is right and the fixture was wrong. The analytics suite gives the kitchen its own
+section and four categories that really live under it. The Overview suite is left as it is: it is
+harmless there, and changing an accepted slice's fixture to satisfy a different slice's surface
+would be the wrong way round (D-127). Recorded because the symptom looks like a P&L defect and is
+not one.
+
+Found with it: the first version of the "exact Others" test passed while asserting nothing, because
+the corrected fixture's costs had merged into one category and there was no Others to check. The
+assertion was conditional (`if (others != null)`). It is now unconditional, over a fixture with six
+lines, and it names the figure it expects. A test that can pass by finding nothing to check is the
+family D-071 and D-273 record.

@@ -9,7 +9,7 @@ Status: **Sections 1–12 proposed (Phase 0, revised); sections 13–16 and 18�
 is built and verified; section 17 is the Phase 4 *plan*, since built — read §18–§26 for what
 shipped.** Sections 6, 5.3 and 8 carry the project lead's mandated corrections.
 Implementation status is tracked in `PROJECT_STATUS.md`.
-Last updated: 2026-09-23 — the Android Home dashboard (section 46); 2026-09-22 — the Windows Overview (section 45); 2026-09-17 — Phase 6 dashboard periods and comparison rules (section 41); Slice 11's corrections and the Slice 12 closure architecture (section 40); 2026-09-13 — the Android P&L surface (section 38); the Windows P&L surface (section 37); Slice 7 reporting security closure (section 36); 2026-09-11 — the Owner Settlement surface and its security boundary (section 35); the Owner Settlement Engine (section 34); the Owner Ledger (section 33), with the V1 ownership vector in §33.3; Phase 5 Slice 6 corrective (section 32); Slice 5 in section 31; Slices 1-4 in sections 27-30
+Last updated: 2026-09-23 — the Windows Analytics workspace (section 47); the Android Home dashboard (section 46); 2026-09-22 — the Windows Overview (section 45); 2026-09-17 — Phase 6 dashboard periods and comparison rules (section 41); Slice 11's corrections and the Slice 12 closure architecture (section 40); 2026-09-13 — the Android P&L surface (section 38); the Windows P&L surface (section 37); Slice 7 reporting security closure (section 36); 2026-09-11 — the Owner Settlement surface and its security boundary (section 35); the Owner Settlement Engine (section 34); the Owner Ledger (section 33), with the V1 ownership vector in §33.3; Phase 5 Slice 6 corrective (section 32); Slice 5 in section 31; Slices 1-4 in sections 27-30
 
 ---
 
@@ -4077,3 +4077,55 @@ migration ledger stays at **101** versions.
 * **The one navigation.** *See full P&L* switches the shell to
   `AppRouter.mobileReportsBranch`, a named constant a guard checks against the router's
   own branch order. Drill-down from a dashboard figure is Slice 9's.
+
+## 47. The Windows Analytics workspace — Phase 6 Slice 8
+
+Decisions **D-277 … D-280**. **No schema change, no migration, no Supabase or server change,
+no new dependency.** Local Drift schema stays **v21**; the migration ledger stays at **101**
+versions.
+
+```
+        Analytics branch (desktop router)  ──►  AnalyticsPage
+              │
+        SegmentedButton  ── analyticsSectionProvider (keyed on PnlAuthority.readKey)
+              │
+        IndexedStack
+          ├─ ProfitAndLossPage              the Phase 5 page, unchanged   periodModel: pnlPresets
+          └─ AnalyticsWorkspace             built on first open           periodModel: dashboardToDate
+                │
+                dashboardViewProvider ──► dashboardPresentation (once) ──► DashboardReady
+                │
+                ├─ RevenueAnalysisSection          ┐
+                ├─ ExpenseAnalysisSection          ├ handed the ready view; arrange only
+                └─ BusinessComparisonSection       ┘
+```
+
+* **One prepared view.** The three analysis sections share the dashboard's selection, its one
+  `DashboardEngine.build` and its authority-stamped state (D-267). Switching sections reads
+  nothing again. The Overview shares the same selection, so the two move together (D-277,
+  flagged).
+* **The P&L is embedded, not rebuilt.** One `ProfitAndLossPage`, with its own whole-month and
+  whole-year presets, drill-down and synchronisation. The section's `periodModel` states the
+  difference.
+* **Arrange only.** Every figure is a field of the canonical `PnlResult`, a `PnlComparison`
+  movement, a `DashboardTrends` series, a `TopN` grouping or a `PropertyComparison` split. The
+  analytics guard asserts it with the dashboard guard's own token lists, shared through
+  `test/support/surface_guard_tokens.dart` (D-279).
+* **Revenue:** ruled Gross / GST / Net summary, the Net Sales trend at the planner's grain, and the
+  revenue mix as composed ranked rows (D-269).
+* **Expenses:** ruled Operating Expenses, the **monthly** expense trend or a statement of why
+  there is none, top categories with the domain's exact Others, and department spending.
+* **Business Comparison:** a ruled table per property and combined, in id order, in neutral ink,
+  with *Profit* / *Loss* / *Break-even* in words; a grouped chart secondary to it. Only for a
+  consolidated scope; otherwise an explicit unavailable state (D-278).
+* **Refusals are the dashboard's own.** Not authorised, a disagreeing period, not downloaded and
+  one side unavailable are each stated, never ₹0. A failed refresh keeps the analysis on screen and
+  reports beside it. A set that does not reconcile draws no rows at all.
+* **Shared Windows building blocks.** The scope bar, period bar, refresh control, metrics, panels,
+  grid and state messages live in `dashboard_widgets.dart`, used by both the Overview and the
+  workspace, with the keys Slice 6 shipped (D-279).
+* **Drill-down is Slice 9.** Rows carry an `AnalyticsDrillIntent` in the domain's order, Others
+  none; nothing navigates.
+* **Not built:** a percentage share per category and a per-category period comparison — neither is
+  prepared by the domain, and both are flagged (D-278). No value-band, subtype, vendor, occupancy,
+  forecast, target or budget analysis; no export, printing or Owner Accounts.

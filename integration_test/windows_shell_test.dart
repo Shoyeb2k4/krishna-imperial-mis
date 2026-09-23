@@ -142,7 +142,10 @@ void main() {
 
       await tester.tap(find.text('Analytics').first);
       await tester.pumpAndSettle();
-      expect(find.textContaining('Profit & Loss'), findsOneWidget);
+      // The Analytics workspace opens on its Profit & Loss section (Phase 6 Slice 8): the
+      // P&L page and the section selector that names it.
+      expect(find.byKey(const Key('pnl-page')), findsOneWidget);
+      expect(find.textContaining('Profit & Loss'), findsNWidgets(2));
 
       await tester.tap(find.text('Administration').first);
       await tester.pumpAndSettle();
