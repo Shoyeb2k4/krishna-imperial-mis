@@ -6137,7 +6137,7 @@ page instead.
 
 ## Phase 6 Slice 8 — Windows Analytics sections: **COMPLETE** (2026-09-23)
 
-Starting HEAD `e9435bd`. Decisions **D-277 … D-280**; `ARCHITECTURE.md` §47. **No schema
+Starting HEAD `e9435bd`; implementation commit `a813220`. Decisions **D-277 … D-280**; `ARCHITECTURE.md` §47. **No schema
 change, no migration, no Supabase or server change, no new dependency.** Local Drift schema
 stays **v21**; the migration ledger stays at **101** versions.
 
