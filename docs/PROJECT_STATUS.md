@@ -6244,7 +6244,7 @@ analytics guards enforce one set of rules.
 
 ## Phase 6 Slice 9 — Drill-down integration: **COMPLETE** (2026-09-23)
 
-Starting HEAD `abe4392`. Decisions **D-280 (closed) … D-285**; `ARCHITECTURE.md` §48. **No schema
+Starting HEAD `abe4392`; implementation commit `b8eeb1b`. Decisions **D-280 (closed) … D-285**; `ARCHITECTURE.md` §48. **No schema
 change, no migration, no Supabase or server change, no financial-calculation change, no new
 dependency.** Local Drift schema stays **v21**; the migration ledger stays at **101**.
 
