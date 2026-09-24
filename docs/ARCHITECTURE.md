@@ -3634,8 +3634,8 @@ Decisions D-228…D-232. **No schema change, no migration, local Drift schema v2
 * **Layout.** Portrait-first: title and freshness; property in a bottom sheet; relative presets
   in a horizontally scrollable strip; Custom through the calendar picker; the headline card;
   revenue by category (gross, GST, net stacked per line); expense by category; state messages;
-  pull-to-refresh; and bottom clearance for the docked [ + ] action. Amounts scale down rather than
-  overflow. Landscape stays usable and scrollable without a separate design.
+  pull-to-refresh; and bottom clearance for the docked [ + ] action. Amounts are never shrunk:
+  a figure that does not fit beside its label moves to its own line (corrected by D-286). Landscape stays usable and scrollable without a separate design.
 * **Overlays** (the scope sheet and the date picker) open over the root navigator, so no choice
   and no Apply sits behind the bottom bar or the [ + ]. Android back closes either and changes
   nothing.
@@ -4063,9 +4063,10 @@ migration ledger stays at **101** versions.
   authority exists; top expense categories; and *See full P&L*. **Revenue mix, department
   spending and the monthly profit trend stay on the Windows workspace.**
 * **Portrait first.** A single scrolling column at 360, 390 and 430dp and in landscape,
-  with the last item clearing the docked [ + ]. Money is never truncated or wrapped away:
-  a headline figure scales down on its own line, and the Gross/GST pair flows onto a
-  second line rather than overflowing (D-276).
+  with the last item clearing the docked [ + ]. Money is never truncated, shrunk or
+  ellipsised. A headline figure moves to its own line at full size. Only when it is wider
+  than that whole line does it break, and then only between digit groups. The Gross/GST
+  pair flows onto a second line (D-276, corrected by D-286).
 * **Controls.** The property in a bottom sheet, the period in a horizontal chip strip —
   the only sideways scroll on the page — and Custom through the Material calendar with
   typed entry off (D-229, D-250). Both overlays open on the **root** navigator, so
@@ -4183,3 +4184,20 @@ the migration ledger stays at **101** versions.
   * A change of person or authority closes the drill-down on both platforms.
 * **Not built:** a percentage share per category, a per-category period comparison (D-281), a GST
   transaction list, "profit documents", and any Owner Accounts route.
+
+## 49. Money at large text sizes — Phase 6 Slice 10 (D-286)
+
+* **No shrink-to-fit anywhere.** `lib/` holds no `FittedBox`, `BoxFit.scaleDown`,
+  `Transform.scale` or text-scale clamp, and a guard in `test/core/money_shrink_guard_test.dart`
+  keeps it that way.
+* **`FigureReflow`** (`core/design/components/figure_reflow.dart`) is the one primitive for a
+  lead beside a figure. The two share a line while the figure's whole one-line width fits,
+  measured at the reader's text scale. Otherwise the figure takes a full line at full size and
+  the row grows taller. It serves the headline metrics, ranked rows, the chart header, the
+  Windows analysis rows, and the Android P&L and drill-down lines.
+* **The last resort is a break between digit groups.** `MoneyText` offers invisible break
+  opportunities after commas only. A figure wider than a full line of its own therefore breaks
+  as "₹1,66," then "383.00", never inside a group and never after a sign.
+* **Layout tests measure real glyphs.** They load Roboto from the Flutter SDK. Every paragraph
+  showing ₹ must be drawn at scale 1, at the system text scale, whole, and inside the screen
+  (`test/support/money_layout.dart`).

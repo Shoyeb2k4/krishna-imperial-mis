@@ -675,3 +675,82 @@ rather than to Slice 7.
 - [ ] Aeroplane mode: the last complete dashboard stays readable and never becomes ₹0.
 - [ ] *See full P&L* lands on the Reports tab showing the P&L.
 - [ ] Recorded as physical-device acceptance, with the device named.
+
+## S. Dashboard and analytics — full acceptance (Phase 6 Slice 10)
+
+### S.1 Real-app phases against `krishna-mis-dev`
+
+One process launch per phase, run one at a time:
+
+```
+flutter test integration_test/device_acceptance_test.dart -d <target> [--flavor dev] \
+  --dart-define-from-file=config/dev.json \
+  --dart-define-from-file=<scratch>/identities.defines.json \
+  --dart-define=PHASE=<phase>
+```
+
+| Phase | Target | Result |
+|---|---|---|
+| `p6-windows-dashboard` | real `krishna_mis.exe` | **PASS** — rerun after D-286, 2:08 |
+| `p6-windows-authority` | real `krishna_mis.exe` | **PASS**, host steps applied and restored |
+| `p6-android-dashboard` | `Pixel_8` emulator | **PASS** (before D-286; host suites carry the layout evidence) |
+| `p6-android-authority` | `Pixel_8` emulator | **PASS** on the cold-boot run; run 1 stalled with no known cause (D-287) |
+| `p6-android-dashboard` | **Galaxy A06 (SM-A066B)** | **NOT RUN** — the phone is not connected |
+| `p6-android-authority` | **Galaxy A06 (SM-A066B)** | **NOT RUN** — the phone is not connected |
+
+Before a physical run: shut the emulator down, and confirm that `adb devices -l` lists
+**exactly one** target, the A06, with USB debugging authorised.
+
+### S.2 Layout — money never shrinks (D-286)
+
+- [x] `lib/` contains no `FittedBox`, `BoxFit.scaleDown`, `Transform.scale` or text-scale
+      clamp (`test/core/money_shrink_guard_test.dart`).
+- [x] Phone Home, the Android P&L and the drill-down pages at 320, 360 and 411 dp × 1.0,
+      1.6 and 2.0 text: every amount is drawn at scale 1 and at the system text scale, is
+      whole, and stays on screen. The last content clears the docked [ + ].
+- [x] Windows Overview and the analysis sections at 1366×768, a narrower window and
+      1920×1080: every amount is whole, and nothing scrolls sideways.
+- [x] A figure wider than a full line of its own breaks only after a comma between digit
+      groups, at full size (project-lead ruling on D-286).
+
+### S.3 Physical Galaxy A06 — **manual checklist for the project lead**
+
+**NOT TESTED until the project lead reports each line.** Clean dev build, signed in as the
+development Owner unless a line says otherwise.
+
+1. [ ] Home opens to the dashboard with property, period and "synchronised as of" readable.
+2. [ ] Today so far, Week to date, Month to date and Financial year to date each change the
+       figures, and each label says the period is unfinished.
+3. [ ] Custom opens the calendar over the bottom bar and the [ + ]; Android back closes it
+       and leaves the period unchanged.
+4. [ ] The scope sheet switches between one property and both properties; Android back
+       closes it without changing the scope.
+5. [ ] Net Sales, Operating Expenses, Operating Profit/Loss and Margin each show a
+       comparison, or a stated reason where there is none, and never ₹0 in place of a
+       comparison.
+6. [ ] System font size set to the largest: no amount is shrunk, cut off or run off the
+       screen. A figure too wide for its own line breaks only after a comma, like
+       "₹1,66," then "383.00".
+7. [ ] At the largest font, the last item on Home clears the [ + ] button.
+8. [ ] Tapping a Net Sales trend point opens that bucket's revenue categories.
+9. [ ] Tapping a top expense category opens its documents; one document opens read-only,
+       with no Edit or Void.
+10. [ ] Android back goes up one level at a time, and finally returns to Home as it was left.
+11. [ ] Tapping Operating Profit opens the Reports tab with the P&L set to the same dates
+        as a Custom period.
+12. [ ] "See full P&L" opens the Reports tab.
+13. [ ] Property comparison shows both properties and the total, with no word such as
+        "winner", "better" or "best".
+14. [ ] Pull-to-refresh runs a synchronisation and the "synchronised as of" time moves.
+15. [ ] Aeroplane mode: the dashboard stays readable, says it is offline, and no figure
+        becomes ₹0.
+16. [ ] Aeroplane mode: opening a document says a connection is needed.
+17. [ ] With the connection back, a refresh succeeds and the offline notice clears.
+18. [ ] Sign out, then sign in as the Crystal Canopy manager: none of the Owner's figures,
+        properties or open drill-down remain.
+19. [ ] A user with no report authority sees "Management analytics are not available for
+        your access." and no property name, figure or chart.
+20. [ ] No Owner Accounts or settlement figure appears anywhere on Home.
+
+**Phase 6 does not close until the automated A06 phases pass and the project lead has
+reported every line of S.3.**

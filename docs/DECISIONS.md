@@ -9741,3 +9741,122 @@ first gate, not the only one, and both gates stay.
 
 **The dashboard sync invalidates the drill-down source** (Slice 4 code). The new "no drill-down
 reads" rule therefore forbids *reading or watching* that source, not naming it.
+
+---
+
+# Phase 6 Slice 10 — Full Acceptance (2026-09-23)
+
+## D-283 (final) — The P&L hand-off replaces the P&L's period, and that is approved
+**Date:** 2026-09-23 · **Status:** **Accepted (project-lead decision)** — closes the point
+D-283 flagged. The earlier entry stands as written, because this log is append-only.
+
+When a Phase 6 dashboard or analytics figure navigates to the existing P&L, the P&L is set
+to that figure's exact resolved canonical date range as a **Custom** period. This may
+replace whatever period the P&L was showing before.
+
+**Not created, by ruling:** a temporary P&L selection, a second P&L provider, hidden
+return-state financial semantics, or another P&L screen. The existing P&L remains the single
+source of truth, and its presets are unchanged.
+
+**Back** returns the reader to the originating dashboard or analytics surface where the
+platform flow already supports it:
+
+* **Windows, from an Analytics section:** the workspace switches to its Profit & Loss
+  section. Choosing the originating section again shows it unchanged; its state stays
+  mounted.
+* **Windows, from the Overview:** the shell goes to Analytics. The Overview destination
+  shows the Overview with its period and scope as they were.
+* **Android, from Home:** the shell switches to the Reports tab. The Home tab shows the
+  dashboard as it was left.
+
+None of these returns carries financial state. Each is the platform's own branch or section
+navigation.
+
+## D-286 — Money never shrinks to fit; the layout gives way, and a figure breaks only between digit groups
+**Date:** 2026-09-24 · **Status:** Implemented / Tested (project-lead rule and ruling) —
+**corrects the Slice 10 layout fix and the shrink-to-fit it inherited from Slices 5–9**
+
+**The rule, as the project lead set it.** Money and every exact financial value must not
+silently shrink to fit: no `FittedBox` scaling, no `Transform.scale`, no smaller font chosen
+because a line is tight, no ellipsis, no clipping. At a large Android text scale the layout
+gives way: side-by-side content reflows vertically, the figure takes its own line, a
+proportional bar moves below it, the row grows taller, and the reader's own text scale is
+kept. Names are not truncated either.
+
+**What Slice 10 had done, and why it was wrong.** The first large-text fix wrapped the
+Gross/GST pair, the ranked amounts and the chart readout in `FittedBox(scaleDown)`. That
+repeated a mechanism already in five shipped places — the phone Home headline (D-276), the
+Windows analysis summary and Business Comparison table, the Android P&L lines and the
+Android drill-down rows — each commented as "scaled down rather than truncated". A figure
+drawn at a third of its size is not truncated, and it is not the size the reader chose.
+
+**Proven RED on the code as it stood**, by checks that read what was painted rather than
+what the source intended:
+
+* the structural guard found the shrink mechanism in **8 files**;
+* the phone Home headline "₹1,66,383.00" was drawn at **0.238×** at 320 dp and 2.0× text,
+  and at **0.693×** even at 430 dp and 1.0×.
+
+**The first scale check was itself vacuous**, and a control found it. It used a 4×4
+transform's largest axis scale, which includes z; a 2-D shrink leaves z at 1, so the check
+passed over a figure drawn at a quarter size. It now measures x and y.
+
+**Decision — one reflow primitive, every site.** `FigureReflow`, in
+`core/design/components/`, lays a lead (label, title or bar) beside a figure while the
+figure's whole one-line width fits. It measures that width as the figure's own text at the
+reader's scale. When the figure does not fit, it puts the figure on a full-width line at full
+size and grows taller. It replaces all eight shrink sites:
+
+* phone Home headline metrics and Gross/GST;
+* ranked rows, where the bar goes below the figure;
+* the chart header, where the readout goes below the title;
+* the Windows analysis summary and Business Comparison;
+* the Android P&L lines and drill-down rows.
+
+Ranked names are no longer ellipsised (D-269 final). `lib/` now contains no `FittedBox`,
+`BoxFit.scaleDown`, `Transform.scale` or text-scale clamp, and a guard keeps it that way.
+
+**The one case the rule did not settle, and the project lead's ruling.** Measured with the
+real Android font, the 26 px headline "₹1,66,383.00" at 2.0× needs 303 px. It has 254 px on
+a 320 dp phone and 294 px on a 360 dp phone, even on a line of its own. No reflow can fit
+it. **Ruled: break at digit groups.** Only when a figure is wider than a full line of its
+own, it breaks after a comma between digit groups ("₹1,66," then "383.00"). It stays at full
+size, every digit is visible, and the card grows. `MoneyText` places invisible break
+opportunities after commas only, and a word joiner after a sign, so a line can never start
+inside a group or between a sign and "₹". The approved headline size is unchanged.
+
+**Tests measure real glyphs.** The test framework's default face draws every glyph 1 em
+wide, about 1.8× a phone's digits. At that width no headline fits even at 1.0× on 360 dp, so
+a large-text check against it proves nothing about a phone. The layout suites load Roboto
+from the Flutter SDK's own material fonts. Nothing is downloaded, and nothing is added to the
+app.
+
+**What is checked, at 320, 360 and 411 dp × 1.0, 1.6 and 2.0 on the phone Home, the Android
+P&L and the drill-down pages, and at 1366, a narrower window and 1920 on the Windows
+Overview and analysis sections:**
+
+* every paragraph showing ₹ is drawn at scale 1, at the system text scale, and not cut short;
+* a pure figure is on one line at its full width, or — only when wider than a full line of
+  its own — broken after a comma with every glyph inside its line;
+* no figure runs off the screen;
+* the last content clears the docked [ + ].
+
+**Controls, each seen RED and restored byte-identical (`cmp`):**
+
+* the break removed: the 320/360 dp × 2.0 headlines break inside a group;
+* `FigureReflow` forced side by side: 16 tests turn red.
+
+## D-287 — Recorded in Slice 10, and not called flaky
+**Date:** 2026-09-24 · **Status:** Recorded
+
+* **Android authority run 1 stalled for more than 20 minutes with no captured cause.** The
+  cold-boot rerun passed. It is recorded as unexplained, not flaky. The phase now logs
+  numbered steps, so a recurrence names the step it stalled on.
+* **The emulator's DNS failed** ("unknown host", Wi-Fi "!"), and sign-in could not reach the
+  server. It was fixed by cold-booting with explicit DNS servers. This was a device and
+  network cause, not a product one.
+* **The on-device layout loop passed at 320 × 1.6** while the host check failed. The device
+  check most likely did not apply the size and scale it claimed. The host suites (D-286) are
+  the layout evidence.
+* **Before a refresh, the financial year to date comparator is withheld**, because the
+  previous financial year has not been downloaded. This is correct (D-253, D-170).

@@ -5,7 +5,13 @@ Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
-Last updated: **2026-09-23** — **PHASE 6 SLICE 9 — DRILL-DOWN INTEGRATION: COMPLETE**.
+Last updated: **2026-09-24** — **PHASE 6 SLICE 10 — FULL ACCEPTANCE: AUTOMATED GATES DONE, NOT FORMALLY
+COMPLETE**. Windows, emulator, live, performance, build and scan gates pass. Money no longer
+shrinks to fit anywhere (D-286). **The physical Galaxy A06 phases and the 20-item manual
+checklist (§S.3) are outstanding**; the phone is not connected. See *Phase 6 Slice 10* at
+the end of this file.
+
+Previously: **2026-09-23** — **PHASE 6 SLICE 9 — DRILL-DOWN INTEGRATION: COMPLETE**.
 
 * Dashboard and analytics figures now open the existing Phase 5 read-only drill-down, or the
   existing P&L.
@@ -5548,7 +5554,7 @@ reporting cache is created, and authorization stays `PnlAuthority`.
 | 7 | Android Home dashboard | **COMPLETE** |
 | 8 | Windows Analytics sections | **COMPLETE** |
 | 9 | Drill-down integration | **COMPLETE** |
-| 10 | Full acceptance | not started |
+| 10 | Full acceptance | **automated gates done; A06 pending** |
 | 11 | Closure | not started |
 
 **Performance gate (D-261):** before Slice 3 closes, trend series built from ordinary
@@ -6325,4 +6331,58 @@ a decision.
 
 ## Next exact task
 
-**Phase 6 Slice 10 — full acceptance. Not started, and not started automatically.**
+*Superseded — Slice 10 is under way. The current record is* **Phase 6 Slice 10** *below.*
+
+---
+
+## Phase 6 Slice 10 — Full acceptance: **AUTOMATED GATES DONE — NOT FORMALLY COMPLETE** (2026-09-24)
+
+Decisions **D-283 (final)**, **D-286**, **D-287**; `ARCHITECTURE.md` §49; `RELEASE_CHECKLIST.md`
+§S. **No schema change, no migration, no Supabase or server change.** Local Drift schema stays
+**v21**; the migration ledger stays at **101**.
+
+### The one product defect, and the correction the project lead required (D-286)
+
+At a large system font on a phone, amounts overflowed or were drawn shrunk. The first
+Slice 10 fix shrank them with `FittedBox`, and so did five places shipped earlier. The
+project lead ruled that money must never shrink to fit.
+
+* Proven RED: the guard found the mechanism in 8 files, and the phone headline was drawn at
+  0.238× at 320 dp and 2.0× text.
+* Fixed with one reflow primitive, `FigureReflow`. A figure moves to its own full-width line
+  at full size, and the row grows taller. Ranked names are no longer cut short.
+* The one case no reflow can fit — the 26 px headline at 2.0× on 320 and 360 dp — breaks
+  only after a comma between digit groups, at full size. This is the project lead's ruling.
+* Layout tests now measure real Roboto glyphs. The test framework's default font draws every
+  glyph a full em wide.
+
+### Verified
+
+| Item | Status | Evidence |
+|---|---|---|
+| `dart format` · `flutter analyze` | **Tested** | clean · **No issues found** |
+| Host suite | **Tested** | **2,646 passed** |
+| Dashboard / chart / analytics / P&L layout suites | **Tested** | 486 passed together |
+| Money layout at 320/360/411 dp × 1.0/1.6/2.0, and at 1366 / narrower / 1920 | **Tested** | every amount unshrunk, whole, on screen; [ + ] cleared |
+| Positive controls | **Tested** | break removed → RED; reflow disabled → 16 RED; restored by `cmp` |
+| `p6-windows-dashboard`, real exe | **Tested** | PASS after D-286 (2:08). An earlier run failed, and its error was masked by a DNS failure in its `finally` sweep; the harness no longer masks (D-287) |
+| `p6-windows-authority`, real exe | **Tested** | PASS (3:11), host steps applied and restored |
+| `p6-android-dashboard`, `p6-android-authority`, emulator | **Tested** (emulator, before D-286) | PASS; authority run 1 stalled with no known cause (D-287) |
+| Physical Galaxy A06, automated phases | **Not tested** | the phone is not connected |
+| Physical Galaxy A06, manual checklist §S.3 | **Not tested** | awaiting the project lead |
+| Live suites, `--concurrency=1` | **Tested** | **106 passed**, serial |
+| Performance, Windows | **Tested** | worst steady state 163 ms (D-266 had 168 ms) |
+| Performance, Android | **Not tested** | the emulator was shut down for the A06 |
+| Windows release · Android dev APK | **Tested** | clean builds with `config/dev.json` only |
+| Secret scan — tree, history, artefacts | **Tested** | clean, after the acceptance intermediates were removed |
+| Backend baseline | **Tested** | 0 open acceptance revenue or expenses (61 open expenses, all pre-existing); 0 owner movements; 0 settings; 0 closed periods; 7 grant rows (5 active); 80 role capabilities, hash `bd3b6b2b…`; 4 roles; 0 stranded objects; ledger 101; dead helper absent |
+
+The grants hash differs from the Slice 11 capture only because the live parity suite
+legitimately re-grants and re-revokes row `aa7c36ee…` (D-187). Its timestamps are not
+rewritten.
+
+### Outstanding before Slice 10 can close
+
+1. Connect the Galaxy A06 with USB debugging authorised. Shut the emulator down, confirm
+   exactly one target, then run `p6-android-dashboard` and `p6-android-authority`.
+2. The project lead reports the 20 manual lines of §S.3.
