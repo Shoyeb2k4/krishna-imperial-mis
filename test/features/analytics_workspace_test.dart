@@ -64,6 +64,7 @@ import 'package:supabase_flutter/supabase_flutter.dart'
     show AuthClientOptions, SupabaseClient;
 import 'package:timezone/data/latest.dart' as tzdata;
 
+import '../support/money_layout.dart';
 import '../support/test_session.dart';
 import '../support/ui_harness.dart';
 
@@ -229,6 +230,7 @@ class _Session extends StubSession {
 }
 
 void main() {
+  setUpAll(loadRealFonts);
   setUpAll(() {
     tzdata.initializeTimeZones();
     driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
@@ -1542,6 +1544,10 @@ void main() {
         ]) {
           await open(tester, section);
           expect(tester.takeException(), isNull, reason: '$section at $name');
+          await expectEveryAmountWholeWhileScrolling(
+            tester,
+            '$section at $name',
+          );
           for (final key in keys) {
             expect(
               find.byKey(Key(key)),
@@ -1615,7 +1621,8 @@ void main() {
       expect(value.overflow, TextOverflow.visible);
       expect(value.maxLines, 1);
 
-      // A summary figure is scaled down, never ellipsised or wrapped.
+      // A summary figure keeps its own size: never shrunk, ellipsised or wrapped
+      // (D-286).
       final summary = tester.widget<MoneyText>(
         find.byKey(const Key('analytics-expense-total-value')),
       );
@@ -1625,8 +1632,9 @@ void main() {
           of: find.byKey(const Key('analytics-expense-total-value')),
           matching: find.byType(FittedBox),
         ),
-        findsOneWidget,
+        findsNothing,
       );
+      expectMoneyWholeAndUnshrunk(tester, 'the narrow analytics window');
       expect(tester.takeException(), isNull);
     });
 

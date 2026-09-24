@@ -38,6 +38,7 @@ import 'package:krishna_mis/features/profit_and_loss/presentation/pnl_providers.
 import 'package:krishna_mis/features/profit_and_loss/presentation/profit_and_loss_page.dart';
 import 'package:timezone/data/latest.dart' as tzdata;
 
+import '../support/money_layout.dart';
 import '../support/pnl_fixture.dart';
 import '../support/report_detail_fakes.dart';
 import '../support/ui_harness.dart';
@@ -66,6 +67,7 @@ List<CapabilityGrant> _mutationCapable([String? unit]) => [
 ];
 
 void main() {
+  setUpAll(loadRealFonts);
   setUpAll(() {
     tzdata.initializeTimeZones();
     driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
@@ -138,12 +140,17 @@ void main() {
     WidgetTester tester, {
     List<CapabilityGrant>? grants,
     Size size = _phone390,
+    double textScale = 1,
   }) async {
     tester.view
       ..devicePixelRatio = 1
       ..physicalSize = size
       ..padding = const FakeViewPadding(top: 24);
     addTearDown(tester.view.reset);
+    if (textScale != 1) {
+      tester.platformDispatcher.textScaleFactorTestValue = textScale;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    }
     final GoRouter router = AppRouter.create(
       shellKind: AppShellKind.mobile,
       initialLocation: AppRoutes.reports,
@@ -637,6 +644,53 @@ void main() {
 
   // ═══════════════════════════════════════════════════════════════════════════
   group('Android', () {
+    // D-286: the drill-down pages give way at a large system font, never the money.
+    for (final (label, size) in const [
+      ('320 × 640', Size(320, 640)),
+      ('360 × 740', Size(360, 740)),
+      ('411 × 891', Size(411, 891)),
+    ]) {
+      for (final scale in const [1.6, 2.0]) {
+        uiTest('at $label and $scale× every drill-down amount is whole', (
+          tester,
+        ) async {
+          final sale = pnlSale(
+            pnlCcr,
+            '2026-09-10',
+            gross: 1236420000,
+            tax: 58877143,
+          );
+          gateway.revenue.add(sale);
+          revenueDocs.addFromSale(sale, txnNumber: 'KI-REV-26-27-000778');
+          await pumpPhone(tester, size: size, textScale: scale);
+          final where = '$label ×$scale';
+          await expectEveryAmountWholeWhileScrolling(tester, '$where, P&L');
+
+          await scrollUntilBuilt(
+            tester,
+            find.byKey(Key('pnl-rev-open-$pnlCcr-$pnlCcr-restaurant')),
+          );
+          await tapKey(tester, 'pnl-rev-open-$pnlCcr-$pnlCcr-restaurant');
+          expectNoLayoutError(tester, '$where, documents');
+          await expectEveryAmountWholeWhileScrolling(
+            tester,
+            '$where, documents',
+          );
+
+          await scrollUntilBuilt(
+            tester,
+            find.byKey(Key('pnl-drill-doc-${sale['revenue_entry_id']}')),
+          );
+          await tapKey(tester, 'pnl-drill-doc-${sale['revenue_entry_id']}');
+          expectNoLayoutError(tester, '$where, document');
+          await expectEveryAmountWholeWhileScrolling(
+            tester,
+            '$where, document',
+          );
+        });
+      }
+    }
+
     uiTest('Reports → category → documents → read-only detail, and back', (
       tester,
     ) async {

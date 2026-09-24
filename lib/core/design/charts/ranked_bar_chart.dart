@@ -25,6 +25,7 @@
 library;
 
 import 'package:flutter/widgets.dart';
+import 'package:krishna_mis/core/design/components/figure_reflow.dart';
 import 'package:krishna_mis/core/design/charts/chart_frame.dart';
 import 'package:krishna_mis/core/design/charts/chart_selection.dart';
 import 'package:krishna_mis/core/design/charts/chart_semantics.dart';
@@ -163,6 +164,11 @@ class _RankedBarChartState extends State<RankedBarChart> {
   }
 }
 
+/// The narrowest a proportional bar is drawn beside its figure, so the figure always
+/// leaves the bar some room to show proportion. Narrower than that, the figure moves to
+/// its own line (D-286).
+const double _minimumBarWidth = 24;
+
 class _RankedRow extends StatelessWidget {
   const _RankedRow({
     required this.index,
@@ -188,8 +194,8 @@ class _RankedRow extends StatelessWidget {
       line.label,
       key: RankedBarChart.labelKey(index),
       style: line.isOthers ? AppTypography.bodyMuted : AppTypography.body,
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
+      // The whole name, wrapping onto a second line rather than being cut short
+      // (D-269, D-286).
     );
 
     // The exact prepared figure. Never wrapped, never ellipsised, never abbreviated: a
@@ -232,24 +238,33 @@ class _RankedRow extends StatelessWidget {
                   children: [
                     label,
                     const SizedBox(height: AppSpacing.xs),
-                    Row(
-                      children: [
-                        Expanded(child: bar),
-                        const SizedBox(width: AppSpacing.sm),
-                        value,
-                      ],
+                    // The bar and the figure share a line while the whole figure
+                    // fits. At a large system font it does not: the figure then takes
+                    // its own line at full size and the bar sits below it (D-286).
+                    FigureReflow(
+                      lead: bar,
+                      figure: value,
+                      minLeadWidth: _minimumBarWidth,
+                      order: FigureReflowOrder.figureFirst,
+                      runGap: AppSpacing.xs,
                     ),
                   ],
                 )
               // Dense: name, bar and figure on one line, each in its own slot.
-              : Row(
-                  children: [
-                    SizedBox(width: 200, child: label),
-                    const SizedBox(width: AppSpacing.md),
-                    Expanded(child: bar),
-                    const SizedBox(width: AppSpacing.md),
-                    value,
-                  ],
+              // Where the whole figure does not fit beside them, it moves to a line
+              // of its own at full size, never shrunk (D-286).
+              : FigureReflow(
+                  lead: Row(
+                    children: [
+                      SizedBox(width: 200, child: label),
+                      const SizedBox(width: AppSpacing.md),
+                      Expanded(child: bar),
+                    ],
+                  ),
+                  figure: value,
+                  gap: AppSpacing.md,
+                  minLeadWidth: 200 + AppSpacing.md + _minimumBarWidth,
+                  stackedFigureAtEnd: true,
                 ),
         ),
       ),

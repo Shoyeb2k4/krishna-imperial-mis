@@ -73,15 +73,36 @@ class MoneyText extends StatelessWidget {
       label: label,
       excludeSemantics: true,
       child: Text(
-        text,
+        breakableAtDigitGroups(text),
         style: resolved,
         textAlign: align,
-        // Money must never be abbreviated or wrapped: a truncated amount is a wrong
-        // amount. Constrain the column instead.
-        softWrap: false,
+        // Money is never abbreviated, ellipsised, clipped or shrunk: a truncated amount
+        // is a wrong amount. Layouts give way instead — a figure moves to its own line
+        // (D-286). Only when the whole figure is wider than that line may it break, and
+        // then only between digit groups, at full size (the project lead's ruling on
+        // D-286).
+        softWrap: true,
         overflow: TextOverflow.visible,
-        maxLines: 1,
       ),
     );
   }
 }
+
+/// A zero-width space: an invisible place a line may break.
+const String _breakHere = '\u200B';
+
+/// A word joiner: an invisible place a line may not break.
+const String _neverBreakHere = '\u2060';
+
+/// [figure] as it is printed, with the only line-break opportunities it may use placed
+/// after the commas between digit groups: `₹1,66,` then `383.00`, never `₹1,66,38` then
+/// `3.00`, and never between a sign and the rupee symbol. On one line it reads exactly
+/// as [figure], because both marks are invisible.
+String breakableAtDigitGroups(String figure) => figure
+    .replaceAll(',', ',$_breakHere')
+    .replaceAll('-', '-$_neverBreakHere')
+    .replaceAll('+', '+$_neverBreakHere');
+
+/// [shown] with the invisible break marks removed: the figure as a person reads it.
+String withoutBreakMarks(String shown) =>
+    shown.replaceAll(_breakHere, '').replaceAll(_neverBreakHere, '');

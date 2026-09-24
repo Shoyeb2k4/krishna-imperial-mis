@@ -49,6 +49,7 @@ import 'package:supabase_flutter/supabase_flutter.dart'
     show AuthClientOptions, SupabaseClient;
 import 'package:timezone/data/latest.dart' as tzdata;
 
+import '../support/money_layout.dart';
 import '../support/test_session.dart';
 import '../support/ui_harness.dart';
 
@@ -214,6 +215,7 @@ class _Session extends StubSession {
 }
 
 void main() {
+  setUpAll(loadRealFonts);
   setUpAll(() {
     tzdata.initializeTimeZones();
     driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
@@ -1059,11 +1061,11 @@ void main() {
         ),
       );
       expect(label.data, contains('Kirana'));
-      expect(
-        label.overflow,
-        TextOverflow.ellipsis,
-        reason: 'a long name is shortened with an ellipsis, never wrapped away',
-      );
+      // The whole name, wrapping onto a second line rather than being cut short
+      // (D-269, D-286).
+      expect(label.overflow, isNull);
+      expect(label.maxLines, isNull);
+      expectMoneyWholeAndUnshrunk(tester, 'the Overview');
 
       final value = tester.widget<Text>(
         find.descendant(
@@ -1100,6 +1102,7 @@ void main() {
         await pump(tester, size: size);
 
         expect(tester.takeException(), isNull);
+        await expectEveryAmountWholeWhileScrolling(tester, name);
         // Every approved section is present and reachable at this width.
         for (final key in const [
           'dashboard-body',

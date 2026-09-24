@@ -7,6 +7,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:krishna_mis/core/design/components/figure_reflow.dart';
 import 'package:krishna_mis/core/design/components/money_text.dart';
 import 'package:krishna_mis/core/design/tokens/app_tokens.dart';
 import 'package:krishna_mis/domain/value_objects/money.dart';
@@ -134,32 +135,28 @@ class _SummaryRow extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // The label and the whole figure share this part of the row while
+                // they fit; where they do not, the figure takes its own line at full
+                // size. Money is never shrunk to fit (D-269, D-286).
                 Expanded(
-                  flex: 3,
-                  child: Text(
-                    line.label,
-                    style: line.strong
-                        ? AppTypography.subheading
-                        : AppTypography.body,
-                  ),
-                ),
-                Expanded(
-                  flex: 3,
-                  // Money is never truncated or wrapped: at a narrow width the figure
-                  // scales down rather than losing a digit (D-269).
-                  child: Align(
-                    alignment: Alignment.centerRight,
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerRight,
-                      child: MoneyText(
-                        line.amount,
-                        key: Key('analytics-${line.keyName}-value'),
-                        style: line.strong
-                            ? AppTypography.moneyStrong
-                            : AppTypography.money,
-                      ),
+                  flex: 6,
+                  child: FigureReflow(
+                    lead: Text(
+                      line.label,
+                      style: line.strong
+                          ? AppTypography.subheading
+                          : AppTypography.body,
                     ),
+                    figure: MoneyText(
+                      line.amount,
+                      key: Key('analytics-${line.keyName}-value'),
+                      style: line.strong
+                          ? AppTypography.moneyStrong
+                          : AppTypography.money,
+                    ),
+                    gap: AppSpacing.md,
+                    rowAlignment: CrossAxisAlignment.start,
+                    stackedFigureAtEnd: true,
                   ),
                 ),
                 const SizedBox(width: AppSpacing.lg),

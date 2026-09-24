@@ -268,15 +268,11 @@ class _Comparison extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              // Scaled down rather than truncated or wrapped at a narrow width: a
-              // shortened amount is a wrong amount (D-269).
-              FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerRight,
-                child: MoneyText(
-                  amount(column.result),
-                  key: Key('analytics-comparison-${column.key}-$measure'),
-                ),
+              // At its natural size, never truncated, wrapped or shrunk: a
+              // shortened amount is a wrong amount (D-269, D-286).
+              MoneyText(
+                amount(column.result),
+                key: Key('analytics-comparison-${column.key}-$measure'),
               ),
               if (word != null)
                 Text(

@@ -7,6 +7,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:krishna_mis/core/design/components/figure_reflow.dart';
 import 'package:krishna_mis/core/design/charts/chart_theme.dart';
 import 'package:krishna_mis/core/design/charts/chart_values.dart';
 import 'package:krishna_mis/core/design/tokens/app_tokens.dart';
@@ -70,59 +71,67 @@ class ChartFrame extends StatelessWidget {
     );
   }
 
-  Widget _framed() => Semantics(
-    key: semanticsKey,
-    label: semanticsLabel,
-    container: true,
-    child: ExcludeSemantics(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      title,
-                      style: AppTypography.subheading,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: AppSpacing.xxs),
-                    Text(
-                      periodLabel,
-                      style: AppTypography.caption,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
+  Widget _framed() {
+    final heading = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          title,
+          style: AppTypography.subheading,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+        const SizedBox(height: AppSpacing.xxs),
+        Text(
+          periodLabel,
+          style: AppTypography.caption,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ],
+    );
+    return Semantics(
+      key: semanticsKey,
+      label: semanticsLabel,
+      container: true,
+      child: ExcludeSemantics(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (readout case final Widget shown)
+              // The readout carries an exact figure. Beside the title while it fits;
+              // at a large system font it moves below the title at full size, and the
+              // header grows taller rather than shrinking the figure (D-286).
+              LayoutBuilder(
+                builder: (context, constraints) => FigureReflow(
+                  lead: heading,
+                  figure: shown,
+                  gap: AppSpacing.md,
+                  runGap: AppSpacing.xs,
+                  minLeadWidth: constraints.maxWidth * 0.4,
+                  rowAlignment: CrossAxisAlignment.start,
+                  leadKeepsWords: false,
                 ),
-              ),
-              if (readout != null) ...[
-                const SizedBox(width: AppSpacing.md),
-                readout!,
-              ],
+              )
+            else
+              heading,
+            if (series.isNotEmpty) ...[
+              const SizedBox(height: AppSpacing.sm),
+              ChartLegend(series: series),
             ],
-          ),
-          if (series.isNotEmpty) ...[
-            const SizedBox(height: AppSpacing.sm),
-            ChartLegend(series: series),
+            const SizedBox(height: AppSpacing.md),
+            child,
+            if (footnote != null) ...[
+              const SizedBox(height: AppSpacing.sm),
+              Text(footnote!, style: AppTypography.caption),
+            ],
           ],
-          const SizedBox(height: AppSpacing.md),
-          child,
-          if (footnote != null) ...[
-            const SizedBox(height: AppSpacing.sm),
-            Text(footnote!, style: AppTypography.caption),
-          ],
-        ],
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 /// Opens the point a reader has selected. Offered only for a point that has a figure: a
@@ -165,7 +174,8 @@ class ChartLegend extends StatelessWidget {
               painter: _LegendKeyPainter(style),
             ),
             const SizedBox(width: AppSpacing.xs),
-            Text(style.name, style: ChartTheme.seriesName),
+            // A name may wrap at a large system font rather than run off the edge.
+            Flexible(child: Text(style.name, style: ChartTheme.seriesName)),
           ],
         ),
     ],

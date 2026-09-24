@@ -28,6 +28,7 @@ import 'package:krishna_mis/features/expenses/presentation/expense_providers.dar
 import 'package:krishna_mis/features/expenses/presentation/widgets/expense_detail_panel.dart';
 import 'package:uuid/uuid.dart';
 
+import '../support/money_layout.dart';
 import '../support/expense_fixtures.dart';
 import '../support/test_session.dart';
 
@@ -98,7 +99,7 @@ void main() {
 
       await tester.enterText(find.byKey(const Key('expense-amount')), '12500');
       await tester.pump();
-      expect(find.text('₹12,500'), findsOneWidget);
+      expect(findFigure('₹12,500'), findsOneWidget);
 
       await tester.enterText(
         find.byKey(const Key('expense-amount')),
@@ -106,7 +107,7 @@ void main() {
       );
       await tester.pump();
       expect(
-        find.text('₹12,36,420'),
+        findFigure('₹12,36,420'),
         findsOneWidget,
         reason: 'lakhs, not thousands — ₹1,236,420 would be wrong',
       );
@@ -116,7 +117,7 @@ void main() {
         '12500.50',
       );
       await tester.pump();
-      expect(find.text('₹12,500.50'), findsOneWidget);
+      expect(findFigure('₹12,500.50'), findsOneWidget);
     });
 
     testWidgets('a malformed amount is said to be malformed', (tester) async {
@@ -266,7 +267,7 @@ void main() {
       await tester.pump();
 
       expect(find.text('REMAINING'), findsOneWidget);
-      expect(find.text('₹1,000.00'), findsWidgets);
+      expect(findFigure('₹1,000.00'), findsWidgets);
       expect(
         tester
             .widget<FilledButton>(find.byKey(const Key('save-expense')))

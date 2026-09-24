@@ -24,6 +24,7 @@ import 'package:krishna_mis/features/expenses/presentation/expense_providers.dar
 import 'package:krishna_mis/features/revenue/presentation/revenue_ledger_page.dart';
 import 'package:krishna_mis/features/transactions/presentation/transactions_page.dart';
 
+import '../support/money_layout.dart';
 import '../support/test_session.dart';
 import '../support/ui_harness.dart';
 
@@ -346,9 +347,9 @@ void main() {
       expect(find.text('KI-REV-26-27-000001'), findsOneWidget);
       expect(find.text('Crystal Canopy Rooftop'), findsWidgets);
       expect(find.text('Restaurant'), findsWidgets);
-      expect(find.text('₹1,00,000.00'), findsOneWidget);
-      expect(find.text('₹4,761.90'), findsOneWidget);
-      expect(find.text('₹95,238.10'), findsOneWidget);
+      expect(findFigure('₹1,00,000.00'), findsOneWidget);
+      expect(findFigure('₹4,761.90'), findsOneWidget);
+      expect(findFigure('₹95,238.10'), findsOneWidget);
     });
 
     uiTest('an unnumbered sale shows a pending reference', (tester) async {
@@ -468,7 +469,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('GST at 5%'), findsOneWidget);
-      expect(find.text('₹4,761.90'), findsWidgets);
+      expect(findFigure('₹4,761.90'), findsWidgets);
     });
 
     uiTest('an untaxed sale says No GST, never 0%', (tester) async {
@@ -664,7 +665,7 @@ void main() {
       await pump(tester, ledger, size: _narrow);
 
       // Ten lakh and one paisa, in full. A narrow window scrolls rather than eliding.
-      expect(find.text('₹10,00,000.01'), findsOneWidget);
+      expect(findFigure('₹10,00,000.01'), findsOneWidget);
     });
   });
 

@@ -45,6 +45,7 @@ import 'package:supabase_flutter/supabase_flutter.dart'
     show AuthClientOptions, SupabaseClient;
 import 'package:timezone/data/latest.dart' as tzdata;
 
+import '../support/money_layout.dart';
 import '../support/test_session.dart';
 import '../support/ui_harness.dart';
 
@@ -53,7 +54,9 @@ const _hki = 'unit-hki';
 const _me = 'user-me';
 
 /// The phones this is used on, and the one orientation change that matters.
+const _phone320 = Size(320, 640);
 const _phone360 = Size(360, 740);
+const _phone411 = Size(411, 891);
 const _phone390 = Size(390, 844);
 const _phone430 = Size(430, 932);
 const _landscape = Size(844, 390);
@@ -203,6 +206,7 @@ AuthoritySnapshot _authority(
 );
 
 void main() {
+  setUpAll(loadRealFonts);
   setUpAll(() {
     tzdata.initializeTimeZones();
     driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
@@ -941,9 +945,39 @@ void main() {
   // Phone layout
   // ═══════════════════════════════════════════════════════════════════════════
 
+  /// Walks the page top to bottom, checking every amount at each stop: the list is lazy,
+  /// so a check at the top and the bottom alone misses everything in between.
+  Future<int> expectEveryAmountWhole(WidgetTester tester, String where) async {
+    var checked = 0;
+    for (var stop = 0; stop < 40; stop++) {
+      expectNoLayoutError(tester, '$where, stop $stop');
+      checked += expectMoneyWholeAndUnshrunk(
+        tester,
+        '$where, stop $stop',
+        atLeast: 0,
+      );
+      final page = find
+          .descendant(
+            of: find.byKey(const Key('dashboard-home-page')),
+            matching: find.byWidgetPredicate(
+              (w) => w is Scrollable && w.axisDirection == AxisDirection.down,
+            ),
+          )
+          .first;
+      final position = tester.state<ScrollableState>(page).position;
+      if (position.pixels >= position.maxScrollExtent) break;
+      await tester.drag(page, const Offset(0, -240));
+      await tester.pumpAndSettle();
+    }
+    expect(checked, greaterThan(0), reason: 'no amount checked at $where');
+    return checked;
+  }
+
   group('the phone layout', () {
     for (final (name, size) in [
+      ('320×640', _phone320),
       ('360×740', _phone360),
+      ('411×891', _phone411),
       ('390×844', _phone390),
       ('430×932', _phone430),
       ('landscape', _landscape),
@@ -956,6 +990,9 @@ void main() {
         await pump(tester, size: size);
 
         expect(tester.takeException(), isNull);
+        await expectEveryAmountWhole(tester, name);
+        await tester.drag(pageScrollable(), const Offset(0, 20000));
+        await tester.pumpAndSettle();
         for (final key in const [
           'dashboard-body',
           'dashboard-net-sales-value',
@@ -970,6 +1007,57 @@ void main() {
         expect(find.byKey(const Key('dashboard-see-full-pnl')), findsOneWidget);
       });
     }
+
+    // D-286: at a large system font the layout gives way, never the money.
+    for (final (name, size) in [
+      ('320×640', _phone320),
+      ('360×740', _phone360),
+      ('411×891', _phone411),
+    ]) {
+      for (final scale in const [1.0, 1.6, 2.0]) {
+        uiTest('$name at $scale× text keeps every amount whole and unshrunk', (
+          tester,
+        ) async {
+          crystalCanopySeptember();
+          hotelKrishnaSeptember();
+          await pump(tester, size: size, textScale: scale);
+
+          await expectEveryAmountWhole(tester, '$name ×$scale');
+
+          // The last thing on the page still clears the docked [ + ].
+          await scrollToBottom(tester);
+          expectNoLayoutError(tester, '$name ×$scale, bottom');
+          final last = tester.getRect(
+            find.byKey(const Key('dashboard-see-full-pnl')),
+          );
+          final fab = tester.getRect(find.byType(FloatingActionButton));
+          expect(last.bottom, lessThanOrEqualTo(fab.top));
+        });
+      }
+    }
+
+    uiTest(
+      'at 2.0× on 320dp the figure moves to its own line and the card grows',
+      (tester) async {
+        crystalCanopySeptember();
+        hotelKrishnaSeptember();
+        await pump(tester, size: _phone320, textScale: 2);
+
+        final kpi = find.byKey(const Key('dashboard-kpi-net-sales'));
+        final label = find.descendant(
+          of: kpi,
+          matching: find.text('NET SALES'),
+        );
+        final value = find.byKey(const Key('dashboard-net-sales-value'));
+        expect(
+          tester.getRect(value).top,
+          greaterThanOrEqualTo(tester.getRect(label).bottom - 0.5),
+          reason:
+              'the figure did not fit beside its label, so it is stacked below',
+        );
+        expectMoneyWholeAndUnshrunk(tester, '320×2.0 headline');
+      },
+    );
 
     uiTest('a raised system font scale still fits', (tester) async {
       crystalCanopySeptember();

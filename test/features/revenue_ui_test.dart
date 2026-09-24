@@ -26,6 +26,7 @@ import 'package:krishna_mis/features/expenses/presentation/expense_providers.dar
 import 'package:krishna_mis/features/revenue/presentation/revenue_entry_page.dart';
 import 'package:krishna_mis/features/revenue/presentation/revenue_recent_page.dart';
 
+import '../support/money_layout.dart';
 import '../support/ui_harness.dart';
 import '../support/test_session.dart';
 
@@ -284,12 +285,12 @@ void main() {
       await choose(tester, 'revenue-category-RESTAURANT');
       await typeAmount(tester, '100000');
 
-      expect(find.text('₹1,00,000'), findsWidgets);
-      expect(find.text('₹4,761.90'), findsOneWidget);
-      expect(find.text('₹95,238.10'), findsOneWidget);
+      expect(findFigure('₹1,00,000'), findsWidgets);
+      expect(findFigure('₹4,761.90'), findsOneWidget);
+      expect(findFigure('₹95,238.10'), findsOneWidget);
       expect(find.text('GST included'), findsOneWidget);
       expect(
-        find.text('₹1,05,000'),
+        findFigure('₹1,05,000'),
         findsNothing,
         reason: '5% is inside the figure, never added on top (D-088)',
       );
@@ -304,8 +305,8 @@ void main() {
       await choose(tester, 'revenue-category-NANDBHOG');
       await typeAmount(tester, '12500');
 
-      expect(find.text('₹595.24'), findsOneWidget);
-      expect(find.text('₹11,904.76'), findsOneWidget);
+      expect(findFigure('₹595.24'), findsOneWidget);
+      expect(findFigure('₹11,904.76'), findsOneWidget);
     });
 
     uiTest('Room is one plain field today, with no invented band picker', (
@@ -326,8 +327,8 @@ void main() {
       );
 
       await typeAmount(tester, '65000');
-      expect(find.text('₹3,095.24'), findsOneWidget);
-      expect(find.text('₹61,904.76'), findsOneWidget);
+      expect(findFigure('₹3,095.24'), findsOneWidget);
+      expect(findFigure('₹61,904.76'), findsOneWidget);
     });
 
     uiTest('Banquet says No GST and never claims tax is inside', (
@@ -349,7 +350,7 @@ void main() {
       expect(find.byKey(const Key('revenue-preview-no-gst')), findsOneWidget);
       expect(find.text('No GST'), findsOneWidget);
       expect(
-        find.text('₹40,343'),
+        findFigure('₹40,343'),
         findsWidgets,
         reason: 'net equals the entered amount when no tax applies',
       );
@@ -721,7 +722,7 @@ void main() {
       );
       // The figures the operator approved are still the ones displayed. Nothing has
       // been repriced to whatever the server would have computed (D-114).
-      expect(find.text('₹1,00,000.00'), findsOneWidget);
+      expect(findFigure('₹1,00,000.00'), findsOneWidget);
       expect(find.text('Net ₹95,238.10'), findsOneWidget);
     });
 

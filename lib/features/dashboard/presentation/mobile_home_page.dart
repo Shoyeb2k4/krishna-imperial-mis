@@ -41,6 +41,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:krishna_mis/core/design/components/figure_reflow.dart';
 import 'package:krishna_mis/app/providers.dart';
 import 'package:krishna_mis/app/routing/app_router.dart';
 import 'package:krishna_mis/core/design/charts/charts.dart';
@@ -787,26 +788,13 @@ class _MetricShell extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Expanded(
-                flex: 4,
-                child: Text(label.toUpperCase(), style: AppTypography.overline),
-              ),
-              const SizedBox(width: AppSpacing.sm),
-              Flexible(
-                flex: 6,
-                child: Align(
-                  alignment: Alignment.centerRight,
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    alignment: Alignment.centerRight,
-                    child: value,
-                  ),
-                ),
-              ),
-            ],
+          // The label and the whole figure share a line while they fit. At a large
+          // system font the figure moves to its own line at full size and the card
+          // grows taller; it is never shrunk to fit (D-276, D-286).
+          FigureReflow(
+            lead: Text(label.toUpperCase(), style: AppTypography.overline),
+            figure: value,
+            rowAlignment: CrossAxisAlignment.end,
           ),
           const SizedBox(height: AppSpacing.xxs),
           Text(

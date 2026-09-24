@@ -33,6 +33,7 @@ import 'package:krishna_mis/features/profit_and_loss/presentation/pnl_presentati
 import 'package:krishna_mis/features/profit_and_loss/presentation/pnl_providers.dart';
 import 'package:timezone/data/latest.dart' as tzdata;
 
+import '../support/money_layout.dart';
 import '../support/pnl_fixture.dart';
 import '../support/ui_harness.dart';
 
@@ -45,6 +46,7 @@ const _landscape = Size(844, 390);
 const _statusBar = 24.0;
 
 void main() {
+  setUpAll(loadRealFonts);
   setUpAll(() {
     tzdata.initializeTimeZones();
     driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
@@ -1003,6 +1005,66 @@ void main() {
         expect(find.text('Apply').hitTestable(), findsOneWidget);
       },
     };
+
+    // D-286: at a large system font the layout gives way, never the money.
+    for (final (label, size) in const [
+      ('320 × 640', Size(320, 640)),
+      ('360 × 740', _phone360),
+      ('411 × 891', Size(411, 891)),
+    ]) {
+      for (final scale in const [1.0, 1.6, 2.0]) {
+        for (final loss in const [false, true]) {
+          final state = loss ? 'loss' : 'profit with categories';
+          uiTest('$state at $label and $scale× keeps every amount whole', (
+            tester,
+          ) async {
+            if (loss) {
+              gateway
+                ..revenue.add(
+                  pnlSale(pnlCcr, '2026-09-10', gross: 105000, tax: 5000),
+                )
+                ..expense.add(pnlCost(pnlCcr, '2026-09-10', 98765432100));
+            } else {
+              gateway
+                ..revenue.addAll([
+                  pnlSale(
+                    pnlCcr,
+                    '2026-09-10',
+                    gross: 1236420000,
+                    tax: 58877143,
+                  ),
+                  pnlSale(
+                    pnlHki,
+                    '2026-09-11',
+                    gross: 403430000,
+                    tax: 0,
+                    category: 'banquet',
+                  ),
+                ])
+                ..expense.addAll([
+                  pnlCost(pnlCcr, '2026-09-10', 450000000),
+                  pnlCost(
+                    pnlHki,
+                    '2026-09-11',
+                    300000000,
+                    category: 'electricity',
+                  ),
+                ]);
+            }
+            await pump(tester, size: size, textScale: scale);
+            final where = '$state $label ×$scale';
+            expectNoLayoutError(tester, where);
+            await expectEveryAmountWholeWhileScrolling(tester, where);
+            final last = find.byKey(const Key('pnl-exp-total-amount'));
+            await scrollUntilBuilt(tester, last);
+            await tester.drag(pageScrollable(), const Offset(0, -20000));
+            await tester.pumpAndSettle();
+            final fab = tester.getRect(find.byType(FloatingActionButton));
+            expect(tester.getRect(last).bottom, lessThanOrEqualTo(fab.top));
+          });
+        }
+      }
+    }
 
     for (final (label, size, scale) in const [
       ('360 × 740', _phone360, 1.0),

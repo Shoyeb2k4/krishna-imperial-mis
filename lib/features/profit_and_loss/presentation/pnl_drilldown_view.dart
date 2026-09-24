@@ -25,6 +25,7 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:krishna_mis/core/design/components/figure_reflow.dart';
 import 'package:krishna_mis/app/providers.dart';
 import 'package:krishna_mis/core/design/components/money_text.dart';
 import 'package:krishna_mis/core/design/tokens/app_tokens.dart';
@@ -684,19 +685,12 @@ class PnlDrillRow extends StatelessWidget {
                 ],
               ),
               for (var i = 0; i < amounts.length; i++)
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(names[i], style: AppTypography.caption),
-                    ),
-                    Flexible(
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        alignment: Alignment.centerRight,
-                        child: money(i),
-                      ),
-                    ),
-                  ],
+                // The whole figure beside its name while it fits; on its own line at
+                // full size when it does not. Never shrunk to fit (D-286).
+                FigureReflow(
+                  lead: Text(names[i], style: AppTypography.caption),
+                  figure: money(i),
+                  stackedFigureAtEnd: true,
                 ),
             ],
           );

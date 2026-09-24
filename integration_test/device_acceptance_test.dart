@@ -74,6 +74,17 @@
 library;
 
 import 'dart:convert';
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
+import 'package:krishna_mis/core/formatting/money_formatter.dart';
+import 'package:krishna_mis/domain/finance/dashboard_analytics.dart';
+import 'package:krishna_mis/domain/finance/dashboard_periods.dart';
+import 'package:krishna_mis/domain/finance/pnl_comparison.dart';
+import 'package:krishna_mis/domain/finance/property_comparison.dart';
+import 'package:krishna_mis/features/analytics/presentation/analytics_navigation.dart';
+import 'package:krishna_mis/features/dashboard/presentation/dashboard_drill.dart';
+import 'package:krishna_mis/features/dashboard/presentation/dashboard_presentation.dart';
+import 'package:krishna_mis/features/dashboard/presentation/dashboard_providers.dart';
+import 'package:krishna_mis/features/dashboard/presentation/mobile_home_page.dart';
 import 'package:drift/drift.dart' show Variable;
 import 'package:krishna_mis/domain/auth/capability.dart';
 import 'package:krishna_mis/data/repositories/owner_settlement_preview.dart';
@@ -133,6 +144,7 @@ import 'package:krishna_mis/domain/sync/sync_state.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
+import '../test/support/money_layout.dart';
 import '../test/support/owner_settlement_reference.dart';
 import 'support/controllable_transport.dart';
 
@@ -11130,6 +11142,2002 @@ void main() {
           }
           await sweepPnlFixtures(client, marker: marker);
           await s11Signal('done', 'finished');
+        }
+      },
+    );
+  });
+
+  // ── Phase 6 Slice 10: the dashboard and analytics, end to end ─────────────
+  //
+  // The Overview, the Analytics workspace and the Android Home in the real applications
+  // against krishna-mis-dev. Every figure is compared, in paise, with `reporting_primitives`
+  // over the exact range the planner resolved — the authoritative server aggregation, never
+  // the production arithmetic (D-020). Fixtures go through the ordinary RPCs, carry a marker,
+  // and are voided with a reason naming the run in a `finally` and again before the next run
+  // (D-066, D-071, D-076). The March 2027 fixture month lies inside the retained financial
+  // year, so an ordinary refresh brings it down.
+
+  const p6Marker = '$_acceptanceMarker: phase6';
+  final p6From = BusinessDate.of(2027, 3, 1);
+  final p6To = BusinessDate.of(2027, 3, 31);
+
+  bool p6Phone() => boot.shellKind.name == 'mobile';
+
+  /// The sweep in a `finally`. A failure here — a dropped connection, say — must not
+  /// replace the failure that brought the test to its `finally` (D-075). It is reported,
+  /// and the next run's opening sweep reverses whatever it left (D-076).
+  Future<void> p6SweepAfter(SupabaseClient client) async {
+    try {
+      await sweepPnlFixtures(client, marker: p6Marker);
+    } on Object catch (error) {
+      debugPrint('P6 SWEEP AFTER FAILED (reversed by the next run): $error');
+    }
+  }
+
+  Future<String> p6Category(
+    SupabaseClient client,
+    String unit,
+    String code,
+  ) async =>
+      (await client
+              .from('revenue_categories')
+              .select('id')
+              .eq('code', code)
+              .eq('business_unit_id', unit)
+              .single())['id']
+          as String;
+
+  Future<String> p6Sale(
+    SupabaseClient client, {
+    required String unit,
+    required String category,
+    required String date,
+    required int paise,
+    required String label,
+  }) async {
+    final id = const Uuid().v7();
+    await client.rpc<dynamic>(
+      'revenue_create',
+      params: {
+        'p_id': id,
+        'p_business_unit_id': unit,
+        'p_revenue_category_id': category,
+        'p_business_date': date,
+        'p_notes': '$p6Marker $label',
+        'p_components': [
+          {'entered_amount_minor': paise},
+        ],
+        'p_mutation_id': const Uuid().v4(),
+      },
+    );
+    return id;
+  }
+
+  Future<String> p6Cost(
+    SupabaseClient client, {
+    required String date,
+    required List<(String, String, String, String, int)> lines,
+    required String label,
+  }) async {
+    final id = const Uuid().v7();
+    await client.rpc<dynamic>(
+      'expense_create',
+      params: {
+        'p_id': id,
+        'p_business_date': date,
+        'p_total_minor': lines.fold<int>(0, (s, l) => s + l.$5),
+        'p_notes': '$p6Marker $label',
+        'p_allocations': [
+          for (final (u, d, s, c, p) in lines)
+            {
+              'business_unit_id': _seedId('bu:$u'),
+              'department_id': _seedId('dept:$u/$d'),
+              'section_id': _seedId('sec:$u/$d/$s'),
+              'category_id': _seedId('cat:$u/$d/$s/$c'),
+              'amount_minor': p,
+            },
+        ],
+        'p_mutation_id': const Uuid().v4(),
+      },
+    );
+    return id;
+  }
+
+  /// Two properties' March 2027, a February sale for the comparator, and eight expense
+  /// categories so the Top 5 genuinely has an Others remainder.
+  Future<({String sale, String room, String shared, String restaurant})>
+  p6Fixtures(SupabaseClient client) async {
+    final restaurant = await p6Category(client, _ccr, 'RESTAURANT');
+    final roomCategory = await p6Category(client, _hki, 'ROOM');
+    final sale = await p6Sale(
+      client,
+      unit: _ccr,
+      category: restaurant,
+      date: '2027-03-10',
+      paise: 12364200,
+      label: 'sale',
+    );
+    final room = await p6Sale(
+      client,
+      unit: _hki,
+      category: roomCategory,
+      date: '2027-03-12',
+      paise: 4200000,
+      label: 'room',
+    );
+    await p6Sale(
+      client,
+      unit: _ccr,
+      category: restaurant,
+      date: '2027-02-15',
+      paise: 5000000,
+      label: 'previous',
+    );
+    final shared = await p6Cost(
+      client,
+      date: '2027-03-10',
+      lines: const [
+        ('CCR', 'FB', 'FOOD_PROD', 'KIRANA', 2500000),
+        ('HKI', 'HKI_UTIL', 'HKI_POWER', 'ELECTRICITY', 3300000),
+      ],
+      label: 'shared',
+    );
+    final others = const [
+      ('CCR', 'FB', 'FOOD_PROD', 'PANEER', 1200000),
+      ('CCR', 'FB', 'KITCHEN_FUEL', 'CYL_COAL', 900000),
+      ('CCR', 'CCR_UTIL', 'CCR_UTIL_SVC', 'WATER', 700000),
+      ('HKI', 'HKI_UTIL', 'HKI_WATER', 'TANKER', 600000),
+      ('HKI', 'HKI_MAINT', 'HKI_BUILDING', 'MAINTENANCE', 400000),
+      ('CCR', 'FB', 'FOOD_PROD', 'MILK_DAHI', 200000),
+    ];
+    for (final (i, line) in others.indexed) {
+      await p6Cost(
+        client,
+        date: '2027-03-${_two(11 + i)}',
+        lines: [line],
+        label: 'cost ${line.$4}',
+      );
+    }
+    return (sale: sale, room: room, shared: shared, restaurant: restaurant);
+  }
+
+  Future<void> p6Settle(WidgetTester tester, ProviderContainer container) =>
+      pumpUntil(tester, 'the dashboard to be read', () {
+        final state = container.read(dashboardViewProvider);
+        return state.hasValue &&
+            !state.isLoading &&
+            !container.read(dashboardSyncProvider).isRunning;
+      }, timeout: const Duration(seconds: 90));
+
+  DashboardReady p6Ready(ProviderContainer container) {
+    final state = container.read(dashboardViewProvider).value;
+    expect(state, isA<DashboardReady>(), reason: '$state');
+    return state! as DashboardReady;
+  }
+
+  Finder p6HomeScrollable() => find
+      .descendant(
+        of: find.byKey(const Key('dashboard-home-page')),
+        matching: find.byType(Scrollable),
+      )
+      .first;
+
+  /// The page whose list holds the dashboard controls on screen now.
+  Finder p6PageFinder() {
+    if (p6Phone()) return find.byKey(const Key('dashboard-home-page'));
+    for (final key in const [
+      Key('dashboard-drill'),
+      Key('analytics-workspace'),
+      Key('dashboard-page'),
+    ]) {
+      final page = find.byKey(key).hitTestable();
+      if (page.evaluate().isNotEmpty) return find.byKey(key);
+    }
+    return find.byKey(const Key('dashboard-page'));
+  }
+
+  /// Brings a control on the phone Home into the middle of the screen, building it first
+  /// if the lazy list has not.
+  Future<void> p6Centre(WidgetTester tester, Finder finder) async {
+    final page = p6PageFinder();
+    final scrollable = find
+        .descendant(of: page, matching: find.byType(Scrollable))
+        .first;
+    for (final step in const [Offset(0, 300), Offset(0, -300)]) {
+      for (
+        var i = 0;
+        i < 60 && finder.evaluate().isEmpty && page.evaluate().isNotEmpty;
+        i++
+      ) {
+        await tester.drag(scrollable, step, warnIfMissed: false);
+        await tester.pump(const Duration(milliseconds: 120));
+      }
+    }
+    await pumpUntil(
+      tester,
+      'the control to exist',
+      () => finder.evaluate().isNotEmpty,
+    );
+    await Scrollable.ensureVisible(
+      tester.element(finder.first),
+      alignment: 0.5,
+    );
+    await tester.pump(const Duration(milliseconds: 400));
+  }
+
+  /// Makes [finder] visible on whichever surface holds it.
+  Future<void> p6Reveal(WidgetTester tester, Finder finder) =>
+      p6Centre(tester, finder);
+
+  Future<void> p6Tap(WidgetTester tester, Finder finder) async {
+    await p6Reveal(tester, finder);
+    await tapWhenHittable(tester, finder);
+    await tester.pump(const Duration(milliseconds: 400));
+  }
+
+  Future<void> p6Refresh(
+    WidgetTester tester,
+    ProviderContainer container, {
+    DashboardSyncPhase expected = DashboardSyncPhase.succeeded,
+  }) async {
+    await p6Settle(tester, container);
+    final control = find.byKey(const Key('dashboard-refresh'));
+    await p6Reveal(tester, control);
+    final before = container.read(dashboardSyncProvider);
+    await tapWhenHittable(tester, control);
+    await pumpUntil(
+      tester,
+      'the dashboard synchronisation to finish',
+      () {
+        final now = container.read(dashboardSyncProvider);
+        return !identical(now, before) && !now.isRunning;
+      },
+      timeout: const Duration(seconds: 90),
+    );
+    expect(container.read(dashboardSyncProvider).phase, expected);
+    await p6Settle(tester, container);
+  }
+
+  Future<void> p6OpenOverview(
+    WidgetTester tester,
+    ProviderContainer container,
+  ) async {
+    if (p6Phone()) {
+      await pumpUntil(tester, 'the Home tab', () => visible('Home'));
+      await tapWhenHittable(tester, find.text('Home').last);
+      await pumpUntil(
+        tester,
+        'the phone Home dashboard',
+        () => find.byType(MobileHomePage).evaluate().isNotEmpty,
+      );
+    } else {
+      await pumpUntil(
+        tester,
+        'the Overview destination',
+        () => visible('Overview'),
+      );
+      await tester.tap(find.text('Overview').first);
+      await pumpUntil(
+        tester,
+        'the Overview page',
+        () => find.byKey(const Key('dashboard-page')).evaluate().isNotEmpty,
+      );
+    }
+    await tester.pump(const Duration(seconds: 1));
+    await p6Settle(tester, container);
+  }
+
+  Future<void> p6OpenAnalytics(
+    WidgetTester tester,
+    ProviderContainer container,
+    AnalyticsSection section,
+  ) async {
+    if (find.byKey(const Key('analytics-page')).evaluate().isEmpty) {
+      await pumpUntil(
+        tester,
+        'the Analytics destination',
+        () => visible('Analytics'),
+      );
+      await tester.tap(find.text('Analytics').first);
+      await pumpUntil(
+        tester,
+        'the Analytics page',
+        () => find.byKey(const Key('analytics-page')).evaluate().isNotEmpty,
+      );
+    }
+    await tapWhenHittable(
+      tester,
+      find.byKey(Key('analytics-section-${section.name}')),
+    );
+    await tester.pump(const Duration(milliseconds: 600));
+    if (section == AnalyticsSection.profitAndLoss) {
+      await settlePnl(tester, container);
+    } else {
+      await p6Settle(tester, container);
+    }
+  }
+
+  Future<void> p6Period(
+    WidgetTester tester,
+    ProviderContainer container,
+    DashboardPeriodKind kind,
+  ) async {
+    await p6Tap(tester, find.byKey(Key('dashboard-period-${kind.name}')));
+    expect(
+      container.read(dashboardSelectionProvider).period,
+      DashboardRelativePeriod(kind),
+    );
+    await p6Settle(tester, container);
+  }
+
+  /// A custom range: typed on Windows, tapped on the Material calendar on the phone
+  /// (D-229, D-250).
+  Future<void> p6Custom(
+    WidgetTester tester,
+    ProviderContainer container,
+    BusinessDate from,
+    BusinessDate to,
+  ) async {
+    await p6Settle(tester, container);
+    if (!p6Phone()) {
+      await p6Tap(tester, find.byKey(const Key('dashboard-period-custom')));
+      await tester.enterText(
+        find.byKey(const Key('dashboard-custom-from')).hitTestable(),
+        from.iso,
+      );
+      await tester.enterText(
+        find.byKey(const Key('dashboard-custom-to')).hitTestable(),
+        to.iso,
+      );
+      await tapWhenHittable(
+        tester,
+        find.byKey(const Key('dashboard-custom-apply')),
+      );
+    } else {
+      final opensOn = switch ((
+        container.read(dashboardSelectionProvider).period,
+        container.read(dashboardViewProvider).value,
+      )) {
+        (DashboardCustomPeriod(:final from), _) => from,
+        (_, DashboardReady(:final pair)) => pair.current.from,
+        _ => fail('the picker has no period to open on'),
+      };
+      final semantics = tester.ensureSemantics();
+      try {
+        await p6Tap(tester, find.byKey(const Key('dashboard-period-custom')));
+        await pumpUntil(
+          tester,
+          'the date-range picker',
+          () => visible('Dashboard period'),
+        );
+        await tester.pump(const Duration(milliseconds: 600));
+        expect(
+          find.byType(TextField),
+          findsNothing,
+          reason: 'calendar only: Android takes no typed dates',
+        );
+        final monthsElement = tester.element(
+          find
+              .ancestor(
+                of: find.bySemanticsLabel(
+                  RegExp(
+                    RegExp.escape(
+                      '${monthNames[opensOn.month - 1]} ${opensOn.day}, ${opensOn.year}',
+                    ),
+                  ),
+                ),
+                matching: find.byWidgetPredicate(
+                  (w) =>
+                      w is Scrollable &&
+                      w.physics is! NeverScrollableScrollPhysics,
+                ),
+              )
+              .first,
+        );
+        final months = find.byElementPredicate((e) => e == monthsElement);
+        for (final day in [from, to]) {
+          final cell = find.bySemanticsLabel(
+            RegExp(
+              RegExp.escape(
+                '${monthNames[day.month - 1]} ${day.day}, ${day.year}',
+              ),
+            ),
+          );
+          await tester.scrollUntilVisible(
+            cell,
+            day >= opensOn ? 250 : -250,
+            scrollable: months,
+            maxScrolls: 400,
+          );
+          await tester.pump(const Duration(milliseconds: 300));
+          await tapWhenHittable(tester, cell);
+          await tester.pump(const Duration(milliseconds: 400));
+        }
+        await tapWhenHittable(tester, find.text('Apply'));
+        await pumpUntil(
+          tester,
+          'the picker to close',
+          () => !visible('Dashboard period'),
+        );
+      } finally {
+        semantics.dispose();
+      }
+    }
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(
+      container.read(dashboardSelectionProvider).period,
+      DashboardCustomPeriod(from, to),
+      reason: 'the chosen days are the P&L dates, unconverted',
+    );
+    await p6Settle(tester, container);
+  }
+
+  Future<void> p6Scope(
+    WidgetTester tester,
+    ProviderContainer container,
+    Key choice,
+  ) async {
+    if (p6Phone()) {
+      await p6Tap(tester, find.byKey(const Key('dashboard-scope-selector')));
+      await pumpUntil(
+        tester,
+        'the scope sheet',
+        () => find
+            .byKey(const Key('dashboard-scope-sheet'))
+            .evaluate()
+            .isNotEmpty,
+      );
+      await tapWhenHittable(tester, find.byKey(choice));
+      await pumpUntil(
+        tester,
+        'the scope sheet to close',
+        () => find.byKey(const Key('dashboard-scope-sheet')).evaluate().isEmpty,
+      );
+    } else {
+      await p6Tap(tester, find.byKey(choice));
+    }
+    await tester.pump(const Duration(milliseconds: 400));
+    await p6Settle(tester, container);
+  }
+
+  /// The exact margin, worked out here from the server's two integers: hundredths of a
+  /// percent, half away from zero — never through the production calculator.
+  String p6Margin(int profit, int net) {
+    if (net == 0) return 'N/A';
+    final scaled = profit * 10000;
+    var q = scaled ~/ net;
+    final r = scaled.remainder(net).abs() * 2;
+    if (r >= net.abs()) q += (scaled < 0) != (net < 0) ? -1 : 1;
+    final sign = q < 0 ? '-' : '';
+    final a = q.abs();
+    return '$sign${a ~/ 100}.${_two(a % 100)}%';
+  }
+
+  /// Money is never ellipsised, wrapped or clipped: every amount on screen is laid out at
+  /// least as wide as its own text.
+  /// Every amount on screen is whole and at the reader's own text size: never shrunk,
+  /// clipped or ellipsised, and broken only between digit groups when wider than a
+  /// line of its own (D-286). The same check the host layout suites run.
+  void p6ExpectMoneyWhole(WidgetTester tester, String where) =>
+      expectMoneyWholeAndUnshrunk(tester, where);
+
+  /// Before a refresh, a comparator the device has not downloaded is withheld — never a
+  /// zero movement (D-253). Records which periods were withheld, for the report.
+  final p6Withheld = <String>[];
+  Future<void> p6ExpectComparedOrWithheld(
+    WidgetTester tester,
+    ProviderContainer container,
+    DashboardPeriodKind kind,
+  ) async {
+    final comparison = p6Ready(container).view.comparison.netSales;
+    if (comparison is MoneyComparisonUnavailable) {
+      p6Withheld.add(
+        '${kind.name}: ${comparison.side} ${comparison.previousRefusal}',
+      );
+      debugPrint('P6 comparator withheld before refresh: ${p6Withheld.last}');
+      await p6Reveal(
+        tester,
+        find.byKey(const Key('dashboard-net-sales-movement')),
+      );
+      final text =
+          tester
+              .widget<Text>(
+                find.byKey(const Key('dashboard-net-sales-movement')),
+              )
+              .data ??
+          '';
+      expect(text, isNot(contains('₹0.00')), reason: 'withheld is not zero');
+    }
+  }
+
+  /// The dashboard's headline against the server, to the paisa, on screen and behind it,
+  /// and the comparison against the server's own previous stretch.
+  Future<void> p6ExpectHeadline(
+    WidgetTester tester,
+    ProviderContainer container,
+    SupabaseClient client, {
+    bool onScreen = true,
+  }) async {
+    final ready = p6Ready(container);
+    final units = ready.view.scope.ordered;
+    final current = await serverPnl(
+      client,
+      units,
+      ready.pair.current.from.iso,
+      ready.pair.current.to.iso,
+    );
+    final previous = await serverPnl(
+      client,
+      units,
+      ready.pair.comparison.from.iso,
+      ready.pair.comparison.to.iso,
+    );
+    final result = ready.view.resultOrNull!;
+    expect(result.grossSales.paise, current.gross);
+    expect(result.gst.paise, current.tax);
+    expect(result.netSales.paise, current.net);
+    expect(result.expenses.paise, current.expenses);
+    expect(result.revenueContributions, current.revenueRows);
+    expect(result.expenseContributions, current.expenseRows);
+    expect(
+      current.gross,
+      current.tax + current.net,
+      reason: 'Gross = GST + Net',
+    );
+
+    final comparison = ready.view.comparison;
+    for (final (name, got, now, before) in [
+      ('gross', comparison.grossSales, current.gross, previous.gross),
+      ('gst', comparison.gst, current.tax, previous.tax),
+      ('net', comparison.netSales, current.net, previous.net),
+      ('expenses', comparison.expenses, current.expenses, previous.expenses),
+      (
+        'operating',
+        comparison.operatingProfit,
+        current.net - current.expenses,
+        previous.net - previous.expenses,
+      ),
+    ]) {
+      expect(got, isA<MoneyComparisonAvailable>(), reason: name);
+      final available = got as MoneyComparisonAvailable;
+      expect(available.current.paise, now, reason: '$name current');
+      expect(available.previous.paise, before, reason: '$name previous');
+    }
+
+    if (!onScreen) return;
+    await p6Reveal(tester, find.byKey(const Key('dashboard-net-sales-value')));
+    expect(uiPaise(tester, 'dashboard-net-sales-value'), current.net);
+    expect(uiPaise(tester, 'dashboard-expenses-value'), current.expenses);
+    expect(
+      uiPaise(tester, 'dashboard-operating-value'),
+      current.net - current.expenses,
+    );
+    expect(uiPaise(tester, 'dashboard-gross-sales'), current.gross);
+    expect(uiPaise(tester, 'dashboard-gst'), current.tax);
+    expect(
+      tester.widget<Text>(find.byKey(const Key('dashboard-margin-value'))).data,
+      p6Margin(current.net - current.expenses, current.net),
+    );
+    final movement = find.byKey(const Key('dashboard-net-sales-movement'));
+    expect(movement, findsOneWidget);
+    final movementText = tester.widget<Text>(movement).data ?? '';
+    expect(
+      movementText,
+      contains(
+        MoneyFormatter.movement.format(
+          Money.fromPaise(current.net - previous.net),
+        ),
+      ),
+    );
+  }
+
+  /// Every word a dashboard or analytics surface may not use about two properties.
+  void p6ExpectNoRanking() {
+    for (final word in const [
+      'winner',
+      'Winner',
+      'better',
+      'Better',
+      'best',
+      'Best',
+      'wins',
+      'outperform',
+    ]) {
+      expect(find.textContaining(word), findsNothing, reason: word);
+    }
+  }
+
+  Future<String> p6Readout(WidgetTester tester, Finder panel) async {
+    final readout = find.descendant(
+      of: panel,
+      matching: find.byKey(const Key('chart-readout')),
+    );
+    expect(readout, findsOneWidget);
+    return tester
+        .widgetList<Text>(
+          find.descendant(of: readout, matching: find.byType(Text)),
+        )
+        .map((t) => t.data ?? '')
+        .join('|');
+  }
+
+  /// Opens position [index] of the chart inside [panel] from the keyboard — the path a
+  /// reader without a mouse takes, and the same selection a tap or hover moves.
+  Future<void> p6OpenChartPoint(
+    WidgetTester tester,
+    Finder panel,
+    int index,
+  ) async {
+    await p6Reveal(tester, panel);
+    final node = tester
+        .widgetList<Focus>(
+          find.descendant(of: panel, matching: find.byType(Focus)),
+        )
+        .map((f) => f.focusNode)
+        .firstWhere((n) => n?.debugLabel == 'chart')!;
+    node.requestFocus();
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.home);
+    for (var i = 0; i < index; i++) {
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    }
+    await tester.pump(const Duration(milliseconds: 200));
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pump(const Duration(milliseconds: 600));
+  }
+
+  TrendSeries p6Series(DashboardReady ready, TrendMeasure measure) =>
+      ready.view.trends.firstWhere((s) => s.measure == measure);
+
+  int p6RankedIndex<L>(TopNOutcome<L> outcome, bool Function(L line) match) {
+    final grouped = outcome as TopNGrouped<L>;
+    final index = grouped.top.indexWhere((r) => match(r.line));
+    expect(index, isNonNegative, reason: 'the line is among the top rows');
+    return index;
+  }
+
+  Finder p6Row(Key panel, int index) => find.descendant(
+    of: find.byKey(panel),
+    matching: find.byKey(Key('chart-ranked-row-$index')),
+  );
+
+  PnlDrillLocation p6OpenLocation(ProviderContainer container) =>
+      container.read(dashboardDrillProvider)!.location;
+
+  Future<void> p6AwaitDrillLevel(WidgetTester tester, Key key) => pumpUntil(
+    tester,
+    '$key in the drill-down',
+    () => find.byKey(key).evaluate().isNotEmpty,
+    timeout: const Duration(seconds: 60),
+  );
+
+  /// Back from a Windows drill-down pane, or up one pushed page on the phone.
+  Future<void> p6Back(WidgetTester tester) async {
+    if (p6Phone()) {
+      await tester.binding.handlePopRoute();
+    } else {
+      await tapWhenHittable(
+        tester,
+        find.byKey(const Key('dashboard-drill-back')),
+      );
+    }
+    await tester.pump(const Duration(milliseconds: 600));
+  }
+
+  Future<void> p6BackToHome(WidgetTester tester) async {
+    for (var i = 0; i < 6; i++) {
+      if (find.byType(MobilePnlDrillPage).evaluate().isEmpty &&
+          find.byType(MobilePnlDocumentPage).evaluate().isEmpty) {
+        break;
+      }
+      await tester.binding.handlePopRoute();
+      await tester.pump(const Duration(milliseconds: 500));
+    }
+  }
+
+  Future<ProviderContainer> p6SignIn(WidgetTester tester, String email) async {
+    await signIn(tester, email);
+    await expectSignedIn(tester, email);
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(KrishnaMisApp)),
+    );
+    await container.read(sessionProvider.notifier).refreshAuthority();
+    await tester.pump(const Duration(seconds: 2));
+    return container;
+  }
+
+  /// The approved neutral surface: the sentence, no property, no figure, no chart.
+  void p6ExpectNeutral(WidgetTester tester) {
+    expect(visible(dashboardNotAuthorisedMessage.title), isTrue);
+    expect(find.byKey(const Key('dashboard-body')), findsNothing);
+    expect(find.byKey(const Key('dashboard-scope-bar')), findsNothing);
+    expect(find.byKey(const Key('dashboard-scope-selector')), findsNothing);
+    expect(find.byKey(const Key('dashboard-scope-consolidated')), findsNothing);
+    expect(find.byKey(const Key('dashboard-period-bar')), findsNothing);
+    expect(find.byType(MoneyText), findsNothing);
+    expect(find.byKey(const Key('chart-semantics')), findsNothing);
+    for (final name in const ['Crystal Canopy', 'Hotel Krishna']) {
+      final page = p6Phone()
+          ? find.byKey(const Key('dashboard-home-page'))
+          : find.byKey(const Key('dashboard-page'));
+      expect(
+        find.descendant(of: page, matching: find.textContaining(name)),
+        findsNothing,
+        reason: 'no property name for a reader without authority',
+      );
+    }
+  }
+
+  group('p6-windows-dashboard', skip: _phase != 'p6-windows-dashboard', () {
+    testWidgets('the Overview and the Analytics workspace equal the server to the paisa, share one '
+        'period, drill down read-only, hand off to the P&L, survive offline and fit every '
+        'Windows size', (tester) async {
+      expect(p6Phone(), isFalse, reason: 'run with -d windows');
+      await launch(tester);
+      final container = await p6SignIn(tester, 'giridhar@hki.com');
+      final client = Supabase.instance.client;
+      await sweepPnlFixtures(client, marker: p6Marker);
+      try {
+        final ids = await p6Fixtures(client);
+
+        // ── 1 · the Overview opens on the authorised scope ─────────────────────
+        await p6OpenOverview(tester, container);
+        await p6Refresh(tester, container);
+        expect(
+          find.byKey(const Key('dashboard-scope-consolidated')),
+          findsOneWidget,
+        );
+        expect(p6Ready(container).scope, const PnlConsolidatedScope());
+        expect(p6Ready(container).view.scope.ordered.toSet(), {_ccr, _hki});
+
+        // ── 2 · each relative period, against the server over what it resolved ─
+        for (final kind in const [
+          DashboardPeriodKind.today,
+          DashboardPeriodKind.weekToDate,
+          DashboardPeriodKind.monthToDate,
+          DashboardPeriodKind.financialYearToDate,
+        ]) {
+          await p6Period(tester, container, kind);
+          await p6ExpectComparedOrWithheld(tester, container, kind);
+          await p6Refresh(tester, container);
+          await p6ExpectHeadline(tester, container, client);
+        }
+        // ── 9 · Financial year to date trends profit monthly ───────────────────
+        final fytd = p6Ready(container);
+        final fytdProfit = p6Series(fytd, TrendMeasure.operatingProfit);
+        expect(fytdProfit.grain, TrendGrain.monthly);
+        expect(
+          find.byKey(const Key('dashboard-trend-operating-profit')),
+          findsOneWidget,
+        );
+
+        // ── Custom: March 2027, the fixture month ──────────────────────────────
+        await p6Custom(tester, container, p6From, p6To);
+        await p6ExpectHeadline(tester, container, client);
+        final march = p6Ready(container);
+        expect(march.pair.current.from, p6From);
+        expect(march.pair.current.to, p6To);
+
+        // ── 8 · the Net Sales trend is daily, each day the server's own figure ──
+        final netTrend = p6Series(march, TrendMeasure.netSales);
+        expect(netTrend.grain, TrendGrain.daily);
+        expect(netTrend.points, hasLength(31));
+        expect(netTrend.hasGap, isFalse, reason: 'March is downloaded');
+        for (final day in const [9, 11]) {
+          final point = netTrend.points[day] as TrendValue;
+          final server = await serverPnl(
+            client,
+            [_ccr, _hki],
+            point.bucket.range.from.iso,
+            point.bucket.range.to.iso,
+          );
+          expect(point.amount.paise, server.net, reason: 'day ${day + 1}');
+        }
+        // ── 9 · a one-month custom range has no monthly profit trend ───────────
+        expect(
+          march.view.trends.where(
+            (s) => s.measure == TrendMeasure.operatingProfit,
+          ),
+          isEmpty,
+        );
+        expect(
+          find.byKey(const Key('dashboard-trend-operating-profit')),
+          findsNothing,
+        );
+
+        // ── 18 · the readout states the exact prepared figure ──────────────────
+        final trendPanel = find.byKey(const Key('dashboard-trend-net-sales'));
+        await p6Reveal(tester, trendPanel);
+        final plot = find.descendant(
+          of: trendPanel,
+          matching: find.byKey(const Key('chart-semantics')),
+        );
+        final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+        await mouse.addPointer(location: tester.getCenter(plot));
+        await mouse.moveTo(tester.getCenter(plot) + const Offset(1, 0));
+        await tester.pump(const Duration(milliseconds: 400));
+        final readout = (await p6Readout(tester, trendPanel)).split('|');
+        await mouse.removePointer();
+        final hovered = netTrend.points.indexWhere(
+          (p) => dashboardBucketLabel(p.bucket, netTrend.grain) == readout[0],
+        );
+        expect(hovered, isNonNegative, reason: 'readout names a day: $readout');
+        final hoveredServer = await serverPnl(
+          client,
+          [_ccr, _hki],
+          netTrend.points[hovered].bucket.range.from.iso,
+          netTrend.points[hovered].bucket.range.to.iso,
+        );
+        expect(
+          readout[1],
+          MoneyFormatter.standard.format(Money.fromPaise(hoveredServer.net)),
+        );
+
+        // ── 10 · 11 · 12 · ranked rows are the prepared ones, exactly ──────────
+        final server = await serverPnl(
+          client,
+          [_ccr, _hki],
+          p6From.iso,
+          p6To.iso,
+        );
+        final mix =
+            march.view.topRevenueCategories!
+                as TopNGrouped<RevenueCategoryLine>;
+        for (final (i, row) in mix.top.indexed) {
+          expect(
+            row.amount.paise,
+            server
+                .revenueLines['${row.line.businessUnitId}-${row.line.revenueCategoryId}']![2],
+          );
+          await p6Reveal(tester, p6Row(const Key('dashboard-revenue-mix'), i));
+          expect(
+            tester
+                .widget<Text>(
+                  find.descendant(
+                    of: find.byKey(const Key('dashboard-revenue-mix')),
+                    matching: find.byKey(Key('chart-ranked-value-$i')),
+                  ),
+                )
+                .data,
+            MoneyFormatter.standard.format(row.amount),
+          );
+        }
+        final top =
+            march.view.topExpenseCategories!
+                as TopNGrouped<ExpenseHierarchyLine>;
+        expect(top.top, hasLength(5));
+        expect(top.others, isNotNull, reason: 'eight categories, five shown');
+        expect(
+          top.top.fold<int>(0, (s, r) => s + r.amount.paise) +
+              top.others!.paise,
+          server.expenses,
+          reason: 'Top 5 + Others is the whole of Expenses, exactly',
+        );
+        for (final row in top.top) {
+          expect(
+            row.amount.paise,
+            server
+                .expenseLines['${row.line.businessUnitId}-${row.line.categoryId}'],
+          );
+        }
+        final departments =
+            march.view.departmentSpending! as TopNGrouped<ExpenseHierarchyLine>;
+        expect(
+          departments.top.fold<int>(0, (s, r) => s + r.amount.paise) +
+              (departments.others?.paise ?? 0),
+          server.expenses,
+        );
+        await p6Reveal(tester, find.byKey(const Key('dashboard-departments')));
+        expect(find.byKey(const Key('dashboard-departments')), findsOneWidget);
+
+        // ── 3 · 4 · one period across the Overview and the three sections ──────
+        final pnlPeriodBefore = container.read(pnlSelectionProvider).period;
+        await p6OpenAnalytics(tester, container, AnalyticsSection.revenue);
+        expect(
+          container.read(dashboardSelectionProvider).period,
+          DashboardCustomPeriod(p6From, p6To),
+        );
+        expect(
+          uiPaise(tester, 'analytics-revenue-net-sales-value'),
+          server.net,
+        );
+        await p6OpenAnalytics(tester, container, AnalyticsSection.expenses);
+        expect(
+          uiPaise(tester, 'analytics-expense-total-value'),
+          server.expenses,
+        );
+        expect(
+          find.byKey(const Key('analytics-expense-no-trend')),
+          findsOneWidget,
+        );
+        // A period chosen here is the Overview's too.
+        await p6Period(tester, container, DashboardPeriodKind.monthToDate);
+        await p6OpenOverview(tester, container);
+        expect(
+          find
+              .byKey(const Key('dashboard-period-monthToDate'))
+              .evaluate()
+              .map((e) => (e.widget as ChoiceChip).selected),
+          everyElement(isTrue),
+        );
+        await p6Custom(tester, container, p6From, p6To);
+        // The P&L keeps its own Phase 5 period, untouched by the dashboard's.
+        expect(container.read(pnlSelectionProvider).period, pnlPeriodBefore);
+
+        // ── 13 · 14 · 15 · Business Comparison, consolidated only ──────────────
+        await p6OpenAnalytics(
+          tester,
+          container,
+          AnalyticsSection.businessComparison,
+        );
+        expect(
+          find.byKey(const Key('analytics-comparison-table')),
+          findsOneWidget,
+        );
+        for (final unit in [_ccr, _hki]) {
+          final one = await serverPnl(client, [unit], p6From.iso, p6To.iso);
+          expect(
+            uiPaise(tester, 'analytics-comparison-$unit-net-sales'),
+            one.net,
+          );
+          expect(
+            uiPaise(tester, 'analytics-comparison-$unit-expenses'),
+            one.expenses,
+          );
+          expect(
+            uiPaise(tester, 'analytics-comparison-$unit-operating'),
+            one.net - one.expenses,
+          );
+          expect(
+            tester
+                .widget<Text>(
+                  find.byKey(Key('analytics-comparison-$unit-margin')),
+                )
+                .data,
+            p6Margin(one.net - one.expenses, one.net),
+          );
+        }
+        expect(
+          uiPaise(tester, 'analytics-comparison-total-net-sales'),
+          server.net,
+        );
+        expect(
+          uiPaise(tester, 'analytics-comparison-total-expenses'),
+          server.expenses,
+        );
+        p6ExpectNoRanking();
+        await p6OpenOverview(tester, container);
+        p6ExpectNoRanking();
+        await p6Scope(tester, container, Key('dashboard-scope-$_ccr'));
+        await p6OpenAnalytics(
+          tester,
+          container,
+          AnalyticsSection.businessComparison,
+        );
+        expect(
+          find.byKey(const Key('analytics-comparison-table')),
+          findsNothing,
+        );
+        expect(
+          find.byKey(const Key('analytics-comparison-needs-both')),
+          findsOneWidget,
+        );
+        await p6OpenOverview(tester, container);
+        await p6Scope(
+          tester,
+          container,
+          const Key('dashboard-scope-consolidated'),
+        );
+        await p6ExpectHeadline(tester, container, client);
+
+        // ── 21 · 23 · Net Sales → a category → its documents → read-only ───────
+        final before = await ordinaryAndCacheCounts();
+        await p6Tap(tester, find.byKey(const Key('dashboard-net-sales-open')));
+        await p6AwaitDrillLevel(
+          tester,
+          Key('pnl-drill-revenue-category-$_ccr-${ids.restaurant}'),
+        );
+        expect(find.byKey(const Key('dashboard-drill')), findsOneWidget);
+        expect(p6OpenLocation(container).anchor.range.from, p6From);
+        expect(p6OpenLocation(container).anchor.range.to, p6To);
+        await p6Tap(
+          tester,
+          find.byKey(Key('pnl-drill-revenue-category-$_ccr-${ids.restaurant}')),
+        );
+        await p6AwaitDrillLevel(tester, Key('pnl-drill-doc-${ids.sale}'));
+        expect(uiPaise(tester, 'pnl-drill-doc-${ids.sale}-gross'), 12364200);
+        await p6Tap(tester, find.byKey(Key('pnl-drill-doc-${ids.sale}')));
+        await p6AwaitDrillLevel(tester, const Key('pnl-document-revenue'));
+        expect(find.textContaining('KI-REV-'), findsWidgets);
+        // ── 28 · no mutation action on report detail ───────────────────────────
+        expectReportDetailReadOnly();
+        expect(await ordinaryAndCacheCounts(), before);
+        // ── 27 · Back returns to the Overview, exactly as it was ───────────────
+        await p6Back(tester);
+        expect(find.byKey(const Key('dashboard-drill')), findsNothing);
+        expect(find.byKey(const Key('dashboard-body')), findsOneWidget);
+        expect(
+          container.read(dashboardSelectionProvider).period,
+          DashboardCustomPeriod(p6From, p6To),
+        );
+
+        // ── 22 · 24 · Expenses → department → section → category → documents ───
+        await p6Tap(tester, find.byKey(const Key('dashboard-expenses-open')));
+        for (final key in [
+          'pnl-drill-dept-$_ccr-${_seedId('dept:CCR/FB')}',
+          'pnl-drill-section-$_ccr-${_seedId('sec:CCR/FB/FOOD_PROD')}',
+          'pnl-drill-category-$_ccr-$_kirana',
+        ]) {
+          await p6AwaitDrillLevel(tester, Key(key));
+          await p6Tap(tester, find.byKey(Key(key)));
+        }
+        await p6AwaitDrillLevel(tester, Key('pnl-drill-doc-${ids.shared}'));
+        expect(uiPaise(tester, 'pnl-drill-doc-${ids.shared}-amount'), 2500000);
+        await p6Back(tester);
+
+        // ── 25 · a trend point opens exactly its own day ───────────────────────
+        await p6OpenChartPoint(tester, trendPanel, 9);
+        await p6AwaitDrillLevel(
+          tester,
+          Key('pnl-drill-revenue-category-$_ccr-${ids.restaurant}'),
+        );
+        expect(
+          p6OpenLocation(container).anchor.range.from,
+          BusinessDate.of(2027, 3, 10),
+        );
+        expect(
+          p6OpenLocation(container).anchor.range.to,
+          BusinessDate.of(2027, 3, 10),
+        );
+        expect(
+          uiPaise(tester, 'pnl-drill-total-net'),
+          (await serverPnl(
+            client,
+            [_ccr, _hki],
+            '2027-03-10',
+            '2027-03-10',
+          )).net,
+        );
+        await p6Back(tester);
+
+        // ── 11 · a top expense category opens its own bucket ───────────────────
+        final kiranaRow = p6RankedIndex<ExpenseHierarchyLine>(
+          top,
+          (l) => l.businessUnitId == _ccr && l.categoryId == _kirana,
+        );
+        await p6Tap(
+          tester,
+          p6Row(const Key('dashboard-top-expenses'), kiranaRow),
+        );
+        await p6AwaitDrillLevel(tester, Key('pnl-drill-doc-${ids.shared}'));
+        expect(p6OpenLocation(container), isA<PnlExpenseDocumentsAt>());
+        await p6Back(tester);
+
+        // ── 12 · a department opens its sections ───────────────────────────────
+        final fbRow = p6RankedIndex<ExpenseHierarchyLine>(
+          departments,
+          (l) =>
+              l.businessUnitId == _ccr &&
+              l.departmentId == _seedId('dept:CCR/FB'),
+        );
+        await p6Tap(tester, p6Row(const Key('dashboard-departments'), fbRow));
+        await p6AwaitDrillLevel(
+          tester,
+          Key('pnl-drill-section-$_ccr-${_seedId('sec:CCR/FB/FOOD_PROD')}'),
+        );
+        await p6Back(tester);
+
+        // ── 10 · a revenue mix row opens that category's documents ─────────────
+        final restaurantRow = p6RankedIndex<RevenueCategoryLine>(
+          mix,
+          (l) => l.revenueCategoryId == ids.restaurant,
+        );
+        await p6Tap(
+          tester,
+          p6Row(const Key('dashboard-revenue-mix'), restaurantRow),
+        );
+        await p6AwaitDrillLevel(tester, Key('pnl-drill-doc-${ids.sale}'));
+        await p6Back(tester);
+
+        // ── 30 · a document changed on the server since this device synchronised ─
+        await _admin.correctRevenue(ids.sale, 12464200);
+        await p6Tap(tester, find.byKey(const Key('dashboard-net-sales-open')));
+        await p6Tap(
+          tester,
+          find.byKey(Key('pnl-drill-revenue-category-$_ccr-${ids.restaurant}')),
+        );
+        await p6AwaitDrillLevel(tester, Key('pnl-drill-doc-${ids.sale}'));
+        await p6Tap(tester, find.byKey(Key('pnl-drill-doc-${ids.sale}')));
+        await pumpUntil(
+          tester,
+          'the changed-since-synchronised refusal',
+          () => find.text(pnlDocumentChangedText).evaluate().isNotEmpty,
+          timeout: const Duration(seconds: 60),
+        );
+        expect(find.byKey(const Key('pnl-document-revenue')), findsNothing);
+        await p6Back(tester);
+        await p6Refresh(tester, container);
+        await p6ExpectHeadline(tester, container, client);
+
+        // ── 26 · 27 · Operating Profit → the existing P&L, as a Custom period ──
+        await p6Tap(tester, find.byKey(const Key('dashboard-operating-open')));
+        await pumpUntil(
+          tester,
+          'the P&L, handed the dashboard period',
+          () => find.byKey(const Key('pnl-page')).evaluate().isNotEmpty,
+        );
+        expect(
+          container.read(pnlSelectionProvider).period,
+          PnlCustomPeriod(p6From, p6To),
+        );
+        expect(
+          container.read(pnlSelectionProvider).scope,
+          const PnlConsolidatedScope(),
+        );
+        await settlePnl(tester, container);
+        expectPnlMatchesServer(
+          tester,
+          container,
+          await serverPnl(client, [_ccr, _hki], p6From.iso, p6To.iso),
+        );
+        // Back is the Overview destination, where the dashboard is as it was.
+        await p6OpenOverview(tester, container);
+        expect(
+          container.read(dashboardSelectionProvider).period,
+          DashboardCustomPeriod(p6From, p6To),
+        );
+        expect(container.read(dashboardDrillProvider), isNull);
+        // From a section, back is that section.
+        await p6OpenAnalytics(tester, container, AnalyticsSection.revenue);
+        await p6Tap(
+          tester,
+          find.byKey(const Key('analytics-revenue-gross-sales-open')),
+        );
+        await settlePnl(tester, container);
+        expect(
+          container.read(analyticsSectionProvider),
+          AnalyticsSection.profitAndLoss,
+        );
+        await p6OpenAnalytics(tester, container, AnalyticsSection.revenue);
+        expect(
+          find.byKey(const Key('analytics-revenue-summary')),
+          findsOneWidget,
+        );
+        await p6OpenOverview(tester, container);
+
+        // ── 16 · 17 · every Windows size, no overflow, no amount cut short ─────
+        for (final size in const [
+          Size(1366, 768),
+          Size(1024, 700),
+          Size(1920, 1080),
+        ]) {
+          await tester.binding.setSurfaceSize(size);
+          await tester.pump(const Duration(milliseconds: 600));
+          for (final section in [null, ...AnalyticsSection.values]) {
+            if (section == null) {
+              await p6OpenOverview(tester, container);
+            } else {
+              await p6OpenAnalytics(tester, container, section);
+            }
+            await tester.pump(const Duration(milliseconds: 600));
+            expect(tester.takeException(), isNull, reason: '$size $section');
+            p6ExpectMoneyWhole(tester, '$size ${section ?? 'overview'}');
+          }
+        }
+        await tester.binding.setSurfaceSize(null);
+        await p6OpenOverview(tester, container);
+
+        // ── 19 · 20 · 29 · offline: kept, reported, detail refused ─────────────
+        final freshBefore = p6Ready(container).view.freshness!.synchronisedAt;
+        await p6Reveal(
+          tester,
+          find.byKey(const Key('dashboard-net-sales-value')),
+        );
+        final netBefore = uiPaise(tester, 'dashboard-net-sales-value');
+        final expensesBefore = uiPaise(tester, 'dashboard-expenses-value');
+        _transport.online = false;
+        try {
+          await p6Refresh(
+            tester,
+            container,
+            expected: DashboardSyncPhase.failed,
+          );
+          expect(find.byKey(const Key('dashboard-offline')), findsOneWidget);
+          expect(find.byKey(const Key('dashboard-body')), findsOneWidget);
+          expect(uiPaise(tester, 'dashboard-net-sales-value'), netBefore);
+          expect(uiPaise(tester, 'dashboard-expenses-value'), expensesBefore);
+          expect(
+            find.byKey(const Key('dashboard-freshness-synchronised')),
+            findsOneWidget,
+          );
+          await p6Tap(
+            tester,
+            find.byKey(const Key('dashboard-net-sales-open')),
+          );
+          await p6Tap(
+            tester,
+            find.byKey(
+              Key('pnl-drill-revenue-category-$_ccr-${ids.restaurant}'),
+            ),
+          );
+          await p6AwaitDrillLevel(tester, Key('pnl-drill-doc-${ids.sale}'));
+          await p6Tap(tester, find.byKey(Key('pnl-drill-doc-${ids.sale}')));
+          await pumpUntil(
+            tester,
+            'detail not downloaded while offline',
+            () => find.text(pnlDocumentNotDownloadedText).evaluate().isNotEmpty,
+            timeout: const Duration(seconds: 60),
+          );
+          await p6Back(tester);
+        } finally {
+          _transport.online = true;
+        }
+        await p6Refresh(tester, container);
+        expect(
+          p6Ready(
+            container,
+          ).view.freshness!.synchronisedAt.isAfter(freshBefore),
+          isTrue,
+          reason: 'a successful refresh advances the freshness claim',
+        );
+        await p6ExpectHeadline(tester, container, client);
+      } finally {
+        _transport.online = true;
+        await tester.binding.setSurfaceSize(null);
+        await p6SweepAfter(client);
+      }
+    });
+  });
+
+  /// Pumps [frames] frames and fails the moment anything the next person may not see is on
+  /// screen — the check that a previous person's dashboard never flashes (D-231, D-267).
+  Future<void> p6WatchNoLeak(
+    WidgetTester tester,
+    ProviderContainer container, {
+    required Set<String> forbiddenUnits,
+    bool consolidatedForbidden = true,
+    int frames = 40,
+  }) async {
+    for (var i = 0; i < frames; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+      if (consolidatedForbidden) {
+        expect(
+          find.byKey(const Key('dashboard-scope-consolidated')),
+          findsNothing,
+          reason: 'frame $i: a consolidated choice was offered',
+        );
+        expect(
+          find.byKey(const Key('dashboard-property-comparison')),
+          findsNothing,
+          reason: 'frame $i: a property comparison was shown',
+        );
+      }
+      for (final unit in forbiddenUnits) {
+        expect(
+          find.byKey(Key('dashboard-scope-$unit')),
+          findsNothing,
+          reason: 'frame $i: a withdrawn property was offered',
+        );
+      }
+      final shown = dashboardShownTo(
+        container.read(dashboardViewProvider),
+        container.read(principalProvider),
+      );
+      if (shown is DashboardReady) {
+        expect(
+          shown.view.scope.ordered.toSet().intersection(forbiddenUnits),
+          isEmpty,
+          reason: 'frame $i: a dashboard over a withdrawn property is shown',
+        );
+      }
+    }
+  }
+
+  /// The dashboard, the analytics sections and the drill-down after a confirmed loss.
+  Future<void> p6ExpectClosedAfterLoss(
+    WidgetTester tester,
+    ProviderContainer container,
+    Set<String> lostUnits,
+  ) async {
+    expect(container.read(dashboardDrillProvider), isNull);
+    expect(find.byKey(const Key('dashboard-drill')), findsNothing);
+    expect(find.byType(MobilePnlDrillPage), findsNothing);
+    expect(find.byType(MobilePnlDocumentPage), findsNothing);
+    await p6WatchNoLeak(
+      tester,
+      container,
+      forbiddenUnits: lostUnits,
+      frames: 20,
+    );
+  }
+
+  Future<void> p6OpenNetSalesDrill(
+    WidgetTester tester,
+    String restaurant,
+  ) async {
+    await p6Tap(tester, find.byKey(const Key('dashboard-net-sales-open')));
+    await p6AwaitDrillLevel(
+      tester,
+      Key('pnl-drill-revenue-category-$_ccr-$restaurant'),
+    );
+  }
+
+  group('p6-windows-authority', skip: _phase != 'p6-windows-authority', () {
+    testWidgets(
+      'a user switch, a withdrawn property, a withdrawn capability and a withdrawn '
+      'consolidated authority each close the dashboard, the sections and the drill-down',
+      (tester) async {
+        expect(p6Phone(), isFalse, reason: 'run on Windows, with the host');
+        expect(
+          s11Handshake,
+          isNotEmpty,
+          reason: 'S11_HANDSHAKE names the file',
+        );
+        await launch(tester);
+        var container = await p6SignIn(tester, 'giridhar@hki.com');
+        final client = Supabase.instance.client;
+        final ownerId = container.read(principalProvider).userId;
+        await sweepPnlFixtures(client, marker: p6Marker);
+        final temporaryGrants = <String>[];
+        try {
+          final ids = await p6Fixtures(client);
+
+          // ── The Owner's consolidated dashboard, a drill-down open ─────────────
+          await p6OpenOverview(tester, container);
+          await p6Custom(tester, container, p6From, p6To);
+          await p6Refresh(tester, container);
+          await p6ExpectHeadline(tester, container, client);
+          await p6OpenNetSalesDrill(tester, ids.restaurant);
+          expect(await reportingCacheRows(ownerId), greaterThan(0));
+
+          // ── A → B, with a synchronisation still in flight ──────────────────────
+          // The run started for the Owner must not publish for whoever comes next.
+          unawaited(container.read(dashboardSyncProvider.notifier).refresh());
+          await tester.pump(const Duration(milliseconds: 50));
+          await signOutThroughTheUi(tester);
+          expect(
+            await reportingCacheRows(ownerId),
+            0,
+            reason: 'sign-out takes the Owner\'s reporting cache with it',
+          );
+          container = await p6SignIn(tester, 'ccr.manager@example.com');
+          final managerId = container.read(principalProvider).userId;
+          await p6OpenOverview(tester, container);
+          await p6WatchNoLeak(tester, container, forbiddenUnits: {_hki});
+          expect(container.read(dashboardDrillProvider), isNull);
+          expect(
+            container.read(dashboardSelectionProvider).period,
+            const DashboardRelativePeriod(DashboardPeriodKind.monthToDate),
+            reason: 'nothing the Owner chose is inherited',
+          );
+          expect(await reportingCacheRows(ownerId), 0);
+          await p6Custom(tester, container, p6From, p6To);
+          await p6Refresh(tester, container);
+          expect(p6Ready(container).view.scope.ordered, [_ccr]);
+          expect(
+            p6Ready(container).authorityKey,
+            PnlAuthority.readKey(container.read(principalProvider)),
+          );
+          await p6ExpectHeadline(tester, container, client);
+          await p6OpenAnalytics(
+            tester,
+            container,
+            AnalyticsSection.businessComparison,
+          );
+          expect(
+            find.byKey(const Key('analytics-comparison-table')),
+            findsNothing,
+          );
+          expect(
+            find.byKey(const Key('analytics-comparison-not-authorised')),
+            findsOneWidget,
+          );
+          await p6OpenOverview(tester, container);
+
+          // ── Property-scope loss, the same person ───────────────────────────────
+          await _admin.grantScope('ccr.manager@example.com', 'manager', 'HKI');
+          await s11AuthorityUntil(
+            tester,
+            container,
+            'the manager with Hotel Krishna',
+            (p) => PnlAuthority.mayReadUnit(p, _hki),
+          );
+          expect(
+            find.byKey(const Key('dashboard-scope-consolidated')),
+            findsNothing,
+            reason: 'two scoped grants are not consolidated authority (D-164)',
+          );
+          await p6Scope(tester, container, Key('dashboard-scope-$_hki'));
+          await p6Custom(tester, container, p6From, p6To);
+          await p6Refresh(tester, container);
+          expect(p6Ready(container).view.scope.ordered, [_hki]);
+          await p6ExpectHeadline(tester, container, client);
+          await p6Tap(tester, find.byKey(const Key('dashboard-expenses-open')));
+          await p6AwaitDrillLevel(
+            tester,
+            Key('pnl-drill-dept-$_hki-${_seedId('dept:HKI/HKI_UTIL')}'),
+          );
+          expect(
+            await reportingCacheRows(managerId, businessUnitId: _hki),
+            greaterThan(0),
+          );
+          await _admin.revokeScope('ccr.manager@example.com', 'HKI');
+          await s11AuthorityUntil(
+            tester,
+            container,
+            'the manager without Hotel Krishna',
+            (p) =>
+                !PnlAuthority.mayReadUnit(p, _hki) &&
+                PnlAuthority.mayReadUnit(p, _ccr),
+          );
+          await p6ExpectClosedAfterLoss(tester, container, {_hki});
+          await p6Settle(tester, container);
+          expect(p6Ready(container).view.scope.ordered, [_ccr]);
+          expect(
+            await reportingCacheRows(managerId, businessUnitId: _hki),
+            0,
+            reason: 'the confirmed loss purged that property\'s figures',
+          );
+
+          // ── A capability withdrawn from the same person, property kept (host) ──
+          await p6Custom(tester, container, p6From, p6To);
+          await p6OpenNetSalesDrill(tester, ids.restaurant);
+          await s11Signal('manager:reports.view', 'ready');
+          await s11AwaitHost(tester, 'manager:reports.view', 'applied');
+          await s11AuthorityUntil(
+            tester,
+            container,
+            'the manager without reports.view',
+            (p) =>
+                !p.can(Capability.reportsView, businessUnitId: _ccr) &&
+                p.can(Capability.mastersView, businessUnitId: _ccr),
+          );
+          await tester.pump(const Duration(seconds: 2));
+          expect(container.read(dashboardDrillProvider), isNull);
+          await p6Settle(tester, container);
+          p6ExpectNeutral(tester);
+          expect(await reportingCacheRows(managerId, businessUnitId: _ccr), 0);
+          expect(
+            visible('Analytics'),
+            isFalse,
+            reason:
+                'the analytics workspace is not offered without reports.view',
+          );
+          await s11Signal('manager:reports.view', 'verified');
+          await s11AwaitHost(tester, 'manager:reports.view', 'restored');
+          await s11AuthorityUntil(
+            tester,
+            container,
+            'the manager with reports.view again',
+            (p) => p.can(Capability.reportsView, businessUnitId: _ccr),
+          );
+          await p6Settle(tester, container);
+          await p6Custom(tester, container, p6From, p6To);
+          await p6Refresh(tester, container);
+          await p6ExpectHeadline(tester, container, client);
+
+          // ── No qualifying authority at all ─────────────────────────────────────
+          container = await p6SignIn(tester, 'data.entry@example.com');
+          await p6OpenOverview(tester, container);
+          await p6WatchNoLeak(tester, container, forbiddenUnits: {_ccr, _hki});
+          p6ExpectNeutral(tester);
+
+          // ── Consolidated authority withdrawn, scoped authority kept (host) ────
+          container = await p6SignIn(tester, 'giridhar@hki.com');
+          for (final unit in [_ccr, _hki]) {
+            final granted = Map<String, dynamic>.from(
+              await client.rpc<dynamic>(
+                    'user_role_grant',
+                    params: {
+                      'p_user_id': ownerId,
+                      'p_role_code': 'manager',
+                      'p_business_unit_id': unit,
+                      'p_mutation_id': const Uuid().v4(),
+                    },
+                  )
+                  as Map,
+            );
+            temporaryGrants.add(granted['entity_id'] as String);
+          }
+          await s11AuthorityUntil(
+            tester,
+            container,
+            'the temporary scoped grants',
+            (p) =>
+                PnlAuthority.mayReadUnit(p, _ccr) &&
+                PnlAuthority.mayReadUnit(p, _hki) &&
+                PnlAuthority.mayReadConsolidated(p),
+          );
+          await p6OpenOverview(tester, container);
+          await p6Custom(tester, container, p6From, p6To);
+          await p6Refresh(tester, container);
+          expect(p6Ready(container).scope, const PnlConsolidatedScope());
+          await p6OpenNetSalesDrill(tester, ids.restaurant);
+          await s11Signal('owner:reports.view', 'ready');
+          await s11AwaitHost(tester, 'owner:reports.view', 'applied');
+          await s11AuthorityUntil(
+            tester,
+            container,
+            'the Owner without unscoped reports.view',
+            (p) =>
+                !PnlAuthority.mayReadConsolidated(p) &&
+                PnlAuthority.mayReadUnit(p, _ccr),
+          );
+          await tester.pump(const Duration(seconds: 2));
+          expect(container.read(dashboardDrillProvider), isNull);
+          await p6Settle(tester, container);
+          await p6WatchNoLeak(tester, container, forbiddenUnits: const {});
+          expect(p6Ready(container).view.scope.ordered, hasLength(1));
+          await p6OpenAnalytics(
+            tester,
+            container,
+            AnalyticsSection.businessComparison,
+          );
+          expect(
+            find.byKey(const Key('analytics-comparison-table')),
+            findsNothing,
+          );
+          await p6OpenOverview(tester, container);
+          await s11Signal('owner:reports.view', 'verified');
+          await s11AwaitHost(tester, 'owner:reports.view', 'restored');
+          await s11AuthorityUntil(
+            tester,
+            container,
+            'the Owner with unscoped reports.view again',
+            PnlAuthority.mayReadConsolidated,
+          );
+        } finally {
+          _transport.online = true;
+          if (container.read(principalProvider).userId != ownerId) {
+            container = await p6SignIn(tester, 'giridhar@hki.com');
+          }
+          for (final grant in temporaryGrants) {
+            await client.rpc<dynamic>(
+              'user_role_revoke',
+              params: {'p_grant_id': grant, 'p_mutation_id': const Uuid().v4()},
+            );
+          }
+          await _admin.revokeScope('ccr.manager@example.com', 'HKI');
+          await p6SweepAfter(client);
+          await s11Signal('done', 'finished');
+        }
+      },
+    );
+  });
+
+  group('p6-android-dashboard', skip: _phase != 'p6-android-dashboard', () {
+    testWidgets(
+      'the Home dashboard equals the server, drills down one level at a time, hands off '
+      'to the P&L, survives offline and fits every phone width and font scale',
+      (tester) async {
+        expect(p6Phone(), isTrue, reason: 'run on an Android device');
+        await launch(tester);
+        final container = await p6SignIn(tester, 'giridhar@hki.com');
+        final client = Supabase.instance.client;
+        await sweepPnlFixtures(client, marker: p6Marker);
+        try {
+          final ids = await p6Fixtures(client);
+
+          // ── 1 · 3 · Home, consolidated ─────────────────────────────────────────
+          await p6OpenOverview(tester, container);
+          await p6Refresh(tester, container);
+          expect(p6Ready(container).scope, const PnlConsolidatedScope());
+
+          // ── 5 · each relative period ───────────────────────────────────────────
+          for (final kind in const [
+            DashboardPeriodKind.today,
+            DashboardPeriodKind.weekToDate,
+            DashboardPeriodKind.monthToDate,
+            DashboardPeriodKind.financialYearToDate,
+          ]) {
+            await p6Period(tester, container, kind);
+            await p6ExpectComparedOrWithheld(tester, container, kind);
+            await p6Refresh(tester, container);
+            await p6ExpectHeadline(tester, container, client);
+          }
+
+          // ── 6 · Custom on the Material calendar ────────────────────────────────
+          await p6Custom(tester, container, p6From, p6To);
+          await p6ExpectHeadline(tester, container, client);
+          final march = p6Ready(container);
+
+          // ── 9 · Property comparison, from the server's own per-unit figures ────
+          final split =
+              march.view.propertyComparison! as PropertyComparisonReady;
+          for (final property in split.properties) {
+            final one = await serverPnl(
+              client,
+              [property.businessUnitId],
+              p6From.iso,
+              p6To.iso,
+            );
+            expect(property.netSales.paise, one.net);
+            expect(property.expenses.paise, one.expenses);
+          }
+          await p6Reveal(
+            tester,
+            find.byKey(const Key('dashboard-property-comparison')),
+          );
+
+          // ── 8 · Top expense categories; the workspace content stays on Windows ─
+          await p6Reveal(
+            tester,
+            find.byKey(const Key('dashboard-top-expenses')),
+          );
+          final top =
+              march.view.topExpenseCategories!
+                  as TopNGrouped<ExpenseHierarchyLine>;
+          final server = await serverPnl(
+            client,
+            [_ccr, _hki],
+            p6From.iso,
+            p6To.iso,
+          );
+          expect(
+            top.top.fold<int>(0, (s, r) => s + r.amount.paise) +
+                (top.others?.paise ?? 0),
+            server.expenses,
+          );
+          for (final key in const [
+            'dashboard-revenue-mix',
+            'dashboard-departments',
+            'dashboard-trend-operating-profit',
+          ]) {
+            expect(find.byKey(Key(key)), findsNothing, reason: key);
+          }
+          // ── 19 · no Owner Accounts anywhere on Home ────────────────────────────
+          for (final word in const [
+            'Settlement',
+            'Owner position',
+            'Withdrawal',
+          ]) {
+            expect(
+              find.descendant(
+                of: find.byKey(const Key('dashboard-home-page')),
+                matching: find.textContaining(word),
+              ),
+              findsNothing,
+              reason: word,
+            );
+          }
+
+          // ── 11 · 14 · Net Sales → category → documents → document, back one level
+          final before = await ordinaryAndCacheCounts();
+          await p6OpenNetSalesDrill(tester, ids.restaurant);
+          expect(find.byType(MobilePnlDrillPage), findsOneWidget);
+          await p6Tap(
+            tester,
+            find.byKey(
+              Key('pnl-drill-revenue-category-$_ccr-${ids.restaurant}'),
+            ),
+          );
+          await p6AwaitDrillLevel(tester, Key('pnl-drill-doc-${ids.sale}'));
+          await p6Tap(tester, find.byKey(Key('pnl-drill-doc-${ids.sale}')));
+          await p6AwaitDrillLevel(tester, const Key('pnl-document-revenue'));
+          expect(find.byType(MobilePnlDocumentPage), findsOneWidget);
+          expectReportDetailReadOnly();
+          expect(await ordinaryAndCacheCounts(), before);
+          await p6Back(tester);
+          expect(find.byType(MobilePnlDocumentPage), findsNothing);
+          expect(find.byKey(Key('pnl-drill-doc-${ids.sale}')), findsOneWidget);
+          await p6Back(tester);
+          expect(
+            find.byKey(
+              Key('pnl-drill-revenue-category-$_ccr-${ids.restaurant}'),
+            ),
+            findsOneWidget,
+          );
+          await p6Back(tester);
+          expect(find.byType(MobilePnlDrillPage), findsNothing);
+          expect(find.byType(MobileHomePage), findsOneWidget);
+
+          // ── 12 · Expenses → department → section → category → documents ────────
+          await p6Tap(tester, find.byKey(const Key('dashboard-expenses-open')));
+          for (final key in [
+            'pnl-drill-dept-$_ccr-${_seedId('dept:CCR/FB')}',
+            'pnl-drill-section-$_ccr-${_seedId('sec:CCR/FB/FOOD_PROD')}',
+            'pnl-drill-category-$_ccr-$_kirana',
+          ]) {
+            await p6AwaitDrillLevel(tester, Key(key));
+            await Scrollable.ensureVisible(
+              tester.element(find.byKey(Key(key))),
+              alignment: 0.3,
+            );
+            await tester.pump(const Duration(milliseconds: 300));
+            await tapWhenHittable(tester, find.byKey(Key(key)));
+          }
+          await p6AwaitDrillLevel(tester, Key('pnl-drill-doc-${ids.shared}'));
+          expect(
+            uiPaise(tester, 'pnl-drill-doc-${ids.shared}-amount'),
+            2500000,
+          );
+          await p6BackToHome(tester);
+
+          // ── 7 · 13 · a trend point opens exactly its own day ───────────────────
+          final trendPanel = find.byKey(const Key('dashboard-trend-net-sales'));
+          await p6OpenChartPoint(tester, trendPanel, 9);
+          await p6AwaitDrillLevel(
+            tester,
+            Key('pnl-drill-revenue-category-$_ccr-${ids.restaurant}'),
+          );
+          final dayServer = await serverPnl(
+            client,
+            [_ccr, _hki],
+            '2027-03-10',
+            '2027-03-10',
+          );
+          expect(uiPaise(tester, 'pnl-drill-total-net'), dayServer.net);
+          await p6BackToHome(tester);
+
+          // ── 10 · See full P&L, and Operating Profit handed over as Custom ──────
+          await p6Tap(tester, find.byKey(const Key('dashboard-see-full-pnl')));
+          await pumpUntil(
+            tester,
+            'the Reports tab',
+            () => find.byType(MobileProfitAndLossPage).evaluate().isNotEmpty,
+          );
+          await p6OpenOverview(tester, container);
+          await p6Tap(
+            tester,
+            find.byKey(const Key('dashboard-operating-open')),
+          );
+          await pumpUntil(
+            tester,
+            'the P&L, handed the dashboard period',
+            () => find.byType(MobileProfitAndLossPage).evaluate().isNotEmpty,
+          );
+          expect(
+            container.read(pnlSelectionProvider).period,
+            PnlCustomPeriod(p6From, p6To),
+          );
+          await settlePnl(tester, container);
+          expectPnlMatchesServer(tester, container, server);
+          await p6OpenOverview(tester, container);
+          expect(
+            container.read(dashboardSelectionProvider).period,
+            DashboardCustomPeriod(p6From, p6To),
+            reason: 'Home is as it was left',
+          );
+
+          // ── 2 · one property ───────────────────────────────────────────────────
+          await p6Scope(tester, container, Key('dashboard-scope-$_ccr'));
+          expect(p6Ready(container).view.scope.ordered, [_ccr]);
+          await p6ExpectHeadline(tester, container, client);
+          expect(
+            find.byKey(const Key('dashboard-property-comparison')),
+            findsNothing,
+          );
+          await p6Scope(
+            tester,
+            container,
+            const Key('dashboard-scope-consolidated'),
+          );
+
+          // ── 17 · 18 · 20 · offline, then reconnect ─────────────────────────────
+          final freshBefore = p6Ready(container).view.freshness!.synchronisedAt;
+          await p6Reveal(
+            tester,
+            find.byKey(const Key('dashboard-net-sales-value')),
+          );
+          final netBefore = uiPaise(tester, 'dashboard-net-sales-value');
+          _transport.online = false;
+          try {
+            await p6Refresh(
+              tester,
+              container,
+              expected: DashboardSyncPhase.failed,
+            );
+            await p6Reveal(
+              tester,
+              find.byKey(const Key('dashboard-net-sales-value')),
+            );
+            expect(uiPaise(tester, 'dashboard-net-sales-value'), netBefore);
+            expect(find.byKey(const Key('dashboard-offline')), findsOneWidget);
+            await p6OpenNetSalesDrill(tester, ids.restaurant);
+            await p6Tap(
+              tester,
+              find.byKey(
+                Key('pnl-drill-revenue-category-$_ccr-${ids.restaurant}'),
+              ),
+            );
+            await p6AwaitDrillLevel(tester, Key('pnl-drill-doc-${ids.sale}'));
+            await p6Tap(tester, find.byKey(Key('pnl-drill-doc-${ids.sale}')));
+            await pumpUntil(
+              tester,
+              'detail not downloaded while offline',
+              () =>
+                  find.text(pnlDocumentNotDownloadedText).evaluate().isNotEmpty,
+              timeout: const Duration(seconds: 60),
+            );
+            await p6BackToHome(tester);
+          } finally {
+            _transport.online = true;
+          }
+          await p6Refresh(tester, container);
+          expect(
+            p6Ready(
+              container,
+            ).view.freshness!.synchronisedAt.isAfter(freshBefore),
+            isTrue,
+          );
+
+          // ── Layout: widths and font scales ─────────────────────────────────────
+          for (final size in const [
+            Size(320, 640),
+            Size(360, 740),
+            Size(411, 891),
+          ]) {
+            for (final scale in const [1.0, 1.6]) {
+              await tester.binding.setSurfaceSize(size);
+              tester.platformDispatcher.textScaleFactorTestValue = scale;
+              await tester.pump(const Duration(milliseconds: 800));
+              await tester.drag(p6HomeScrollable(), const Offset(0, 4000));
+              await tester.pump(const Duration(milliseconds: 400));
+              for (var i = 0; i < 12; i++) {
+                expect(tester.takeException(), isNull, reason: '$size ×$scale');
+                p6ExpectMoneyWhole(tester, '$size ×$scale');
+                await tester.drag(p6HomeScrollable(), const Offset(0, -400));
+                await tester.pump(const Duration(milliseconds: 250));
+              }
+              final last = find.byKey(const Key('dashboard-see-full-pnl'));
+              await p6Centre(tester, last);
+              await tester.drag(p6HomeScrollable(), const Offset(0, -4000));
+              await tester.pump(const Duration(milliseconds: 400));
+              expect(
+                tester.getRect(last).bottom,
+                lessThanOrEqualTo(
+                  tester.getRect(find.byType(FloatingActionButton)).top,
+                ),
+                reason:
+                    'the last control clears the docked [ + ] at $size ×$scale',
+              );
+            }
+          }
+        } finally {
+          _transport.online = true;
+          tester.platformDispatcher.clearTextScaleFactorTestValue();
+          await tester.binding.setSurfaceSize(null);
+          await p6SweepAfter(client);
+        }
+      },
+    );
+  });
+
+  group('p6-android-authority', skip: _phase != 'p6-android-authority', () {
+    testWidgets(
+      'on one phone the next person inherits nothing, a withdrawn property closes what '
+      'is open, and a reader without authority sees the neutral sentence',
+      (tester) async {
+        expect(p6Phone(), isTrue, reason: 'run on an Android device');
+        await launch(tester);
+        var container = await p6SignIn(tester, 'giridhar@hki.com');
+        final client = Supabase.instance.client;
+        final ownerId = container.read(principalProvider).userId;
+        await sweepPnlFixtures(client, marker: p6Marker);
+        try {
+          final ids = await p6Fixtures(client);
+          debugPrint('P6 STEP 1: p6OpenOverview(tester, container);');
+          await p6OpenOverview(tester, container);
+          debugPrint('P6 STEP 2: p6Custom(tester, container, p6From, p6To);');
+          await p6Custom(tester, container, p6From, p6To);
+          debugPrint('P6 STEP 3: p6Refresh(tester, container);');
+          await p6Refresh(tester, container);
+          expect(p6Ready(container).scope, const PnlConsolidatedScope());
+          debugPrint('P6 STEP 4: p6OpenNetSalesDrill(tester, ids.restaurant);');
+          await p6OpenNetSalesDrill(tester, ids.restaurant);
+
+          // ── 15 · the Owner → a Crystal Canopy manager, a refresh in flight ──────
+          unawaited(container.read(dashboardSyncProvider.notifier).refresh());
+          debugPrint(
+            'P6 STEP 5: tester.pump(const Duration(milliseconds: 50));',
+          );
+          await tester.pump(const Duration(milliseconds: 50));
+          debugPrint('P6 STEP 6: p6BackToHome(tester);');
+          await p6BackToHome(tester);
+          debugPrint('P6 STEP 7: signOutThroughTheUi(tester);');
+          await signOutThroughTheUi(tester);
+          expect(await reportingCacheRows(ownerId), 0);
+          container = await p6SignIn(tester, 'ccr.manager@example.com');
+          final managerId = container.read(principalProvider).userId;
+          debugPrint('P6 STEP 8: p6OpenOverview(tester, container);');
+          await p6OpenOverview(tester, container);
+          debugPrint(
+            'P6 STEP 9: p6WatchNoLeak(tester, container, forbiddenUnits: {_hki',
+          );
+          await p6WatchNoLeak(tester, container, forbiddenUnits: {_hki});
+          expect(
+            container.read(dashboardSelectionProvider).period,
+            const DashboardRelativePeriod(DashboardPeriodKind.monthToDate),
+          );
+          debugPrint('P6 STEP 10: p6Custom(tester, container, p6From, p6To);');
+          await p6Custom(tester, container, p6From, p6To);
+          debugPrint('P6 STEP 11: p6Refresh(tester, container);');
+          await p6Refresh(tester, container);
+          expect(p6Ready(container).view.scope.ordered, [_ccr]);
+          debugPrint(
+            'P6 STEP 12: p6ExpectHeadline(tester, container, client);',
+          );
+          await p6ExpectHeadline(tester, container, client);
+
+          // ── 16 · the same person loses a property while a drill-down is open ──
+          debugPrint(
+            'P6 STEP 13: _admin.grantScope(ccr.manager@example.com, manager',
+          );
+          await _admin.grantScope('ccr.manager@example.com', 'manager', 'HKI');
+          debugPrint('P6 STEP 14: s11AuthorityUntil(');
+          await s11AuthorityUntil(
+            tester,
+            container,
+            'the manager with Hotel Krishna',
+            (p) => PnlAuthority.mayReadUnit(p, _hki),
+          );
+          debugPrint(
+            'P6 STEP 15: p6Scope(tester, container, Key(dashboard-scope-_hki',
+          );
+          await p6Scope(tester, container, Key('dashboard-scope-$_hki'));
+          debugPrint('P6 STEP 16: p6Custom(tester, container, p6From, p6To);');
+          await p6Custom(tester, container, p6From, p6To);
+          debugPrint('P6 STEP 17: p6Refresh(tester, container);');
+          await p6Refresh(tester, container);
+          expect(p6Ready(container).view.scope.ordered, [_hki]);
+          debugPrint(
+            'P6 STEP 18: p6Tap(tester, find.byKey(const Key(dashboard-expenses',
+          );
+          await p6Tap(tester, find.byKey(const Key('dashboard-expenses-open')));
+          debugPrint('P6 STEP 19: p6AwaitDrillLevel(');
+          await p6AwaitDrillLevel(
+            tester,
+            Key('pnl-drill-dept-$_hki-${_seedId('dept:HKI/HKI_UTIL')}'),
+          );
+          expect(find.byType(MobilePnlDrillPage), findsOneWidget);
+          debugPrint(
+            'P6 STEP 20: _admin.revokeScope(ccr.manager@example.com, HKI);',
+          );
+          await _admin.revokeScope('ccr.manager@example.com', 'HKI');
+          debugPrint('P6 STEP 21: s11AuthorityUntil(');
+          await s11AuthorityUntil(
+            tester,
+            container,
+            'the manager without Hotel Krishna',
+            (p) =>
+                !PnlAuthority.mayReadUnit(p, _hki) &&
+                PnlAuthority.mayReadUnit(p, _ccr),
+          );
+          debugPrint('P6 STEP 22: pumpUntil(');
+          await pumpUntil(
+            tester,
+            'the drill-down to close',
+            () => find.byType(MobilePnlDrillPage).evaluate().isEmpty,
+          );
+          debugPrint(
+            'P6 STEP 23: p6ExpectClosedAfterLoss(tester, container, {_hki});',
+          );
+          await p6ExpectClosedAfterLoss(tester, container, {_hki});
+          debugPrint('P6 STEP 24: p6Settle(tester, container);');
+          await p6Settle(tester, container);
+          expect(p6Ready(container).view.scope.ordered, [_ccr]);
+          expect(await reportingCacheRows(managerId, businessUnitId: _hki), 0);
+
+          // ── 4 · no qualifying authority ────────────────────────────────────────
+          container = await p6SignIn(tester, 'data.entry@example.com');
+          debugPrint('P6 STEP 25: p6OpenOverview(tester, container);');
+          await p6OpenOverview(tester, container);
+          debugPrint(
+            'P6 STEP 26: p6WatchNoLeak(tester, container, forbiddenUnits: {_ccr',
+          );
+          await p6WatchNoLeak(tester, container, forbiddenUnits: {_ccr, _hki});
+          p6ExpectNeutral(tester);
+        } finally {
+          _transport.online = true;
+          if (container.read(principalProvider).userId != ownerId) {
+            container = await p6SignIn(tester, 'giridhar@hki.com');
+          }
+          debugPrint(
+            'P6 STEP 27: _admin.revokeScope(ccr.manager@example.com, HKI);',
+          );
+          await _admin.revokeScope('ccr.manager@example.com', 'HKI');
+          debugPrint('P6 STEP 28: sweepPnlFixtures(client, marker: p6Marker);');
+          await p6SweepAfter(client);
         }
       },
     );

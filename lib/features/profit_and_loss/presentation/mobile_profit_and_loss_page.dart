@@ -22,6 +22,7 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:krishna_mis/core/design/components/figure_reflow.dart';
 import 'package:krishna_mis/app/providers.dart';
 import 'package:krishna_mis/core/design/components/money_text.dart';
 import 'package:krishna_mis/core/design/tokens/app_tokens.dart';
@@ -825,44 +826,32 @@ class _Figure extends StatelessWidget {
       bottom: AppSpacing.xxs,
       left: indent ? AppSpacing.md : 0,
     ),
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          flex: 5,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                key: labelKey == null ? null : Key(labelKey!),
-                style: (strong ? AppTypography.body : AppTypography.bodyMuted)
-                    .copyWith(fontWeight: strong ? FontWeight.w600 : null),
-              ),
-              if (detail case final String text when text.isNotEmpty)
-                Text(text, style: AppTypography.caption),
-            ],
+    // The label and the whole figure share a line while they fit. At a large system
+    // font the figure moves to its own line at full size and the row grows taller; it
+    // is never shrunk to fit (D-286).
+    child: FigureReflow(
+      lead: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            key: labelKey == null ? null : Key(labelKey!),
+            style: (strong ? AppTypography.body : AppTypography.bodyMuted)
+                .copyWith(fontWeight: strong ? FontWeight.w600 : null),
           ),
-        ),
-        const SizedBox(width: AppSpacing.sm),
-        Flexible(
-          flex: 6,
-          child: Align(
-            alignment: Alignment.centerRight,
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerRight,
-              child: MoneyText(
-                amount,
-                key: Key(keyName),
-                style: strong ? AppTypography.moneyStrong : AppTypography.money,
-                emphasis: bySign ? MoneyEmphasis.bySign : MoneyEmphasis.neutral,
-                semanticPrefix: label,
-              ),
-            ),
-          ),
-        ),
-      ],
+          if (detail case final String text when text.isNotEmpty)
+            Text(text, style: AppTypography.caption),
+        ],
+      ),
+      figure: MoneyText(
+        amount,
+        key: Key(keyName),
+        style: strong ? AppTypography.moneyStrong : AppTypography.money,
+        emphasis: bySign ? MoneyEmphasis.bySign : MoneyEmphasis.neutral,
+        semanticPrefix: label,
+      ),
+      rowAlignment: CrossAxisAlignment.start,
+      stackedFigureAtEnd: true,
     ),
   );
 }
