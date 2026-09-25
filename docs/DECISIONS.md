@@ -9923,3 +9923,26 @@ empty line", not a measure of it. It passes because the product is correct. It w
 catch a figure broken inside a slot narrower than its line but wider than 60% of the
 screen. Tightening it to the enclosing line's width is a test change for the project lead
 to schedule.
+
+## D-286 (test tightened) — The layout check measures the real empty line
+**Date:** 2026-09-25 · **Status:** Implemented / Tested (project-lead instruction) — closes the
+looseness recorded in *D-286 (clarified)*
+
+`test/support/money_layout.dart` no longer approximates "an otherwise empty line" as 60% of
+the screen. A figure that wraps is accepted only when all of these hold:
+- it lies in the **figure** child of a `RenderFigureReflow`;
+- that reflow has stacked it onto a line of its own;
+- the paragraph was given the reflow's full measured width;
+- its complete one-line width exceeds that width.
+
+Two focused tests pin the boundary at the real width. A line exactly as wide as the figure
+keeps it on one line. A line 2 px narrower lets it break, after a comma only.
+
+**Proven RED first.** With `FigureReflow`'s stacked line deliberately narrowed:
+- to 70%, the new check failed 16 tests and the old one 14. At phone widths the proxy
+  happened to trip, so this level did not separate them;
+- to 90%, the new check failed **8**. The old check let **all eight screen suites pass** and
+  caught only an isolated unit test.
+
+Restored byte-identically, the suites are green: 314 tests. The stricter check found no
+product defect, and no product code changed. Commit `310a2d0`.

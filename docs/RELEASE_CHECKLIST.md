@@ -725,44 +725,53 @@ artefacts — and installed on the phone, byte-identical (SHA-256 `6f334b6f…9b
 - [x] A figure wider than a full line of its own breaks only after a comma between digit
       groups, at full size (project-lead ruling on D-286).
 
-### S.3 Physical Galaxy A06 — **manual checklist for the project lead**
+### S.3 Physical Galaxy A06 — **manual checklist: 20/20 PASS (25 September 2026)**
 
-**NOT TESTED until the project lead reports each line.** Clean dev build, signed in as the
-development Owner unless a line says otherwise.
+**All 20 performed and reported PASS by the project lead** on the Galaxy A06 (SM-A066B,
+Android 16 / API 36), 25 September 2026, with the clean dev build installed (SHA-256
+`6f334b6f…9b45`). Recorded as his observation: no automated run fills these in, and none did.
+Signed in as the development Owner unless a line says otherwise.
 
-1. [ ] Home opens to the dashboard with property, period and "synchronised as of" readable.
-2. [ ] Today so far, Week to date, Month to date and Financial year to date each change the
+The checks ran against 14 temporary fixtures in `krishna-mis-dev`: 9 sales across all four
+categories, dated 16 and 21–25 September plus 18 and 20 August as the comparator, and 5
+expenses including one shared bill. Each note is marked `S10-MANUAL-FIXTURE`, and each was created
+through the ordinary RPCs as the development Owner. All 14 were **voided** through
+`revenue_void` / `expense_void` after the checks, and the voided rows remain as history
+(D-006). Nothing was deleted.
+
+1. [x] Home opens to the dashboard with property, period and "synchronised as of" readable.
+2. [x] Today so far, Week to date, Month to date and Financial year to date each change the
        figures, and each label says the period is unfinished.
-3. [ ] Custom opens the calendar over the bottom bar and the [ + ]; Android back closes it
+3. [x] Custom opens the calendar over the bottom bar and the [ + ]; Android back closes it
        and leaves the period unchanged.
-4. [ ] The scope sheet switches between one property and both properties; Android back
+4. [x] The scope sheet switches between one property and both properties; Android back
        closes it without changing the scope.
-5. [ ] Net Sales, Operating Expenses, Operating Profit/Loss and Margin each show a
+5. [x] Net Sales, Operating Expenses, Operating Profit/Loss and Margin each show a
        comparison, or a stated reason where there is none, and never ₹0 in place of a
        comparison.
-6. [ ] System font size set to the largest: no amount is shrunk, cut off or run off the
+6. [x] System font size set to the largest: no amount is shrunk, cut off or run off the
        screen. A figure too wide for its own line breaks only after a comma, like
        "₹1,66," then "383.00".
-7. [ ] At the largest font, the last item on Home clears the [ + ] button.
-8. [ ] Tapping a Net Sales trend point opens that bucket's revenue categories.
-9. [ ] Tapping a top expense category opens its documents; one document opens read-only,
+7. [x] At the largest font, the last item on Home clears the [ + ] button.
+8. [x] Tapping a Net Sales trend point opens that bucket's revenue categories.
+9. [x] Tapping a top expense category opens its documents; one document opens read-only,
        with no Edit or Void.
-10. [ ] Android back goes up one level at a time, and finally returns to Home as it was left.
-11. [ ] Tapping Operating Profit opens the Reports tab with the P&L set to the same dates
+10. [x] Android back goes up one level at a time, and finally returns to Home as it was left.
+11. [x] Tapping Operating Profit opens the Reports tab with the P&L set to the same dates
         as a Custom period.
-12. [ ] "See full P&L" opens the Reports tab.
-13. [ ] Property comparison shows both properties and the total, with no word such as
+12. [x] "See full P&L" opens the Reports tab.
+13. [x] Property comparison shows both properties and the total, with no word such as
         "winner", "better" or "best".
-14. [ ] Pull-to-refresh runs a synchronisation and the "synchronised as of" time moves.
-15. [ ] Aeroplane mode: the dashboard stays readable, says it is offline, and no figure
+14. [x] Pull-to-refresh runs a synchronisation and the "synchronised as of" time moves.
+15. [x] Aeroplane mode: the dashboard stays readable, says it is offline, and no figure
         becomes ₹0.
-16. [ ] Aeroplane mode: opening a document says a connection is needed.
-17. [ ] With the connection back, a refresh succeeds and the offline notice clears.
-18. [ ] Sign out, then sign in as the Crystal Canopy manager: none of the Owner's figures,
+16. [x] Aeroplane mode: opening a document says a connection is needed.
+17. [x] With the connection back, a refresh succeeds and the offline notice clears.
+18. [x] Sign out, then sign in as the Crystal Canopy manager: none of the Owner's figures,
         properties or open drill-down remain.
-19. [ ] A user with no report authority sees "Management analytics are not available for
+19. [x] A user with no report authority sees "Management analytics are not available for
         your access." and no property name, figure or chart.
-20. [ ] No Owner Accounts or settlement figure appears anywhere on Home.
+20. [x] No Owner Accounts or settlement figure appears anywhere on Home.
 
-**Phase 6 does not close until the automated A06 phases pass and the project lead has
-reported every line of S.3.**
+**Both conditions are met:** the automated A06 phases pass (§S.1) and every line of S.3 is
+reported PASS. Slice 10 is closed; Phase 6 closure is Slice 11.

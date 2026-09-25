@@ -5,11 +5,19 @@ Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
-Last updated: **2026-09-24** — **PHASE 6 SLICE 10 — FULL ACCEPTANCE: AUTOMATED GATES DONE, NOT FORMALLY
-COMPLETE**. Windows, emulator, live, performance, build and scan gates pass. Money no longer
-shrinks to fit anywhere (D-286). **The physical Galaxy A06 phases and the 20-item manual
-checklist (§S.3) are outstanding**; the phone is not connected. See *Phase 6 Slice 10* at
-the end of this file.
+Last updated: **2026-09-25** — **PHASE 6 SLICE 10 — FULL ACCEPTANCE: CLOSED.** Every gate passes:
+- Windows, emulator and live acceptance;
+- `p6-android-dashboard` and `p6-android-authority` on the physical Galaxy A06;
+- the 20-item manual checklist (§S.3), **20/20 PASS**, reported by the project lead;
+- builds and secret scans.
+
+The backend is exactly at baseline. Money never shrinks to fit (D-286), and the layout test
+now measures the real empty line. The phone's USB/ADB problems were acceptance
+infrastructure (D-288). **Slice 11 (Phase 6 closure) is not started.** See *Phase 6
+Slice 10* at the end of this file.
+
+Previously: **2026-09-24** — **PHASE 6 SLICE 10 — AUTOMATED GATES DONE, NOT FORMALLY
+COMPLETE**. The A06 phases and §S.3 were outstanding.
 
 Previously: **2026-09-23** — **PHASE 6 SLICE 9 — DRILL-DOWN INTEGRATION: COMPLETE**.
 
@@ -5554,7 +5562,7 @@ reporting cache is created, and authorization stays `PnlAuthority`.
 | 7 | Android Home dashboard | **COMPLETE** |
 | 8 | Windows Analytics sections | **COMPLETE** |
 | 9 | Drill-down integration | **COMPLETE** |
-| 10 | Full acceptance | **automated gates done; A06 pending** |
+| 10 | Full acceptance | **CLOSED** (2026-09-25) |
 | 11 | Closure | not started |
 
 **Performance gate (D-261):** before Slice 3 closes, trend series built from ordinary
@@ -6335,7 +6343,10 @@ a decision.
 
 ---
 
-## Phase 6 Slice 10 — Full acceptance: **AUTOMATED GATES DONE — NOT FORMALLY COMPLETE** (2026-09-24)
+## Phase 6 Slice 10 — Full acceptance: **CLOSED** (2026-09-25)
+
+*The record below was written on 2026-09-24, when the A06 phases were still outstanding.
+The closure record is at the end of this section.*
 
 Decisions **D-283 (final)**, **D-286**, **D-287**; `ARCHITECTURE.md` §49; `RELEASE_CHECKLIST.md`
 §S. **No schema change, no migration, no Supabase or server change.** Local Drift schema stays
@@ -6388,5 +6399,47 @@ rewritten.
 
 1. ~~Run `p6-android-dashboard` and `p6-android-authority` on the Galaxy A06.~~ **Done
    2026-09-25, both PASS**, over USB only (D-288).
-2. The project lead reports the 20 manual lines of §S.3. The clean dev build is installed
-   on the phone for it.
+2. ~~The project lead reports the 20 manual lines of §S.3.~~ **Done 2026-09-25: 20/20
+   PASS.**
+
+### Slice 10 closure record (2026-09-25)
+
+| Gate | Status | Evidence |
+|---|---|---|
+| Galaxy A06 automated phases | **Tested** | `p6-android-dashboard` **PASS**, `p6-android-authority` **PASS**. SM-A066B, USB serial `R9ZY50M3GVX`, Android 16 / API 36; identity unchanged before and after each run |
+| Galaxy A06 manual §S.3 | **Tested — manual, 20/20 PASS** | Performed and reported by the project lead, 25 Sep 2026, on the clean dev build |
+| Manual-acceptance fixtures | **Tested** | 9 sales and 5 expenses (`S10-MANUAL-FIXTURE`) created through the RPCs as the Owner. The server's figures matched a hand calculation to the paisa. All 14 voided afterwards; none deleted (D-006) |
+| D-286 layout test tightened | **Tested** | A broken figure must have been given its whole FigureReflow line, measured. The 90% sabotage turned 8 RED, where the old 60% proxy let every screen suite pass. Restored, 314 GREEN. Committed `310a2d0` |
+| `dart format` / `flutter analyze` | **Tested** | 364 files unchanged / no issues |
+| Host suite | **Tested** | **2,648 passed** |
+| Live suites, `--concurrency=1` | **Tested** | **106 passed**, 0 skipped: reporting 13, parity 29, owner accounts 31, completeness audit 8, settlement 20, drill-down 5 |
+| Windows release build | **Tested** | `config/dev.json` only. `lib/` is unchanged since `4f03b7b`, so `app.so` is current |
+| Android dev APK | **Tested** | `config/dev.json` only; rebuilds byte-identical, SHA-256 `6f334b6f…9b45`, the same file installed on the phone |
+| Acceptance intermediates removed | **Tested** | 546 files carried identity material: stale prod/staging debug APKs and their kernels, plus 540 cached test kernels. All removed; a re-scan of 4,843 files finds 0 |
+| Secret scan — tree, history, artefacts | **Tested** | clean, self-checks passing |
+| Backend baseline | **Tested** | See the table below |
+
+**Backend at close:**
+
+| | |
+|---|---|
+| Open revenue | 0 |
+| Open expenses | 61, the same ID set as before the fixtures (hash `15906076…`) |
+| Open owner movements | 0 |
+| Settlement start date rows | 0 — the live suite's 2026-05-01 fixture removed with the committed administrator script |
+| Closed periods | 0 |
+| Grant rows | 7, 5 active; grant-shape hash `0cde81c5…` unchanged |
+| Roles | 4 |
+| Role capabilities | 80, hash `c1b4870f…` unchanged |
+| Tax rules | 4 live; 0 bands, subtypes or statuses |
+| Migration ledger | 101, latest `20260912100000` |
+| Dead helper | absent |
+| Storage | 265 objects to 265 metadata rows, 0 stranded |
+
+**Not repeated, and why.** Real-executable Windows acceptance, emulator acceptance and the
+performance measurement were run on 24 September against `4f03b7b`. Nothing under `lib/`
+has changed since then: the only later commits are documentation and one test helper.
+They are reported with their 24 September provenance. The host performance tests ran
+again inside the 2,648.
+
+**Phase 6 Slice 10 is CLOSED.** Slice 11 (closure) is not started.
