@@ -15,6 +15,7 @@ import 'package:krishna_mis/features/analytics/presentation/analytics_page.dart'
 import 'package:krishna_mis/features/dashboard/presentation/mobile_home_page.dart';
 import 'package:krishna_mis/features/dashboard/presentation/overview_page.dart';
 import 'package:krishna_mis/features/expenses/presentation/expense_ledger_page.dart';
+import 'package:krishna_mis/features/export/export_centre_page.dart';
 import 'package:krishna_mis/features/transactions/presentation/transactions_page.dart';
 import 'package:krishna_mis/features/masters/presentation/masters_page.dart';
 import 'package:krishna_mis/features/owner_settlement/presentation/owner_settlement_page.dart';
@@ -105,12 +106,11 @@ abstract final class AppRouter {
           ),
           _branch(
             AppRoutes.reports,
-            const PlaceholderPage(
-              title: 'Reports',
-              arrivesIn: 'Phase 7 — Export & Printing',
-              summary:
-                  'Generated reports, Excel and PDF export, Windows printing.',
-            ),
+            // The Export Centre (Phase 7 Slice 6, D-297): export and print actions for the
+            // four canonical reports, each made from the report its own screen holds. It
+            // shows no figure and holds no report state; every action decides export or
+            // print authority itself (D-291).
+            const ExportCentrePage(),
           ),
           // The branch order matches the sidebar's destinations exactly, so a filtered
           // sidebar can never navigate somebody to the wrong screen.

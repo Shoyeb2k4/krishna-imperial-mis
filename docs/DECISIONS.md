@@ -10610,3 +10610,34 @@ refused.
 analysis-report PDFs (Slice 9); a landscape layout, which only the Business Comparison
 table may need (Slice 9).
 
+
+## D-305 — The Export Centre and Save As, as built
+**Date:** 2026-09-25 · **Status:** Implemented / Tested — Phase 7 Slice 6
+
+**1 · An export is made from the report the screen holds.** The Export Centre reads the
+P&L view and the shared dashboard exactly as their screens do, including the identity
+check that keeps one person's report from another (D-231, D-267). It holds no report state,
+shows no figure, and never starts a synchronisation. Changing the scope or period happens on
+the report's own screen.
+
+**2 · Authority is decided three times.** Before an action is offered, before the document
+is built, and after the Save As dialog closes. The last check also compares the person and
+their reading authority, so a capability lost while the dialog is open means nothing is
+written.
+
+**3 · No silent overwrite.** The person chooses the folder and name in the native dialog,
+which asks before returning an existing file's name (the Windows save dialog's default
+overwrite prompt, which `file_selector_windows` leaves in place). The only name that does not
+pass through that question is one this code changes by adding a missing extension; if that
+name is taken, the save is refused and the existing file is left untouched. The bytes are
+written to a hidden file beside the target and renamed over it, so a failed write never
+leaves a partial file under the report's name.
+
+**4 · Save failures are stated in the person's terms:** the dialog could not open; the name
+is taken; Windows refused the folder; the file is open in another program; any other write
+failure. Cancelling is not an error.
+
+**5 · `UTC` is resolved, not looked up.** The screens' fallback display zone is `UTC`,
+which the bundled IANA data names `Etc/UTC`. `reportInstantLabel` now maps it to `tz.UTC`.
+This fixes a latent throw on screen and a certain failure in export, and changes no other
+zone.

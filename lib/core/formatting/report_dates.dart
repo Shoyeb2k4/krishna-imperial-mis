@@ -57,8 +57,13 @@ String reportShortRangeLabel(ReportRange range) {
 ///
 /// The zone is display only. Nothing is derived from it, and the instant itself is the
 /// server-confirmed one.
+///
+/// `UTC` is the surfaces' fallback when a property's rules cannot be read. The IANA data
+/// the app bundles names it `Etc/UTC`, not `UTC`, so it is resolved here rather than
+/// looked up — a lookup would throw and take the statement down with it (Phase 7 Slice 6).
 String reportInstantLabel(DateTime instant, String zone) {
-  final local = tz.TZDateTime.from(instant, tz.getLocation(zone));
+  final location = zone == 'UTC' ? tz.UTC : tz.getLocation(zone);
+  final local = tz.TZDateTime.from(instant, location);
   final hh = local.hour.toString().padLeft(2, '0');
   final mm = local.minute.toString().padLeft(2, '0');
   return '${local.day} ${_months[local.month - 1]} ${local.year}, '

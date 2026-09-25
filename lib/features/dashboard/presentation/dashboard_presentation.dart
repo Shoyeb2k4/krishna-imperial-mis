@@ -343,7 +343,7 @@ DashboardFreshnessLine dashboardFreshnessLine(
   }
   final when = reportInstantLabel(
     freshness.synchronisedAt,
-    _displayZone(rules, ready),
+    dashboardDisplayZone(rules, ready),
   );
   return switch (freshness.state) {
     ReportingFreshnessState.synchronised => DashboardFreshnessLine(
@@ -361,7 +361,10 @@ DashboardFreshnessLine dashboardFreshnessLine(
 
 /// The zone a server-confirmed time is displayed in: the scope's own property, or the
 /// first in id order when consolidated. Display only; nothing is derived from it.
-String _displayZone(Map<String, BusinessDayRule> rules, DashboardReady ready) {
+String dashboardDisplayZone(
+  Map<String, BusinessDayRule> rules,
+  DashboardReady ready,
+) {
   // The lowest business-unit id, found without sorting: nothing in this feature may
   // reorder a list, because the one place ordering carries meaning is a ranked financial
   // list and that order is the domain's (D-258).

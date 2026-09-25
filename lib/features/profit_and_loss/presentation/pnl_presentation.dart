@@ -289,7 +289,7 @@ PnlFreshnessLine pnlFreshnessLine(
   }
   final when = pnlInstantLabel(
     freshness.synchronisedAt,
-    _displayZone(rules, view),
+    pnlDisplayZone(rules, view),
   );
   return switch (freshness.state) {
     ReportingFreshnessState.synchronised => PnlFreshnessLine(
@@ -307,7 +307,7 @@ PnlFreshnessLine pnlFreshnessLine(
 
 /// The zone a server-confirmed time is displayed in: the first property in scope's own
 /// zone. Display only; nothing is derived from it.
-String _displayZone(Map<String, BusinessDayRule> rules, PnlReportView view) {
+String pnlDisplayZone(Map<String, BusinessDayRule> rules, PnlReportView view) {
   final sorted = rules.keys.toList()..sort();
   final unit = switch (view.scope) {
     PnlUnitScope(:final businessUnitId) => businessUnitId,

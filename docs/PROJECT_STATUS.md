@@ -6659,7 +6659,7 @@ The Windows **Reports** placeholder becomes the **Export Centre** (D-297).
 | 3 | Canonical export document models | **COMPLETE** |
 | 4 | XLSX foundation (internal OpenXML writer on `archive`) | **COMPLETE** |
 | 5 | PDF foundation (`pdf` 3.13.1, bundled Noto Sans) | **COMPLETE** |
-| 6 | Windows Reports → Export Centre, Save As | not started |
+| 6 | Windows Reports → Export Centre, Save As | **COMPLETE** |
 | 7 | Windows printing (`printing` 5.15.1, native dialog) | not started |
 | 8 | Android P&L PDF share | not started |
 | 9 | Windows analysis-section exports | not started |
@@ -6883,3 +6883,45 @@ server change; Drift stays **v21** and the ledger **101**.
 | Secret scan, tree and git history | **Tested** | clean |
 | A person reading and printing the PDF | **Not tested** | Slice 7 (Windows print dialog) and Slice 10 acceptance |
 
+
+## Phase 7 Slice 6 — Windows Reports → Export Centre, Save As: **COMPLETE**
+
+The Windows **Reports** destination is now the Export Centre (D-297, D-305). No schema,
+migration or server change; Drift stays **v21** and the ledger **101**.
+
+| Added | What it does |
+|---|---|
+| `lib/features/export/export_pipeline.dart` | the report the screen holds → identity check → `ExportAuthority.decide` → complete? → document → renderer. Reads no storage, network or clock |
+| `lib/features/export/export_file_save.dart` | Save As through `file_selector` `getSaveLocation`; extension added when missing; the bytes written beside the target, then renamed over it |
+| `lib/features/export/export_providers.dart` | the action controller; master-graph labels; the bundled fonts read from the app bundle |
+| `lib/features/export/export_centre_page.dart` | the four reports, what each would export (scope, period, freshness — no figure), and only the actions authority allows |
+
+**What the Export Centre does and does not do:**
+- It exports the report its own screen already holds: the P&L view, or the dashboard the
+  Analytics sections share. The scope and period are the ones chosen there; *Open in
+  Analytics* goes to them.
+- It shows no figure and holds no report state (D-297).
+- It never starts a synchronisation or a download. Offline, a complete report exports; an
+  incomplete one shows the screen's own sentence and offers nothing.
+- Authority is decided before the button appears, before the document is built, and again
+  after the Save As dialog closes. Losing `reports.export` while the dialog is open writes
+  nothing.
+- The analysis reports' actions are wired. Their PDF and Excel layouts arrive in Slice 9.
+
+**A latent defect found and fixed.** The P&L and dashboard screens fall back to the zone
+`UTC` when a property's rules cannot be read. The bundled IANA data names it `Etc/UTC`, so
+`reportInstantLabel` threw. On screen this was reachable only with unreadable rules and a
+freshness claim; in an export it would have failed every file, because the generation line
+is always stated. `UTC` is now resolved directly (D-305).
+
+| Item | Status | Evidence |
+|---|---|---|
+| Pipeline tests | **Tested** | **12** passed: PDF and Excel identical to the foundation renderers for the same document; Manager bundle refused `noActionCapability`; action capability alone refused `noViewAuthority`; consolidated refused when one property lacks `reports.export`; another person's report refused; an incomplete report refused; fonts loaded only for a permitted PDF; the UTC fallback |
+| Save As tests | **Tested** | **13** passed, writing to a real temporary folder: suggested name and format; cancel writes nothing; exact bytes; extension added, case-insensitive; a collision the dialog never asked about is refused and the existing file untouched; a confirmed name replaced whole; a failed write and a failed rename leave no partial file; dialog failure; authority lost before the write; Windows and POSIX error classification |
+| Export Centre widget tests | **Tested** | **11** passed: every action for the Owner; the Manager offered none; no report for someone who reads none; an incomplete report offers nothing and no ₹0; another person's report not offered; **no synchronisation started**; Save Excel and Save PDF write the files; cancel; `reports.export` lost while Save As is open |
+| Feature guard | **Tested** | **23** passed, including 12 planted violations and 2 legitimate cases |
+| Real-code controls | **Tested** | re-check before write removed: 1 red. Identity check removed: 1 red. Extension collision allowed: 1 red. A refresh planted in the Export Centre: guard red. Each restored and checked with `cmp` |
+| Targeted suites (app, core, domain export, surface guards, P&L and Analytics UI, doc invariants) | **Tested** | **669** passed |
+| `dart format` / `flutter analyze` | **Tested** | 392 files, 0 changed / no issues |
+| Secret scan, tree and git history | **Tested** | clean |
+| Real Windows Save As dialog and its overwrite prompt | **Not tested** | Slice 10, on the Windows machine |
