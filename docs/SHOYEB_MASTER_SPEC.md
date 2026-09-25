@@ -7,7 +7,7 @@ Domain: hotelkrishnaimperial.in
 Directive ID: SHOYEB-HOSPITALITY-MIS
 Master Spec Version: **1.2**
 Status: Active — binding
-Last updated: 2026-09-01
+Last updated: 2026-09-20
 
 The project lead directs this work and makes every product decision in it. He is not
 stated or implied to be the proprietor of Hotel Krishna Imperial. The application role

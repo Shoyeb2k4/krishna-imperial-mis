@@ -9946,3 +9946,95 @@ keeps it on one line. A line 2 px narrower lets it break, after a comma only.
 
 Restored byte-identically, the suites are green: 314 tests. The stricter check found no
 product defect, and no product code changed. Commit `310a2d0`.
+
+---
+
+# Phase 6 — Dashboard & Analytics: closure (2026-09-25)
+
+## D-289 — Phase 6 is closed, and this is what each of its decisions finally says
+**Date:** 2026-09-25 · **Status:** Accepted (project-lead approval of the Slice 11 audit)
+
+Phase 6 closes at Slice 11. **Slice 11 is documentation and closure gates only**: no
+product code, no schema, no migration and no server change. This entry records the final
+disposition of every Phase 6 decision, so a reader need not reconcile the flags,
+corrections and closures across fifty entries. **No earlier entry is rewritten or
+renumbered.**
+
+### Final dispositions
+
+| Decision | Final state |
+|---|---|
+| D-251 … D-255, D-257 … D-261 | Accepted and implemented (governance, periods, comparisons, trend grain, fl_chart, Top N, the neutral landing surface, the platform split, the plan and the gate) |
+| **D-253** flagged point | Closed by **D-264** |
+| **D-255** open point (the Custom trend grain) | Closed by **D-263** |
+| **D-256** "pending confirmation" | Superseded by **D-256 (closed)**. An ordinary figure shows a percentage only when `previous > 0 && current ≥ 0`, and the rupee movement is always shown. Operating Profit keeps D-253's stricter loss and sign-change rules |
+| **D-262** | **Never allocated.** No entry, reference, code comment or test names it. It is a numbering gap, recorded here and **not** filled retroactively; the numbers are not renumbered |
+| **D-263** | Final. Net Sales is daily to 31 days, weekly to 180 and monthly beyond. Expenses and profit are monthly only, and withheld below two buckets. A missing bucket is a gap, never zero or interpolated |
+| **D-264** | Final. The displayed margin movement is the difference of the two displayed margins; the exact movement stays canonical |
+| **D-265 / D-266** | Final. One plan, one lock span, one freshness claim or none. The performance gate was discharged with nothing added. Re-measured at closure (below) |
+| **D-267 / D-268** | Final. The authority key is the dashboard identity; charts derive coordinates from money and never money from coordinates |
+| **D-269 / D-269 (final)** | Final. fl_chart **1.2.0**, pinned. The three ranked families stay as composed rows |
+| **D-270 … D-275** | Final |
+| **D-276** | Its fix stands (the Gross/GST pair wraps). The "scaled rather than truncated" wording of that era is **superseded by D-286** |
+| **D-277** flag (the shared period) and **D-278** flags (no share percentage, no per-category comparison) | Resolved by **D-281** |
+| **D-280** | Superseded by **D-280 (closed)**: the Overview fixture describes rows the server can hold |
+| **D-282 / D-284** | Final |
+| **D-283** flag | Closed by **D-283 (final)**. A hand-off replaces the P&L's period with an explicit Custom range |
+| **D-285** | Recorded. The drill-down's authority check is two gates: the destination, and the Slice 7 cache adapter. Not a defect |
+| **D-286 → (clarified) → (test tightened)** | **Final.** The layout gives way before money does. An exact amount stays on one line whenever an empty line holds it, and breaks only after a digit-group comma when it cannot. Nothing shrinks, clips or ellipsises, and the text scale is never reduced. The layout check measures the real empty line |
+| **D-287** | **Acceptance-infrastructure observations**, not product defects: the emulator authority stall, the emulator DNS fault and the on-device layout loop |
+| **D-288** | **Acceptance-infrastructure observations**, not product defects. The wireless-ADB takeover was proven and fixed by running USB-only with mDNS off. One USB drop remains unexplained, one Code 10 cleared on replug, and the phone reports Stay awake off |
+
+### Evidence at closure
+
+- **Host:** 2,648.
+- **Live:** 106, run serially.
+- **Windows real-executable acceptance:** `p6-windows-dashboard` and `p6-windows-authority`
+  both pass.
+- **Emulator acceptance:** `p6-android-dashboard` and `p6-android-authority` both pass.
+- **Galaxy A06 automated acceptance:** both phases pass. SM-A066B, Android 16 / API 36,
+  USB serial `R9ZY50M3GVX`.
+- **Galaxy A06 manual checklist (§S.3):** **20/20 PASS**, reported by the project lead on
+  2026-09-25.
+
+**Performance, re-measured on the current `DashboardEngine`.** Slice 3's Android figures
+predated the Slice 6 engine change, so Android was measured again at closure. Same fixture
+throughout: 4,380 revenue and 2,920 expense contributions, two financial years, two
+properties, on the real SQLCipher database. Two launches on the `Pixel_8` emulator
+(`sdk_gphone16k_x86_64`, Android 17 / API 37, debug build):
+
+| Workload | Reports / points | Warm now (runs 1 / 2) | D-266 warm |
+|---|---|---|---|
+| Financial year to date, whole year | 14 / 36 | 32 / 37 ms | 23–24 ms |
+| Financial year to date, mid-year | 8 / 18 | 18 / 14 ms | 10–12 ms |
+| **Month to date, daily + weekly, ranked** | **37 / 35** | **47 / 37 ms** | **31–41 ms** |
+| Week to date, daily, ranked | 6 / 4 | 6 / 6 ms | 5 ms |
+| Custom 365 days | 14 / 36 | 26 / 24 ms | 19–21 ms |
+| Custom 180 days, weekly | 28 / 26 | 32 / 26 ms | 25 ms |
+| Custom 31 days, daily, ranked | 33 / 31 | 30 / 25 ms | 24 ms |
+
+- **Report and point counts are identical to D-266 for every workload**, which confirms the
+  Slice 6 engine change added no reads (D-270).
+- The worst warm figure is **47 ms**, about ten milliseconds above Slice 3 and roughly
+  one-ninth of the 400 ms intervention threshold (`ARCHITECTURE.md` §9). That is not a
+  material regression.
+- Windows was re-measured at Slice 10 on the same engine: worst steady state **163 ms**,
+  against D-266's 168 ms.
+- No optimisation, RPC, aggregate or index was added.
+
+**Schema and server.** Drift **v21** and the migration ledger at **101**, unchanged since
+the Phase 5 closure. Phase 6 added no relation, column, index, RPC or migration.
+
+### Carry-forwards
+
+| Class | Items |
+|---|---|
+| **A. Phase 7** | Excel export; PDF; Windows printing; the `reports.export` and `reports.print` evaluators, still exempt under D-139; the Windows *Reports* destination. Exports render `PnlResult` and `DashboardView` and compute nothing (`ARCHITECTURE.md` §50) |
+| **B. Phase 8** | `may_read_expense` per-row cost (D-186); the `org_id`-leading local expense index (D-223); any materialisation that a measurement justifies; broader stress and recovery work; making a missed tap fatal across the whole host suite (known issue #5) |
+| **C. Phase 9** | Production Supabase configuration; the D-146 fresh-branch migration replay; Android release signing; AAB; Play Internal Testing; Windows installer; production distribution and go-live |
+| **D. Product / business** | **The production 50:50 ownership effective-from date**; disposal of the D-247 forensic database; the stale Windows *Administration* placeholder copy ("arrives in Phase 2"), left unchanged at the project lead's instruction for the future Administration work |
+| **E. Future analytics** | Category percentage shares; per-category previous-period comparison (both D-281); vendor analytics; value-band and supply-subtype analysis; forecasting; targets and budgets; further analytical dimensions |
+| **F. Owner Accounts extension** | Finalized Owner Statements (D-193); owner-ledger outbox wiring (D-218); a per-family-member non-chargeable breakdown; the OA-1 client NC pre-check (D-208, D-216) |
+
+**Open defects at closure: none.** Phase 7 may be scoped on the contract in
+`ARCHITECTURE.md` §50.

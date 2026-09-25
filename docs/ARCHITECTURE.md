@@ -9,7 +9,7 @@ Status: **Sections 1–12 proposed (Phase 0, revised); sections 13–16 and 18�
 is built and verified; section 17 is the Phase 4 *plan*, since built — read §18–§26 for what
 shipped.** Sections 6, 5.3 and 8 carry the project lead's mandated corrections.
 Implementation status is tracked in `PROJECT_STATUS.md`.
-Last updated: 2026-09-23 — dashboard drill-down integration (section 48); the Windows Analytics workspace (section 47); the Android Home dashboard (section 46); 2026-09-22 — the Windows Overview (section 45); 2026-09-17 — Phase 6 dashboard periods and comparison rules (section 41); Slice 11's corrections and the Slice 12 closure architecture (section 40); 2026-09-13 — the Android P&L surface (section 38); the Windows P&L surface (section 37); Slice 7 reporting security closure (section 36); 2026-09-11 — the Owner Settlement surface and its security boundary (section 35); the Owner Settlement Engine (section 34); the Owner Ledger (section 33), with the V1 ownership vector in §33.3; Phase 5 Slice 6 corrective (section 32); Slice 5 in section 31; Slices 1-4 in sections 27-30
+Last updated: 2026-09-25 — **Phase 6 closed**: the stable contract Phase 7 may build on (section 50), and the final D-286 real-line rule (section 49); 2026-09-24 — money at large text sizes (section 49); 2026-09-23 — dashboard drill-down integration (section 48); the Windows Analytics workspace (section 47); the Android Home dashboard (section 46); 2026-09-22 — the Windows Overview (section 45); 2026-09-17 — Phase 6 dashboard periods and comparison rules (section 41); Slice 11's corrections and the Slice 12 closure architecture (section 40); 2026-09-13 — the Android P&L surface (section 38); the Windows P&L surface (section 37); Slice 7 reporting security closure (section 36); 2026-09-11 — the Owner Settlement surface and its security boundary (section 35); the Owner Settlement Engine (section 34); the Owner Ledger (section 33), with the V1 ownership vector in §33.3; Phase 5 Slice 6 corrective (section 32); Slice 5 in section 31; Slices 1-4 in sections 27-30
 
 ---
 
@@ -4201,3 +4201,58 @@ the migration ledger stays at **101** versions.
 * **Layout tests measure real glyphs.** They load Roboto from the Flutter SDK. Every paragraph
   showing ₹ must be drawn at scale 1, at the system text scale, whole, and inside the screen
   (`test/support/money_layout.dart`).
+* **The empty line is measured, not estimated** (D-286 clarified and test-tightened,
+  2026-09-25). An exact amount stays on one line whenever the complete amount fits on the
+  actual empty line available to it at the reader's text scale. The layout check accepts a
+  wrapped figure only when all of these hold:
+  - it lies in the **figure** child of a `RenderFigureReflow`;
+  - that reflow has stacked it onto a line of its own;
+  - it was given that line's full measured width;
+  - its complete one-line width exceeds that width.
+
+  Two focused tests pin the exact boundary (`test/core/figure_reflow_test.dart`).
+
+## 50. Phase 6 closure — the stable contract Phase 7 builds on
+
+Decision **D-289**. **No schema change, no migration, no server change in Phase 6.** Local
+Drift schema **v21**; migration ledger **101**.
+
+Phase 6 closed on 2026-09-25. It added dashboards and analytics as **presentations of the
+Phase 5 reporting boundary**, and nothing beneath that boundary moved. This section states
+what Phase 7 (Export & Printing) may treat as stable, and what it must not do.
+
+### 50.1 Stable, and to be consumed as it is
+
+| Contract | Where | What it guarantees |
+|---|---|---|
+| `PnlResult` | `domain/finance/pnl.dart` | Every P&L figure computed once by `Pnl.compute` from summed paise: Gross Sales, GST, Net Sales, Expenses, Operating Profit, the exact margin, and category and hierarchy lines that reconcile exactly (§28, D-020) |
+| `DashboardView` | `data/reporting/dashboard_engine.dart` | One dashboard read under one `CanonicalCacheLock` span (D-265). Carries the headline pair and its `PnlComparison`, the trend series (`TrendValue` / `TrendGap`), the daily ranking, `TopN` groupings, the property split and department spending. It also carries one combined coverage and **one freshness claim or none** (D-188) |
+| `PnlAuthority` | `domain/finance` | The only reporting authority test. A property needs `reports.view` ∩ `revenue.view` ∩ `expense.view.all`; consolidated needs all three unscoped (D-164, D-187, D-226). `expense.view.own` never qualifies, and no role name is read. Its `readKey` is the identity a displayed or exported figure belongs to (D-267) |
+| Canonical reporting / cache boundary | `ReportingCache`, `CachedReportingSource`, `LocalReportingEngine`, `reporting_primitives`, `reporting_snapshot` | Canonical accepted facts only (D-167, D-168); coverage per side (D-183); one-snapshot evidence (D-188); abandoned on an authority change (D-240) |
+| Exact money and domain rules | `Money`, `MoneyFormatter`, `domain/finance/*` | Integer paise, Indian grouping, and half-away-from-zero display rounding. Comparisons (D-253, D-256 closed), periods (D-251, D-252, D-254), trend grain (D-255, D-263), displayed margin reconciliation (D-264), and Top N with an exact Others (D-258) |
+| Read-only drill-down boundary | `dashboard_drill.dart`, `pnl_drilldown_*` | Canonical IDs and exact resolved ranges in, immutable document detail out. Online-only detail, a re-fetch on every open (D-239), a changed row refused and never substituted (D-236). Authority is checked again at the destination (D-282, D-285); the P&L hand-off is an explicit Custom period (D-283 final) |
+| Presentation vocabulary | `pnl_presentation.dart`, `dashboard_presentation.dart`, `report_dates.dart` | One wording for each refusal, freshness state, range and instant (D-232, D-271) |
+
+### 50.2 What Phase 7 must not do
+
+- **Create a second financial calculation path.** An export or printout renders the same
+  result objects the screen rendered — `PnlResult`, `DashboardView` and the drill-down
+  values — and contains no formula (spec §16, §21.3). No workbook formula, PDF template or
+  print layout may compute Net Sales, GST, profit, a margin, a percentage, a total or an
+  Others figure. The parity statement in §6.3 extends to every export.
+- **Read a financial table or projection directly.** No export path bypasses the
+  reporting engine, the cache lock or `PnlAuthority`.
+- **Treat an unavailable figure as zero.** Refusals, `TrendGap`s, withheld comparisons
+  and a missing freshness claim are carried into an export as what they are.
+- **Shrink or cut money.** D-286 holds on paper as on screen: no scaled-down figure, no
+  ellipsis, and a break only between digit groups when no empty line can hold the figure.
+- **Grant export by visibility.** `reports.export` and `reports.print` are still exempt
+  under D-139, because their surfaces do not yet exist. Phase 7 removes each exemption in
+  the migration that adds its evaluator, and an export additionally requires the reading
+  authority above.
+
+### 50.3 Evidence at closure
+
+Host **2,648**; live **106**, run serially. Windows real-executable, emulator and Galaxy
+A06 automated acceptance all pass, and the Galaxy A06 manual checklist (§S.3) is **20/20
+PASS**. Performance is inside the D-266 envelope on both platforms (recorded in D-289).

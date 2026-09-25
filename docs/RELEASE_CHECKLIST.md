@@ -660,21 +660,21 @@ remote transport and "now" are substituted.
 - [x] Nothing overflows at any tested size or font scale, and the last item clears the
       docked [ + ].
 
-### R.2 Physical Android device — **PENDING** (D-230)
+### R.2 Physical Android device — **PASS, 25 September 2026** (satisfied by §S.1 and §S.3)
 
-**Not run, and not claimed.** A host widget test is not a phone. The Home dashboard needs
-the same physical-device pass the P&L (§O.2) and the drill-down (§P.2) were given, on the
-Galaxy A06 or another approved target, and it belongs to the **Phase 6 acceptance slice**
-rather than to Slice 7.
+*Written as PENDING at Slice 7, when no physical pass existed. The Phase 6 acceptance slice
+has since supplied it (D-230). Each line below cites the evidence that discharged it; the
+evidence itself lives in §S.*
 
-- [ ] Home opens to the dashboard on the real device, with the property, period and
-      freshness readable at the device's own font scale.
-- [ ] The scope sheet and the date picker open over the bottom bar and the [ + ], and
-      Android back closes each without changing the selection.
-- [ ] Pull-to-refresh runs the synchronisation and the "synchronised as of" time moves.
-- [ ] Aeroplane mode: the last complete dashboard stays readable and never becomes ₹0.
-- [ ] *See full P&L* lands on the Reports tab showing the P&L.
-- [ ] Recorded as physical-device acceptance, with the device named.
+- [x] Home opens to the dashboard on the real device, with the property, period and
+      freshness readable at the device's own font scale — §S.3 items 1 and 6; `p6-android-dashboard` on the A06 (§S.1).
+- [x] The scope sheet and the date picker open over the bottom bar and the [ + ], and
+      Android back closes each without changing the selection — §S.3 items 3 and 4.
+- [x] Pull-to-refresh runs the synchronisation and the "synchronised as of" time moves — §S.3 item 14.
+- [x] Aeroplane mode: the last complete dashboard stays readable and never becomes ₹0 — §S.3 item 15.
+- [x] *See full P&L* lands on the Reports tab showing the P&L — §S.3 item 12.
+- [x] Recorded as physical-device acceptance, with the device named — Galaxy A06 (SM-A066B),
+      Android 16 / API 36, USB serial `R9ZY50M3GVX`; manual lines reported by the project lead.
 
 ## S. Dashboard and analytics — full acceptance (Phase 6 Slice 10)
 
@@ -775,3 +775,40 @@ through the ordinary RPCs as the development Owner. All 14 were **voided** throu
 
 **Both conditions are met:** the automated A06 phases pass (§S.1) and every line of S.3 is
 reported PASS. Slice 10 is closed; Phase 6 closure is Slice 11.
+
+## T. Phase 6 closure gates (Slice 11)
+
+Run on the closure commit, one at a time, against `krishna-mis-dev` only (D-289). Each line
+records what was actually run and its result.
+
+- [x] `dart format --set-exit-if-changed lib test integration_test tool`: clean
+- [x] `flutter analyze`: no issues
+- [x] Full host suite
+- [x] Live suites with `--concurrency=1`: reporting, parity, owner accounts, owner
+      completeness audit, settlement, drill-down
+- [x] Administrator cleanup of the disposable settlement start date
+      (`supabase/tests/owner_settlement_dev_fixture_cleanup.sql`) → 0 settings rows
+- [x] Android dashboard performance re-measured on the **current** `DashboardEngine`
+      (`integration_test/dashboard_performance_test.dart -d emulator-5554 --flavor dev`),
+      compared with the D-266 envelope
+- [x] Windows release build with `config/dev.json` only
+- [x] Android dev APK with `config/dev.json` only
+- [x] Acceptance or debug intermediates carrying identity material removed before the
+      artefact scan
+- [x] Secret scan over the working tree, git history and rebuilt artefacts
+      (`dart run tool/check_no_client_secrets.dart --history --artefacts`)
+- [x] Backend baseline:
+  - 0 open revenue;
+  - 61 open expenses, all pre-existing;
+  - 0 owner movements, 0 settings rows, 0 closed periods;
+  - 7 grants, 5 active; 4 roles; 80 role capabilities;
+  - 4 live tax rules;
+  - storage rows and objects equal, with 0 stranded;
+  - dead helper absent;
+  - ledger 101
+- [x] Migration and schema provenance: Drift v21; ledger 101; no Phase 6 change under
+      `supabase/` or `lib/data/local/`
+- [x] Clean working tree
+
+The results, with their numbers, are recorded in `PROJECT_STATUS.md` under *PHASE 6 —
+DASHBOARD & ANALYTICS: COMPLETE AND CLOSED* and in D-289.

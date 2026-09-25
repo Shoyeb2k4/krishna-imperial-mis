@@ -5,7 +5,12 @@ Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
-Last updated: **2026-09-25** — **PHASE 6 SLICE 10 — FULL ACCEPTANCE: CLOSED.** Every gate passes:
+Last updated: **2026-09-25** — **PHASE 6 — DASHBOARD & ANALYTICS: COMPLETE AND FORMALLY CLOSED at
+Slice 11** (D-289). Slices 1–11 are closed. The feature inventory, decision dispositions,
+evidence, backend baseline and carry-forwards A–F are in *PHASE 6 — DASHBOARD & ANALYTICS:
+COMPLETE AND CLOSED* at the end of this file. **Phase 7 — Export & Printing: not started.**
+
+Previously: **2026-09-25** — **PHASE 6 SLICE 10 — FULL ACCEPTANCE: CLOSED.** Every gate passes:
 - Windows, emulator and live acceptance;
 - `p6-android-dashboard` and `p6-android-authority` on the physical Galaxy A06;
 - the 20-item manual checklist (§S.3), **20/20 PASS**, reported by the project lead;
@@ -70,8 +75,13 @@ drill-down, and the Owner Accounts ledger, settlement engine and preview surface
 
 ## Current phase
 
-**Phase 6 — Dashboard & Analytics: IN PROGRESS (started 2026-09-17).** Slices 1 and 2 are
-complete; Slice 3 is next. The current record is *PHASE 6* at the **end** of this file.
+**Phase 7 — Export & Printing: NOT STARTED.** It is safe to scope against the stable contract
+in `ARCHITECTURE.md` §50.
+
+**Phase 6 — Dashboard & Analytics: COMPLETE and formally closed (2026-09-25, Slice 11).** Its
+authoritative record is *PHASE 6 — DASHBOARD & ANALYTICS: COMPLETE AND CLOSED* at the **end**
+of this file. *(This paragraph read "IN PROGRESS … Slice 3 is next" from 2026-09-17 until the
+closure; that statement is superseded.)*
 
 **Phase 5 — P&L / MIS Reporting: COMPLETE and formally closed (2026-09-17).** Its
 authoritative record is *PHASE 5 — COMPLETE AND CLOSED*, just before the Phase 6 section.
@@ -1290,6 +1300,10 @@ needs one.
    none of that property's data. Not a data leak — business unit names are not secret — but
    it is a small scope-hygiene wrinkle, and it briefly confused an acceptance assertion.
    Worth revisiting when the Overview becomes a real dashboard in Phase 6.
+   **Resolved by Phase 6 Slice 6 (2026-09-22).** The placeholder was replaced by the real
+   Overview, which names only the properties in the reader's own P&L authority. A reader
+   without authority sees the neutral sentence and no property name (D-259, D-267), as the
+   authority phases prove on Windows, the emulator and the Galaxy A06.
 4. **Windows local-key protection relies on user-scoped DPAPI**, not hardware (D-036).
    Accepted for V1, mitigated as recorded.
 5. **The host widget suite does not yet make a missed tap fatal.** The acceptance suite
@@ -3298,8 +3312,8 @@ are not merged because they could be implemented quickly.
 | 6 | Freshness, as-of and closed periods | **COMPLETE** |
 | 7 | The reporting capability model (D-163, D-164) | **COMPLETE** (D-220…D-222) |
 | 8 | Windows P&L surface | **COMPLETE** (D-223…D-227) |
-| 9 | Android P&L surface | **COMPLETE** (D-228…D-232; emulator acceptance, physical-device pass pending) |
-| 10 | Breakdowns + read-only transaction drill-down (D-166) | **COMPLETE** (D-233…D-239; emulator acceptance, physical-device pass pending) |
+| 9 | Android P&L surface | **COMPLETE** (D-228…D-232; emulator acceptance, physical-device pass pending — *superseded: physical pass done 2026-09-17, §O.2*) |
+| 10 | Breakdowns + read-only transaction drill-down (D-166) | **COMPLETE** (D-233…D-239; emulator acceptance, physical-device pass pending — *superseded: physical pass done 2026-09-17, §P.2*) |
 | 11 | Full live / device / two-client acceptance | not started |
 | 12 | Closure | not started |
 
@@ -5563,7 +5577,7 @@ reporting cache is created, and authorization stays `PnlAuthority`.
 | 8 | Windows Analytics sections | **COMPLETE** |
 | 9 | Drill-down integration | **COMPLETE** |
 | 10 | Full acceptance | **CLOSED** (2026-09-25) |
-| 11 | Closure | not started |
+| 11 | Closure | **CLOSED** (2026-09-25, D-289) |
 
 **Performance gate (D-261):** before Slice 3 closes, trend series built from ordinary
 repeated reports are measured on financial-year-sized data. If they are too slow, work stops and
@@ -6105,7 +6119,7 @@ carries them and the surface does not show them.
 | Windows release build | **Tested** | rebuilt after the shared-label change; `Both properties (consolidated)` present in `data/app.so` |
 | Secret scan — tree, git history, built artefacts | **Tested** | clean, the scanner's own controls passing |
 | Schema / migrations / server | **Unchanged** | `git diff` over `supabase/` and `lib/data/local/` is empty; schema v21, ledger 101 |
-| **Physical Android device** | **Not tested** | PENDING before Phase 6 closes (D-230, §R.2) |
+| **Physical Android device** | **Not tested** | PENDING before Phase 6 closes (D-230, §R.2) — *superseded 2026-09-25: Galaxy A06 automated PASS and §S.3 20/20 PASS; §R.2 reconciled* |
 | Live backend | **Not exercised** | Slice 7 adds no remote call |
 
 ### The five positive controls, each seen RED and restored byte-identically
@@ -6198,7 +6212,7 @@ segmented selector (the Transactions pattern, D-120):
 | Secret scan — tree, git history, built artefacts | **Tested** | clean |
 | Schema / migrations / server | **Unchanged** | nothing under `supabase/` or `lib/data/local/` touched |
 | Real `krishna_mis.exe` acceptance of the workspace | **Not tested** | no device phase for Analytics yet; belongs to the Phase 6 acceptance slice (Slice 10) |
-| Physical Android device (Home dashboard) | **Not tested** | still PENDING for Slice 10 (D-230, §R.2) — not affected by this Windows slice |
+| Physical Android device (Home dashboard) | **Not tested** | still PENDING for Slice 10 (D-230, §R.2) — not affected by this Windows slice — *superseded 2026-09-25: done in Slice 10* |
 
 ### The seven positive controls, each seen RED and restored byte-identically
 
@@ -6386,7 +6400,7 @@ project lead ruled that money must never shrink to fit.
 | Physical Galaxy A06, manual checklist §S.3 | **Not tested** | awaiting the project lead |
 | Live suites, `--concurrency=1` | **Tested** | **106 passed**, serial |
 | Performance, Windows | **Tested** | worst steady state 163 ms (D-266 had 168 ms) |
-| Performance, Android | **Not tested** | the emulator was shut down for the A06 |
+| Performance, Android | **Not tested** | the emulator was shut down for the A06 — *superseded: re-measured on the current engine at Slice 11, worst warm 47 ms (D-289)* |
 | Windows release · Android dev APK | **Tested** | clean builds with `config/dev.json` only |
 | Secret scan — tree, history, artefacts | **Tested** | clean, after the acceptance intermediates were removed |
 | Backend baseline | **Tested** | 0 open acceptance revenue or expenses (61 open expenses, all pre-existing); 0 owner movements; 0 settings; 0 closed periods; 7 grant rows (5 active); 80 role capabilities, hash `bd3b6b2b…`; 4 roles; 0 stranded objects; ledger 101; dead helper absent |
@@ -6443,3 +6457,139 @@ They are reported with their 24 September provenance. The host performance tests
 again inside the 2,648.
 
 **Phase 6 Slice 10 is CLOSED.** Slice 11 (closure) is not started.
+
+---
+
+# PHASE 6 — DASHBOARD & ANALYTICS: COMPLETE AND CLOSED
+
+Closed on 2026-09-25 at Slice 11 (D-289). Master Spec **v1.2**, unchanged. Local Drift schema
+**v21**; migration ledger **101**. Decisions **D-251 … D-289**. **D-262 was never allocated**,
+and that gap is recorded, not filled.
+
+Slice 11 is documentation and closure gates only: no product code, schema, migration or
+server change. **Phase 7 — Export & Printing: not started.**
+
+## 1 · What Phase 6 delivered
+
+| Surface | Contents |
+|---|---|
+| **Windows Overview** (`/overview`) | Scope, the Phase 6 to-date period selector (D-251, D-252) and freshness. Net Sales (with Gross Sales and GST), Operating Expenses, Operating Profit/Loss and Operating Margin, each with its comparison. Net Sales trend and monthly Operating Profit trend. Property comparison (consolidated only), revenue mix, top expense categories and department spending |
+| **Android Home** | Scope, period and freshness; the four headline figures with comparisons; Net Sales trend; top expense categories; property comparison when consolidated; *See full P&L* to the Reports branch. Revenue mix, department spending and the profit trend stay on Windows (D-260) |
+| **Windows Analytics** (`/analytics`) | The existing Phase 5 Profit & Loss, on its own whole-month and whole-year presets; Revenue Analysis; Expense & Department Analysis; Business Comparison, on the dashboard's to-date periods (D-277, D-278) |
+| **Drill-down** | From the dashboard and analytics into the Phase 5 read-only hierarchy, through one shared adapter. It passes canonical IDs and exact resolved ranges and never a figure. Document detail is immutable and online-only, fetched again on every open, and refused when stale. Authority is checked again at the destination (D-282, D-285). Figures with no transactions hand off to the P&L as an exact Custom period (D-283 final) |
+| **Foundation** | `domain/finance` rules for periods, comparisons, trend grain, ranking, Top N and the property split. `DashboardEngine`: one plan, one lock span, one freshness claim. Authority-keyed providers. The fl_chart presentation layer, and the `FigureReflow` / `MoneyText` money layout |
+
+## 2 · Slices
+
+| # | Slice | Commit(s) | State |
+|---|---|---|---|
+| 1 | Governance | `7c91d0c` | CLOSED |
+| 2 | Exact comparison domain rules | `28071b2`, `ac3803f` | CLOSED |
+| 3 | Dashboard engine and performance gate | `1455eae` | CLOSED |
+| 4 | Authority and providers | `fcd464b` | CLOSED |
+| 5 | Chart foundation | `8e0699c` | CLOSED |
+| 6 | Windows Overview | `00a4017`, `3f39ab5` | CLOSED |
+| 7 | Android Home | `fc78d09`, `e9435bd` | CLOSED |
+| 8 | Windows Analytics | `a813220`, `abe4392` | CLOSED |
+| 9 | Drill-down integration | `b8eeb1b`, `716142e` | CLOSED |
+| 10 | Full acceptance | `4f03b7b`, `8f87a9c`, `c3fd218`, `310a2d0`, `b6ebe8e` | CLOSED |
+| 11 | Closure | this record | CLOSED |
+
+## 3 · Decisions
+
+D-289 records the final disposition of every Phase 6 decision:
+- every flagged point was resolved (D-264, D-263, D-256 closed, D-281, D-280 closed, D-283 final);
+- **D-286 is final**, including the clarification and the real-line test;
+- **D-287 and D-288 remain acceptance-infrastructure observations**, not product defects.
+
+## 4 · Authority and financial invariants, verified in code at closure
+
+**Authority**
+- Every dashboard and analytics decision goes through `PnlAuthority`:
+  - a property needs `reports.view` ∩ `revenue.view` ∩ `expense.view.all`;
+  - consolidated needs all three unscoped;
+  - `expense.view.own` never qualifies;
+  - no role name is read;
+  - Owner Accounts capabilities grant nothing here.
+- The authority key is the dashboard identity, which is how isolation holds for a user
+  switch, a same-user revocation, the loss of a property, the loss of consolidated
+  authority, and a stale in-flight publication. This is proven by the provider,
+  drill-down and authority phases.
+
+**Figures**
+- There is no second P&L: nothing in Phase 6 calls `Pnl.compute`, and no widget does
+  money arithmetic or infers GST.
+- An unavailable figure is a type, never ₹0.
+- Charts derive coordinates one way, from money. The only paise division is a bar-length
+  fraction.
+
+**Layout**
+- No money is ellipsised or shrunk. All seven ellipsis sites are labels.
+
+## 5 · Evidence
+
+| Gate | Evidence |
+|---|---|
+| Windows, real `krishna_mis.exe` | `p6-windows-dashboard` **PASS**; `p6-windows-authority` **PASS**; at 1366×768, a narrower window and 1920×1080 |
+| Android emulator | `p6-android-dashboard` **PASS**; `p6-android-authority` **PASS** (the cold-boot run, D-287) |
+| Galaxy A06, automated | both phases **PASS** (SM-A066B, Android 16 / API 36, USB serial `R9ZY50M3GVX`; D-288) |
+| Galaxy A06, manual §S.3 | **20/20 PASS**, reported by the project lead on 2026-09-25, including the largest system font and [ + ] clearance |
+| Offline and reconnect | the dashboard stays readable, is never ₹0 and says it is offline; detail needs a connection; a refresh on reconnect succeeds (automated phases; §S.3 items 15–17) |
+| Performance, Android (current engine) | worst warm **47 ms** (month to date, 37 reports), with counts identical to D-266. Not a material regression (D-289) |
+| Performance, Windows | worst steady state **163 ms** (Slice 10), against D-266's 168 ms |
+| Dependencies | only `fl_chart 1.2.0`, pinned, bringing `equatable` |
+| Schema and server | no Phase 6 change under `supabase/` or `lib/data/local/`; v21; ledger 101 |
+
+## 6 · Carry-forwards
+
+Classified in D-289:
+- **A — Phase 7:** export, PDF, printing, and the `reports.export` / `reports.print` evaluators.
+- **B — Phase 8:** reporting performance and hardening.
+- **C — Phase 9:** production configuration and distribution.
+- **D — Product / business:** the production 50:50 date; the D-247 forensic database; the
+  Administration placeholder copy.
+- **E — Future analytics.**
+- **F — Owner Accounts extension.**
+
+## 7 · Open defects at closure
+
+**None.**
+
+## 8 · Closure gates (Slice 11, 2026-09-25)
+
+Run one at a time on the closure content (`RELEASE_CHECKLIST.md` §T):
+
+| Gate | Result |
+|---|---|
+| `dart format --set-exit-if-changed` | clean, 364 files |
+| `flutter analyze` | no issues |
+| Full host suite | **2,648 passed** |
+| Live suites, `--concurrency=1` | **106 passed**, 0 skipped: reporting 13, parity 29, owner accounts 31, completeness audit 8, settlement 20, drill-down 5 |
+| Settlement start date cleanup | the disposable 2026-05-01 row removed with the committed administrator script; 0 rows |
+| Android performance, current engine | two launches on `Pixel_8` (`sdk_gphone16k_x86_64`, Android 17 / API 37): worst warm **47 ms**, counts identical to D-266 (D-289) |
+| Windows release build | `config/dev.json` only; built |
+| Android dev APK | `config/dev.json` only; SHA-256 `6f334b6f…9b45`, byte-identical to the build installed on the A06 |
+| Identity-bearing intermediates | 0 among the 4,892 build and cache files, so nothing to remove |
+| Secret scan — tree, history, artefacts | clean, self-checks passing |
+| Backend baseline | see the table below |
+| Schema and migration provenance | Drift v21; live ledger 101, latest `20260912100000`, the same as the latest committed file; no Phase 6 change under `supabase/` or `lib/data/local/`; no `lib/` change since `4f03b7b` |
+| Working tree | clean after the closure commit |
+
+**Backend at close** (`krishna-mis-dev`, read at 14:15 UTC):
+
+| | |
+|---|---|
+| Open revenue | 0 |
+| Open expenses | 61, the same pre-existing documents (ID hash `15906076…`) |
+| Open owner movements | 0 |
+| Settlement start date rows | 0 |
+| Closed periods | 0 |
+| Grant rows | 7, 5 active; grant-shape hash `0cde81c5…` |
+| Roles | 4 (accountant, data_entry, manager, owner); no temporary role |
+| Role capabilities | 80, hash `c1b4870f…`; no temporary capability grant |
+| Tax rules | 4 live; 0 bands, subtypes or statuses |
+| Storage | 265 objects to 265 metadata rows, 0 stranded |
+| Dead helper | absent |
+| Migration ledger | 101 |
+
+**PHASE 6 — DASHBOARD & ANALYTICS IS FORMALLY CLOSED. Phase 7 is not started.**

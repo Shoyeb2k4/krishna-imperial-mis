@@ -6,7 +6,10 @@ Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
 Status: **Part proposal, part as-built.** Corrected at Phase 4 closure, 2026-09-07.
-Last updated: 2026-09-10 — the Owner Ledger and the OA-2 canonical owner cache are at the end
+Last updated: 2026-09-25 — **Phase 6 (Dashboard & Analytics) closed with no schema change**:
+local Drift schema **v21** and the migration ledger at **101** versions, as Phase 5 left them
+(see *Phase 6* at the end). Previously 2026-09-10 — the Owner Ledger and the OA-2 canonical
+owner cache are at the end
 
 **How to read this document.** It began as a Phase 0 proposal and has grown as-built
 sections beneath it. That mixture is deliberate — the proposal is the record of what was
@@ -1831,3 +1834,24 @@ snapshot stated, so coverage and the date it governs come from one MVCC snapshot
 because the table itself arrives at v20. No other local table changes; the OA-1 master
 tables `owners`, `ownership_shares` and `owner_family_members` stay **empty**, and a guard
 fails if anything in `lib/` writes them (D-216).
+
+---
+
+## Phase 6 — Dashboard & Analytics: no schema change (closed 2026-09-25)
+
+**Phase 6 added no table, relation, view, column, index, constraint, trigger, RPC or
+migration.** Local Drift schema stays **v21**, and the migration ledger stays at **101**
+versions, the latest `20260912100000`. Both are exactly where Phase 5 closed them.
+
+Verified rather than asserted: `git diff b2a161d..HEAD -- supabase lib/data/local` (from
+the Phase 5 closure to the Phase 6 closure) is empty. The live ledger on `krishna-mis-dev`
+reads 101.
+
+Every dashboard and analytics figure is read through the Phase 5 reporting boundary that
+already existed:
+- the canonical reporting cache (§13), through `LocalReportingEngine`;
+- one `CanonicalCacheLock` span per dashboard (D-241, D-265).
+
+The drill-down reads the Phase 5 document rows and the existing `fetch*` gateways (D-233,
+D-282). Nothing in Phase 6 writes a financial row, and there is no dashboard RPC, second
+cache or materialised aggregate (D-266).
