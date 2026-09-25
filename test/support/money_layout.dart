@@ -14,6 +14,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:krishna_mis/core/design/components/figure_reflow.dart';
 import 'package:krishna_mis/core/design/components/money_text.dart';
 
 /// A paragraph that is nothing but an amount: `₹1,23,642.00`, `-₹500`, `+₹1,200.00`,
@@ -80,20 +81,38 @@ int expectMoneyWholeAndUnshrunk(
               '${p.size.width.toStringAsFixed(1)} of ${oneLine.toStringAsFixed(1)}',
         );
       } else {
-        // The last resort (D-286): a figure wider than a whole line of its own breaks
-        // between digit groups, at full size. Only then, and only on a full line.
+        // The last resort (D-286, clarified 2026-09-25): a figure may break only when
+        // the COMPLETE figure is wider than the actual empty line available to it —
+        // the full width of the FigureReflow line it has been stacked onto — and then
+        // only between digit groups, at full size. The line is measured from the real
+        // layout, never approximated from the screen width.
+        final line = emptyLineOf(p);
         expect(
-          oneLine,
-          greaterThan(p.constraints.maxWidth),
-          reason: '$what is broken although it fits on one line',
+          line,
+          isNotNull,
+          reason:
+              '$what is broken outside a line of its own: only a figure a '
+              'FigureReflow has stacked onto an empty line may break',
+        );
+        expect(
+          line!.isSideBySide,
+          isFalse,
+          reason: '$what is broken while it still shares its line with a label',
         );
         expect(
           p.constraints.maxWidth,
-          greaterThanOrEqualTo(root.size.width * 0.6),
+          closeTo(line.size.width, 0.5),
           reason:
-              '$what is broken inside a narrow slot '
-              '(${p.constraints.maxWidth.toStringAsFixed(1)}) instead of being '
-              'given a line of its own',
+              '$what is broken inside ${p.constraints.maxWidth.toStringAsFixed(1)} '
+              'of an empty line ${line.size.width.toStringAsFixed(1)} wide: it was '
+              'not given the whole line',
+        );
+        expect(
+          oneLine,
+          greaterThan(line.size.width + 0.5),
+          reason:
+              '$what (${oneLine.toStringAsFixed(1)} wide) is broken although it '
+              'fits on its empty line (${line.size.width.toStringAsFixed(1)})',
         );
         // Each new line begins after a comma: never inside a digit group.
         final shown = p.text.toPlainText();
@@ -154,6 +173,22 @@ int expectMoneyWholeAndUnshrunk(
     reason: 'too few amounts checked at $where',
   );
   return checked;
+}
+
+/// The empty line [p] may occupy: the nearest [RenderFigureReflow] of which [p] lies
+/// inside the **figure** child — never inside the lead. Null when the figure has no
+/// such line, which means it was given a slot rather than a line of its own.
+RenderFigureReflow? emptyLineOf(RenderParagraph p) {
+  RenderObject child = p;
+  var parent = p.parent;
+  while (parent != null) {
+    if (parent is RenderFigureReflow) {
+      return identical(child, parent.lastChild) ? parent : null;
+    }
+    child = parent;
+    parent = parent.parent;
+  }
+  return null;
 }
 
 /// No layout error — an overflow is a figure drawn over its neighbour.

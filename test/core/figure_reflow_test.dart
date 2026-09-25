@@ -134,4 +134,68 @@ void main() {
       expectMoneyWholeAndUnshrunk(tester, 'the break', atLeast: 0);
     });
   });
+
+  // D-286 as clarified by the project lead (2026-09-25): an exact figure stays on one
+  // line whenever the COMPLETE figure fits on the actual empty line available to it.
+  // Measured at the real width, not approximated from the screen.
+  group('the empty line decides, measured exactly', () {
+    RenderParagraph figureParagraph(WidgetTester tester) =>
+        tester.renderObject<RenderParagraph>(
+          find.descendant(
+            of: find.byKey(const Key('figure')),
+            matching: find.byType(RichText),
+          ),
+        );
+
+    bool isBroken(RenderParagraph p) =>
+        p.size.height > p.getMaxIntrinsicHeight(double.infinity) + 0.5;
+
+    Future<double> wholeWidthAt(WidgetTester tester, double textScale) async {
+      await pumpReflow(tester, width: 1000, textScale: textScale);
+      return figureParagraph(tester).getMaxIntrinsicWidth(double.infinity);
+    }
+
+    testWidgets(
+      'a line exactly as wide as the whole figure keeps it on one line',
+      (tester) async {
+        final whole = await wholeWidthAt(tester, 2);
+        final reflow = await pumpReflow(
+          tester,
+          width: whole.ceilToDouble(),
+          textScale: 2,
+        );
+        expect(
+          reflow.isSideBySide,
+          isFalse,
+          reason: 'the label needs the room',
+        );
+        final p = figureParagraph(tester);
+        expect(
+          isBroken(p),
+          isFalse,
+          reason: 'the figure fits its empty line and must not break',
+        );
+        expect(emptyLineOf(p), same(reflow));
+        expect(p.constraints.maxWidth, closeTo(reflow.size.width, 0.5));
+        expect(tester.takeException(), isNull);
+        expectMoneyWholeAndUnshrunk(tester, 'an exact empty line');
+      },
+    );
+
+    testWidgets(
+      'a line narrower than the whole figure lets it break, after a comma only',
+      (tester) async {
+        final whole = await wholeWidthAt(tester, 2);
+        await pumpReflow(
+          tester,
+          width: whole.floorToDouble() - 2,
+          textScale: 2,
+        );
+        final p = figureParagraph(tester);
+        expect(isBroken(p), isTrue, reason: 'it cannot fit and must break');
+        expect(tester.takeException(), isNull);
+        expectMoneyWholeAndUnshrunk(tester, 'a line too narrow');
+      },
+    );
+  });
 }
