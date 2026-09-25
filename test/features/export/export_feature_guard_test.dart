@@ -53,6 +53,10 @@ const _folders = [
 
 const _fileWriter = 'export_file_save.dart';
 
+/// The only files that talk to `printing`: the print dialog (Slice 7) and, on Android, the
+/// share sheet (Slice 8).
+const _printingUsers = ['export_print.dart', 'export_share.dart'];
+
 /// The rule, as a function of source, so the planted controls exercise the same code the
 /// directory scan does.
 List<String> violationsIn(String path, String code) => [
@@ -68,6 +72,18 @@ List<String> violationsIn(String path, String code) => [
   ]),
   if (!path.endsWith(_fileWriter))
     ...surfaceViolations(code, ['File(', 'writeAsBytes', 'dart:io']),
+  if (!_printingUsers.any(path.endsWith))
+    ...surfaceViolations(code, ['package:printing', 'Printing.']),
+  // Printing is the PDF: no second renderer, no print layout (§51.5, D-299).
+  if (_printingUsers.any(path.endsWith))
+    ...surfaceViolations(code, [
+      'package:pdf/widgets.dart',
+      'core/export/pdf/',
+      'core/export/workbook/',
+      'pnlPdf(',
+      'Workbook(',
+      'ExportDocuments.',
+    ]),
   // The one navigation: opening a report's own section in Analytics.
   for (final m in RegExp(r'context\.(go|push)\(([^)]*)\)').allMatches(code))
     if (m.group(2) != 'AppRoutes.analytics') 'navigates to ${m.group(2)}',
@@ -119,6 +135,22 @@ void main() {
       );
     });
 
+    test(
+      'printing hands the renderer\'s bytes to the native dialog, unchanged',
+      () {
+        final printing = surfaceDense(
+          surfaceFileCode('$_dir/export_print.dart'),
+        );
+        expect(printing, contains('Printing.layoutPdf('));
+        expect(printing, contains('onLayout:(_)async=>bytes'));
+        expect(printing, contains('dynamicLayout:false'));
+        final providers = surfaceDense(
+          surfaceFileCode('$_dir/export_providers.dart'),
+        );
+        expect(providers, contains('ExportAction.print,ExportFileFormat.pdf,'));
+      },
+    );
+
     test('the file writer writes beside the target, then renames', () {
       final writer = code(_fileWriter);
       expect(writer, contains('.part'));
@@ -151,9 +183,23 @@ void main() {
       ),
       ('another destination', 'context.go(AppRoutes.overview);'),
       ('an Owner Accounts export', 'ownerSettlementPreviewProvider'),
+      (
+        'the print dialog outside its file',
+        'await Printing.layoutPdf(onLayout: f);',
+      ),
     ]) {
       test(label, () {
         expect(violationsIn(page, snippet), isNotEmpty);
+      });
+    }
+
+    for (final (label, snippet) in [
+      ('a print layout', "import 'package:pdf/widgets.dart' as pw;"),
+      ('a second render for printing', 'onLayout: (f) => pnlPdf(doc, fonts),'),
+      ('a print-specific document', 'ExportDocuments.profitAndLoss(c, r)'),
+    ]) {
+      test(label, () {
+        expect(violationsIn('$_dir/export_print.dart', snippet), isNotEmpty);
       });
     }
 

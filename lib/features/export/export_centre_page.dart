@@ -144,16 +144,23 @@ class _ReportCard extends ConsumerWidget {
     final last = status.last?.report == report ? status.last!.result : null;
 
     final (String? covers, String? freshness, _Notice? notice) = _describe(ref);
-    final decision = source == null
+    ExportDecision? decide(ExportAction action) => source == null
         ? null
         : ExportPipeline.decide(
             principal,
-            action: ExportAction.export,
+            action: action,
             report: report,
             source: source,
           );
-    final offered =
-        source != null && source.isComputed && decision is ExportPermitted;
+    final decision = decide(ExportAction.export);
+    final computed = source != null && source.isComputed;
+    final offered = computed && decision is ExportPermitted;
+    // Print is its own capability (D-291): offered only with reports.print, and only for
+    // a report whose PDF exists.
+    final printOffered =
+        computed &&
+        exportPrintable(report) &&
+        decide(ExportAction.print) is ExportPermitted;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.lg),
@@ -202,42 +209,52 @@ class _ReportCard extends ConsumerWidget {
                 const SizedBox(height: AppSpacing.sm),
                 notice,
               ],
-              if (source != null &&
-                  source.isComputed &&
-                  decision is ExportRefused)
+              if (computed && !offered && !printOffered)
                 Padding(
                   padding: const EdgeInsets.only(top: AppSpacing.sm),
                   child: Text(
-                    _refusalLine(decision.reason),
+                    _refusalLine((decision! as ExportRefused).reason),
                     key: Key('export-$name-not-offered'),
                     style: AppTypography.bodyMuted,
                   ),
                 ),
-              if (offered) ...[
+              if (offered || printOffered) ...[
                 const SizedBox(height: AppSpacing.md),
                 Wrap(
                   spacing: AppSpacing.sm,
                   runSpacing: AppSpacing.sm,
                   children: [
-                    for (final format in exportFormatsFor(report))
+                    if (offered)
+                      for (final format in exportFormatsFor(report))
+                        OutlinedButton.icon(
+                          key: Key('export-$name-${format.extension}'),
+                          onPressed: status.isRunning
+                              ? null
+                              : () => ref
+                                    .read(exportActionProvider.notifier)
+                                    .save(report, format),
+                          icon: Icon(
+                            format == ExportFileFormat.pdf
+                                ? Icons.picture_as_pdf_outlined
+                                : Icons.table_chart_outlined,
+                            size: 18,
+                          ),
+                          label: Text(
+                            format == ExportFileFormat.pdf
+                                ? 'Save PDF'
+                                : 'Save Excel',
+                          ),
+                        ),
+                    if (printOffered)
                       OutlinedButton.icon(
-                        key: Key('export-$name-${format.extension}'),
+                        key: Key('export-$name-print'),
                         onPressed: status.isRunning
                             ? null
                             : () => ref
                                   .read(exportActionProvider.notifier)
-                                  .save(report, format),
-                        icon: Icon(
-                          format == ExportFileFormat.pdf
-                              ? Icons.picture_as_pdf_outlined
-                              : Icons.table_chart_outlined,
-                          size: 18,
-                        ),
-                        label: Text(
-                          format == ExportFileFormat.pdf
-                              ? 'Save PDF'
-                              : 'Save Excel',
-                        ),
+                                  .print(report),
+                        icon: const Icon(Icons.print_outlined, size: 18),
+                        label: const Text('Print'),
                       ),
                   ],
                 ),
@@ -389,6 +406,10 @@ String exportActionMessage(ExportActionResult result) => switch (result) {
   ExportActionHandedOver(kind: ExportActionKind.print) =>
     'Sent to the Windows print dialog.',
   ExportActionHandedOver() => 'Opened the share sheet.',
+  ExportActionCancelled(kind: ExportActionKind.print) =>
+    'Printing cancelled. Nothing was printed.',
+  ExportActionCancelled(kind: ExportActionKind.share) =>
+    'Sharing cancelled. Nothing was shared.',
   ExportActionCancelled() => 'Cancelled. Nothing was saved.',
   ExportActionAbandoned() =>
     'Your access changed while the file was being prepared. Nothing was saved.',

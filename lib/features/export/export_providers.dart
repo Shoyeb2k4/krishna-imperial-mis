@@ -31,6 +31,7 @@ import 'package:krishna_mis/features/dashboard/presentation/dashboard_presentati
 import 'package:krishna_mis/features/dashboard/presentation/dashboard_providers.dart';
 import 'package:krishna_mis/features/export/export_file_save.dart';
 import 'package:krishna_mis/features/export/export_pipeline.dart';
+import 'package:krishna_mis/features/export/export_print.dart';
 import 'package:krishna_mis/features/profit_and_loss/presentation/pnl_presentation.dart';
 import 'package:krishna_mis/features/profit_and_loss/presentation/pnl_providers.dart';
 import 'package:meta/meta.dart';
@@ -47,6 +48,11 @@ final exportPdfFontsProvider = FutureProvider<ExportPdfFonts>((ref) async {
 /// Where a Windows export is saved. Overridden in tests.
 final exportFileSaverProvider = Provider<ExportFileSaver>(
   (ref) => ExportFileSaver(pickLocation: fileSelectorSaveLocation),
+);
+
+/// Where a Windows print goes: the native dialog. Overridden in tests.
+final exportPrinterProvider = Provider<ExportPrinter>(
+  (ref) => printingLayoutPdf,
 );
 
 /// Names from the cached master graph, with the screen's own fallback words (D-035). A
@@ -167,7 +173,8 @@ final class ExportActionHandedOver extends ExportActionResult {
 
 /// The person cancelled. Nothing was written, printed or shared, and nothing is wrong.
 final class ExportActionCancelled extends ExportActionResult {
-  const ExportActionCancelled();
+  const ExportActionCancelled(this.kind);
+  final ExportActionKind kind;
 }
 
 final class ExportActionRefused extends ExportActionResult {
@@ -240,9 +247,32 @@ class ExportActionController extends Notifier<ExportActionStatus> {
       if (!stillPermitted()) return const ExportActionAbandoned();
       return switch (outcome) {
         ExportSaved(:final fileName) => ExportActionSaved(fileName),
-        ExportSaveCancelled() => const ExportActionCancelled(),
+        ExportSaveCancelled() => const ExportActionCancelled(
+          ExportActionKind.save,
+        ),
         ExportSaveFailed(:final failure) => ExportActionSaveFailed(failure),
       };
+    },
+  );
+
+  /// Prints [report] through the native Windows print dialog, from the same PDF bytes
+  /// Save PDF writes (§51.5).
+  Future<void> print(ExportReport report) => _run(
+    report,
+    ExportAction.print,
+    ExportFileFormat.pdf,
+    (rendered, stillPermitted) async {
+      try {
+        final sent = await ref.read(exportPrinterProvider)(
+          bytes: rendered.bytes,
+          jobName: _withoutExtension(rendered.fileName),
+        );
+        return sent
+            ? const ExportActionHandedOver(ExportActionKind.print)
+            : const ExportActionCancelled(ExportActionKind.print);
+      } on Object {
+        return const ExportActionHandOverFailed(ExportActionKind.print);
+      }
     },
   );
 
@@ -306,4 +336,9 @@ class ExportActionController extends Notifier<ExportActionStatus> {
     if (ref.read(principalProvider).userId != principal.userId) return;
     state = ExportActionStatus(last: (report: report, result: result));
   }
+}
+
+String _withoutExtension(String fileName) {
+  final dot = fileName.lastIndexOf('.');
+  return dot < 0 ? fileName : fileName.substring(0, dot);
 }

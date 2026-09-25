@@ -6660,7 +6660,7 @@ The Windows **Reports** placeholder becomes the **Export Centre** (D-297).
 | 4 | XLSX foundation (internal OpenXML writer on `archive`) | **COMPLETE** |
 | 5 | PDF foundation (`pdf` 3.13.1, bundled Noto Sans) | **COMPLETE** |
 | 6 | Windows Reports → Export Centre, Save As | **COMPLETE** |
-| 7 | Windows printing (`printing` 5.15.1, native dialog) | not started |
+| 7 | Windows printing (`printing` 5.15.1, native dialog) | **COMPLETE** |
 | 8 | Android P&L PDF share | not started |
 | 9 | Windows analysis-section exports | not started |
 | 10 | Full acceptance | not started |
@@ -6925,3 +6925,31 @@ is always stated. `UTC` is now resolved directly (D-305).
 | `dart format` / `flutter analyze` | **Tested** | 392 files, 0 changed / no issues |
 | Secret scan, tree and git history | **Tested** | clean |
 | Real Windows Save As dialog and its overwrite prompt | **Not tested** | Slice 10, on the Windows machine |
+
+## Phase 7 Slice 7 — Windows printing: **COMPLETE**
+
+The P&L prints through the native Windows print dialog, from the **same PDF bytes** Save
+PDF writes (D-299, §51.5). No schema, migration or server change.
+
+```
+    canonical report → document model → PDF renderer → Printing.layoutPdf → Windows dialog
+```
+
+| Added | What it does |
+|---|---|
+| `lib/features/export/export_print.dart` | `Printing.layoutPdf` with `onLayout: (_) async => bytes` and `dynamicLayout: false`, so the dialog's page choice never re-lays the document out |
+| `ExportActionController.print` | the same pipeline as Save PDF, with `ExportAction.print`; authority decided again before the bytes are handed over |
+| Export Centre | a **Print** button, offered only with view authority **and** `reports.print` for the exact scope |
+
+Print is its own capability: Save needs `reports.export`, Print needs `reports.print`, and
+either may be offered without the other. The analysis reports become printable in Slice 9,
+when their PDFs exist.
+
+| Item | Status | Evidence |
+|---|---|---|
+| Print widget tests | **Tested** | **8** passed: the dialog receives the bytes Save PDF writes (compared without the package's random `/ID`), and the job is named after the file; export-only offers Save and not Print; print-only offers Print and not Save; the Manager bundle offered nothing; closing the dialog is a cancel; a dialog that cannot open is stated; losing consolidated authority takes Print away; `reports.print` lost while the PDF is being made prints nothing |
+| Feature guard | **Tested** | **29** passed: only the print and share files import `printing`; neither may import the PDF widgets, a renderer, a workbook or a document builder; the print file hands `bytes` to `layoutPdf` unchanged; planted violations red |
+| Real-code controls | **Tested** | the in-flight authority check removed: 1 red. The renderer imported into the print file: guard red. Each restored and checked with `cmp` |
+| Export, app and core-export suites | **Tested** | **250** passed |
+| `dart format` / `flutter analyze` / secret scan | **Tested** | clean / no issues / clean |
+| The real Windows print dialog and a printed page | **Not tested** | Slice 10, on the Windows machine. This container is Linux and cannot open it |

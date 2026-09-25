@@ -53,6 +53,11 @@ List<ExportFileFormat> exportFormatsFor(ExportReport report) => const [
   ExportFileFormat.xlsx,
 ];
 
+/// Whether a report is printed on Windows. Printing is the PDF (§51.5), so a report is
+/// printable once its PDF exists; the P&L must print (D-290).
+bool exportPrintable(ExportReport report) =>
+    report == ExportReport.profitAndLoss;
+
 // ── The canonical report a surface already holds ────────────────────────────
 
 /// The report to export, exactly as its screen read it.
