@@ -850,6 +850,15 @@ actually been run, with its result recorded in `PROJECT_STATUS.md`.
       (`assets/fonts/noto_sans/OFL.txt`) in both the Windows bundle and the APK.
 - [ ] **Schema and server unchanged.** Drift v21, ledger 101, no migration, no new RPC.
 
+*Host evidence to date (Slices 2–9, 25 September 2026), not yet the Slice 10 run:* parity to
+the paisa for the P&L and all three analyses (document, XLSX cells and PDF text); XLSX
+structure with no formula and no raw-paise column; PDF page numbers, separate freshness
+statements and results in words; the authority matrix; offline export with no
+synchronisation; byte-level leakage checks over every generated file; structural guards and
+the manifest check; no schema or server change. Full host suite **2,964 passed, 1 skipped**.
+The font licence inside the built Windows bundle and APK is **not yet checked**: neither was
+built in the container.
+
 ### U.2 Windows, real `krishna_mis.exe`
 
 - [ ] Export Centre offers exactly the four outputs; Business Comparison only for a

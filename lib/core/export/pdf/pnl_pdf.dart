@@ -21,10 +21,8 @@ import 'dart:typed_data';
 
 import 'package:krishna_mis/core/export/export_wording.dart';
 import 'package:krishna_mis/core/export/pdf/pdf_fonts.dart';
-import 'package:krishna_mis/core/formatting/money_formatter.dart';
+import 'package:krishna_mis/core/export/pdf/pdf_page.dart';
 import 'package:krishna_mis/domain/export/export_document.dart';
-import 'package:krishna_mis/domain/value_objects/money.dart';
-import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
 /// The PDF bytes for a P&L export.
@@ -35,130 +33,20 @@ Future<Uint8List> pnlPdf(
   ExportPdfFonts fonts, {
   bool compress = true,
 }) {
-  final pdf = pw.Document(
-    compress: compress,
-    theme: pw.ThemeData.withFont(base: fonts.regular, bold: fonts.bold),
-  );
   final header = document.header;
   final scope = document.scopeStatement;
-
-  pdf.addPage(
-    pw.MultiPage(
-      pageFormat: PdfPageFormat.a4,
-      margin: const pw.EdgeInsets.fromLTRB(40, 36, 40, 36),
-      header: (context) => _pageHeader(header),
-      footer: (context) =>
-          _pageFooter(header, context.pageNumber, context.pagesCount),
-      build: (context) => [
-        ..._titleBlock(header),
-        for (final statement in document.statements) _statement(statement),
-        if (!document.propertySplitShown) _note(exportSplitNotShownLine),
-        ..._revenueLines(scope, header.consolidated),
-        ..._expenseLines(scope, header.consolidated),
-      ],
-    ),
-  );
-  return pdf.save();
-}
-
-// ── Styles ───────────────────────────────────────────────────────────────────
-
-const _ink = PdfColor.fromInt(0xFF2B2A28);
-const _muted = PdfColor.fromInt(0xFF6B675F);
-const _rule = PdfColor.fromInt(0xFFD8D2C4);
-const _fill = PdfColor.fromInt(0xFFEFEBE3);
-
-const _body = pw.TextStyle(fontSize: 9, color: _ink);
-final _bodyBold = _body.copyWith(fontWeight: pw.FontWeight.bold);
-const _small = pw.TextStyle(fontSize: 7.5, color: _muted);
-final _heading = _body.copyWith(fontSize: 11, fontWeight: pw.FontWeight.bold);
-
-String _money(Money m) => MoneyFormatter.standard.format(m);
-
-// ── Page furniture ───────────────────────────────────────────────────────────
-
-pw.Widget _pageHeader(ExportHeader header) => pw.Container(
-  margin: const pw.EdgeInsets.only(bottom: 10),
-  padding: const pw.EdgeInsets.only(bottom: 4),
-  decoration: const pw.BoxDecoration(
-    border: pw.Border(bottom: pw.BorderSide(color: _rule, width: 0.5)),
-  ),
-  child: pw.Row(
-    crossAxisAlignment: pw.CrossAxisAlignment.start,
-    children: [
-      pw.Expanded(
-        child: pw.Text(
-          '$exportProductName · ${exportReportTitle(header.report)} · '
-          '${header.scopeLabel}',
-          style: _small,
-        ),
-      ),
-      pw.Text(
-        '${exportRangeLabel(header.range)} · '
-        '${exportBasisShort(header.dateBasis)}',
-        style: _small,
-      ),
+  return exportPdfDocument(
+    header: header,
+    fonts: fonts,
+    compress: compress,
+    body: [
+      for (final statement in document.statements) _statement(statement),
+      if (!document.propertySplitShown) pdfNote(exportSplitNotShownLine),
+      ..._revenueLines(scope, header.consolidated),
+      ..._expenseLines(scope, header.consolidated),
     ],
-  ),
-);
-
-pw.Widget _pageFooter(ExportHeader header, int page, int pages) {
-  final f = header.freshness;
-  return pw.Container(
-    margin: const pw.EdgeInsets.only(top: 10),
-    padding: const pw.EdgeInsets.only(top: 4),
-    decoration: const pw.BoxDecoration(
-      border: pw.Border(top: pw.BorderSide(color: _rule, width: 0.5)),
-    ),
-    child: pw.Row(
-      crossAxisAlignment: pw.CrossAxisAlignment.start,
-      children: [
-        pw.Expanded(
-          child: pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              pw.Text(exportSynchronisedLine(f), style: _small),
-              pw.Text(exportGeneratedLine(f), style: _small),
-            ],
-          ),
-        ),
-        pw.Text(exportPageLabel(page, pages), style: _small),
-      ],
-    ),
   );
 }
-
-// ── The opening block ────────────────────────────────────────────────────────
-
-List<pw.Widget> _titleBlock(ExportHeader header) {
-  final f = header.freshness;
-  final newer = exportServerNewerLine(f);
-  return [
-    pw.Text(
-      exportReportTitle(header.report),
-      style: _body.copyWith(fontSize: 18, fontWeight: pw.FontWeight.bold),
-    ),
-    pw.SizedBox(height: 4),
-    pw.Text(header.scopeLabel, style: _body.copyWith(fontSize: 12)),
-    pw.Text(
-      '${header.periodName} · ${exportRangeLabel(header.range)}',
-      style: _body,
-    ),
-    pw.SizedBox(height: 6),
-    pw.Text(exportBasisLine(header.dateBasis), style: _small),
-    pw.Text(exportInclusionLine, style: _small),
-    pw.SizedBox(height: 4),
-    pw.Text(exportSynchronisedLine(f), style: _small),
-    if (newer != null) pw.Text(newer, style: _bodyBold),
-    pw.Text(exportGeneratedLine(f), style: _small),
-    pw.SizedBox(height: 12),
-  ];
-}
-
-pw.Widget _note(String text) => pw.Padding(
-  padding: const pw.EdgeInsets.only(bottom: 8),
-  child: pw.Text(text, style: _small),
-);
 
 // ── One statement ────────────────────────────────────────────────────────────
 
@@ -168,13 +56,13 @@ pw.Widget _statement(PnlExportStatement s) {
         children: [
           pw.Padding(
             padding: const pw.EdgeInsets.symmetric(vertical: 2),
-            child: pw.Text(label, style: strong ? _bodyBold : _body),
+            child: pw.Text(label, style: strong ? pdfBodyBold : pdfBody),
           ),
           pw.Padding(
             padding: const pw.EdgeInsets.symmetric(vertical: 2),
             child: pw.Text(
               value,
-              style: strong ? _bodyBold : _body,
+              style: strong ? pdfBodyBold : pdfBody,
               textAlign: pw.TextAlign.right,
             ),
           ),
@@ -184,7 +72,7 @@ pw.Widget _statement(PnlExportStatement s) {
   return pw.Column(
     crossAxisAlignment: pw.CrossAxisAlignment.start,
     children: [
-      pw.Text(s.title, style: _heading),
+      pw.Text(s.title, style: pdfHeading),
       pw.SizedBox(height: 4),
       pw.Table(
         columnWidths: const {
@@ -192,20 +80,20 @@ pw.Widget _statement(PnlExportStatement s) {
           1: pw.IntrinsicColumnWidth(),
         },
         children: [
-          row(exportGrossSalesLabel, _money(s.grossSales)),
-          row(exportGstLabel, _money(s.gst)),
-          row(exportNetSalesLabel, _money(s.netSales), strong: true),
-          row(exportExpensesLabel, _money(s.expenses)),
+          row(exportGrossSalesLabel, pdfMoney(s.grossSales)),
+          row(exportGstLabel, pdfMoney(s.gst)),
+          row(exportNetSalesLabel, pdfMoney(s.netSales), strong: true),
+          row(exportExpensesLabel, pdfMoney(s.expenses)),
           row(
             exportOperatingLabel(s.operatingProfit),
-            _money(s.operatingProfit),
+            pdfMoney(s.operatingProfit),
             strong: true,
           ),
           row('Result', exportResultWord(s.operatingProfit)),
           row(exportMarginLabel, s.margin.displayTwoDecimals),
         ],
       ),
-      if (!s.hasTrade) _note(exportNoTradeLine),
+      if (!s.hasTrade) pdfNote(exportNoTradeLine),
       pw.SizedBox(height: 14),
     ],
   );
@@ -213,93 +101,44 @@ pw.Widget _statement(PnlExportStatement s) {
 
 // ── Line tables ──────────────────────────────────────────────────────────────
 
-pw.Widget _cell(
-  String text, {
-  bool strong = false,
-  bool right = false,
-  bool heading = false,
-}) => pw.Container(
-  padding: const pw.EdgeInsets.symmetric(horizontal: 3, vertical: 2),
-  color: heading ? _fill : null,
-  child: pw.Text(
-    text,
-    style: strong || heading ? _bodyBold : _body,
-    textAlign: right ? pw.TextAlign.right : pw.TextAlign.left,
-  ),
-);
-
-/// A table whose heading row repeats on every page it continues onto. Text columns flex
-/// and wrap; amount columns take their natural width, so an amount is never cut.
-pw.Widget _lineTable({
-  required List<String> textHeadings,
-  required List<String> moneyHeadings,
-  required List<(List<String>, List<Money>)> rows,
-  required List<Money> totals,
-}) {
-  final isAmount = [
-    for (final _ in textHeadings) false,
-    for (final _ in moneyHeadings) true,
-  ];
-  return pw.Table(
-    border: const pw.TableBorder(
-      horizontalInside: pw.BorderSide(color: _rule, width: 0.4),
-    ),
-    columnWidths: {
-      for (final (i, amount) in isAmount.indexed)
-        i: amount
-            ? const pw.IntrinsicColumnWidth()
-            : const pw.FlexColumnWidth(),
-    },
-    children: [
-      pw.TableRow(
-        repeat: true,
-        children: [
-          for (final h in textHeadings) _cell(h, heading: true),
-          for (final h in moneyHeadings) _cell(h, heading: true, right: true),
-        ],
-      ),
-      for (final (texts, amounts) in rows)
-        pw.TableRow(
-          children: [
-            for (final t in texts) _cell(t),
-            for (final a in amounts) _cell(_money(a), right: true),
-          ],
-        ),
-      pw.TableRow(
-        children: [
-          for (final (i, _) in textHeadings.indexed)
-            _cell(i == 0 ? exportTotalLabel : '', strong: true),
-          for (final a in totals) _cell(_money(a), strong: true, right: true),
-        ],
-      ),
-    ],
-  );
-}
-
 List<pw.Widget> _revenueLines(PnlExportStatement s, bool consolidated) {
   final lines = s.revenueLines;
   return [
-    pw.Text(exportRevenueLinesHeading, style: _heading),
-    pw.SizedBox(height: 4),
+    ...pdfSectionHeading(exportRevenueLinesHeading),
     if (lines == null)
-      _note(exportBreakdownNotShownLine)
+      pdfNote(exportBreakdownNotShownLine)
     else
-      _lineTable(
-        textHeadings: [if (consolidated) 'Property', 'Revenue category'],
-        moneyHeadings: const ['Gross', 'GST', 'Net'],
+      pdfTable(
+        headings: [
+          if (consolidated) 'Property',
+          'Revenue category',
+          'Gross',
+          'GST',
+          'Net',
+        ],
+        textColumns: consolidated ? 2 : 1,
         rows: [
           for (final l in lines)
-            (
-              [
-                if (consolidated) l.propertyLabel ?? '',
+            [
+              if (consolidated) pdfCell(l.propertyLabel ?? ''),
+              pdfCell(
                 l.noGst
                     ? '${l.categoryLabel} · $exportNoGstLabel'
                     : l.categoryLabel,
-              ],
-              [l.gross, l.gst, l.net],
-            ),
+              ),
+              pdfCell(pdfMoney(l.gross)),
+              pdfCell(pdfMoney(l.gst)),
+              pdfCell(pdfMoney(l.net)),
+            ],
+          // The totals are the headline figures, never a sum of the rows above.
+          [
+            pdfCell(exportTotalLabel, strong: true),
+            if (consolidated) pdfCell(''),
+            pdfCell(pdfMoney(s.grossSales), strong: true),
+            pdfCell(pdfMoney(s.gst), strong: true),
+            pdfCell(pdfMoney(s.netSales), strong: true),
+          ],
         ],
-        totals: [s.grossSales, s.gst, s.netSales],
       ),
     pw.SizedBox(height: 14),
   ];
@@ -308,32 +147,36 @@ List<pw.Widget> _revenueLines(PnlExportStatement s, bool consolidated) {
 List<pw.Widget> _expenseLines(PnlExportStatement s, bool consolidated) {
   final lines = s.expenseLines;
   return [
-    pw.Text(exportExpenseLinesHeading, style: _heading),
-    pw.SizedBox(height: 4),
+    ...pdfSectionHeading(exportExpenseLinesHeading),
     if (lines == null)
-      _note(exportBreakdownNotShownLine)
+      pdfNote(exportBreakdownNotShownLine)
     else
-      _lineTable(
-        textHeadings: [
+      pdfTable(
+        headings: [
           if (consolidated) 'Property',
           'Department',
           'Section',
           'Expense category',
+          'Amount',
         ],
-        moneyHeadings: const ['Amount'],
+        textColumns: consolidated ? 4 : 3,
         rows: [
           for (final l in lines)
-            (
-              [
-                if (consolidated) l.propertyLabel ?? '',
-                l.departmentLabel,
-                l.sectionLabel,
-                l.categoryLabel,
-              ],
-              [l.amount],
-            ),
+            [
+              if (consolidated) pdfCell(l.propertyLabel ?? ''),
+              pdfCell(l.departmentLabel),
+              pdfCell(l.sectionLabel),
+              pdfCell(l.categoryLabel),
+              pdfCell(pdfMoney(l.amount)),
+            ],
+          [
+            pdfCell(exportTotalLabel, strong: true),
+            pdfCell(''),
+            pdfCell(''),
+            if (consolidated) pdfCell(''),
+            pdfCell(pdfMoney(s.expenses), strong: true),
+          ],
         ],
-        totals: [s.expenses],
       ),
   ];
 }

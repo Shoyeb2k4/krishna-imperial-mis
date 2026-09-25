@@ -116,7 +116,10 @@ void main() {
         'export_wording.dart',
         'pnl_workbook.dart',
         'pdf_fonts.dart',
+        'pdf_page.dart',
         'pnl_pdf.dart',
+        'analysis_pdf.dart',
+        'analysis_workbook.dart',
       ]),
     );
   });
@@ -137,37 +140,78 @@ void main() {
   });
 
   test('a layout turns money into a cell only through the formatter', () {
-    final workbook = files
-        .singleWhere((f) => f.path.endsWith('pnl_workbook.dart'))
-        .code;
-    expect(workbook, contains('MoneyFormatter.decimalLiteral('));
-    expect(workbook, contains('.displayedFractionLiteral'));
-    // Every numeric cell in the layout is built from one of those two literals.
-    final numbers = RegExp(
-      r'XlsxCell\.number\(\s*([^,]+),',
-    ).allMatches(workbook);
-    expect(numbers, isNotEmpty);
-    for (final m in numbers) {
+    final workbooks = files.where((f) => f.path.contains('/workbook/'));
+    expect(
+      workbooks.map((f) => f.path.split('/').last),
+      containsAll(['pnl_workbook.dart', 'analysis_workbook.dart']),
+    );
+    for (final workbook in workbooks) {
       expect(
-        m.group(1)!.trim(),
-        anyOf(
-          startsWith('MoneyFormatter.decimalLiteral('),
-          'margin.displayedFractionLiteral',
-        ),
+        workbook.code,
+        contains('MoneyFormatter.decimalLiteral('),
+        reason: workbook.path,
       );
+      expect(
+        workbook.code,
+        contains('.displayedFractionLiteral'),
+        reason: workbook.path,
+      );
+      // Every numeric cell in a layout is built from one of those two literals.
+      final numbers = RegExp(
+        r'XlsxCell\.number\(\s*([^,]+),',
+      ).allMatches(workbook.code);
+      expect(numbers, isNotEmpty, reason: workbook.path);
+      for (final m in numbers) {
+        expect(
+          m.group(1)!.trim(),
+          anyOf(
+            startsWith('MoneyFormatter.decimalLiteral('),
+            'margin.displayedFractionLiteral',
+          ),
+          reason: workbook.path,
+        );
+      }
     }
   });
 
-  test('the PDF prints money only through the screen formatter', () {
-    final pdf = files.singleWhere((f) => f.path.endsWith('pnl_pdf.dart')).code;
-    expect(pdf, contains('MoneyFormatter.standard.format('));
-    expect(pdf, contains('.displayTwoDecimals'));
-    expect(pdf, isNot(contains('decimalLiteral')));
+  test('every PDF prints money only through the screen formatter', () {
+    final page = files.singleWhere((f) => f.path.endsWith('pdf_page.dart'));
+    expect(page.code, contains('MoneyFormatter.standard.format('));
+    final layouts = files.where(
+      (f) =>
+          f.path.contains('/pdf/') &&
+          !f.path.endsWith('pdf_page.dart') &&
+          !f.path.endsWith('pdf_fonts.dart'),
+    );
+    expect(
+      layouts.map((f) => f.path.split('/').last),
+      containsAll(['pnl_pdf.dart', 'analysis_pdf.dart']),
+    );
+    for (final layout in layouts) {
+      // Money reaches the page through the shared pdfMoney, or through the wording's
+      // movement text — never a spreadsheet literal, never a formatter of its own.
+      expect(layout.code, contains('pdfMoney('), reason: layout.path);
+      expect(
+        layout.code,
+        isNot(contains('decimalLiteral')),
+        reason: layout.path,
+      );
+      expect(
+        layout.code,
+        isNot(contains('MoneyFormatter')),
+        reason: layout.path,
+      );
+      // One document builder for every PDF, so none can grow its own header or an
+      // information dictionary.
+      expect(layout.code, isNot(contains('pw.Document(')), reason: layout.path);
+      expect(layout.code, contains('exportPdfDocument('), reason: layout.path);
+    }
+    expect(files.where((f) => f.code.contains('pw.Document(')), hasLength(1));
     // No information dictionary: the package would stamp it with the device clock.
     final document = RegExp(
       r'pw\.Document\(([^;]*?)\);',
       dotAll: true,
-    ).firstMatch(pdf)!.group(1)!;
+    ).firstMatch(page.code)!.group(1)!;
     for (final key in [
       'title:',
       'author:',

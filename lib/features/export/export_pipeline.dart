@@ -23,8 +23,10 @@ library;
 import 'dart:typed_data';
 
 import 'package:krishna_mis/core/export/export_wording.dart';
+import 'package:krishna_mis/core/export/pdf/analysis_pdf.dart';
 import 'package:krishna_mis/core/export/pdf/pdf_fonts.dart';
 import 'package:krishna_mis/core/export/pdf/pnl_pdf.dart';
+import 'package:krishna_mis/core/export/workbook/analysis_workbook.dart';
 import 'package:krishna_mis/core/export/workbook/pnl_workbook.dart';
 import 'package:krishna_mis/domain/auth/capability.dart';
 import 'package:krishna_mis/domain/export/export_builders.dart';
@@ -54,9 +56,14 @@ List<ExportFileFormat> exportFormatsFor(ExportReport report) => const [
 ];
 
 /// Whether a report is printed on Windows. Printing is the PDF (§51.5), so a report is
-/// printable once its PDF exists; the P&L must print (D-290).
-bool exportPrintable(ExportReport report) =>
-    report == ExportReport.profitAndLoss;
+/// printable once its PDF exists — since Slice 9, every report (D-290). Authority is a
+/// separate question, decided by `reports.print`.
+bool exportPrintable(ExportReport report) => switch (report) {
+  ExportReport.profitAndLoss ||
+  ExportReport.revenueAnalysis ||
+  ExportReport.expenseAnalysis ||
+  ExportReport.businessComparison => true,
+};
 
 // ── The canonical report a surface already holds ────────────────────────────
 
@@ -321,7 +328,8 @@ abstract final class ExportPipeline {
     }
   }
 
-  /// The bytes for [document] in [format], or null when no layout exists for it.
+  /// The bytes for [document] in [format]. Every report has both layouts since Slice 9,
+  /// and the switch is exhaustive, so a document with no layout does not compile.
   static Future<Uint8List?> _bytes(
     ExportDocument document,
     ExportFileFormat format,
@@ -334,6 +342,17 @@ abstract final class ExportPipeline {
     (final PnlExportDocument d, ExportFileFormat.xlsx) => pnlWorkbook(
       d,
     ).encode(),
-    _ => null,
+    (final RevenueAnalysisExportDocument d, ExportFileFormat.pdf) =>
+      revenueAnalysisPdf(d, await fonts()),
+    (final RevenueAnalysisExportDocument d, ExportFileFormat.xlsx) =>
+      revenueAnalysisWorkbook(d).encode(),
+    (final ExpenseAnalysisExportDocument d, ExportFileFormat.pdf) =>
+      expenseAnalysisPdf(d, await fonts()),
+    (final ExpenseAnalysisExportDocument d, ExportFileFormat.xlsx) =>
+      expenseAnalysisWorkbook(d).encode(),
+    (final BusinessComparisonExportDocument d, ExportFileFormat.pdf) =>
+      businessComparisonPdf(d, await fonts()),
+    (final BusinessComparisonExportDocument d, ExportFileFormat.xlsx) =>
+      businessComparisonWorkbook(d).encode(),
   };
 }

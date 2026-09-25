@@ -27,6 +27,7 @@ import 'package:timezone/data/latest.dart' as tzdata;
 import '../../support/export_delivery_fixtures.dart';
 import '../../support/export_fixtures.dart';
 import '../../support/test_session.dart';
+import '../../support/xlsx_reader.dart';
 
 class _Session extends StubSession {
   _Session(super.initial);
@@ -500,5 +501,73 @@ void main() {
         );
       },
     );
+  });
+
+  group('the analysis reports (Slice 9): Save and Print on Windows', () {
+    String withoutFileId(Uint8List pdf) => latin1
+        .decode(pdf)
+        .replaceAll(RegExp(r'/ID\s*\[<[0-9a-fA-F]*>\s*<[0-9a-fA-F]*>\]'), '');
+
+    const sheets = {
+      'revenueAnalysis': ['Summary', 'Trend', 'Revenue mix'],
+      'expenseAnalysis': ['Summary', 'Trend', 'Top categories', 'Departments'],
+      'businessComparison': ['Comparison'],
+    };
+
+    for (final MapEntry(key: report, value: names) in sheets.entries) {
+      testWidgets('$report: Save Excel writes its workbook', (tester) async {
+        await pump(
+          tester,
+          who: fxOwner,
+          dashboard: fxDashboard(viewer: fxOwner, freshness: fxFreshness()),
+        );
+        await tapAndFinish(tester, 'export-$report-xlsx');
+        final file = dir.listSync().whereType<File>().single;
+        expect(file.path, endsWith('.xlsx'));
+        expect(StoredWorkbook(file.readAsBytesSync()).sheetNames, names);
+        expect(
+          tester.widget<Text>(key('export-$report-outcome')).data,
+          'Saved ${file.uri.pathSegments.last}.',
+        );
+      });
+
+      testWidgets('$report: Print sends the bytes Save PDF writes', (
+        tester,
+      ) async {
+        final printed = <Uint8List>[];
+        await pump(
+          tester,
+          who: fxOwner,
+          dashboard: fxDashboard(viewer: fxOwner, freshness: fxFreshness()),
+          printer: ({required bytes, required jobName}) async {
+            printed.add(bytes);
+            return true;
+          },
+        );
+        expect(key('export-$report-print'), findsOneWidget);
+        await tapAndFinish(tester, 'export-$report-print');
+        await tapAndFinish(tester, 'export-$report-pdf');
+        final saved = dir.listSync().whereType<File>().single;
+        expect(
+          withoutFileId(printed.single),
+          withoutFileId(saved.readAsBytesSync()),
+        );
+      });
+    }
+
+    testWidgets('an incomplete dashboard offers no analysis action', (
+      tester,
+    ) async {
+      await pump(
+        tester,
+        who: fxOwner,
+        dashboard: fxDashboard(viewer: fxOwner, computed: false),
+      );
+      for (final report in sheets.keys) {
+        expect(key('export-$report-pdf'), findsNothing);
+        expect(key('export-$report-xlsx'), findsNothing);
+        expect(key('export-$report-print'), findsNothing);
+      }
+    });
   });
 }

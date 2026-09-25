@@ -9,7 +9,7 @@ Status: **Sections 1–12 proposed (Phase 0, revised); sections 13–16 and 18�
 is built and verified; section 17 is the Phase 4 *plan*, since built — read §18–§26 for what
 shipped.** Sections 6, 5.3 and 8 carry the project lead's mandated corrections.
 Implementation status is tracked in `PROJECT_STATUS.md`.
-Last updated: 2026-09-25 — **Phase 7 Slice 1**: the export, PDF and printing contract (section 51); 2026-09-25 — **Phase 6 closed**: the stable contract Phase 7 may build on (section 50), and the final D-286 real-line rule (section 49); 2026-09-24 — money at large text sizes (section 49); 2026-09-23 — dashboard drill-down integration (section 48); the Windows Analytics workspace (section 47); the Android Home dashboard (section 46); 2026-09-22 — the Windows Overview (section 45); 2026-09-17 — Phase 6 dashboard periods and comparison rules (section 41); Slice 11's corrections and the Slice 12 closure architecture (section 40); 2026-09-13 — the Android P&L surface (section 38); the Windows P&L surface (section 37); Slice 7 reporting security closure (section 36); 2026-09-11 — the Owner Settlement surface and its security boundary (section 35); the Owner Settlement Engine (section 34); the Owner Ledger (section 33), with the V1 ownership vector in §33.3; Phase 5 Slice 6 corrective (section 32); Slice 5 in section 31; Slices 1-4 in sections 27-30
+Last updated: 2026-09-25 — **Phase 7 Slices 8–9**: Android sharing and the analysis exports, as built (sections 51.2, 51.5, 51.7); **Phase 7 Slice 1**: the export, PDF and printing contract (section 51); 2026-09-25 — **Phase 6 closed**: the stable contract Phase 7 may build on (section 50), and the final D-286 real-line rule (section 49); 2026-09-24 — money at large text sizes (section 49); 2026-09-23 — dashboard drill-down integration (section 48); the Windows Analytics workspace (section 47); the Android Home dashboard (section 46); 2026-09-22 — the Windows Overview (section 45); 2026-09-17 — Phase 6 dashboard periods and comparison rules (section 41); Slice 11's corrections and the Slice 12 closure architecture (section 40); 2026-09-13 — the Android P&L surface (section 38); the Windows P&L surface (section 37); Slice 7 reporting security closure (section 36); 2026-09-11 — the Owner Settlement surface and its security boundary (section 35); the Owner Settlement Engine (section 34); the Owner Ledger (section 33), with the V1 ownership vector in §33.3; Phase 5 Slice 6 corrective (section 32); Slice 5 in section 31; Slices 1-4 in sections 27-30
 
 ---
 
@@ -4311,9 +4311,11 @@ the contract:
 | Business Comparison | Windows, **consolidated only** | PDF, Excel | `DashboardView.propertyComparison` (`PropertyFigures` via `Pnl.compute`, D-270) |
 
 **Labels** come from the cached master graph, the source the screen already uses. They show
-the current name (D-035). Wording, range labels and instant labels come from
-`pnl_presentation.dart`, `dashboard_presentation.dart` and `report_dates.dart`, so a
-document never describes a figure differently from the screen (D-232, D-271).
+the current name (D-035). Range and instant labels come from `report_dates.dart`. The
+sentences are the screens' own words: `lib/core/export` may not import a feature file, so
+they are restated in `export_wording.dart` and a parity test holds them equal to
+`pnl_presentation.dart`, `dashboard_presentation.dart` and the Analytics wording (D-232,
+D-271, D-307).
 
 **Not exported** (D-290, D-296):
 - the Overview dashboard;
@@ -4382,6 +4384,7 @@ lists (D-279) and forbids the following in the model layer and in both renderers
   formatting. **No Dart `double`** touches a money value.
 - **No formulas** and no raw-paise column.
 - The margin is a numeric percentage from the exact scaled integer, or the text "N/A".
+- A period-over-period percentage change is the screen's rounded text, or "N/A" (D-307).
 - The number format is the best reliable one available. Lakh/crore grouping is used only if
   it can be proven correct for every positive **and** negative value the workbook can hold;
   otherwise a conventional numeric currency format.
@@ -4389,8 +4392,10 @@ lists (D-279) and forbids the following in the model layer and in both renderers
   generated-at), frozen header panes, and auto-filters on line tables.
 
 **PDF** (D-295):
-- A4 portrait for the P&L and the two analysis reports; landscape where a comparison table
-  needs the width.
+- A4 portrait for all four reports. Landscape was allowed where a comparison table needed
+  the width; none does (D-307).
+- One page furniture for every PDF (`pdf_page.dart`): one header, footer, opening block and
+  table style, and one `pw.Document`.
 - Every page carries a header (property, period, date basis) and a footer (page *n* of *N*,
   generated-at, synchronised-as-of).
 - Tables continue across pages with repeated column headers.
@@ -4403,8 +4408,8 @@ lists (D-279) and forbids the following in the model layer and in both renderers
   (D-304, §51.8).
 
 **Printing:** the Windows print dialog receives the **same PDF bytes** the renderer made for
-that model. There is no print-specific layout and no direct printer protocol. The P&L must
-print; the other outputs may use the same pipeline where that is trivial.
+that model. There is no print-specific layout and no direct printer protocol. All four
+reports print (D-307).
 
 **Suggested filenames** use readable names, never an internal id:
 - `KrishnaImperialMIS_<Report>_<Scope>_<from>_<to>.pdf`

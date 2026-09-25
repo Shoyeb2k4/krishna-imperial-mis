@@ -10668,3 +10668,50 @@ afterwards"; it is amended to say this.
 in the sheet, and `printing` returns `true` whenever it launched the chooser. A closed sheet
 cannot be told from a completed share, so the app says only that the sheet opened. A sheet
 that could not open is reported as that.
+
+## D-307 — The analysis exports, as built
+**Date:** 2026-09-25 · **Status:** Implemented / Tested — Phase 7 Slice 9
+
+**1 · Laid out from the Slice 3 document models, and nothing else.** Revenue Analysis,
+Expense & Department Analysis and Business Comparison each render their
+`*ExportDocument`, which carries the canonical `DashboardView` figures. The layouts compute
+nothing:
+- a movement is the domain's own `MoneyComparisonAvailable.change`;
+- a percentage is the domain's own rounded `displayTwoDecimals`, or "N/A" with its reason;
+- a total is the headline figure the ranking reconciled to, never a sum of rows;
+- Business Comparison keeps the domain's fixed property order.
+
+The core export guard checks every layout file for arithmetic, sorting, parsing and
+clocks.
+
+**2 · Never zero for missing.**
+- An unavailable comparison prints "Not available" in the previous, change and percentage
+  columns, with the screen's sentence saying why.
+- A trend point that could not be established is "Not available" with a note that it is not
+  zero.
+- A ranking that did not reconcile prints no line, only why.
+- A genuine ₹0 stays a figure.
+
+**3 · Portrait, not landscape.** §51.5 allowed landscape where a comparison table needs the
+width. None does: the widest table has four amount columns at their natural width beside a
+wrapping label, which fits A4 portrait. All four PDFs stay portrait, which also keeps
+printing to one page format.
+
+**4 · In Excel, a percentage change is the screen's text.** Money, previous figures and
+movements are numeric cells. The percentage is written as the rounded text the screen shows
+("+8.42%", or "N/A"). Writing it as a number would need a new exact-fraction literal on
+`PercentChangeRatio`, which is a domain change this slice does not make. Margins stay
+numeric percentages, as in the P&L.
+
+**5 · One page furniture for every PDF.** The P&L PDF's header, footer, opening block and
+table style moved into `lib/core/export/pdf/pdf_page.dart`, and all four PDFs use it. There
+is now exactly one `pw.Document`, with no information dictionary. The P&L PDF tests pass
+unchanged over the refactor.
+
+**6 · The analysis wording is held to the screens by a test.** `lib/core/export` may not
+import a feature file, so the analysis sentences live in `export_wording.dart` as well as in
+the dashboard and Analytics presentation files. `export_wording_parity_test.dart` asserts
+they are the same words.
+
+**7 · Every report prints.** `exportPrintable` is true for all four reports on Windows, from
+the same PDF bytes Save PDF writes. `reports.print` still decides.

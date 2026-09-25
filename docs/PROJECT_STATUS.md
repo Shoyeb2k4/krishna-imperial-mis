@@ -5,11 +5,18 @@ Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
-Last updated: **2026-09-25** — **PHASE 7 — EXPORT, PDF & PRINTING: IN PROGRESS.** Slices 1–5
-are complete: governance, export and print authorisation, the export document models, the
-XLSX foundation and the PDF foundation (D-290 … D-304). The user-facing slices 6–9 are next,
-after the project lead reviews the Phase 7 progress checkpoint. The export contract is
-`ARCHITECTURE.md` §51. See *PHASE 7 — EXPORT, PDF & PRINTING* at the end of this file.
+Last updated: **2026-09-25** — **PHASE 7 — EXPORT, PDF & PRINTING: IN PROGRESS.** Slices 1–9
+are complete (D-290 … D-307):
+- the Windows Export Centre with Save As;
+- Windows printing;
+- the Android P&L PDF share;
+- the three analysis exports.
+
+**Slice 10 (full acceptance) is not started.** It waits for the project lead's review of the
+Slice 6–9 checkpoint. The export contract is `ARCHITECTURE.md` §51. See *PHASE 7 — EXPORT, PDF
+& PRINTING* at the end of this file.
+
+Previously: **2026-09-25** — Slices 1–5 complete; 6–9 next.
 
 Previously: **2026-09-25** — **PHASE 7 — EXPORT, PDF & PRINTING: STARTED.** Slice 1
 (governance) is complete.
@@ -85,9 +92,9 @@ drill-down, and the Owner Accounts ledger, settlement engine and preview surface
 ## Current phase
 
 **Phase 7 — Export, PDF & Printing: IN PROGRESS (started 2026-09-25).** Slices 1–5 are
-complete. Slices 6–9 (the user-facing surfaces) wait for the project lead's review of the
-progress checkpoint. *(This paragraph read "Slice 1 … complete; Slice 2 is next" until
-Slice 4.)* Its record is *PHASE 7 — EXPORT, PDF & PRINTING* at the **end** of this
+complete through Slice 9. Slice 10 (full acceptance) waits for the project lead's review.
+*(This paragraph read "Slices 1–5 complete; 6–9 wait for review" until Slice 9, and "Slice 1
+… complete; Slice 2 is next" until Slice 4.)* Its record is *PHASE 7 — EXPORT, PDF & PRINTING* at the **end** of this
 file. *(This paragraph read "NOT STARTED" at the Phase 6 closure; that statement is superseded.)*
 
 **Phase 6 — Dashboard & Analytics: COMPLETE and formally closed (2026-09-25, Slice 11).** Its
@@ -6662,7 +6669,7 @@ The Windows **Reports** placeholder becomes the **Export Centre** (D-297).
 | 6 | Windows Reports → Export Centre, Save As | **COMPLETE** |
 | 7 | Windows printing (`printing` 5.15.1, native dialog) | **COMPLETE** |
 | 8 | Android P&L PDF share | **COMPLETE** |
-| 9 | Windows analysis-section exports | not started |
+| 9 | Windows analysis-section exports | **COMPLETE** |
 | 10 | Full acceptance | not started |
 | 11 | Closure | not started |
 
@@ -6996,3 +7003,50 @@ migration or server change; Drift stays **v21** and the ledger **101**.
 | `dart format` / `flutter analyze` | **Tested** | 396 files, 0 changed / no issues |
 | Android APK build | **Blocked** | Three attempts; each failed downloading Kotlin Gradle plugin artifacts from Maven Central with **HTTP 429 Too Many Requests** (network rate limit in this container). Not a code failure: `flutter analyze` compiles the Dart for every target. To be built on the Android build machine in Slice 10 |
 | The real share sheet on a device | **Not tested** | Slice 10, on the Galaxy A06 over USB (D-288) |
+
+## Phase 7 Slice 9 — Windows analysis exports: **COMPLETE**
+
+Revenue Analysis, Expense & Department Analysis and Business Comparison now save as PDF and
+Excel, and print, on Windows (D-290, D-307). Each is laid out from its Slice 3 document
+model and computes nothing. No schema, migration or server change; Drift stays **v21**, the
+ledger **101**, and `pubspec.yaml` / `pubspec.lock` are unchanged.
+
+| Added | What it does |
+|---|---|
+| `lib/core/export/pdf/pdf_page.dart` | the page furniture every PDF shares: header, footer (page *n* of *N*, synchronised-as-of, generated-on-device), opening block, table style, and the one `pw.Document` (no information dictionary). The P&L PDF now uses it |
+| `lib/core/export/pdf/analysis_pdf.dart` | the three analysis PDFs, A4 portrait |
+| `lib/core/export/workbook/analysis_workbook.dart` | the three analysis workbooks: Summary / Trend / rankings, and one Comparison sheet |
+| `lib/core/export/export_wording.dart` | the analysis sentences, held equal to the screens' by a parity test |
+| `ExportPipeline` | both formats for every report; `exportPrintable` true for all four |
+
+**What the analysis files state:**
+- Each figure is shown beside the same stretch before: this period, the previous period, the
+  domain's movement, and its percentage — or "N/A" with the screen's reason.
+- An unavailable comparison prints "Not available" with the sentence saying why.
+- A trend point that could not be established is "Not available", never zero. A clipped
+  first or last point says it is partial.
+- Rankings list the domain's lines in order, then the exact Others, then the total the set
+  reconciled to. A set that did not reconcile prints only why.
+- Business Comparison lists each property in fixed order, then both together, with results
+  in words and margins as the screen shows them. It is offered only to consolidated
+  authority.
+- In Excel, money is numeric with no formulas and no raw-paise column; percentage changes
+  are the screen's rounded text; margins are numeric percentages; line tables are frozen
+  and filtered.
+
+| Item | Status | Evidence |
+|---|---|---|
+| Analysis renderer tests | **Tested** | **35** passed: every Summary money cell equals the document's figure, previous and movement to the paisa; unavailable comparisons are words, never a zero cell; the gap is "Not available" while a real ₹0 stays a number; rankings, Others and totals exact; refused rankings print no line; Business Comparison columns in fixed order with results in words and percentage margins; no formula, no "paise", no id in any byte; PDF lines read back through `/ToUnicode` equal `MoneyFormatter`'s strings; page numbers and three separate freshness statements; no information dictionary; no id compressed or not; font sizes bounded; deterministic bytes (PDF compared without the random `/ID`); readable file names |
+| Pipeline tests | **Tested** | **19** passed (7 new): every analysis workbook through the pipeline is byte-identical to its renderer; every analysis PDF renders and prints from the same bytes; the analysis PDF is the analysis renderer |
+| Export Centre tests | **Tested** | **26** passed (7 new): Save Excel writes each analysis workbook with its sheets; Print sends the bytes Save PDF writes, for each analysis report; an incomplete dashboard offers nothing |
+| Wording parity | **Tested** | **4** passed: unavailable-comparison lines, movements and every withheld-percentage reason, measure, grain and bucket labels, compared-with and cap notes, missing-trend lines and the order note equal the screens' words |
+| Core export guard | **Tested** | **30** passed: every layout file free of arithmetic, sorting, parsing and clocks; every workbook's numeric cell built from `decimalLiteral` or `displayedFractionLiteral`; every PDF prints money through `pdfMoney` and uses the one document builder |
+| Real-code controls | **Tested** | a trend gap written as a zero cell: red. An unavailable previous printed as ₹0: red. The movement re-derived by subtraction: guard red. Business Comparison columns reordered: red. An analysis layout dropped from the pipeline: red. Each restored and checked with `cmp` |
+| **Full host suite** | **Tested** | **2,964 passed, 1 skipped, 0 failed** |
+| `dart format` / `flutter analyze` | **Tested** | 401 files, 0 changed / no issues |
+| Secret scan, tree and git history | **Tested** | clean |
+| Dependency and lock integrity | **Tested** | `pubspec.yaml` and `pubspec.lock` unchanged since Slice 7 |
+| Schema and server | **Tested** | no change under `supabase/` or `lib/data/local/`; `schemaVersion` 21 |
+| Windows build | **Not tested** | this container is Linux; Slice 10 on the Windows machine (D-298: `printing` downloads PDFium at CMake time) |
+| Android build | **Blocked** | Maven Central returned HTTP 429 to Gradle three times (Slice 8); not retried |
+| A person reading the analysis files in Excel and a PDF viewer | **Not tested** | Slice 10, and the project lead's review (§U.4) |

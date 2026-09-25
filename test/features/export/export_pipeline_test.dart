@@ -3,14 +3,21 @@
 library;
 
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:krishna_mis/core/export/pdf/analysis_pdf.dart';
 import 'package:krishna_mis/core/export/pdf/pdf_fonts.dart';
 import 'package:krishna_mis/core/export/pdf/pnl_pdf.dart';
+import 'package:krishna_mis/core/export/workbook/analysis_workbook.dart';
 import 'package:krishna_mis/core/export/workbook/pnl_workbook.dart';
 import 'package:krishna_mis/core/formatting/report_dates.dart';
 import 'package:krishna_mis/domain/auth/capability.dart';
 import 'package:krishna_mis/domain/export/export_builders.dart';
+import 'package:krishna_mis/domain/export/export_document.dart';
+import 'package:krishna_mis/domain/finance/dashboard_analytics.dart';
+import 'package:krishna_mis/domain/finance/pnl.dart';
+import 'package:krishna_mis/domain/finance/property_comparison.dart';
 import 'package:krishna_mis/domain/finance/export_authority.dart';
 import 'package:krishna_mis/features/export/export_pipeline.dart';
 import 'package:timezone/data/latest.dart' as tzdata;
@@ -273,4 +280,126 @@ void main() {
       );
     }
   });
+
+  group(
+    'the analysis reports (Slice 9): both formats, the renderers\' bytes',
+    () {
+      DashboardExportSource dashboardSource() => DashboardExportSource(
+        fxDashboard(viewer: fxOwner, freshness: fxFreshness()),
+        periodName: 'Month to date',
+        displayZone: 'Asia/Kolkata',
+      );
+
+      ExportContext context(ExportReport report) => fxContext(
+        fxPermit(report, fxBoth),
+        freshness: fxFreshness(),
+        periodName: 'Month to date',
+      );
+
+      // The document each report's pipeline should build from the same dashboard.
+      final result = fxConsolidated();
+      final comparison = fxComparison(current: PnlComputed(result));
+      final trends = [fxNetSalesTrendWithGap(), fxMonthlyExpenseTrend()];
+      T built<T extends ExportDocument>(ExportBuild<T> b) =>
+          (b as ExportBuilt<T>).document;
+
+      final direct = <ExportReport, Uint8List Function()>{
+        ExportReport.revenueAnalysis: () => revenueAnalysisWorkbook(
+          built(
+            ExportDocuments.revenueAnalysis(
+              context(ExportReport.revenueAnalysis),
+              result: result,
+              comparison: comparison,
+              trends: trends,
+              revenueMix: TopN.revenueCategories(result, n: 3),
+            ),
+          ),
+        ).encode(),
+        ExportReport.expenseAnalysis: () => expenseAnalysisWorkbook(
+          built(
+            ExportDocuments.expenseAnalysis(
+              context(ExportReport.expenseAnalysis),
+              result: result,
+              comparison: comparison,
+              trends: trends,
+              topExpenseCategories: TopN.expenseCategories(result, n: 3),
+              departmentSpending: TopN.departments(result, n: 3),
+            ),
+          ),
+        ).encode(),
+        ExportReport.businessComparison: () => businessComparisonWorkbook(
+          built(
+            ExportDocuments.businessComparison(
+              context(ExportReport.businessComparison),
+              result: result,
+              comparison: comparison,
+              propertyComparison: PropertyComparison.of(result),
+            ),
+          ),
+        ).encode(),
+      };
+
+      for (final report in direct.keys) {
+        test(
+          '${report.name}: Excel is byte-identical to its workbook',
+          () async {
+            final rendered =
+                await render(
+                      fxOwner,
+                      dashboardSource(),
+                      report: report,
+                      format: ExportFileFormat.xlsx,
+                    )
+                    as ExportRendered;
+            expect(rendered.bytes, direct[report]!());
+            expect(rendered.fileName, endsWith('.xlsx'));
+            expect(fontLoads, 0);
+          },
+        );
+
+        test('${report.name}: a PDF, printable from the same bytes', () async {
+          final saved =
+              await render(fxOwner, dashboardSource(), report: report)
+                  as ExportRendered;
+          expect(ascii.decode(saved.bytes.sublist(0, 5)), '%PDF-');
+          expect(saved.fileName, endsWith('.pdf'));
+          expect(exportPrintable(report), isTrue);
+          final printed =
+              await render(
+                    fxOwner,
+                    dashboardSource(),
+                    report: report,
+                    action: ExportAction.print,
+                  )
+                  as ExportRendered;
+          expect(printed.bytes.length, saved.bytes.length);
+        });
+      }
+
+      test(
+        'the analysis PDFs are the analysis renderers, not the P&L one',
+        () async {
+          final rendered =
+              await render(
+                    fxOwner,
+                    dashboardSource(),
+                    report: ExportReport.businessComparison,
+                  )
+                  as ExportRendered;
+          final direct = await businessComparisonPdf(
+            built(
+              ExportDocuments.businessComparison(
+                context(ExportReport.businessComparison),
+                result: result,
+                comparison: comparison,
+                propertyComparison: PropertyComparison.of(result),
+              ),
+            ),
+            fxFonts,
+          );
+          expect(rendered.bytes.length, direct.length);
+        },
+      );
+    },
+  );
 }
