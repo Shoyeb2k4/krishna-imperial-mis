@@ -34,6 +34,7 @@ import 'package:krishna_mis/features/profit_and_loss/presentation/mobile_pnl_dri
 import 'package:krishna_mis/features/profit_and_loss/presentation/pnl_drilldown_providers.dart';
 import 'package:krishna_mis/features/profit_and_loss/presentation/pnl_presentation.dart';
 import 'package:krishna_mis/features/profit_and_loss/presentation/pnl_providers.dart';
+import 'package:krishna_mis/features/export/pnl_share_action.dart';
 
 /// Space kept clear under the last item, so nothing sits behind the docked [ + ] action.
 ///
@@ -145,6 +146,9 @@ class _Header extends ConsumerWidget {
                 ],
               ),
             ),
+            // The phone P&L's one export control (Phase 7 Slice 8, D-293). It decides
+            // for itself whether it is offered, and shows nothing when it is not.
+            const PnlShareAction(),
             IconButton(
               key: const Key('pnl-refresh'),
               tooltip: running ? 'Synchronising' : 'Refresh',

@@ -6661,7 +6661,7 @@ The Windows **Reports** placeholder becomes the **Export Centre** (D-297).
 | 5 | PDF foundation (`pdf` 3.13.1, bundled Noto Sans) | **COMPLETE** |
 | 6 | Windows Reports → Export Centre, Save As | **COMPLETE** |
 | 7 | Windows printing (`printing` 5.15.1, native dialog) | **COMPLETE** |
-| 8 | Android P&L PDF share | not started |
+| 8 | Android P&L PDF share | **COMPLETE** |
 | 9 | Windows analysis-section exports | not started |
 | 10 | Full acceptance | not started |
 | 11 | Closure | not started |
@@ -6953,3 +6953,46 @@ when their PDFs exist.
 | Export, app and core-export suites | **Tested** | **250** passed |
 | `dart format` / `flutter analyze` / secret scan | **Tested** | clean / no issues / clean |
 | The real Windows print dialog and a printed page | **Not tested** | Slice 10, on the Windows machine. This container is Linux and cannot open it |
+
+## Phase 7 Slice 8 — Android P&L PDF share: **COMPLETE**
+
+The phone P&L can be shared as a PDF through the system share sheet (D-293, D-306). It is
+the **same PDF** Windows saves and prints: same document model, same renderer. No schema,
+migration or server change; Drift stays **v21** and the ledger **101**.
+
+```
+    phone P&L on screen → identity check → view authority AND reports.export
+      → document model → PDF renderer → Printing.sharePdf → system share sheet
+```
+
+| Added | What it does |
+|---|---|
+| `lib/features/export/export_share.dart` | `Printing.sharePdf`; the app-private cache root; removal of this app's earlier shared exports from `<cache>/share/` |
+| `lib/features/export/pnl_share_action.dart` | one **Share as PDF** icon in the Android Reports header, beside Refresh; its outcome as a snackbar |
+| `ExportActionController.share` | the Save/Print pipeline with `ExportAction.export`; earlier shares cleaned first; authority decided again before the sheet opens |
+
+**What Android does and does not offer:**
+- The P&L PDF only. No Android Excel, no Android printing, and no analysis export (D-293).
+- Offered only when the report on screen is complete and the person holds view authority
+  **and** `reports.export` for its scope. Reading the P&L is not enough: the Manager bundle
+  sees no share icon.
+- It shares what the screen already holds. It starts no synchronisation, so a complete
+  report shares offline.
+- **No storage permission.** The file goes to the app's private cache and reaches the
+  chosen app through `printing`'s own FileProvider. The manifest declares no storage or
+  media permission, and a test reads the manifest to prove it.
+- **Cleanup.** A file cannot be deleted the moment the sheet opens: the receiving app has
+  not read it yet. Every earlier export this app shared is therefore removed from
+  `<cache>/share/` before the next share, and when the phone P&L is opened. Only files
+  named `KrishnaImperialMIS_*.pdf` are touched.
+
+| Item | Status | Evidence |
+|---|---|---|
+| Share widget tests | **Tested** | **11** passed: the share sheet receives %PDF bytes under the readable name; print-only authority, the Manager bundle, an incomplete report and another person's report offer no share; offline sharing with no synchronisation; earlier shares removed on open and before a share, other files untouched; a sheet that cannot open is stated; `reports.export` lost mid-flight shares nothing; no storage permission in the manifest; cleanup on a cache with no share folder |
+| Feature guard | **Tested** | **31** passed: `path_provider` in the share file only as `getTemporaryDirectory`; no external-storage or Downloads path; the share file writes no bytes itself; planted violations red |
+| P&L surface guard | **Tested** | the phone P&L's only `features/export` import is the share action; no other P&L file reaches `features/export` |
+| Real-code controls | **Tested** | cleanup before share removed: 1 red. Share offered without authority: 3 red. `getExternalStorageDirectory` in the share file: guard red. Each restored and checked with `cmp` |
+| Export, P&L phone/drill-down/session suites, P&L guard, app | **Tested** | export features **86**; P&L phone, session switch, drill-down UI, surface guard and app **279** |
+| `dart format` / `flutter analyze` | **Tested** | 396 files, 0 changed / no issues |
+| Android APK build | **Blocked** | Three attempts; each failed downloading Kotlin Gradle plugin artifacts from Maven Central with **HTTP 429 Too Many Requests** (network rate limit in this container). Not a code failure: `flutter analyze` compiles the Dart for every target. To be built on the Android build machine in Slice 10 |
+| The real share sheet on a device | **Not tested** | Slice 10, on the Galaxy A06 over USB (D-288) |

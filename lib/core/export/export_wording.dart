@@ -104,6 +104,10 @@ const exportSplitNotShownLine =
 
 // ── Filenames (§51.5) ────────────────────────────────────────────────────────
 
+/// How every exported file's name begins — and how the Android share cleanup recognises
+/// this app's own files and nothing else.
+const exportFileNamePrefix = 'KrishnaImperialMIS_';
+
 /// `KrishnaImperialMIS_ProfitAndLoss_CrystalCanopyRooftop_2026-09-01_2026-09-30.xlsx`.
 ///
 /// Readable names only — never an id. A consolidated document is named "Consolidated".
@@ -121,7 +125,7 @@ String exportFileName(ExportHeader header, {required String extension}) {
             .where((w) => w.isNotEmpty)
             .map((w) => '${w[0].toUpperCase()}${w.substring(1)}')
             .join();
-  return 'KrishnaImperialMIS_${report}_${scope.isEmpty ? 'Scope' : scope}_'
+  return '$exportFileNamePrefix${report}_${scope.isEmpty ? 'Scope' : scope}_'
       '${_iso(header.range.from)}_${_iso(header.range.to)}.$extension';
 }
 

@@ -607,6 +607,36 @@ void main() {
       );
     });
 
+    test(
+      'holds exactly one export control: the shared P&L share action (Phase 7 Slice 8)',
+      () {
+        // Narrowed deliberately, as Slice 10 narrowed the drill-down rule (D-237): the P&L
+        // surface still exports nothing itself. The phone page places the one control the
+        // export feature owns, which decides for itself whether it is offered (D-293), and
+        // no other P&L file reaches into the export feature at all.
+        final mobile = File(_mobilePage).readAsStringSync();
+        expect(
+          RegExp(
+            r"import 'package:krishna_mis/features/export/[^']+';",
+          ).allMatches(mobile).map((m) => m.group(0)).toList(),
+          [
+            "import 'package:krishna_mis/features/export/pnl_share_action.dart';",
+          ],
+        );
+        expect(_code(mobile), contains('const PnlShareAction()'));
+        for (final file in Directory(_featureDir).listSync(recursive: true)) {
+          if (file is! File || file.path.replaceAll(r'\', '/') == _mobilePage) {
+            continue;
+          }
+          expect(
+            file.readAsStringSync(),
+            isNot(contains('features/export/')),
+            reason: file.path,
+          );
+        }
+      },
+    );
+
     test('refreshes through the same synchroniser as Windows', () {
       final code = _code(File(_mobilePage).readAsStringSync());
       expect(code, contains('RefreshIndicator('));

@@ -32,6 +32,7 @@ import 'package:krishna_mis/features/dashboard/presentation/dashboard_providers.
 import 'package:krishna_mis/features/export/export_file_save.dart';
 import 'package:krishna_mis/features/export/export_pipeline.dart';
 import 'package:krishna_mis/features/export/export_print.dart';
+import 'package:krishna_mis/features/export/export_share.dart';
 import 'package:krishna_mis/features/profit_and_loss/presentation/pnl_presentation.dart';
 import 'package:krishna_mis/features/profit_and_loss/presentation/pnl_providers.dart';
 import 'package:meta/meta.dart';
@@ -275,6 +276,35 @@ class ExportActionController extends Notifier<ExportActionStatus> {
       }
     },
   );
+
+  /// Shares the P&L PDF through the Android share sheet (D-293). The same bytes Save PDF
+  /// writes on Windows; `reports.export` is the capability, as for any export.
+  Future<void> share(
+    ExportReport report,
+  ) => _run(report, ExportAction.export, ExportFileFormat.pdf, (
+    rendered,
+    stillPermitted,
+  ) async {
+    try {
+      // Earlier shares leave their files in the private cache; they go now, before this
+      // one is written beside them.
+      removeEarlierShares(await ref.read(exportShareCacheRootProvider.future));
+    } on Object {
+      // A cache that cannot be listed does not stop the share.
+    }
+    if (!stillPermitted()) return const ExportActionAbandoned();
+    try {
+      final opened = await ref.read(exportSharerProvider)(
+        bytes: rendered.bytes,
+        fileName: rendered.fileName,
+      );
+      return opened
+          ? const ExportActionHandedOver(ExportActionKind.share)
+          : const ExportActionHandOverFailed(ExportActionKind.share);
+    } on Object {
+      return const ExportActionHandOverFailed(ExportActionKind.share);
+    }
+  });
 
   /// Renders, then hands the bytes to [deliver] while the action is still permitted.
   Future<void> _run(

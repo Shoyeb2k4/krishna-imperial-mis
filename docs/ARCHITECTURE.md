@@ -4441,7 +4441,8 @@ time as synchronisation time.
 **Android:**
 - The PDF is written to app-private cache and shared through the system share sheet
   (`printing`'s FileProvider).
-- The temporary file is removed afterwards.
+- The file cannot be removed while the receiving app may still read it. This app's earlier
+  shared exports are removed before the next share and when the phone P&L opens (D-306).
 - No storage permission is declared.
 - `file_selector_android` cannot show a save dialog, so the share sheet is how a user saves
   (D-293).

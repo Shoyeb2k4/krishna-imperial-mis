@@ -46,10 +46,12 @@ const _folders = [
   'getDownloadsDirectory',
   'Downloads',
   'getApplicationDocumentsDirectory',
-  'path_provider',
+  'getExternalStorage',
   'USERPROFILE',
   'Platform.environment',
 ];
+
+const _shareFile = 'export_share.dart';
 
 const _fileWriter = 'export_file_save.dart';
 
@@ -71,7 +73,17 @@ List<String> violationsIn(String path, String code) => [
     'DateTime.now',
   ]),
   if (!path.endsWith(_fileWriter))
-    ...surfaceViolations(code, ['File(', 'writeAsBytes', 'dart:io']),
+    ...surfaceViolations(code, ['File(', 'writeAsBytes']),
+  // The Save As writer, and the share cleanup of the app's own private cache, are the only
+  // files that touch the file system.
+  if (!path.endsWith(_fileWriter) && !path.endsWith(_shareFile))
+    ...surfaceViolations(code, ['dart:io', 'path_provider']),
+  if (path.endsWith(_shareFile)) ...[
+    ...surfaceViolations(code, ['writeAsBytes', 'createSync', 'copySync']),
+    if (code.contains('path_provider') &&
+        !code.contains('path_provider.dart\' show getTemporaryDirectory;'))
+      'a folder other than the private cache',
+  ],
   if (!_printingUsers.any(path.endsWith))
     ...surfaceViolations(code, ['package:printing', 'Printing.']),
   // Printing is the PDF: no second renderer, no print layout (§51.5, D-299).

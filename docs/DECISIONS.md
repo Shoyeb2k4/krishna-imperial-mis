@@ -10641,3 +10641,30 @@ failure. Cancelling is not an error.
 which the bundled IANA data names `Etc/UTC`. `reportInstantLabel` now maps it to `tz.UTC`.
 This fixes a latent throw on screen and a certain failure in export, and changes no other
 zone.
+
+## D-306 — Android sharing, as built: private cache, no permission, cleanup before the next share
+**Date:** 2026-09-25 · **Status:** Implemented / Tested — Phase 7 Slice 8
+
+**1 · One PDF.** The phone P&L shares the bytes the shared renderer makes for the P&L
+document — the same bytes Windows saves and prints. There is no Android layout.
+
+**2 · Authority.** Sharing is an export: view authority **and** `reports.export` for the
+exact scope, decided before the icon appears, before the document is built, and again before
+the sheet opens.
+
+**3 · No storage permission.** `Printing.sharePdf` writes `<app cache>/share/<name>` and
+grants the chosen app read access through its own FileProvider
+(`${applicationId}.flutter.printing`). The manifest declares no storage or media permission.
+
+**4 · Cleanup is ours, and happens before the next share.** `printing` marks the file only
+`deleteOnExit`, which almost never runs on Android. It cannot be deleted when the sheet
+opens, because the receiving app has not read it yet. So this app removes its own earlier
+exports (`KrishnaImperialMIS_*.pdf`) from `<cache>/share/` before each share and when the
+phone P&L opens. A file therefore stays in private cache until the next share or the next
+visit to the P&L, or until Android clears the cache. `ARCHITECTURE.md` §51.7 said "removed
+afterwards"; it is amended to say this.
+
+**5 · What the share sheet can tell us.** Android returns nothing about what the person did
+in the sheet, and `printing` returns `true` whenever it launched the chooser. A closed sheet
+cannot be told from a completed share, so the app says only that the sheet opened. A sheet
+that could not open is reported as that.

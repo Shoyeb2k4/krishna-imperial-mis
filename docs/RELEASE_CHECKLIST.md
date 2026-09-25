@@ -862,7 +862,8 @@ actually been run, with its result recorded in `PROJECT_STATUS.md`.
 ### U.3 Android
 
 - [ ] P&L PDF opens the system share sheet. The temporary file is cleaned up. No new
-      permission is requested.
+      permission is requested. *(Host evidence: Slice 8, 11 share tests and the manifest
+      check. The device run is Slice 10.)*
 - [ ] Galaxy A06 pass, over USB only (D-288).
 
 ### U.4 Project lead
