@@ -208,15 +208,34 @@ void expectNoLayoutError(WidgetTester tester, String where) {
 /// figure nearly twice as wide as it is on a phone. A check that money fits at 2.0× on
 /// 320dp means nothing against glyphs no phone draws. The faces come from the Flutter
 /// SDK's own material fonts, so nothing is downloaded and nothing is added to the app.
+///
+/// The SDK ships these as `Roboto-Regular.ttf` and so on. They are found by comparing
+/// names case-insensitively, because a hard-coded `roboto-regular.ttf` worked only on
+/// Windows' case-insensitive filesystem and failed in setUpAll on Linux — which skipped
+/// every test in the six layout suites (cloud/CI portability).
 Future<void> loadRealFonts() async {
   final root = Platform.environment['FLUTTER_ROOT'];
   expect(root, isNotNull, reason: 'FLUTTER_ROOT is not set for this test run');
-  final dir = '$root/bin/cache/artifacts/material_fonts';
+  final dir = Directory('$root/bin/cache/artifacts/material_fonts');
+  expect(
+    dir.existsSync(),
+    isTrue,
+    reason: 'missing ${dir.path} — run `flutter precache` on a fresh SDK',
+  );
+  final files = dir.listSync().whereType<File>().toList();
   final loader = FontLoader('Roboto');
   for (final face in const ['regular', 'medium', 'bold']) {
-    final file = File('$dir/roboto-$face.ttf');
-    expect(file.existsSync(), isTrue, reason: 'missing ${file.path}');
-    final bytes = file.readAsBytesSync();
+    final wanted = 'roboto-$face.ttf';
+    final matches = [
+      for (final file in files)
+        if (file.uri.pathSegments.last.toLowerCase() == wanted) file,
+    ];
+    expect(
+      matches,
+      hasLength(1),
+      reason: 'expected exactly one $wanted in ${dir.path}',
+    );
+    final bytes = matches.single.readAsBytesSync();
     loader.addFont(Future.value(ByteData.sublistView(bytes)));
   }
   await loader.load();

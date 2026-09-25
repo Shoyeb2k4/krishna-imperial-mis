@@ -20,6 +20,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:krishna_mis/app/providers.dart';
 import 'package:krishna_mis/core/design/app_theme.dart';
 import 'package:krishna_mis/data/attachments/attachment_source.dart';
+import 'package:krishna_mis/data/attachments/platform_attachment_source.dart';
 import 'package:krishna_mis/data/attachments/attachment_staging.dart';
 import 'package:krishna_mis/data/local/app_database.dart';
 import 'package:krishna_mis/domain/attachments/document_attachment.dart';
@@ -196,7 +197,7 @@ void main() {
     Principal? principal,
     Size size = const Size(430, 932),
     ThemeData? theme,
-    bool productionAttachmentSource = false,
+    String? productionPlatform,
   }) async {
     final actor = principal ?? _principal();
     await tester.binding.setSurfaceSize(size);
@@ -221,12 +222,17 @@ void main() {
           ),
           principalProvider.overrideWithValue(actor),
           currentBusinessDateProvider.overrideWithValue(_june15),
-          // The one injection, at the boundary the harness cannot cross. Omitted when a
-          // test is asking what PRODUCTION resolves, which is the assertion that was
-          // missing while `UnavailableAttachmentSource` shipped to two real devices
-          // (D-077).
-          if (!productionAttachmentSource)
-            attachmentSourceProvider.overrideWithValue(source),
+          // The one injection, at the boundary the harness cannot cross. When a test
+          // asks what PRODUCTION resolves — the assertion that was missing while
+          // `UnavailableAttachmentSource` shipped to two real devices (D-077) — it gets
+          // production's own `attachmentSourceFor` for an explicit shipped platform,
+          // so the answer does not depend on which OS the test host runs (the provider
+          // itself is pinned to that function in attachment_source_wiring_test).
+          attachmentSourceProvider.overrideWithValue(
+            productionPlatform == null
+                ? source
+                : attachmentSourceFor(productionPlatform),
+          ),
           attachmentStagingProvider.overrideWithValue(
             AttachmentStagingService(
               resolveStagingDirectory: () async =>
@@ -574,29 +580,33 @@ void main() {
     //
     // What they do NOT close is the native interaction itself: the OS picker is a
     // separate activity, and no widget test opens one. That stays a manual gate.
-    uiTest('the sale detail surface offers a real intake', (tester) async {
-      await recorded();
-      await pump(
+    for (final platform in const ['android', 'windows']) {
+      uiTest('the sale detail surface offers a real intake on $platform', (
         tester,
-        const RevenueDetailPage(entryId: 'entry-1'),
-        productionAttachmentSource: true,
-      );
+      ) async {
+        await recorded();
+        await pump(
+          tester,
+          const RevenueDetailPage(entryId: 'entry-1'),
+          productionPlatform: platform,
+        );
 
-      expect(
-        find.text('Attaching a file is not available on this device yet.'),
-        findsNothing,
-        reason:
-            'this is the exact sentence two real devices showed for a whole phase while '
-            'the picker did not exist',
-      );
-      expect(find.byKey(const Key('attach-file')), findsOneWidget);
-    });
+        expect(
+          find.text('Attaching a file is not available on this device yet.'),
+          findsNothing,
+          reason:
+              'this is the exact sentence two real devices showed for a whole phase '
+              'while the picker did not exist',
+        );
+        expect(find.byKey(const Key('attach-file')), findsOneWidget);
+      });
+    }
 
     uiTest('the Android entry form offers a real intake', (tester) async {
       await pump(
         tester,
         const RevenueEntryPage(),
-        productionAttachmentSource: true,
+        productionPlatform: 'android',
       );
       await tapKey(tester, 'revenue-unit-CCR');
       await tapKey(tester, 'revenue-category-RESTAURANT');

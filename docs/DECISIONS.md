@@ -10362,3 +10362,59 @@ codes never existed. The shipped codes, in `public.capabilities` and
 authoritative lists, and records the correction in place. No code, seed, migration or
 capability changed. This is the documentation disagreeing with the code, resolved in favour
 of the code, which is where the truth lies (governance rule 3).
+
+## D-301 — The host suite is portable to a Linux cloud/CI host
+**Date:** 2026-09-25 · **Status:** Implemented / Tested. This is **cloud/CI portability
+infrastructure, not a Phase 7 feature**. It changes test code only; no product behaviour
+changes.
+
+**The finding.** Phase 7 Slice 1 ran the host suite in a Linux cloud container. It got
+**2,405 passed, 1 skipped, 9 failed**, and the untouched Phase 6 closure commit gave the
+identical result there. Windows, where every earlier phase ran, passes 2,648 of 2,648.
+Two assumptions in the tests had only ever held on the project lead's machine:
+
+1. **`test/support/money_layout.dart` opened `material_fonts/roboto-regular.ttf`.** The SDK
+   ships `Roboto-Regular.ttf`. Windows' case-insensitive filesystem hid the difference.
+   On Linux, six layout suites failed in `setUpAll`, so **233 tests never ran**.
+2. **Three D-077 wiring tests read the production provider on the host** and required a
+   real picker. That held only because the host was Windows.
+
+**Proven red first**, with the eight affected files run together: **18 passed, 9 failed**.
+
+**The corrections, all test-only:**
+- **Font lookup.** The helper matches the three faces by name case-insensitively and
+  requires exactly one match for each. A missing directory now says to run `flutter
+  precache`, instead of failing with an unexplained path.
+- **The provider wiring test** is split into two host-independent claims:
+  - **(a) Structural.** The body of `attachmentSourceProvider` is exactly
+    `attachmentSourceFor(Platform.operatingSystem)`, with nothing in front of it.
+  - **(b) Runtime.** Reading the provider with no override gives what this OS resolves
+    to. On an Android or Windows host it must also be a real picker.
+  - Together with the existing function tests, which prove that Android and Windows
+    resolve real pickers, this keeps the whole D-077 guarantee on any host.
+- **The two revenue-surface tests** now ask production's own
+  `attachmentSourceFor('android' | 'windows')`, named explicitly, instead of whatever OS
+  the host is. The detail surface is tested for both shipped platforms and the entry form
+  for Android, so one test became two.
+
+**Green afterwards.** The same eight files: **262 passed, 0 failed.** The full host
+suite on Linux: **2,649 passed, 1 skipped, 0 failed**. The skip is the real Windows DPAPI
+round trip (`session_key_isolation_test`), which is designed to skip anywhere except
+Windows. That makes the suite **2,650** tests: the 2,648 of the Phase 6 closure, plus one
+test each from the wiring split and the per-platform revenue test.
+
+**Positive controls**, each seen red, then restored by byte copy and checked with `cmp`
+(D-219):
+
+| Control | Result |
+|---|---|
+| provider body replaced with `const UnavailableAttachmentSource()` | the structural wiring test goes red. On Linux the runtime half passes, which is exactly why the structural half exists |
+| `attachmentSourceFor('android')` degraded to "unavailable" | both Android revenue-surface tests go red |
+
+**Windows behaviour is unchanged.** The same font files are found, and on a Windows host
+the runtime wiring test still requires a real picker directly.
+
+**`tool/cloud/install_flutter.sh`** installs the pinned Flutter 3.44.9 on a Linux host. It
+is idempotent, never changes the version, and precaches the material fonts. A cloud
+environment's setup script can call it, so each session does not reinstall the toolchain
+by hand. The project's Flutter version is unchanged.

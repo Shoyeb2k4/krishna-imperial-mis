@@ -6727,3 +6727,28 @@ the Windows host, where it has always been run.
 `ExportAuthority` in `domain/finance`, with an allow and deny matrix, the
 consolidated-coverage rule, and a guard against role names. It needs no dependency and no
 server change.
+
+## Cloud/CI portability correction (D-301): **DONE**
+
+This is **test infrastructure, not a Phase 7 feature**. It fixes the two Linux-only failures
+recorded under Slice 1, and changes no product behaviour.
+
+- **The font helper** now finds `Roboto-Regular.ttf` regardless of filename case.
+- **The three D-077 picker-wiring tests** no longer depend on the host being Windows or
+  Android. Instead:
+  - the provider is pinned structurally to `attachmentSourceFor(Platform.operatingSystem)`;
+  - the revenue surfaces are tested against production's own resolution for an explicitly
+    named shipped platform.
+
+| Item | Status | Evidence |
+|---|---|---|
+| Red first | **Tested** | the eight affected files: 18 passed, 9 failed |
+| Green after | **Tested** | the same files: **262 passed** |
+| Full host suite, Linux | **Tested** | **2,649 passed, 1 skipped** (the Windows-only DPAPI round trip), **0 failed**. Suite total **2,650** |
+| Positive controls | **Tested** | provider body degraded → structural test red; Android resolution degraded → both Android surface tests red. Each restored and checked with `cmp` |
+| Windows behaviour | **Unchanged** | same font files; the runtime wiring test still requires a real picker on a Windows host |
+
+`tool/cloud/install_flutter.sh` installs the pinned Flutter 3.44.9 on a Linux host. It is
+idempotent and never changes the version. **To persist the toolchain** across cloud
+sessions, add `bash tool/cloud/install_flutter.sh` to the environment's setup script, with
+`/opt/flutter/bin` on `PATH`.

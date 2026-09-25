@@ -11,6 +11,8 @@
 /// the host. They fail if either platform resolves to something that cannot pick a file.
 library;
 
+import 'dart:io';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:krishna_mis/app/providers.dart';
@@ -82,17 +84,49 @@ void main() {
     });
   });
 
-  test('the provider resolves the adapter itself, with no override', () {
+  group('the provider resolves the adapter itself, with no override', () {
     // The old arrangement defaulted to "unavailable" and expected a bootstrap to replace
-    // it. The replacement was never written and nothing objected. Reading the provider
-    // with an empty container is what proves production needs no such step: this test
-    // runs on the Windows host, so it must resolve the Windows adapter.
-    final container = ProviderContainer();
-    addTearDown(container.dispose);
+    // it. The replacement was never written and nothing objected (D-077).
+    //
+    // This used to read the provider on the host and require a real picker, which held
+    // only because the suite ran on Windows. On a Linux CI host the production answer is
+    // honestly "unavailable", so the claim is now made in two host-independent halves:
+    //
+    //   1. the provider's body is exactly the production resolution for the running OS,
+    //      with nothing in front of it — no default, no bootstrap step, no override;
+    //   2. that resolution gives a real picker on both shipped platforms (the group
+    //      above).
+    //
+    // Replacing the body with `UnavailableAttachmentSource()` fails (1) on every host.
+    test('its body is the production resolution for the running OS', () {
+      final source = File('lib/app/providers.dart').readAsStringSync();
+      final declaration = RegExp(
+        r'final attachmentSourceProvider = Provider<AttachmentSource>\(\s*'
+        r'\(ref\) => attachmentSourceFor\(Platform\.operatingSystem\),\s*\);',
+      );
+      expect(
+        declaration.hasMatch(source),
+        isTrue,
+        reason:
+            'attachmentSourceProvider must resolve attachmentSourceFor(Platform.'
+            'operatingSystem) directly — anything else is a step production can forget',
+      );
+    });
 
-    final source = container.read(attachmentSourceProvider);
+    test('reading it with no override gives what this OS resolves to', () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
 
-    expect(source, isNot(isA<UnavailableAttachmentSource>()));
-    expect(source.available, isNotEmpty);
+      final source = container.read(attachmentSourceProvider);
+      final expected = attachmentSourceFor(Platform.operatingSystem);
+
+      expect(source.runtimeType, expected.runtimeType);
+      expect(source.available, expected.available);
+      if (const {'android', 'windows'}.contains(Platform.operatingSystem)) {
+        // On a shipped host the production answer is a real picker, read directly.
+        expect(source, isNot(isA<UnavailableAttachmentSource>()));
+        expect(source.available, isNotEmpty);
+      }
+    });
   });
 }
