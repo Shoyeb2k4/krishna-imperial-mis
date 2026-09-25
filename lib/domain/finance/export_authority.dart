@@ -101,8 +101,21 @@ sealed class ExportDecision {
   const ExportDecision();
 }
 
+/// Permission for one action on one report for one scope.
+///
+/// It can be made only by [ExportAuthority.decide], so a document builder that requires one
+/// cannot be reached without the decision having been taken — and the permit names exactly
+/// what it permits, so a builder can refuse one issued for a different report or scope.
 final class ExportPermitted extends ExportDecision {
-  const ExportPermitted();
+  const ExportPermitted._({
+    required this.action,
+    required this.report,
+    required this.scope,
+  });
+
+  final ExportAction action;
+  final ExportReport report;
+  final ExportScope scope;
 }
 
 final class ExportRefused extends ExportDecision {
@@ -132,7 +145,7 @@ abstract final class ExportAuthority {
     if (!holdsAction(principal, action, scope)) {
       return const ExportRefused(ExportRefusal.noActionCapability);
     }
-    return const ExportPermitted();
+    return ExportPermitted._(action: action, report: report, scope: scope);
   }
 
   /// Whether the action is offered at all. The same answer as [decide], so a surface

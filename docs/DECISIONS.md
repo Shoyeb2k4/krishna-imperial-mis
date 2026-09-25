@@ -10418,3 +10418,58 @@ the runtime wiring test still requires a real picker directly.
 is idempotent, never changes the version, and precaches the material fonts. A cloud
 environment's setup script can call it, so each session does not reinstall the toolchain
 by hand. The project's Flutter version is unchanged.
+
+## D-302 — The export document models, as built
+**Date:** 2026-09-25 · **Status:** Implemented / Tested (Phase 7 Slice 3). This builds the
+contract in D-299 and `ARCHITECTURE.md` §51.4. Five design choices are recorded here,
+because each one decides what a document may say.
+
+**1 · An analysis export shows what its screen section shows.**
+- The Revenue Analysis and Expense & Department Analysis documents carry exactly the
+  section's content:
+  - the compared figures;
+  - the trend at the planner's grain (monthly only for expenses, D-255);
+  - the domain's Top N rankings, **with the exact Others** (D-258).
+- They do not show a longer list the screen does not. The complete category list belongs
+  to the P&L export, which is its canonical home.
+- Adding a longer list here would mean an export stating a table the screen never showed.
+  That would be a product decision nobody took.
+
+**2 · A consolidated P&L export has the spec §10 shape.**
+- It carries one statement per property, in business-unit id order, then the consolidated
+  total.
+- The per-property statements are `PropertyComparison.of(result)`. That is the canonical
+  split (D-270) the Business Comparison screen already shows. Nothing reimplements it, and
+  the model guard allows that one call and no other calculation.
+- If the domain refuses the split, because the breakdown does not reconcile, the document
+  carries the total alone and says so (`propertySplitShown`).
+- When the breakdown does not reconcile, a statement's line lists are **absent**, exactly as
+  the screen withholds them.
+
+**3 · `ExportPermitted` is now a proof object.**
+- It carries the action, report and scope it permits. Its constructor is library-private,
+  so only `ExportAuthority.decide` can make one.
+- Every builder requires one, and refuses a permit issued for:
+  - a different report;
+  - a different property;
+  - a one-property scope against a consolidated result, or the other way round;
+  - a consolidated scope that does not contain every property in the figures.
+- So "authority first, before any model exists" (§51.3) is structural, not a convention.
+
+**4 · One line order, in `domain/finance`.**
+- `PnlLineOrder` holds the P&L category order: property, then category, by id. It moved
+  from `pnl_presentation.dart`, whose two functions now delegate to it.
+- The Windows and Android P&L screens and every export therefore read one rule. The
+  screen's behaviour is unchanged; the full suite ran green over the move.
+
+**5 · Labels come in through an interface; ids go no further.**
+- `ExportLabels` resolves names for properties, categories, departments and sections, and
+  the consolidated-scope wording. The surfaces implement it from the cached master graph,
+  with the screen's own fallback sentences.
+- A model stores **no** id. Business-unit ids are used only to look up labels and to check
+  a permit.
+- Freshness is copied as three separate fields: server-confirmed time or null; a
+  confirmed server-has-newer flag; the device's generation time. The snapshot identity is
+  deliberately **not** copied.
+- A test walks every string in every document and proves that no id, snapshot id or
+  capability code is present (§51.8).

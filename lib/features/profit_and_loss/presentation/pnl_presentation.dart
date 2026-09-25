@@ -17,6 +17,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:krishna_mis/core/formatting/report_dates.dart';
 import 'package:krishna_mis/domain/finance/pnl.dart';
+import 'package:krishna_mis/domain/finance/pnl_line_order.dart';
 import 'package:krishna_mis/domain/finance/reporting_period.dart';
 import 'package:krishna_mis/domain/finance/reporting_presets.dart';
 import 'package:krishna_mis/domain/finance/reporting_source.dart';
@@ -329,22 +330,15 @@ void pnlRefreshWhenOpened(WidgetRef ref, bool Function() mounted) {
 // ── Category lines, in display order ────────────────────────────────────────
 
 /// Revenue lines ordered by property, then category. Order only; nothing is summed.
+///
+/// The rule lives in `domain/finance` ([PnlLineOrder]) so the exports order lines exactly
+/// as the screen does (Phase 7 Slice 3).
 List<RevenueCategoryLine> pnlRevenueLinesInOrder(PnlResult result) =>
-    [...result.revenueByCategory]..sort((a, b) {
-      final unit = a.businessUnitId.compareTo(b.businessUnitId);
-      return unit != 0
-          ? unit
-          : a.revenueCategoryId.compareTo(b.revenueCategoryId);
-    });
+    PnlLineOrder.revenue(result);
 
 /// Expense lines ordered by property, then category. Order only; nothing is summed.
 List<ExpenseHierarchyLine> pnlExpenseLinesInOrder(PnlResult result) =>
-    [...result.expenseByHierarchy]..sort((a, b) {
-      final unit = a.businessUnitId.compareTo(b.businessUnitId);
-      return unit != 0
-          ? unit
-          : (a.categoryId ?? '').compareTo(b.categoryId ?? '');
-    });
+    PnlLineOrder.expenses(result);
 
 // ── Custom dates from a calendar picker ─────────────────────────────────────
 

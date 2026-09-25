@@ -6650,7 +6650,7 @@ The Windows **Reports** placeholder becomes the **Export Centre** (D-297).
 |---|---|---|
 | 1 | Governance / export contracts | **COMPLETE** |
 | 2 | Export + print authorisation | **COMPLETE** |
-| 3 | Canonical export document models | not started |
+| 3 | Canonical export document models | **COMPLETE** |
 | 4 | XLSX foundation (internal OpenXML writer on `archive`) | not started |
 | 5 | PDF foundation (`pdf` 3.13.1, bundled Noto Sans) | not started |
 | 6 | Windows Reports → Export Centre, Save As | not started |
@@ -6786,3 +6786,36 @@ schema, the server, dependencies or UI.
 The first attempt at the second control **did not apply**: `dart format` had reflowed the
 line it matched. It was caught because the suite stayed green, then re-applied, and it went
 red.
+
+## Phase 7 Slice 3 — export document models: **COMPLETE**
+
+`lib/domain/export/` holds the models and the builders, as pure domain code (D-302,
+`ARCHITECTURE.md` §51.4). There are four documents, and each has one builder that requires
+an `ExportPermitted`:
+
+| Document | Built from |
+|---|---|
+| **Profit & Loss** | `PnlResult`. A consolidated scope gives one statement per property (`PropertyComparison`), then the total |
+| **Revenue Analysis** | `PnlResult`, `PnlComparison`, the Net Sales `TrendSeries`, the revenue-mix `TopNOutcome` |
+| **Expense & Department Analysis** | the same, with the **monthly** expense series and two rankings |
+| **Business Comparison** | the `PropertyComparisonReady` split, plus the total |
+
+**The rules the models keep:**
+- They copy figures and derive none.
+- A refusal stays a refusal: a missing comparison, a trend gap or a refused ranking is
+  never shown as ₹0.
+- Freshness is three separate fields.
+- No model stores an id.
+
+**Two shared-boundary changes came with this slice:**
+- `ExportPermitted` is now a proof object that only `ExportAuthority.decide` can make.
+- The P&L line order moved into `domain/finance` as `PnlLineOrder`; the screens delegate to
+  it and behave exactly as before.
+
+| Item | Status | Evidence |
+|---|---|---|
+| Builder tests | **Tested** | **32** passed: parity with the canonical objects; the §10 consolidated shape; a loss kept negative; No GST; a breakdown that does not reconcile is absent; permit mismatches (4 kinds); the three freshness statements; refusals carried; no id leaks |
+| Model guard | **Tested** | **18** passed: no arithmetic, sum, clock, storage, sort or forbidden import in the directory, with 8 planted controls. Only the builders may call `PropertyComparison.of` |
+| Real-code controls | **Tested** | a subtraction planted in a builder: guard red. A wrong figure copied: 5 builder tests red. Each restored and checked with `cmp` |
+| Full host suite (the shared boundary changed) | **Tested** | **2,731 passed, 1 skipped** (Windows-only DPAPI), **0 failed** |
+| `dart format` / `flutter analyze` | **Tested** | 372 files, 0 changed / no issues |
