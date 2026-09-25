@@ -59,4 +59,32 @@ void main() {
   test('negative net sales with a positive profit is a negative margin', () {
     expect(_m(1000, -10000).displayTwoDecimals, '-10.00%');
   });
+
+  group('the fraction literal a workbook stores (Phase 7 Slice 4)', () {
+    test('is the displayed percentage divided by a hundred, as text', () {
+      expect(_m(1234, 10000).displayedFractionLiteral, '0.1234');
+      expect(_m(-427, 10000).displayedFractionLiteral, '-0.0427');
+      expect(_m(5852381, 10352381).displayedFractionLiteral, '0.5653');
+      expect(_m(-5, 10000).displayedFractionLiteral, '-0.0005');
+      expect(_m(-4, 100000).displayedFractionLiteral, '0.0000');
+      expect(_m(-250000, 100000).displayedFractionLiteral, '-2.5000');
+      expect(_m(123456789, 100000).displayedFractionLiteral, '1234.5679');
+    });
+
+    test('agrees with the screen string for every margin in a sweep', () {
+      // The workbook cell and the printed margin are one rounded value in two notations.
+      for (var profit = -1200; profit <= 1200; profit += 7) {
+        for (final net in [1, 3, 7, 997, 10000, -9973]) {
+          final m = _m(profit, net);
+          final shown = m.displayTwoDecimals.replaceAll('%', '');
+          final negative = shown.startsWith('-');
+          final digits = shown.replaceAll('-', '').replaceAll('.', '');
+          final literal = m.displayedFractionLiteral;
+          final literalDigits = literal.replaceAll('-', '').replaceAll('.', '');
+          expect(int.parse(literalDigits), int.parse(digits), reason: '$m');
+          expect(literal.startsWith('-'), negative, reason: '$m');
+        }
+      }
+    });
+  });
 }

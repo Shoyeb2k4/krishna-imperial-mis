@@ -10473,3 +10473,70 @@ because each one decides what a document may say.
   deliberately **not** copied.
 - A test walks every string in every document and proves that no id, snapshot id or
   capability code is present (§51.8).
+
+## D-303 — The XLSX foundation, as built
+**Date:** 2026-09-25 · **Status:** Implemented / Tested — Phase 7 Slice 4
+
+**1 · The writer is packaging and nothing else.** `lib/core/export/xlsx/xlsx_writer.dart`
+writes the parts a workbook needs — content types, relationships, a title-only core
+properties part, the workbook, the styles and one part per sheet — and ZIPs them with
+`archive` 4.2.0.
+- It imports **no project code**, so it cannot know what a P&L, or even money, is.
+- There are four cell types: text, number, date and blank. **There is no formula cell
+  type**, so a workbook it writes is values only. A guard checks both facts.
+- A number cell takes an exact decimal literal, validates it, and stores the text as it
+  was given. It never parses the literal into a `double`.
+- Output is deterministic: fixed ZIP timestamps and a fixed part order. The same model
+  always gives the same bytes.
+- The core properties part carries a title and **no author, device or creation time**
+  (§51.8).
+
+**2 · Money reaches a cell through one formatter.**
+- `MoneyFormatter.decimalLiteral` turns exact paise into `-1234.05` by integer formatting.
+  It sits beside the other money-to-text rules (D-271's "one place" rule).
+- `MarginRatio.displayedFractionLiteral` rewrites the screen's rounded margin
+  (`percentageScaled(2)`) as a fraction: 56.53% becomes `0.5653`. The workbook therefore
+  cannot show a different margin from the screen.
+- A margin that is not applicable is the text "N/A", never `0%`.
+
+**3 · The number format is conventional, as D-294 allowed.** Money cells use
+`"₹"#,##0.00;-"₹"#,##0.00`. Lakh/crore grouping in an Excel number format can only be
+approximated with thresholds. It could not be shown to be correct for every negative value
+the workbook can hold, so it was not used. The stored value is exact either way.
+
+**4 · The P&L workbook.** `lib/core/export/workbook/pnl_workbook.dart` lays out a
+`PnlExportDocument` as three sheets:
+- **Summary:** the header block (scope, period, From/To as date cells, basis, inclusions,
+  and the three freshness statements on separate rows), then one column per statement.
+  Rows: Gross Sales, Less GST, Net Sales, Less Expenses, Operating Profit or Loss, the
+  **result in words**, and the margin.
+- **Revenue** and **Expenses:** the scope statement's category lines, with a frozen
+  heading and an auto-filter.
+- The **Total** row is the headline figure the domain computed. It is never a sum of the
+  rows above it.
+- A breakdown that does not reconcile is not shown, and the sheet says why.
+
+**5 · One wording for both file formats.** `lib/core/export/export_wording.dart` holds the
+report titles, the basis and inclusion sentences, the three freshness statements, the
+screen's figure labels, the result words and the file names
+(`KrishnaImperialMIS_<Report>_<Scope>_<from>_<to>.<ext>`). The PDF renderer (Slice 5)
+reads the same file.
+
+**6 · The layouts contain no arithmetic at all.** A guard over `lib/core/export` checks:
+- no sum, paise read, parsing, clock, sort, storage, network, platform or feature import;
+- no formula element;
+- no binary arithmetic outside the writer, which may count columns;
+- every numeric cell in a layout is built from one of the two literals above.
+
+String text is removed before the check, so "Operating Profit / Loss" does not count as
+arithmetic, but code inside an interpolation still does.
+
+**7 · The three approved packages were pinned together.** `pdf: 3.13.1`,
+`printing: 5.15.1` and `archive: 4.2.0` went into `pubspec.yaml` in this slice, and
+`flutter pub get` ran once, under the cloud-efficiency instruction to pin once. `pdf` and
+`printing` are not imported until Slices 5 and 7.
+- The lockfile gained their transitive packages: barcode, bidi, path_parsing,
+  pdf_widget_wrapper, petitparser, qr and xml.
+- Flutter regenerated the Windows plugin registrant to include `printing`.
+- The chart guard confirms that `fl_chart` is still the only charting package.
+

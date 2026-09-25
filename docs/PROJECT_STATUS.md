@@ -5,10 +5,13 @@ Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
-Last updated: **2026-09-25** — **PHASE 7 — EXPORT, PDF & PRINTING: STARTED.** Slice 1
-(governance) is complete. The project lead's scoping rulings are recorded as D-290 … D-300, and the export
-contract is `ARCHITECTURE.md` §51. Slice 2 (export and print authorisation) is next. See
-*PHASE 7 — EXPORT, PDF & PRINTING* at the end of this file.
+Last updated: **2026-09-25** — **PHASE 7 — EXPORT, PDF & PRINTING: IN PROGRESS.** Slices 1–4
+are complete: governance, export and print authorisation, the export document models, and
+the XLSX foundation (D-290 … D-303). Slice 5 (PDF foundation) is next. The export contract is
+`ARCHITECTURE.md` §51. See *PHASE 7 — EXPORT, PDF & PRINTING* at the end of this file.
+
+Previously: **2026-09-25** — **PHASE 7 — EXPORT, PDF & PRINTING: STARTED.** Slice 1
+(governance) is complete.
 
 Previously: **2026-09-25** — **PHASE 6 — DASHBOARD & ANALYTICS: COMPLETE AND FORMALLY CLOSED at
 Slice 11** (D-289). Slices 1–11 are closed. The feature inventory, decision dispositions,
@@ -80,8 +83,9 @@ drill-down, and the Owner Accounts ledger, settlement engine and preview surface
 
 ## Current phase
 
-**Phase 7 — Export, PDF & Printing: IN PROGRESS (started 2026-09-25).** Slice 1 (governance) is
-complete; Slice 2 is next. Its record is *PHASE 7 — EXPORT, PDF & PRINTING* at the **end** of this
+**Phase 7 — Export, PDF & Printing: IN PROGRESS (started 2026-09-25).** Slices 1–4 are
+complete; Slice 5 (PDF foundation) is next. *(This paragraph read "Slice 1 … complete; Slice 2
+is next" until Slice 4.)* Its record is *PHASE 7 — EXPORT, PDF & PRINTING* at the **end** of this
 file. *(This paragraph read "NOT STARTED" at the Phase 6 closure; that statement is superseded.)*
 
 **Phase 6 — Dashboard & Analytics: COMPLETE and formally closed (2026-09-25, Slice 11).** Its
@@ -6651,7 +6655,7 @@ The Windows **Reports** placeholder becomes the **Export Centre** (D-297).
 | 1 | Governance / export contracts | **COMPLETE** |
 | 2 | Export + print authorisation | **COMPLETE** |
 | 3 | Canonical export document models | **COMPLETE** |
-| 4 | XLSX foundation (internal OpenXML writer on `archive`) | not started |
+| 4 | XLSX foundation (internal OpenXML writer on `archive`) | **COMPLETE** |
 | 5 | PDF foundation (`pdf` 3.13.1, bundled Noto Sans) | not started |
 | 6 | Windows Reports → Export Centre, Save As | not started |
 | 7 | Windows printing (`printing` 5.15.1, native dialog) | not started |
@@ -6819,3 +6823,39 @@ an `ExportPermitted`:
 | Real-code controls | **Tested** | a subtraction planted in a builder: guard red. A wrong figure copied: 5 builder tests red. Each restored and checked with `cmp` |
 | Full host suite (the shared boundary changed) | **Tested** | **2,731 passed, 1 skipped** (Windows-only DPAPI), **0 failed** |
 | `dart format` / `flutter analyze` | **Tested** | 372 files, 0 changed / no issues |
+
+## Phase 7 Slice 4 — XLSX foundation: **COMPLETE**
+
+The internal OpenXML writer and the P&L workbook (D-303, `ARCHITECTURE.md` §51.1, §51.5).
+No schema, migration or server change; Drift stays **v21** and the ledger **101**.
+
+| Added | What it does |
+|---|---|
+| `lib/core/export/xlsx/xlsx_writer.dart` | packages cells into a deterministic `.xlsx`: text, number, date and blank cells; no formula cell type; styles; frozen panes; auto-filters |
+| `lib/core/export/workbook/pnl_workbook.dart` | the P&L as Summary, Revenue and Expenses sheets |
+| `lib/core/export/export_wording.dart` | the words and file names both file formats use |
+| `MoneyFormatter.decimalLiteral`, `MarginRatio.displayedFractionLiteral` | exact paise and the screen's rounded margin, as cell literals, by integer formatting |
+| `pdf` 3.13.1, `printing` 5.15.1, `archive` 4.2.0 | pinned exactly; `pub get` ran once |
+
+**What a workbook guarantees:**
+- Every numeric cell is the canonical figure, to the paisa.
+- There are no formulas.
+- A Total row is the headline figure, never a sum of the rows above it.
+- A loss is negative and is also called a loss.
+- A margin that is not applicable is "N/A".
+- The three freshness statements stay separate.
+- No internal id appears in any byte.
+
+| Item | Status | Evidence |
+|---|---|---|
+| Writer tests | **Tested** | **18** passed: part list and order; well-formed XML; literals stored verbatim; malformed literals refused; date serials; no formula; styles and number formats; frozen pane and filter; sheet-name rules; deterministic bytes; no author or time metadata |
+| P&L workbook tests | **Tested** | **21** passed: every figure read back from the file and parsed to exact paise, equal to the canonical result, for one property and for the consolidated split; result words; margin cell; header and freshness; No GST; Totals are the headline; a non-reconciling breakdown is withheld; N/A margin; no trade; file names; no id in any byte; deterministic bytes |
+| Literal tests | **Tested** | decimal literal and margin fraction: fixed cases plus sweeps that read the value back |
+| `lib/core/export` guard | **Tested** | **20** passed, including 12 planted violations that must fail and 2 legitimate cases that must pass |
+| Real-code controls | **Tested** | Total summed from its rows: guard red. Paise unpadded: 3 red. The server-newer line always shown: 1 red. A formula written into a number cell: 3 red. Each restored and checked with `cmp` |
+| Chart guard (`fl_chart` still the only charting package) | **Tested** | passed |
+| Full host suite (dependencies added) | **Tested** | **2,794 passed, 1 skipped** (Windows-only DPAPI), **0 failed** |
+| `dart format` / `flutter analyze` | **Tested** | 379 files, 0 changed / no issues |
+| Secret scan, tree and git history | **Tested** | clean |
+| Opening a generated workbook in Excel | **Not tested** | a person opening the file on Windows belongs to Slice 10 acceptance. The file is checked here by reading its XML |
+

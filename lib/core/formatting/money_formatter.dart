@@ -82,6 +82,17 @@ final class MoneyFormatter {
     decimals: MoneyDecimals.whenPresent,
   );
 
+  /// The exact amount as a plain decimal literal in rupees — `-1234.05`, `0.00`,
+  /// `12500.50` — for a numeric spreadsheet cell (D-294).
+  ///
+  /// Integer formatting of the paise, nothing else: no grouping, no symbol, no rounding
+  /// and no floating point. The spreadsheet's own number format decides how it is shown.
+  static String decimalLiteral(Money money) {
+    final magnitude = money.absolute;
+    final paise = magnitude.paiseRemainder.toString().padLeft(2, '0');
+    return '${money.isNegative ? '-' : ''}${magnitude.wholeRupees}.$paise';
+  }
+
   String format(Money money) {
     final negative = money.isNegative;
     final magnitude = money.absolute;

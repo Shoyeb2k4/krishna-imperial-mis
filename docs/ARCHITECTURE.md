@@ -4297,6 +4297,7 @@ the contract:
 | authority | `lib/domain/finance/export_authority.dart` | combine `PnlAuthority` with the action capability | read a role name; grant visibility |
 | document models | `lib/domain/export/` | copy figures, carry labels and freshness | compute, sort by amount, group, reconcile, read storage |
 | XLSX writer | `lib/core/export/xlsx/` | package OpenXML: sheets, cells, styles, number formats, panes, filters, ZIP | contain a finance formula; know what a P&L is |
+| workbook layouts and shared wording | `lib/core/export/workbook/`, `lib/core/export/export_wording.dart` | place a document model's figures in cells; name them in the screen's words | do arithmetic; sum a table into its Total; parse a figure |
 | PDF renderer | `lib/core/export/pdf/` | lay out a document model | compute; fetch a font; read the clock itself |
 | delivery | `lib/features/export/` | save, share, print, and report the outcome | build a model from anything other than the canonical providers |
 

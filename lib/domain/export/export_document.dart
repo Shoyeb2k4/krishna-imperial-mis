@@ -231,6 +231,12 @@ final class PnlExportDocument extends ExportDocument {
   /// False when a consolidated P&L could not be split by property, so only the total is
   /// present. Always true for a one-property report.
   final bool propertySplitShown;
+
+  /// The statement for the whole scope: the one property's, or the consolidated total.
+  ///
+  /// The builders always place it last — after the per-property statements, when there
+  /// are any — so this names a position, and decides nothing.
+  PnlExportStatement get scopeStatement => statements.last;
 }
 
 // ── The analysis exports (Phase 6 sections, D-290) ─────────────────────────

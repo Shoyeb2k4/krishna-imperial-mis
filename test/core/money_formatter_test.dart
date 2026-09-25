@@ -154,4 +154,26 @@ void main() {
       );
     }
   });
+
+  group('the decimal literal a workbook stores (Phase 7 Slice 4, D-294)', () {
+    test('is exact rupees and paise, with no grouping and no symbol', () {
+      String l(int p) => MoneyFormatter.decimalLiteral(Money.fromPaise(p));
+      expect(l(0), '0.00');
+      expect(l(1), '0.01');
+      expect(l(-1), '-0.01');
+      expect(l(5), '0.05');
+      expect(l(123405), '1234.05');
+      expect(l(-123405), '-1234.05');
+      expect(l(123642000), '1236420.00');
+      expect(l(900719925474099), '9007199254740.99');
+    });
+
+    test('reads back as the same paise, for every amount in a sweep', () {
+      for (var p = -250000; p <= 250000; p += 97) {
+        final literal = MoneyFormatter.decimalLiteral(Money.fromPaise(p));
+        expect(Money.tryParse(literal), Money.fromPaise(p), reason: literal);
+        expect(literal, isNot(contains(',')));
+      }
+    });
+  });
 }

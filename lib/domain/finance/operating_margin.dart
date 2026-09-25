@@ -110,6 +110,19 @@ final class MarginRatio extends OperatingMargin {
     return '$sign$whole.$fraction%';
   }
 
+  /// [displayTwoDecimals] as a fraction literal — 56.53% is `0.5653`, -4.27% is
+  /// `-0.0427` — for a spreadsheet cell formatted as a percentage to two places (D-294).
+  ///
+  /// It is the **same** rounded value the screen prints, rewritten by integer formatting,
+  /// so the workbook cannot show a different margin from the P&L.
+  String get displayedFractionLiteral {
+    final hundredths = percentageScaled(2);
+    final magnitude = hundredths.abs();
+    final whole = magnitude ~/ 10000;
+    final fraction = (magnitude % 10000).toString().padLeft(4, '0');
+    return '${hundredths < 0 ? '-' : ''}$whole.$fraction';
+  }
+
   @override
   bool operator ==(Object other) =>
       other is MarginRatio &&

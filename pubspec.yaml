@@ -58,6 +58,19 @@ dependencies:
   # transitively and nothing else. There is no second charting package in this project.
   fl_chart: 1.2.0
 
+  # Export, PDF and printing (Phase 7, D-298). Pinned exactly: a renderer's output is what
+  # the export parity tests read, so an unreviewed bump is a silent change to a document.
+  #  - pdf: the PDF document model and layout, pure Dart (Apache-2.0).
+  #  - printing: the native Windows print dialog and the Android share sheet (Apache-2.0).
+  #    Its Windows build downloads a PDFium binary (PDFIUM_VERSION 5200) at BUILD time;
+  #    nothing is fetched at run time. Its Google Fonts helper must never be used (D-295).
+  #  - archive: the ZIP container of the internal XLSX writer. Already present
+  #    transitively through `image`; promoted to direct at the version pub resolved.
+  # Rejected: `excel` (needs archive 3.x) and `share_plus` (needs win32 6.x) — D-298.
+  pdf: 3.13.1
+  printing: 5.15.1
+  archive: 4.2.0
+
   # Domain support
   uuid: ^4.6.0 # UUID v7, client-generated, time-ordered (D-008)
   timezone: ^0.11.1 # IANA zones for DST-safe business-date derivation (D-019)
