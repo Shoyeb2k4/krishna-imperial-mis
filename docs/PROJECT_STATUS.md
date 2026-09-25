@@ -6649,7 +6649,7 @@ The Windows **Reports** placeholder becomes the **Export Centre** (D-297).
 | # | Slice | State |
 |---|---|---|
 | 1 | Governance / export contracts | **COMPLETE** |
-| 2 | Export + print authorisation | not started |
+| 2 | Export + print authorisation | **COMPLETE** |
 | 3 | Canonical export document models | not started |
 | 4 | XLSX foundation (internal OpenXML writer on `archive`) | not started |
 | 5 | PDF foundation (`pdf` 3.13.1, bundled Noto Sans) | not started |
@@ -6752,3 +6752,37 @@ recorded under Slice 1, and changes no product behaviour.
 idempotent and never changes the version. **To persist the toolchain** across cloud
 sessions, add `bash tool/cloud/install_flutter.sh` to the environment's setup script, with
 `/opt/flutter/bin` on `PATH`.
+
+## Phase 7 Slice 2 — export and print authorisation: **COMPLETE**
+
+**What was added.** `lib/domain/finance/export_authority.dart`, which is pure domain code,
+plus its tests. It was built as `ARCHITECTURE.md` §51.3 describes, with **no change** to the
+schema, the server, dependencies or UI.
+
+**The rule it enforces:**
+- **Export** needs view authority for the exact scope **and** `reports.export` for it.
+  **Print** needs view authority **and** `reports.print`.
+- **View authority** is decided by delegating to `PnlAuthority`, per property, or
+  consolidated. A guard forbids restating the three-capability rule here.
+- **A consolidated scope** needs the action capability for **every** included property:
+  unscoped, or one scoped grant per property.
+- **Business Comparison** is refused for a one-property scope.
+- **Order of checks:** scope shape → view → action. A person who cannot see a report is
+  told that, and is never told which action capabilities they hold.
+- **No role name** appears in the rule. The seeded bundles are used in tests as data only.
+  Result: the Manager is refused `noActionCapability` (D-292); a Manager explicitly granted
+  `reports.export` may export and still may not print.
+- **Client-side only** (D-291). The file states this and claims no server enforcement, and
+  a structural test holds it to that.
+
+| Item | Status | Evidence |
+|---|---|---|
+| Export-authority tests | **Tested** | **32** passed |
+| Finance domain suite, including the purity guard over the new file | **Tested** | **323** passed |
+| Positive controls | **Tested** | `every`→`any` on the action check: 2 red. Consolidated view as the sum of scoped grants: 2 red. The view check removed: 11 red. Each restored and checked with `cmp` |
+| `dart format` / `flutter analyze` | **Tested** | clean / no issues |
+| Full host suite | **Not rerun** | a new, unused module; no existing boundary changed. Rerun at the model-boundary and foundation checkpoints |
+
+The first attempt at the second control **did not apply**: `dart format` had reflowed the
+line it matched. It was caught because the suite stayed green, then re-applied, and it went
+red.
