@@ -6368,7 +6368,10 @@ project lead ruled that money must never shrink to fit.
 | `p6-windows-dashboard`, real exe | **Tested** | PASS after D-286 (2:08). An earlier run failed, and its error was masked by a DNS failure in its `finally` sweep; the harness no longer masks (D-287) |
 | `p6-windows-authority`, real exe | **Tested** | PASS (3:11), host steps applied and restored |
 | `p6-android-dashboard`, `p6-android-authority`, emulator | **Tested** (emulator, before D-286) | PASS; authority run 1 stalled with no known cause (D-287) |
-| Physical Galaxy A06, automated phases | **Not tested** | the phone is not connected |
+| Physical Galaxy A06, automated phases | **Tested** | 2026-09-25, USB serial `R9ZY50M3GVX`, Android 16 / API 36: `p6-android-dashboard` **PASS**, `p6-android-authority` **PASS**, identity unchanged before and after each (D-288) |
+| Backend baseline after the A06 phases | **Tested** | identical to the pre-run capture; 6 sales and 14 expenses created and all voided |
+| Clean dev APK on the A06 | **Tested** | `config/dev.json` only; 0 of 6 identity passwords in 558 entries; scanner clean; installed byte-identical |
+| D-286 layout suites, re-run after the device phases | **Tested** | 312 passed |
 | Physical Galaxy A06, manual checklist §S.3 | **Not tested** | awaiting the project lead |
 | Live suites, `--concurrency=1` | **Tested** | **106 passed**, serial |
 | Performance, Windows | **Tested** | worst steady state 163 ms (D-266 had 168 ms) |
@@ -6383,6 +6386,7 @@ rewritten.
 
 ### Outstanding before Slice 10 can close
 
-1. Connect the Galaxy A06 with USB debugging authorised. Shut the emulator down, confirm
-   exactly one target, then run `p6-android-dashboard` and `p6-android-authority`.
-2. The project lead reports the 20 manual lines of §S.3.
+1. ~~Run `p6-android-dashboard` and `p6-android-authority` on the Galaxy A06.~~ **Done
+   2026-09-25, both PASS**, over USB only (D-288).
+2. The project lead reports the 20 manual lines of §S.3. The clean dev build is installed
+   on the phone for it.

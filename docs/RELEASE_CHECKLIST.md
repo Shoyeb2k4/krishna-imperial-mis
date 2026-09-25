@@ -695,11 +695,23 @@ flutter test integration_test/device_acceptance_test.dart -d <target> [--flavor 
 | `p6-windows-authority` | real `krishna_mis.exe` | **PASS**, host steps applied and restored |
 | `p6-android-dashboard` | `Pixel_8` emulator | **PASS** (before D-286; host suites carry the layout evidence) |
 | `p6-android-authority` | `Pixel_8` emulator | **PASS** on the cold-boot run; run 1 stalled with no known cause (D-287) |
-| `p6-android-dashboard` | **Galaxy A06 (SM-A066B)** | **NOT RUN** — the phone is not connected |
-| `p6-android-authority` | **Galaxy A06 (SM-A066B)** | **NOT RUN** — the phone is not connected |
+| `p6-android-dashboard` | **Galaxy A06 (SM-A066B)**, USB serial `R9ZY50M3GVX`, Android 16 / API 36 | **PASS** 2026-09-25 — identity unchanged before and after (transport 2) |
+| `p6-android-authority` | **Galaxy A06 (SM-A066B)**, USB serial `R9ZY50M3GVX`, Android 16 / API 36 | **PASS** 2026-09-25 — all 28 steps; identity unchanged before and after |
 
 Before a physical run: shut the emulator down, and confirm that `adb devices -l` lists
-**exactly one** target, the A06, with USB debugging authorised.
+**exactly one** target, the A06 **by its USB serial**, with USB debugging authorised.
+**Wireless debugging must be off** on the phone and the adb server started with
+`ADB_MDNS_AUTO_CONNECT=0` for the session — otherwise adb switches the phone to its Wi-Fi
+identity (`adb-<serial>-…._adb-tls-connect._tcp`) mid-run and every `-s <serial>` command
+fails (D-288). Watch the USB serial for 90 seconds before launching.
+
+After both phases (2026-09-25): backend baseline identical to the pre-run capture (0 open
+acceptance revenue or expenses — 6 and 14 created, all voided; 61 pre-existing open
+expenses; 0 owner movements; 0 settings rows; 0 closed periods; 7 grant rows, 5 active,
+grant-shape hash unchanged; 80 role capabilities, hash `c1b4870f…`; 4 roles; 4 live tax
+rules; ledger 101). Clean dev APK rebuilt with `config/dev.json` only — 0 of 6 identity
+passwords in any of its 558 entries; the secret scanner clean over tree, history and
+artefacts — and installed on the phone, byte-identical (SHA-256 `6f334b6f…9b45`).
 
 ### S.2 Layout — money never shrinks (D-286)
 

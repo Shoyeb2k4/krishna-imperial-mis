@@ -9860,3 +9860,66 @@ Overview and analysis sections:**
   the layout evidence.
 * **Before a refresh, the financial year to date comparator is withheld**, because the
   previous financial year has not been downloaded. This is correct (D-253, D-170).
+
+## D-288 — The physical phone is addressed by its USB serial, over USB only
+**Date:** 2026-09-25 · **Status:** Accepted (project-lead instruction) — acceptance
+infrastructure only; no product or runtime configuration changes
+
+The first physical Phase 6 attempts never reached the phone. Each one stopped at device
+lookup or install with `device 'R9ZY50M3GVX' not found`, while Windows went on listing
+the phone's USB interfaces as healthy. No test executed, so none is recorded as a result.
+
+**The cause, from evidence rather than theory.** After one failed install, `adb devices -l`
+listed the phone only as `adb-R9ZY50M3GVX-L4e2UQ._adb-tls-connect._tcp`, at a
+`192.168.x.x` address. Wireless debugging was on, and adb's automatic mDNS connection had
+taken the phone over under its Wi-Fi identity. The USB serial the run was addressed to
+then no longer existed. The climbing transport numbers (1, 6, 10) had recorded the same
+swapping.
+
+**Decision.** Physical acceptance uses USB ADB only, addressed by the USB serial:
+* wireless debugging off on the phone, USB debugging on;
+* the adb server restarted with `ADB_MDNS_AUTO_CONNECT=0` for the session;
+* a preflight asserting exactly one target, `R9ZY50M3GVX device`, with no
+  `_adb-tls-connect`, `192.168…`, emulator, unauthorised or offline entry;
+* a 90-second watch of that serial before launch;
+* the device identity recorded immediately before and after every run.
+
+If the identity changes during a run, the run stops and the failure is classified as
+acceptance infrastructure or device configuration, never as a product failure.
+
+**Two further transport findings, recorded and not over-explained.**
+* With wireless debugging off, one watch lost the USB serial about 40 seconds after
+  authorisation, while Windows still listed the ADB interface. The cause was not captured.
+  The phone's screen locking fits the timing, but it was not proven.
+* Windows later reported the phone as **Code 10** (`0xC0000001`) on a USB 3 root hub. A
+  replug cleared it.
+
+**Recorded, not changed.** The phone reported `stay_on_while_plugged_in=0` although Stay
+awake had been set, and `screen_off_timeout=1800000`. The monitor's screen-state column
+failed on a script error, so screen state during the passing watch is not evidenced; only
+ADB state is.
+
+With the preflight in place, `p6-android-dashboard` and `p6-android-authority` both passed
+on the Galaxy A06, with the USB identity unchanged before and after each.
+
+## D-286 (clarified) — An exact amount stays on one line whenever an empty line holds it
+**Date:** 2026-09-25 · **Status:** Accepted (project-lead clarification)
+
+An exact money value stays on one line whenever the complete amount fits on an otherwise
+empty line at the selected system text scale. Only when the complete amount cannot fit on
+an empty available line may it wrap, and then only at an Indian digit-group separator.
+
+Digits are never removed. Money is never ellipsised, clipped, or shrunk, and the system
+text scale is never reduced.
+
+**The product already behaves this way.** `FigureReflow` gives a stacked figure the full
+width of its line. `MoneyText` offers break opportunities only after commas, and the text
+engine uses one only when the whole figure is wider than its line.
+
+**One test looseness, recorded rather than changed during acceptance.** The last-resort
+check in `test/support/money_layout.dart` accepts a broken figure if it was wider than its
+slot and the slot was at least 60% of the screen width. That is a proxy for "an otherwise
+empty line", not a measure of it. It passes because the product is correct. It would not
+catch a figure broken inside a slot narrower than its line but wider than 60% of the
+screen. Tightening it to the enclosing line's width is a test change for the project lead
+to schedule.
