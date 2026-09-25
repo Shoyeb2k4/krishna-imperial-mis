@@ -6,7 +6,10 @@ Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
 Status: **Part proposal, part as-built.** Corrected at Phase 4 closure, 2026-09-07.
-Last updated: 2026-09-25 — **Phase 6 (Dashboard & Analytics) closed with no schema change**:
+Last updated: 2026-09-25 — **Phase 7 Slice 1 (governance)**: the §2 capability catalogue
+now matches the shipped codes (D-300), and Phase 7 is planned with **no schema change**
+(see *Phase 7* at the end). Previously 2026-09-25 — **Phase 6 (Dashboard & Analytics)
+closed with no schema change**:
 local Drift schema **v21** and the migration ledger at **101** versions, as Phase 5 left them
 (see *Phase 6* at the end). Previously 2026-09-10 — the Owner Ledger and the OA-2 canonical
 owner cache are at the end
@@ -113,22 +116,41 @@ gain both properties. Enforced in the database, not by convention:
 A manager covering both properties therefore holds **two explicit grants**, which is
 visible, auditable and revocable one property at a time.
 
-**Capability catalogue (initial):**
+**Capability catalogue, as shipped.** The authoritative lists are `public.capabilities`
+and `lib/domain/auth/capability.dart`, which a host test holds in parity. This block
+**restates** those lists. It is not a separate source.
+
+*Corrected 2026-09-25 (D-300).* The Phase 0 draft of this block wrote the first segment
+in the singular: `report.*`, `master.*`, `user.manage` and `role.manage`. Those codes
+never existed. The shipped codes are `reports.*`, `masters.*`, `users.manage` and
+`roles.manage`, and the capabilities added after Phase 0 are listed here too.
 
 ```
 expense.view.own        expense.view.all        expense.create
 expense.edit.own        expense.edit.all        expense.void
 expense.allocate_periods                         -- cross-period allocation (D-034)
-revenue.view            revenue.create          revenue.edit          revenue.void
+expense.allocate_cross_unit                      -- cross-unit allocation (D-061)
+revenue.view            revenue.create          revenue.edit
+revenue.edit.all        revenue.void                                  -- D-128
 transaction.correct.beyond_window                -- edit outside the 7-day window
 transaction.correct.business_date                -- change a derived business date
 attachment.view         attachment.upload
-report.view             report.export           report.print
-master.view             master.manage           tax.manage
-user.manage             role.manage
+reports.view            reports.export          reports.print         -- D-164, D-291
+masters.view            masters.manage          tax.manage
+users.manage            roles.manage
 audit.view              settings.manage
 period.close            period.reopen
+owner_masters.view      owner_masters.manage                          -- D-199
+owner_ledger.view       owner_ledger.create.nc  owner_ledger.create.withdrawal
+owner_ledger.edit.all   owner_ledger.void       owner_ledger.adjust
+owner_settlement.view                                                 -- D-212
 ```
+
+`reports.export` and `reports.print` are **product-action controls** evaluated on the
+client (D-291). The server boundary for reporting data is `reports.view` ∩
+`revenue.view` ∩ `expense.view.all` (D-164, D-187). Both action capabilities remain on
+D-139's exemption list, because nothing on the server evaluates them — and in V1 nothing
+on the server will.
 
 Every capability check is evaluated as `(capability, business_unit_id)`. The resolver
 function is `has_capability(cap text, bu uuid)`; a grant with `business_unit_id IS NULL`
@@ -1031,8 +1053,10 @@ migration.** Local schema stays **v21** and the ledger stays at **101** versions
 
 Still absent:
 
-* **No `reports.export` or `reports.print` evaluator.** That is Phase 7, and both stay on
-  D-139's exemption list.
+* **No server `reports.export` or `reports.print` evaluator.** Both stay on D-139's
+  exemption list. Since Phase 7 (D-291) the reason has changed: they are client-enforced
+  product-action controls, not capabilities waiting for a surface. Export and print render
+  data the server has already authorised, so no RPC or migration evaluates them.
 * **No general reporting pull beyond the Slice 4 delta.** `ExpensePull.pullOne(expenseId)`
   still serves only the Review-latest path, and the report path does not call it.
 
@@ -1855,3 +1879,25 @@ already existed:
 The drill-down reads the Phase 5 document rows and the existing `fetch*` gateways (D-233,
 D-282). Nothing in Phase 6 writes a financial row, and there is no dashboard RPC, second
 cache or materialised aggregate (D-266).
+
+---
+
+## Phase 7 — Export, PDF & Printing: no schema change planned (started 2026-09-25)
+
+**Phase 7 is planned without any database change** (D-290 … D-300). That means no table,
+view, column, index, constraint, trigger, RPC, migration or reporting cache. The local
+Drift schema stays **v21** and the migration ledger stays at **101**.
+
+**What exports read.** Every export and printout renders a result the app already builds:
+- `PnlResult` and `DashboardView`, read through the Phase 5 and Phase 6 reporting boundary;
+- master names, from the cached master graph.
+
+**What exports do not read.** No export code queries a financial table or projection, and
+none writes a row.
+
+**Two approved requirements would need a schema change, and both are deferred** (D-296):
+- a transaction-number column in the reporting cache;
+- a Drift v22.
+
+If any approved Phase 7 requirement turns out to need a schema, migration or server change,
+the work **stops and is reported** before anything is built.

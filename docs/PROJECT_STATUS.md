@@ -5,7 +5,12 @@ Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
-Last updated: **2026-09-25** — **PHASE 6 — DASHBOARD & ANALYTICS: COMPLETE AND FORMALLY CLOSED at
+Last updated: **2026-09-25** — **PHASE 7 — EXPORT, PDF & PRINTING: STARTED.** Slice 1
+(governance) is complete. The project lead's scoping rulings are recorded as D-290 … D-300, and the export
+contract is `ARCHITECTURE.md` §51. Slice 2 (export and print authorisation) is next. See
+*PHASE 7 — EXPORT, PDF & PRINTING* at the end of this file.
+
+Previously: **2026-09-25** — **PHASE 6 — DASHBOARD & ANALYTICS: COMPLETE AND FORMALLY CLOSED at
 Slice 11** (D-289). Slices 1–11 are closed. The feature inventory, decision dispositions,
 evidence, backend baseline and carry-forwards A–F are in *PHASE 6 — DASHBOARD & ANALYTICS:
 COMPLETE AND CLOSED* at the end of this file. **Phase 7 — Export & Printing: not started.**
@@ -75,8 +80,9 @@ drill-down, and the Owner Accounts ledger, settlement engine and preview surface
 
 ## Current phase
 
-**Phase 7 — Export & Printing: NOT STARTED.** It is safe to scope against the stable contract
-in `ARCHITECTURE.md` §50.
+**Phase 7 — Export, PDF & Printing: IN PROGRESS (started 2026-09-25).** Slice 1 (governance) is
+complete; Slice 2 is next. Its record is *PHASE 7 — EXPORT, PDF & PRINTING* at the **end** of this
+file. *(This paragraph read "NOT STARTED" at the Phase 6 closure; that statement is superseded.)*
 
 **Phase 6 — Dashboard & Analytics: COMPLETE and formally closed (2026-09-25, Slice 11).** Its
 authoritative record is *PHASE 6 — DASHBOARD & ANALYTICS: COMPLETE AND CLOSED* at the **end**
@@ -6593,3 +6599,131 @@ Run one at a time on the closure content (`RELEASE_CHECKLIST.md` §T):
 | Migration ledger | 101 |
 
 **PHASE 6 — DASHBOARD & ANALYTICS IS FORMALLY CLOSED. Phase 7 is not started.**
+
+---
+
+# PHASE 7 — EXPORT, PDF & PRINTING: STARTED (2026-09-25)
+
+Phase 6 closed at `b35611a`.
+
+**How Phase 7 was scoped.** A read-only audit of the binding spec (§2, §5.3, §10, §16, §19,
+§21.3, §28, §33), the release checklist and the shipped code produced eight questions. The
+project lead ruled on all eight. His rulings are recorded as **D-290 … D-297**. **D-298**
+records the dependency decision, **D-299** the export contract and **D-300** a
+documentation correction.
+
+**The principle:** Phase 7 **renders results the app has already approved**. It is not
+another reporting or accounting engine.
+
+**The contract** is `ARCHITECTURE.md` §51. In short:
+- **Reporting data:** no schema change, no migration, no reporting RPC, no second cache,
+  and no server change. Drift stays **v21** and the ledger stays **101**.
+- **Export and print authority is decided on the device, by design** (D-291). The server's
+  reporting authorization remains the confidentiality boundary.
+- **Transaction-list export is deferred** (D-296).
+- **No Owner Accounts export** in this phase.
+
+## Scope, as ruled
+
+| | Windows | Android |
+|---|---|---|
+| Profit & Loss | PDF · Excel · **Print** | **PDF → system share sheet** |
+| Revenue Analysis | PDF · Excel | — |
+| Expense & Department Analysis | PDF · Excel | — |
+| Business Comparison (consolidated only) | PDF · Excel | — |
+
+The Windows **Reports** placeholder becomes the **Export Centre** (D-297).
+
+**Rules that apply to every export:**
+- **Authority:** export needs view authority **and** `reports.export` for the exact scope;
+  print needs view authority **and** `reports.print`. A consolidated scope needs the action
+  capability for every property it includes.
+- **Role bundles are unchanged** (D-292). A Manager can read reports but is not offered
+  Export or Print.
+- **Offline:** export works with no connection whenever the canonical report is complete
+  locally and the user is authorised. It never triggers a sync. Missing data never becomes
+  ₹0.
+
+## The approved slice plan
+
+| # | Slice | State |
+|---|---|---|
+| 1 | Governance / export contracts | **COMPLETE** |
+| 2 | Export + print authorisation | not started |
+| 3 | Canonical export document models | not started |
+| 4 | XLSX foundation (internal OpenXML writer on `archive`) | not started |
+| 5 | PDF foundation (`pdf` 3.13.1, bundled Noto Sans) | not started |
+| 6 | Windows Reports → Export Centre, Save As | not started |
+| 7 | Windows printing (`printing` 5.15.1, native dialog) | not started |
+| 8 | Android P&L PDF share | not started |
+| 9 | Windows analysis-section exports | not started |
+| 10 | Full acceptance | not started |
+| 11 | Closure | not started |
+
+Transaction-list export is outside this plan (D-296).
+
+## Phase 7 Slice 1 — governance: **COMPLETE**
+
+**What changed.** Documentation only. There is **no code, dependency, schema, migration or
+server change**; `pubspec.yaml` and `pubspec.lock` are untouched. Package pinning happens in
+the slice that first uses each package (D-298).
+
+| Document | Change |
+|---|---|
+| `DECISIONS.md` | D-290 … D-300 |
+| `ARCHITECTURE.md` | new §51, the export, PDF and printing contract; §2's Excel and PDF rows updated; §50.2's export bullet marked as superseded in part by D-291 |
+| `DATABASE_SCHEMA.md` | the §2 capability catalogue restated from the shipped codes (`reports.*`, `masters.*`, `users.manage`, `roles.manage`, plus every capability added after Phase 0), with the correction recorded (D-300); §11's exemption note updated; a *Phase 7* section added |
+| `RELEASE_CHECKLIST.md` | new §U, the Phase 7 gates |
+| `SHOYEB_MASTER_SPEC.md` | **unchanged**, and the version stays 1.2. Phase 7 renders §16 as already written; no financial semantics move |
+
+**One thing the documents do not claim.** `reports.export` and `reports.print` stay on
+D-139's exemption list. The comments in the applied migration `20260911131228` still read
+"Phase 7 · no export path exists". That migration is not rewritten (A0, D-056). D-291
+records why the exemption now stays permanently: these two capabilities are evaluated on the
+client by design, and nothing on the server evaluates them.
+
+### Verified
+
+These gates ran in a **Linux cloud container**. Flutter **3.44.9** / Dart **3.12.2** was
+installed for this session, the same toolchain the project pins. Earlier phases ran their
+host suite on the project lead's **Windows** machine, and that difference matters below.
+
+| Item | Status | Evidence |
+|---|---|---|
+| `flutter pub get` | **Tested** | resolves with `pubspec.lock` unchanged |
+| `dart format --set-exit-if-changed lib test integration_test tool` | **Tested** | 364 files, 0 changed |
+| `flutter analyze` | **Tested** | No issues found |
+| Doc and parity invariants (`migration_audit_test`, `chart_guard_test`, `backend_schema_parity_test`) | **Tested** | **68 passed**, including D-137's ARCHITECTURE phrase and the D-139 exemption machinery |
+| Full host suite, this container | **Partially tested** | **2,405 passed, 1 skipped, 9 failed**. See the next paragraph |
+| Same suite, untouched `b35611a` (worktree), same container | **Tested** | **identical**: 2,405 / 1 / 9, and the same 9 tests |
+| Secret scan, tree and git history | **Tested** | clean, exit 0, scanner self-test controls passing |
+| Schema, migrations, server | **Unchanged** | nothing under `supabase/`, `lib/` or `test/` touched; Drift v21; ledger 101 |
+| Live suites, Windows, Android | **Not run** | Slice 1 changes no code |
+
+**The 9 failures are caused by the Linux host, not by Slice 1.** They reproduce identically
+on the untouched Phase 6 closure commit in the same container. The Phase 6 total of 2,648
+was measured on Windows, where none of them occur.
+
+- **Six test files fail in `setUpAll`** (`figure_reflow`, `analytics_workspace`,
+  `dashboard_mobile_home`, `dashboard_overview`, `pnl_mobile_ui`, `pnl_drilldown_ui`), so
+  their tests never run.
+  - The cause: `test/support/money_layout.dart` opens
+    `material_fonts/roboto-regular.ttf` in lowercase, but the SDK ships
+    `Roboto-Regular.ttf`.
+  - Windows' case-insensitive filesystem hides this; Linux does not.
+  - This accounts for the **233** tests that did not run (2,648 − 2,415).
+- **Three tests assume the host is Windows or Android.** They are the D-077 production
+  picker-wiring tests (`attachment_source_wiring_test`, and two in
+  `revenue_attachment_ui_test`). `attachmentSourceFor('linux')` correctly resolves to
+  `UnavailableAttachmentSource`.
+
+Both are **test portability** issues, and neither is a product defect. They are recorded
+here and **not fixed inside a governance slice** (D-127). The suite stays authoritative on
+the Windows host, where it has always been run.
+
+### Next
+
+**Slice 2 — export and print authorisation (D-291, D-292), not started.** It will add a pure
+`ExportAuthority` in `domain/finance`, with an allow and deny matrix, the
+consolidated-coverage rule, and a guard against role names. It needs no dependency and no
+server change.

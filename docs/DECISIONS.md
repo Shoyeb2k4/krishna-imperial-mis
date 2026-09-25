@@ -10038,3 +10038,327 @@ the Phase 5 closure. Phase 6 added no relation, column, index, RPC or migration.
 
 **Open defects at closure: none.** Phase 7 may be scoped on the contract in
 `ARCHITECTURE.md` §50.
+
+---
+
+# Phase 7 — Export, PDF & Printing: the project lead's rulings (2026-09-25)
+
+The Phase 7 scoping audit is recorded in the conversation that started the phase. Its
+findings are restated where they matter below, so this log does not depend on that
+conversation. The project lead accepted the audit and ruled on its eight questions
+(D1 … D8). D-290 … D-297 record those rulings as given. D-298 … D-300 record the dependency
+decision, the export contract and a documentation correction.
+
+**The principle every entry below serves:** Phase 7 **renders results the app has already
+approved**. It is not another reporting or accounting engine.
+- Every exported or printed figure is a field of a `PnlResult` or `DashboardView` the
+  Phase 5 and Phase 6 engines produced, or a label taken from the cached masters.
+- No export computes a P&L, GST, category total, margin, comparison or reconciliation.
+- No export queries a financial table or reads through a second cache.
+- No export decides authority by role name (spec §16, §21.3, `ARCHITECTURE.md` §50).
+
+## D-290 — V1 export scope: four Windows reports as PDF and Excel; the P&L as PDF on Android
+**Date:** 2026-09-25 · **Status:** Accepted (project-lead decision D1)
+
+**Windows** exports **PDF and Excel** for:
+
+1. **Profit & Loss** — the canonical management P&L, in the shape of spec §10. For a
+   consolidated scope: revenue lines by category → Gross Sales → less GST → Net Sales →
+   expense lines by category → Total Expenses → Operating Profit or Loss → Operating Margin,
+   for each property and for the consolidated total.
+2. **Revenue Analysis**
+3. **Expense & Department Analysis**
+4. **Business Comparison** — offered only when consolidated authority qualifies (D-278).
+
+**Not exported:** the Overview dashboard as its own document, chart images, screenshots, or
+anything that exists on screen only as decoration. An export shows the underlying
+management figures as professional tables.
+
+**Evidence the audit relied on:** spec §16 (Excel, PDF, Windows printing), §21.3 (Excel and
+PDF are in the parity rule), §28 (Excel and PDF export are V1 scope; revenue, expense,
+department and business analyses are V1 reports) and §33 ("export P&L").
+
+## D-291 — `reports.export` and `reports.print` are client-enforced product-action controls
+**Date:** 2026-09-25 · **Status:** Accepted (project-lead decision D2)
+
+```
+    export   =  qualifying view authority for the exact scope  AND  reports.export for that scope
+    print    =  qualifying view authority for the exact scope  AND  reports.print  for that scope
+```
+
+**What counts as qualifying view authority.** It is the report's own rule:
+- `PnlAuthority` for the P&L and the three analysis sections — per property, or unscoped for
+  consolidated (D-164, D-187, D-226);
+- consolidated authority for Business Comparison.
+
+**Consolidated scope needs the action capability for every property it includes.** A
+consolidated export needs `reports.export` (or `reports.print`) either **unscoped** or held
+for **every** included property.
+
+**A capability alone grants nothing.** Holding `reports.export` or `reports.print` without
+view authority reveals no figure. No role name is read.
+
+**The status of these two capabilities, stated so nobody claims more than is true:**
+- They are **product-action controls**. They are **not** the confidentiality boundary for
+  financial data.
+- That boundary is the server's reporting authorization. `reporting_primitives` and
+  `reporting_snapshot` enforce D-164 in Postgres, and RLS enforces the projections behind
+  them. That authorization decides which figures can reach a device at all.
+- An export only lays out figures the device was already authorised to hold and display.
+- **No server component evaluates `reports.export` or `reports.print`, and V1 adds none.**
+  There is no export-audit RPC, no migration and no server change for this decision.
+- A modified client could therefore skip the action check. What it could never do is obtain
+  a figure the server did not authorise.
+
+**Offline export of a complete, already-authorised canonical report is permitted.** Export
+does not require a network round trip.
+
+**D-139's exemption stays, and its reason changes.** Both capabilities remain on the
+exemption list in the latest restating migration (`20260911131228`).
+- The migration's comments still read "Phase 7 · no export path exists" and "no print path
+  exists". That was true when they were written. The migration has been applied and is **not** rewritten (A0,
+  D-056).
+- **From Phase 7 the reason is D-291:** these capabilities are evaluated on the client by
+  design, so "no server evaluator" is the intended final state, not a gap.
+- The exemption still covers only these two capabilities (and `settings.manage`, whose
+  surface still does not exist). It is not a general rule for client-only capabilities. Any
+  new client-evaluated capability needs its own decision.
+
+## D-292 — Role bundles are unchanged; a Manager does not gain export or print
+**Date:** 2026-09-25 · **Status:** Accepted (project-lead decision D3)
+
+The seeded bundles stand exactly as shipped:
+- **Owner** holds every capability.
+- **Accountant** holds `reports.export` and `reports.print`, scoped to their properties.
+- **Manager** holds `reports.view` but **not** the two action capabilities.
+- **Data Entry** holds none of the three.
+
+**Consequence:** a Manager can read the P&L and the analysis sections but is **not offered**
+Export or Print. This is the intended V1 behaviour, not a defect.
+
+If a particular Manager needs to export or print, the capability is granted through normal
+capability administration. There is no role-name exception and no special case in code.
+
+## D-293 — Android V1: the P&L as a PDF, handed to the system share sheet
+**Date:** 2026-09-25 · **Status:** Accepted (project-lead decision D4)
+
+**Android offers one thing:** generating the P&L PDF and handing it to the system share
+sheet.
+- **Not on Android:** Excel, direct printing, and exports of the Windows analysis sections
+  (Android has no screen for those).
+- **Files:** the PDF is written to app-private cache storage, shared through the share
+  intent, and the temporary file is removed afterwards.
+- **No new permissions.** No `WRITE_EXTERNAL_STORAGE`, no broad filesystem access, no
+  Downloads folder.
+- **Why share and not save:** the installed `file_selector_android` (0.5.2+10) cannot show a
+  save dialog. It offers `openFile`, `openFiles` and `getDirectoryPath` only. So the share
+  sheet is the Android way to "save" (Files, Drive, email).
+
+**The PDF renderer is shared across platforms.** The Android P&L PDF is built from the same
+document model, by the same renderer, as the Windows P&L PDF.
+
+## D-294 — Excel money cells are numeric, written from integer paise
+**Date:** 2026-09-25 · **Status:** Accepted (project-lead decision D5)
+
+**Money cells are numeric cells**, so they stay sortable, filterable and usable in Excel.
+They are never turned into text to get perfect Indian digit grouping.
+
+**How a money value becomes a cell:**
+- Each value is written from the exact integer paise, as a decimal literal built by
+  **integer formatting**: rupees, a point, then two digits of paise.
+- **No Dart `double` touches a money value** on its way into the workbook.
+- Excel itself holds every number as a double. That is a property of the file format, not a
+  calculation in this project. The workbook contains no formula that could turn that into
+  arithmetic.
+
+**Contents rules:**
+- **No finance formulas.** No cell recalculates a total, GST, Net Sales, a profit or a
+  margin. Every figure is a value copied from the canonical result.
+- **No raw-paise column** in a management workbook.
+- **The margin** is a numeric percentage written from the exact scaled integer (D-224), or
+  the text **N/A** when Net Sales is zero. It is never `0.00%`.
+
+**Number format.** Excel's custom number format language accepts at most two conditional
+sections. Lakh/crore grouping cannot therefore be expressed correctly for every positive
+**and** negative value, and a loss is exactly the negative case a P&L must get right.
+- If a lakh/crore format cannot be proven correct for every value the workbook can contain,
+  the workbook uses a **conventional, reliable numeric currency format**. Wrong grouping is
+  not acceptable.
+- Parity (spec §21.3) is about the **numerical value**. Digit grouping is presentation.
+- The screen and the PDF keep exact Indian-style formatting (₹12,36,420).
+
+## D-295 — The PDF font is Noto Sans, bundled locally, never fetched
+**Date:** 2026-09-25 · **Status:** Accepted (project-lead decision D6)
+
+**Why a font must be bundled.** The PDF standard fonts cannot draw ₹. `printing` 5.15.1
+ships a Google Fonts helper that **downloads fonts over the network** at runtime, which
+would make PDF output depend on connectivity. It must not be used.
+
+**Decision:**
+- **Noto Sans** is bundled as an application asset, in only the weights the report design
+  actually uses. The expected set is Regular and Bold; it is confirmed in the PDF slice.
+- The SIL Open Font License text and attribution are committed beside the font files.
+- The renderer is proven to work with the network absent.
+- Before Noto Sans is adopted, the PDF slice must verify that it draws ₹ and all ordinary
+  report text.
+
+## D-296 — Transaction-list export is deferred
+**Date:** 2026-09-25 · **Status:** Accepted (project-lead decision D7)
+
+**Why:** the canonical reporting cache (`reporting_tables.dart`) holds no transaction
+number, notes or vendor name. A drill-down list exported from it could not show the
+KI-EXP / KI-REV reference a reader would expect. Adding one would need one of three things,
+all ruled out for Phase 7 V1:
+- a reporting-cache schema change (Drift v22);
+- an online fetch of every document just to export it;
+- an online-only drill-down export.
+
+**Decision:** transaction-list and drill-down export are **out of Phase 7**. The existing
+drill-down is unchanged. If transaction-list export is required later, it is scoped
+separately, with its data requirements stated.
+
+## D-297 — The Windows Reports destination becomes the Export Centre
+**Date:** 2026-09-25 · **Status:** Accepted (project-lead decision D8)
+
+The Windows Reports placeholder (`app_router.dart`, the `AppRoutes.reports` desktop branch)
+becomes an **Export Centre**.
+- **What it offers:** access to, and export/print actions for, the four canonical outputs
+  of D-290.
+- **What it reuses:** the existing canonical report, scope and period selections, and the
+  shared export and print pipeline.
+- **What it does not do:** duplicate Analytics or the P&L. It is not a second P&L screen,
+  not a second analytics workspace, and has no report state of its own. Figures stay on the
+  surfaces that already show them.
+
+## D-298 — Dependencies: `pdf` and `printing` pinned; an internal XLSX writer on `archive`
+**Date:** 2026-09-25 · **Status:** Accepted (project-lead approval)
+
+**Approved, pinned exactly** (checked against pub.dev on 2026-09-25):
+
+| Package | Version | Why | Notes |
+|---|---|---|---|
+| `pdf` | **3.13.1** | the PDF document model and layout, pure Dart | Apache-2.0. Compatible with the locked `archive` and `image`; brings `xml` 7 in transitively |
+| `printing` | **5.15.1** | native print dialog on Windows; Android share (it ships its own FileProvider) | Apache-2.0. Flutter ≥3.41, Android minSdk 21 |
+| `archive` | promoted to a **direct** dependency, at the 4.x version pub already resolves (4.2.0 today) | ZIP container for the XLSX writer | already present transitively, through `image` |
+
+**Rejected:**
+- **`excel` 4.0.6** needs `archive ^3.6.1`, which conflicts with the locked `archive` 4.x.
+  Its last release was August 2024.
+- **`share_plus` 13.3.0** needs `win32 ^6.0.1`, which conflicts with the `win32 ^5.15.0` pin
+  D-246 depends on. `printing` covers PDF sharing on Android.
+
+**Pinning happens in the slice that first uses each package**, not in governance. That
+keeps each dependency change next to the code and tests that justify it.
+
+**Recorded risk — the Windows build downloads PDFium.** `printing`'s Windows
+`CMakeLists.txt` downloads a PDFium binary at **build** time, `PDFIUM_VERSION 5200`, from
+`github.com/bblanchon/pdfium-binaries`.
+- A Windows build machine therefore needs that host reachable, or a local copy supplied
+  through the `PDFIUM_URL` / `PDFIUM_VERSION` cache variables.
+- This is a build-time fact only. Nothing is fetched when the app runs.
+- It belongs to Phase 9's reproducible-build work, and is noted here so it is not a
+  surprise.
+
+**The internal XLSX writer.** It is a small OpenXML writer on top of `archive`, and its
+responsibilities stop at packaging:
+- workbook and package structure, worksheets, cells, styles;
+- number and date formats, frozen panes, auto-filters;
+- relationships, content types, and ZIP serialisation.
+
+It **does not** calculate a P&L, GST, a category total or a margin, does not create a
+finance formula, and does not query reporting data. It receives immutable canonical export
+models and writes them out. A structural guard in the XLSX slice enforces this, the way
+D-268 guards the chart layer.
+
+## D-299 — The export contract: one document model, rendered two ways, printed as the PDF it is
+**Date:** 2026-09-25 · **Status:** Accepted — the contract Slices 2 to 9 build against
+
+**The pipeline, one direction only:**
+
+```
+    canonical result (PnlResult / DashboardView) + cached master names
+          │   read under the same authority, scope, period and lock the screen uses
+          ▼
+    export document model      immutable; exact Money; no arithmetic; freshness carried
+          ├──► PDF renderer  ──► save (Windows) · share (Android) · print (Windows)
+          └──► XLSX writer   ──► save (Windows)
+```
+
+**One model per report.** Each of the four outputs has one immutable document model. It is
+built **only** from:
+- the canonical result the corresponding screen already reads;
+- labels from the cached master graph, which show the current name (D-035);
+- the resolved scope and period, and the freshness evidence.
+
+The model copies figures. It does not derive any. A structural guard enforces this with the
+same token lists as the dashboard and analytics guards (D-279).
+
+**Printing is the PDF.** Windows printing sends the **same bytes** the PDF renderer
+produced for that model to the native Windows print dialog (`Printing.layoutPdf`). There is
+no print-specific layout, no print-specific report logic, and no direct printer protocol.
+The P&L must print directly; other outputs may use the same pipeline where that costs
+nothing.
+
+**Authority comes first.** The pipeline checks D-291 for the exact scope **before** the
+model is built. A refused scope never produces a model, a file or a print job.
+
+**Offline behaviour.** Export works when all three hold:
+- the canonical report is complete locally;
+- the current principal is still authorised;
+- the required action capability is held.
+
+**Export never triggers a sync or a fetch.** An unavailable report stays unavailable: the
+export is refused with the reason the screen already gives. Missing data never becomes ₹0.
+
+**Freshness, three separate statements, never merged:**
+1. **Synchronised as of T** — the server-confirmed time, only when canonical snapshot
+   evidence exists (D-188);
+2. **Server has newer changes** — only when a head check actually confirmed it;
+3. **Generated on this device at …** — the device clock, labelled as the device clock.
+
+When the report carries no freshness evidence, the document states none, rather than
+inventing one or passing off the generation time as the synchronisation time.
+
+**Every document also states:**
+- the date basis (P&L date, spec §5.3);
+- what the expenses include;
+- the scope, and the exact period.
+
+**Parity (spec §21.3).** The parity suite is extended to the document models, the XLSX
+cells and the PDF text. The screen, the workbook and the PDF must agree on every figure,
+exactly, in integer paise.
+
+**Never in an exported file:**
+- identifiers: Supabase or database ids, auth user ids, snapshot identities, change
+  sequences, row versions;
+- internal names: capability codes, cache or coverage metadata, local file paths;
+- test material: acceptance or test markers;
+- credentials of any kind.
+
+A guard inspects the generated bytes, like the secret scanner does.
+
+**Owner Accounts are out of Phase 7.** No Owner Accounts export, no settlement statement and
+no printed settlement preview. The preview is not a statement (D-212 Q3). Finalized Owner
+Statements remain carry-forward F (D-289).
+
+**What does not change.**
+- **Schema and server:** Drift stays v21, the ledger stays 101. No migration, no reporting
+  RPC, no reporting cache, and no server write or API change. If an approved Phase 7
+  requirement turns out to need any of these, the work **stops and is reported first**.
+- **Performance:** export rendering is measured separately. The reporting engine and cache
+  are not optimised in Phase 7; that stays Phase 8's work.
+
+## D-300 — The schema document's capability catalogue now matches the shipped codes
+**Date:** 2026-09-25 · **Status:** Implemented (documentation only)
+
+**The finding.** The Phase 7 scoping audit found that `DATABASE_SCHEMA.md` §2's
+"initial" capability catalogue named `report.view / report.export / report.print`. Those
+codes never existed. The shipped codes, in `public.capabilities` and
+`lib/domain/auth/capability.dart`, are `reports.*`. The same Phase 0 block also wrote
+`master.*`, `user.manage` and `role.manage`, where the shipped codes are `masters.*`,
+`users.manage` and `roles.manage`. It also omitted every capability added after Phase 0.
+
+**The fix.** The block now restates the shipped catalogue in full, cites the two
+authoritative lists, and records the correction in place. No code, seed, migration or
+capability changed. This is the documentation disagreeing with the code, resolved in favour
+of the code, which is where the truth lies (governance rule 3).

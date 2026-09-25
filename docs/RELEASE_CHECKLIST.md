@@ -812,3 +812,58 @@ records what was actually run and its result.
 
 The results, with their numbers, are recorded in `PROJECT_STATUS.md` under *PHASE 6 —
 DASHBOARD & ANALYTICS: COMPLETE AND CLOSED* and in D-289.
+
+## U. Phase 7 — Export, PDF & Printing
+
+The contract is `ARCHITECTURE.md` §51 (D-290 … D-300). Each box is ticked only when it has
+actually been run, with its result recorded in `PROJECT_STATUS.md`.
+
+### U.1 Automated
+
+- [ ] **Parity.** The same fixture gives the same integer paise:
+  - on screen, in the export document model, in the XLSX cells, and in the extracted PDF
+    text (spec §21.3);
+  - for the P&L and for each of the three analysis outputs.
+- [ ] **XLSX structure:**
+  - sheet names, cell types and number formats are as specified;
+  - money cells are numeric and **there are no formulas**;
+  - there is no raw-paise column;
+  - the margin is a percentage, or "N/A".
+- [ ] **PDF content:**
+  - ₹ is drawn with the bundled Noto Sans, with the network absent;
+  - pages are numbered;
+  - the three freshness statements are separate;
+  - profit and loss are stated in words.
+- [ ] **Authority matrix (D-291, D-292):**
+  - view without the action capability → no action offered;
+  - the action capability without view authority → nothing;
+  - consolidated scope with the action capability missing for one property → refused;
+  - the Manager bundle → no Export or Print.
+- [ ] **Offline.** A complete, authorised report exports with the transport removed. A
+      report that is not downloaded is refused and never shown as ₹0. No export triggers a
+      sync.
+- [ ] **Byte-level leakage guard** over generated PDF and XLSX: no ids, capability codes,
+      paths, markers or credentials.
+- [ ] **Structural guards.** No arithmetic in the models, the XLSX writer or the PDF
+      renderer. No runtime font fetch. No storage permission in the Android manifest.
+- [ ] **Schema and server unchanged.** Drift v21, ledger 101, no migration, no new RPC.
+
+### U.2 Windows, real `krishna_mis.exe`
+
+- [ ] Export Centre offers exactly the four outputs; Business Comparison only for a
+      consolidated scope.
+- [ ] Save As: suggested filename, overwrite prompt, cancel, a write error — each behaves as
+      specified.
+- [ ] P&L prints through the native Windows print dialog from the same PDF.
+- [ ] Printing and file export verified on the target machine (§I).
+
+### U.3 Android
+
+- [ ] P&L PDF opens the system share sheet. The temporary file is cleaned up. No new
+      permission is requested.
+- [ ] Galaxy A06 pass, over USB only (D-288).
+
+### U.4 Project lead
+
+- [ ] Excel and PDF exports reviewed and approved (§F).
+- [ ] Windows printing produces a correct, well-laid-out page (§F).

@@ -9,7 +9,7 @@ Status: **Sections 1–12 proposed (Phase 0, revised); sections 13–16 and 18�
 is built and verified; section 17 is the Phase 4 *plan*, since built — read §18–§26 for what
 shipped.** Sections 6, 5.3 and 8 carry the project lead's mandated corrections.
 Implementation status is tracked in `PROJECT_STATUS.md`.
-Last updated: 2026-09-25 — **Phase 6 closed**: the stable contract Phase 7 may build on (section 50), and the final D-286 real-line rule (section 49); 2026-09-24 — money at large text sizes (section 49); 2026-09-23 — dashboard drill-down integration (section 48); the Windows Analytics workspace (section 47); the Android Home dashboard (section 46); 2026-09-22 — the Windows Overview (section 45); 2026-09-17 — Phase 6 dashboard periods and comparison rules (section 41); Slice 11's corrections and the Slice 12 closure architecture (section 40); 2026-09-13 — the Android P&L surface (section 38); the Windows P&L surface (section 37); Slice 7 reporting security closure (section 36); 2026-09-11 — the Owner Settlement surface and its security boundary (section 35); the Owner Settlement Engine (section 34); the Owner Ledger (section 33), with the V1 ownership vector in §33.3; Phase 5 Slice 6 corrective (section 32); Slice 5 in section 31; Slices 1-4 in sections 27-30
+Last updated: 2026-09-25 — **Phase 7 Slice 1**: the export, PDF and printing contract (section 51); 2026-09-25 — **Phase 6 closed**: the stable contract Phase 7 may build on (section 50), and the final D-286 real-line rule (section 49); 2026-09-24 — money at large text sizes (section 49); 2026-09-23 — dashboard drill-down integration (section 48); the Windows Analytics workspace (section 47); the Android Home dashboard (section 46); 2026-09-22 — the Windows Overview (section 45); 2026-09-17 — Phase 6 dashboard periods and comparison rules (section 41); Slice 11's corrections and the Slice 12 closure architecture (section 40); 2026-09-13 — the Android P&L surface (section 38); the Windows P&L surface (section 37); Slice 7 reporting security closure (section 36); 2026-09-11 — the Owner Settlement surface and its security boundary (section 35); the Owner Settlement Engine (section 34); the Owner Ledger (section 33), with the V1 ownership vector in §33.3; Phase 5 Slice 6 corrective (section 32); Slice 5 in section 31; Slices 1-4 in sections 27-30
 
 ---
 
@@ -58,8 +58,8 @@ record. Both apps converge on Postgres through the sync engine described in §5.
 | Time zones | `timezone` (IANA database) | DST-safe business-date derivation |
 | Money | project `Money` value object over `int` paise | no `double` anywhere |
 | IDs | UUID v7 (client-generated, time-ordered) | index locality + sortability |
-| Excel | evaluated in Phase 7 | must support Windows and Android |
-| PDF + print | `pdf` + `printing` | `printing` covers the Windows print dialog |
+| Excel | a small internal OpenXML writer on `archive` 4.x (D-298) | **Windows only** in V1 (D-293). The `excel` package was rejected because it needs `archive` 3.x |
+| PDF + print | **`pdf` 3.13.1** + **`printing` 5.15.1**, pinned (D-298) | `printing` covers the Windows print dialog and Android sharing; `share_plus` was rejected because it needs `win32` 6.x; section 51 |
 | Charts | **fl_chart 1.2.0**, pinned, styled by our tokens | evaluated and adopted in Phase 6 Slice 5 (D-269); no default chart theme ships, and nothing outside `core/design/charts` imports it |
 
 **Single Flutter package**, not a melos monorepo. Layer boundaries are enforced by folder
@@ -4246,13 +4246,231 @@ what Phase 7 (Export & Printing) may treat as stable, and what it must not do.
   and a missing freshness claim are carried into an export as what they are.
 - **Shrink or cut money.** D-286 holds on paper as on screen: no scaled-down figure, no
   ellipsis, and a break only between digit groups when no empty line can hold the figure.
-- **Grant export by visibility.** `reports.export` and `reports.print` are still exempt
-  under D-139, because their surfaces do not yet exist. Phase 7 removes each exemption in
-  the migration that adds its evaluator, and an export additionally requires the reading
-  authority above.
+- **Grant export by visibility.** An export requires the reading authority above **and**
+  the action capability for the exact scope.
+  *Superseded in part by D-291 (2026-09-25):* this bullet originally said Phase 7 would
+  remove the D-139 exemption in the migration that adds a server evaluator. The project
+  lead ruled otherwise. `reports.export` and `reports.print` are client-enforced
+  product-action controls, **no server evaluator is added**, and the exemption stays. See
+  section 51.
 
 ### 50.3 Evidence at closure
 
 Host **2,648**; live **106**, run serially. Windows real-executable, emulator and Galaxy
 A06 automated acceptance all pass, and the Galaxy A06 manual checklist (§S.3) is **20/20
 PASS**. Performance is inside the D-266 envelope on both platforms (recorded in D-289).
+
+## 51. Export, PDF and printing — Phase 7
+
+Decisions **D-290 … D-300**. **This section is the contract for Slices 2 to 9.** When it
+was written, nothing in it was built yet, so read `PROJECT_STATUS.md` for what has shipped.
+It builds only on the stable Phase 6 contract in section 50.
+
+The export design needs **no schema change, no migration and no server change**. Local
+Drift schema stays **v21**; the migration ledger stays at **101**.
+
+### 51.1 One direction, one model, two renderers
+
+```
+    PnlResult / DashboardView                  ← the screen's own canonical result, read
+    + cached master names                        under the same authority, scope, period
+    + resolved scope, period, freshness          and CanonicalCacheLock span
+          │
+          │   ExportAuthority: view authority ∩ action capability, exact scope   (51.3)
+          ▼
+    export document model                      ← immutable; exact Money; no arithmetic
+          │
+          ├──► PDF renderer  (pdf 3.13.1, bundled Noto Sans)
+          │        ├──► Windows: Save As (file_selector getSaveLocation)
+          │        ├──► Windows: Print   (Printing.layoutPdf → native Windows dialog)
+          │        └──► Android: Share   (app cache → system share sheet → cleanup)
+          │
+          └──► XLSX writer   (internal OpenXML on archive 4.x)
+                   └──► Windows: Save As
+```
+
+**Planned file layout.** Slices may refine the names, but the layer boundaries are part of
+the contract:
+
+| Layer | Where | May | May not |
+|---|---|---|---|
+| authority | `lib/domain/finance/export_authority.dart` | combine `PnlAuthority` with the action capability | read a role name; grant visibility |
+| document models | `lib/domain/export/` | copy figures, carry labels and freshness | compute, sort by amount, group, reconcile, read storage |
+| XLSX writer | `lib/core/export/xlsx/` | package OpenXML: sheets, cells, styles, number formats, panes, filters, ZIP | contain a finance formula; know what a P&L is |
+| PDF renderer | `lib/core/export/pdf/` | lay out a document model | compute; fetch a font; read the clock itself |
+| delivery | `lib/features/export/` | save, share, print, and report the outcome | build a model from anything other than the canonical providers |
+
+### 51.2 What each output is made from
+
+| Output | Platforms | Formats | Canonical source |
+|---|---|---|---|
+| Profit & Loss | Windows, Android | PDF, Excel (Windows only) | `PnlReportView.envelope` → `PnlResult`; `PropertyComparison` for per-property sections of a consolidated P&L; `OperatingMargin.displayTwoDecimals` |
+| Revenue Analysis | Windows | PDF, Excel | `DashboardView`: comparison, the Net Sales trend series, the revenue mix `TopN` |
+| Expense & Department Analysis | Windows | PDF, Excel | `DashboardView`: comparison, the monthly expense series, top expense categories, department spending |
+| Business Comparison | Windows, **consolidated only** | PDF, Excel | `DashboardView.propertyComparison` (`PropertyFigures` via `Pnl.compute`, D-270) |
+
+**Labels** come from the cached master graph, the source the screen already uses. They show
+the current name (D-035). Wording, range labels and instant labels come from
+`pnl_presentation.dart`, `dashboard_presentation.dart` and `report_dates.dart`, so a
+document never describes a figure differently from the screen (D-232, D-271).
+
+**Not exported** (D-290, D-296):
+- the Overview dashboard;
+- chart images and screenshots;
+- transaction or drill-down lists;
+- single-document PDFs;
+- Owner Accounts outputs of any kind.
+
+### 51.3 Authority
+
+```
+    ExportAuthority.mayExport(principal, scope)
+        = view authority for scope                      (PnlAuthority; consolidated for
+                                                         Business Comparison)
+          AND reports.export covering scope             (unscoped, or held for every
+                                                         included property)
+
+    ExportAuthority.mayPrint(principal, scope)          — the same with reports.print
+```
+
+**It decides before anything is built.** The check runs before any model, file or print job
+exists. A refused scope produces nothing.
+
+**An action capability never grants visibility.** Holding `reports.export` or
+`reports.print` without view authority offers no action and reveals no figure. No role name
+is read.
+
+**Where enforcement lives.** It is **client-side by design** (D-291).
+- The confidentiality boundary for financial data is the server's reporting authorization,
+  enforced in `reporting_primitives`, `reporting_snapshot` and the RLS behind them. That
+  already decides which figures reach the device.
+- `reports.export` and `reports.print` are product-action controls. No server evaluator
+  exists or is planned. They stay on D-139's exemption list.
+- Any document that describes these controls must not claim they are enforced on the server.
+
+**Role bundles are unchanged** (D-292). The Manager holds `reports.view` without the two
+action capabilities, so a Manager can read a report but is not offered Export or Print.
+
+### 51.4 The document model
+
+One immutable model per output. Every model carries:
+
+| Carried | Rule |
+|---|---|
+| title and scope | the property names, or "Both properties (consolidated)" (`dashboardConsolidatedScopeLabel`) |
+| exact period | the resolved `ReportRange`, plus the preset or dashboard period kind that produced it |
+| date basis | "P&L date" (spec §5.3), and which expenses are included (spec §10) |
+| figures | `Money` values copied from the canonical result; rows exactly as the screen orders them |
+| refusals | carried as refusals — a withheld comparison, a trend gap or a refused Top N is **never** a zero |
+| profit / loss | stated in words beside the sign (spec §20) |
+| margin | the D-224 display string, or **N/A** |
+| freshness | three separate fields (51.6) |
+
+**A guard enforces the model's rules.** It reuses the dashboard and analytics guard token
+lists (D-279) and forbids the following in the model layer and in both renderers:
+- money arithmetic and `Money.sum`;
+- calling `Pnl.compute`, `PnlComparison.compare`, `DashboardTrends.*` or `TopN.*`;
+- `double` on a money path;
+- sorting by amount;
+- storage and network imports.
+
+### 51.5 Formats
+
+**Excel** (D-294, D-298):
+- Numeric money cells, written as exact decimal literals built from integer paise by integer
+  formatting. **No Dart `double`** touches a money value.
+- **No formulas** and no raw-paise column.
+- The margin is a numeric percentage from the exact scaled integer, or the text "N/A".
+- The number format is the best reliable one available. Lakh/crore grouping is used only if
+  it can be proven correct for every positive **and** negative value the workbook can hold;
+  otherwise a conventional numeric currency format.
+- Each workbook has a header block (scope, period, date basis, inclusions, freshness,
+  generated-at), frozen header panes, and auto-filters on line tables.
+
+**PDF** (D-295):
+- A4 portrait for the P&L and the two analysis reports; landscape where a comparison table
+  needs the width.
+- Every page carries a header (property, period, date basis) and a footer (page *n* of *N*,
+  generated-at, synchronised-as-of).
+- Tables continue across pages with repeated column headers.
+- Exact Indian INR formatting through `MoneyFormatter`.
+- **Money is never shrunk or cut** (D-286 applies on paper too).
+- Noto Sans is bundled; no runtime font download.
+
+**Printing:** the Windows print dialog receives the **same PDF bytes** the renderer made for
+that model. There is no print-specific layout and no direct printer protocol. The P&L must
+print; the other outputs may use the same pipeline where that is trivial.
+
+**Suggested filenames** use readable names, never an internal id:
+- `KrishnaImperialMIS_<Report>_<Scope>_<from>_<to>.pdf`
+- `KrishnaImperialMIS_<Report>_<Scope>_<from>_<to>.xlsx`
+
+### 51.6 Offline and freshness
+
+**Offline.** Export works whenever all three hold:
+- the canonical report is complete locally;
+- the principal is still authorised;
+- the principal holds the action capability.
+
+**Export never syncs or fetches.** An unavailable report stays unavailable: the export is
+refused with the reason the screen already gives, and missing data never becomes ₹0.
+
+**Freshness.** Three separate statements, never merged:
+
+| Statement | Source | Shown when |
+|---|---|---|
+| **Synchronised as of T** | `ReportingFreshness.synchronisedAt` — server-confirmed | canonical snapshot evidence exists (D-188) |
+| **Server has newer changes** | `ReportingFreshnessState.serverHasNewer` | only when a head check actually confirmed it |
+| **Generated on this device at …** | the injected reporting clock, labelled as the device's | always |
+
+With no evidence, the document makes no freshness claim. It never presents the generation
+time as synchronisation time.
+
+### 51.7 Files
+
+**Windows:**
+- Save As through the existing `file_selector` (`getSaveLocation`), with a suggested name.
+- Overwrite and collision behaviour, and write errors, are tested in the Windows UI slice.
+- A failed write leaves no partial file behind that claims to be the report.
+
+**Android:**
+- The PDF is written to app-private cache and shared through the system share sheet
+  (`printing`'s FileProvider).
+- The temporary file is removed afterwards.
+- No storage permission is declared.
+- `file_selector_android` cannot show a save dialog, so the share sheet is how a user saves
+  (D-293).
+
+### 51.8 Privacy of the generated bytes
+
+**Never present in a generated file:**
+- identifiers: database, auth or Supabase ids, snapshot ids, change sequences, row
+  versions;
+- internal names: capability codes, cache or coverage metadata, local paths;
+- test material: acceptance or test markers;
+- credentials: tokens, keys, passwords.
+
+A byte-level guard checks the generated PDF and XLSX in tests.
+
+### 51.9 Tests the slices owe
+
+- **Parity** (spec §21.3). The same fixture gives the same integer paise on screen, in the
+  document model, in the XLSX cells and in the extracted PDF text.
+- **XLSX structure.** Open the workbook and assert sheet names, cell types, number formats
+  and exact values. Assert that there are **no formulas**.
+- **PDF content.** Extract the text semantically and check it; check the page count; check
+  the freshness wording; check ₹ is rendered with the bundled font and the network absent.
+- **Authority.** The allow and deny matrix per scope, including a consolidated scope
+  missing the action capability for one property. The Manager bundle is offered no action.
+- **Leakage.** The byte-level guard of 51.8.
+- **Performance.** Measure export rendering separately from report reading (Phase 8 owns
+  the reporting engine).
+
+### 51.10 Not in Phase 7
+
+- Transaction or drill-down list export (D-296).
+- Android Excel, Android direct printing, Android analysis exports (D-293).
+- Owner Accounts exports and settlement statements (carry-forward F).
+- The Overview as its own export; chart images.
+- Any schema, migration, reporting RPC, reporting cache or server change. **If one turns out
+  to be needed, stop and report.**
