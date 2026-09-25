@@ -32,6 +32,11 @@ String exportBasisLine(ExportDateBasis basis) => switch (basis) {
     'Accrual basis: each amount is placed by its P&L date.',
 };
 
+/// The basis as the page header states it, in few words.
+String exportBasisShort(ExportDateBasis basis) => switch (basis) {
+  ExportDateBasis.pnlDateAccrual => 'Accrual · P&L date',
+};
+
 const exportInclusionLine =
     'Includes only transactions the server has accepted; voided and unsynchronised '
     'entries are excluded. Expenses are the gross cost including GST.';
@@ -79,6 +84,13 @@ String exportResultWord(Money operatingProfit) => operatingProfit.isZero
     : operatingProfit.isNegative
     ? 'Loss'
     : 'Profit';
+
+const exportRevenueLinesHeading = 'Revenue by category';
+const exportExpenseLinesHeading = 'Expenses by category';
+const exportTotalLabel = 'Total';
+
+/// "Page 2 of 5".
+String exportPageLabel(int page, int pages) => 'Page $page of $pages';
 
 const exportNoTradeLine = 'No accepted transactions in this period.';
 

@@ -5,9 +5,10 @@ Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
-Last updated: **2026-09-25** — **PHASE 7 — EXPORT, PDF & PRINTING: IN PROGRESS.** Slices 1–4
-are complete: governance, export and print authorisation, the export document models, and
-the XLSX foundation (D-290 … D-303). Slice 5 (PDF foundation) is next. The export contract is
+Last updated: **2026-09-25** — **PHASE 7 — EXPORT, PDF & PRINTING: IN PROGRESS.** Slices 1–5
+are complete: governance, export and print authorisation, the export document models, the
+XLSX foundation and the PDF foundation (D-290 … D-304). The user-facing slices 6–9 are next,
+after the project lead reviews the Phase 7 progress checkpoint. The export contract is
 `ARCHITECTURE.md` §51. See *PHASE 7 — EXPORT, PDF & PRINTING* at the end of this file.
 
 Previously: **2026-09-25** — **PHASE 7 — EXPORT, PDF & PRINTING: STARTED.** Slice 1
@@ -83,9 +84,10 @@ drill-down, and the Owner Accounts ledger, settlement engine and preview surface
 
 ## Current phase
 
-**Phase 7 — Export, PDF & Printing: IN PROGRESS (started 2026-09-25).** Slices 1–4 are
-complete; Slice 5 (PDF foundation) is next. *(This paragraph read "Slice 1 … complete; Slice 2
-is next" until Slice 4.)* Its record is *PHASE 7 — EXPORT, PDF & PRINTING* at the **end** of this
+**Phase 7 — Export, PDF & Printing: IN PROGRESS (started 2026-09-25).** Slices 1–5 are
+complete. Slices 6–9 (the user-facing surfaces) wait for the project lead's review of the
+progress checkpoint. *(This paragraph read "Slice 1 … complete; Slice 2 is next" until
+Slice 4.)* Its record is *PHASE 7 — EXPORT, PDF & PRINTING* at the **end** of this
 file. *(This paragraph read "NOT STARTED" at the Phase 6 closure; that statement is superseded.)*
 
 **Phase 6 — Dashboard & Analytics: COMPLETE and formally closed (2026-09-25, Slice 11).** Its
@@ -6656,7 +6658,7 @@ The Windows **Reports** placeholder becomes the **Export Centre** (D-297).
 | 2 | Export + print authorisation | **COMPLETE** |
 | 3 | Canonical export document models | **COMPLETE** |
 | 4 | XLSX foundation (internal OpenXML writer on `archive`) | **COMPLETE** |
-| 5 | PDF foundation (`pdf` 3.13.1, bundled Noto Sans) | not started |
+| 5 | PDF foundation (`pdf` 3.13.1, bundled Noto Sans) | **COMPLETE** |
 | 6 | Windows Reports → Export Centre, Save As | not started |
 | 7 | Windows printing (`printing` 5.15.1, native dialog) | not started |
 | 8 | Android P&L PDF share | not started |
@@ -6858,4 +6860,26 @@ No schema, migration or server change; Drift stays **v21** and the ledger **101*
 | `dart format` / `flutter analyze` | **Tested** | 379 files, 0 changed / no issues |
 | Secret scan, tree and git history | **Tested** | clean |
 | Opening a generated workbook in Excel | **Not tested** | a person opening the file on Windows belongs to Slice 10 acceptance. The file is checked here by reading its XML |
+
+## Phase 7 Slice 5 — PDF foundation: **COMPLETE**
+
+The bundled fonts and the P&L PDF (D-304, `ARCHITECTURE.md` §51.5). No schema, migration or
+server change; Drift stays **v21** and the ledger **101**.
+
+| Added | What it does |
+|---|---|
+| `assets/fonts/noto_sans/` | Noto Sans Regular and Bold, with the SIL Open Font License |
+| `lib/core/export/pdf/pdf_fonts.dart` | takes the font bytes; refuses a font without ₹ |
+| `lib/core/export/pdf/pnl_pdf.dart` | the P&L on A4 portrait pages, with a header and footer on every page and repeating table headings |
+| `test/support/pdf_text.dart` | reads the printed text back through each font's `/ToUnicode` map |
+
+| Item | Status | Evidence |
+|---|---|---|
+| PDF tests | **Tested** | **20** passed. Every headline figure and line on the page equals `MoneyFormatter` of the canonical result, for one property and for the consolidated split. Also: result words; No GST; Totals are the headline figures; header and footer and page *n* of *N* on every page; table headings repeat; a fifteen-digit amount printed whole; no text below 7.5 pt; no freshness claim without evidence; the server-newer line only when confirmed; a non-reconciling breakdown withheld; N/A margin; a real ₹0; compressed by default; no information dictionary; no id in any byte, compressed or not; the fonts, their licence and the asset list |
+| `lib/core/export` guard | **Tested** | **27** passed, including 16 planted violations |
+| Real-code controls | **Tested** | Money printed in whole rupees: 9 red. A Total summed from its rows: guard red. Heading not repeated: 1 red. Page number on page 1 only: 1 red. A document title set: 2 red. Each restored and checked with `cmp` |
+| Full host suite (Slice 5 close) | **Tested** | **2,821 passed, 1 skipped** (Windows-only DPAPI), **0 failed** |
+| `dart format` / `flutter analyze` | **Tested** | 383 files, 0 changed / no issues |
+| Secret scan, tree and git history | **Tested** | clean |
+| A person reading and printing the PDF | **Not tested** | Slice 7 (Windows print dialog) and Slice 10 acceptance |
 

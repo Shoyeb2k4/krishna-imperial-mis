@@ -10540,3 +10540,73 @@ arithmetic, but code inside an interpolation still does.
 - Flutter regenerated the Windows plugin registrant to include `printing`.
 - The chart guard confirms that `fl_chart` is still the only charting package.
 
+## D-304 — The PDF foundation, as built
+**Date:** 2026-09-25 · **Status:** Implemented / Tested — Phase 7 Slice 5
+
+**1 · The fonts are bundled, checked, and handed in.**
+- Noto Sans **Regular** and **Bold**, the static TrueType files from the Noto project, ship
+  under `assets/fonts/noto_sans/` with their **SIL Open Font License 1.1** (`OFL.txt`).
+  These are the only two weights (D-295).
+- `pubspec.yaml` declares exactly those three assets. A test holds the list.
+- The renderer is **handed** the font bytes through `ExportPdfFonts`. It never loads an
+  asset, opens a file or fetches anything. The delivery layer reads the bundle (Slices 6
+  and 8).
+- `ExportPdfFonts` refuses a font that cannot draw **₹** (U+20B9), so a figure can never
+  print with a missing symbol. Both bundled fonts pass.
+
+**2 · The P&L PDF.** `lib/core/export/pdf/pnl_pdf.dart` lays out a `PnlExportDocument` on
+A4 portrait pages:
+- An opening block: title, scope, period and range, basis, inclusions, and the three
+  freshness statements on separate lines.
+- One statement per `PnlExportStatement`: the screen's labels, the figure printed by
+  `MoneyFormatter.standard` with Indian grouping, the result in words, and the D-224
+  margin string or N/A.
+- The revenue and expense category tables of the scope statement. A **Total** row carries
+  the headline figure, never a sum of the rows.
+- **Every page** has a header (product, report, scope, range, basis) and a footer (the
+  synchronisation statement, the generation time, and page *n* of *N*). A table's heading
+  row repeats on every page the table continues onto.
+- A breakdown that does not reconcile, or a consolidated result the domain could not
+  split, is withheld and the page says why, as the screen does.
+
+**3 · Money is never shrunk or cut (D-286, on paper).**
+- Amount columns take their natural width (`IntrinsicColumnWidth`); the text columns flex
+  and wrap.
+- There is no `FittedBox` and no scale-down. A guard refuses both in `lib/core/export`.
+- A test prints a fifteen-digit amount and finds it whole, on the line with its label. A
+  second test finds no text set smaller than the 7.5-point footer size.
+
+**4 · No document-information dictionary.** The PDF carries no title, author, creator,
+producer or creation date.
+- The package fills the creation date from the device clock, and the renderer may not read
+  the clock (§51.1).
+- A document says nothing about who or which device made it beyond what its visible header
+  states (§51.8). This matches the workbook (D-303).
+- The package still stamps its own random file identifier (`/ID`). That identifier carries
+  no information about the user, device or report.
+
+**5 · Tests read the PDF the way a viewer does.** `test/support/pdf_text.dart` is a small
+reader for the renderer's uncompressed output:
+- it decodes each glyph code through the font's own `/ToUnicode` map;
+- it places each word through the page's transformation matrices;
+- it groups the words into lines.
+
+Tests therefore compare the **printed text** with `MoneyFormatter`'s rendering of the
+canonical `PnlResult`, which is the same string the screen shows. The reader refuses a
+compressed PDF rather than silently finding nothing.
+
+**6 · The guard over `lib/core/export` covers the PDF.**
+- The PDF layer contains no arithmetic.
+- It prints money only through `MoneyFormatter.standard.format`.
+- It passes no metadata to `pw.Document`.
+- It does not import `printing` or `file_selector`: delivery belongs to the feature layer.
+- Only `pdf/` may import `package:pdf`, and only `xlsx/` may import `archive`.
+
+Found while writing the guard: a `File(` token matched `ArchiveFile(`, the false-positive
+shape D-069 records. It was dropped, because `File` needs `dart:io`, which is already
+refused.
+
+**Deliberately not in Slice 5:** saving, printing and sharing (Slices 6 to 8); the
+analysis-report PDFs (Slice 9); a landscape layout, which only the Business Comparison
+table may need (Slice 9).
+

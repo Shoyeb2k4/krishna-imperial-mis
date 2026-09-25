@@ -846,6 +846,8 @@ actually been run, with its result recorded in `PROJECT_STATUS.md`.
       paths, markers or credentials.
 - [ ] **Structural guards.** No arithmetic in the models, the XLSX writer or the PDF
       renderer. No runtime font fetch. No storage permission in the Android manifest.
+- [ ] **Font licence.** The bundled Noto Sans files ship with their SIL Open Font License
+      (`assets/fonts/noto_sans/OFL.txt`) in both the Windows bundle and the APK.
 - [ ] **Schema and server unchanged.** Drift v21, ledger 101, no migration, no new RPC.
 
 ### U.2 Windows, real `krishna_mis.exe`

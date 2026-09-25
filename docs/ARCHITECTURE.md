@@ -4396,7 +4396,11 @@ lists (D-279) and forbids the following in the model layer and in both renderers
 - Tables continue across pages with repeated column headers.
 - Exact Indian INR formatting through `MoneyFormatter`.
 - **Money is never shrunk or cut** (D-286 applies on paper too).
-- Noto Sans is bundled; no runtime font download.
+- Noto Sans is bundled; no runtime font download. The Regular and Bold files and their SIL
+  Open Font License live in `assets/fonts/noto_sans/`. The renderer is handed the font bytes
+  and refuses a font that cannot draw ₹ (D-304).
+- There is no document-information dictionary: no title, author, producer or creation date
+  (D-304, §51.8).
 
 **Printing:** the Windows print dialog receives the **same PDF bytes** the renderer made for
 that model. There is no print-specific layout and no direct printer protocol. The P&L must

@@ -101,3 +101,11 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+  # Noto Sans, bundled for the exported PDFs (Phase 7, D-295): Regular and Bold only, with
+  # the SIL Open Font License it is distributed under. Read at export time from the bundle;
+  # nothing is ever fetched from the network.
+  assets:
+    - assets/fonts/noto_sans/NotoSans-Regular.ttf
+    - assets/fonts/noto_sans/NotoSans-Bold.ttf
+    - assets/fonts/noto_sans/OFL.txt

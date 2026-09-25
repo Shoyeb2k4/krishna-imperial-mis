@@ -67,6 +67,14 @@ List<String> violationsIn(String path, String code) {
       'double.parse',
       'num.parse',
       'int.parse',
+      // Money is never shrunk to fit, on paper as on screen (D-286).
+      'FittedBox',
+      'BoxFit',
+      'textScale',
+      // Fonts and figures arrive; nothing here loads or fetches them. (A file needs
+      // `dart:io`, which is refused below; `ArchiveFile(` is not a file.)
+      'rootBundle',
+      'HttpClient',
     ])
       if (bare.contains(token)) token,
     // Only the writer may count columns; a layout that adds anything is doing arithmetic.
@@ -85,8 +93,13 @@ List<String> violationsIn(String path, String code) {
             'package:krishna_mis/data/',
             'package:krishna_mis/features/',
             'package:krishna_mis/app/',
+            // Delivery (print, share, save) lives in the feature layer.
+            'package:printing',
+            'package:file_selector',
             // The writer is packaging: it may not know what a P&L, or even money, is.
             if (_isWriter(path)) 'package:krishna_mis/',
+            if (!_isWriter(path)) 'package:archive',
+            if (!path.contains('/core/export/pdf/')) 'package:pdf',
           ].any(line.contains))
         'import: ${line.trim()}',
   ];
@@ -102,6 +115,8 @@ void main() {
         'xlsx_writer.dart',
         'export_wording.dart',
         'pnl_workbook.dart',
+        'pdf_fonts.dart',
+        'pnl_pdf.dart',
       ]),
     );
   });
@@ -143,6 +158,27 @@ void main() {
     }
   });
 
+  test('the PDF prints money only through the screen formatter', () {
+    final pdf = files.singleWhere((f) => f.path.endsWith('pnl_pdf.dart')).code;
+    expect(pdf, contains('MoneyFormatter.standard.format('));
+    expect(pdf, contains('.displayTwoDecimals'));
+    expect(pdf, isNot(contains('decimalLiteral')));
+    // No information dictionary: the package would stamp it with the device clock.
+    final document = RegExp(
+      r'pw\.Document\(([^;]*?)\);',
+      dotAll: true,
+    ).firstMatch(pdf)!.group(1)!;
+    for (final key in [
+      'title:',
+      'author:',
+      'creator:',
+      'producer:',
+      'subject:',
+    ]) {
+      expect(document, isNot(contains(key)), reason: key);
+    }
+  });
+
   group('the rule is seen to fail (planted controls)', () {
     const layout = 'lib/core/export/workbook/planted.dart';
     const writer = 'lib/core/export/xlsx/planted.dart';
@@ -161,6 +197,18 @@ void main() {
         "import 'package:krishna_mis/features/x.dart';",
       ),
       ('a formula', writer, "b.write('<c><f>SUM(A1:A2)</f></c>');"),
+      ('a shrunk figure', layout, 'pw.FittedBox(child: pw.Text(amount));'),
+      ('a font loaded here', layout, "final b = await rootBundle.load('f');"),
+      (
+        'printing from a layout',
+        layout,
+        "import 'package:printing/printing.dart';",
+      ),
+      (
+        'the pdf package in a workbook',
+        layout,
+        "import 'package:pdf/pdf.dart';",
+      ),
       (
         'project code in the writer',
         writer,
