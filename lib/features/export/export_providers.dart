@@ -258,24 +258,29 @@ class ExportActionController extends Notifier<ExportActionStatus> {
 
   /// Prints [report] through the native Windows print dialog, from the same PDF bytes
   /// Save PDF writes (§51.5).
-  Future<void> print(ExportReport report) => _run(
-    report,
-    ExportAction.print,
-    ExportFileFormat.pdf,
-    (rendered, stillPermitted) async {
-      try {
-        final sent = await ref.read(exportPrinterProvider)(
-          bytes: rendered.bytes,
-          jobName: _withoutExtension(rendered.fileName),
-        );
-        return sent
-            ? const ExportActionHandedOver(ExportActionKind.print)
-            : const ExportActionCancelled(ExportActionKind.print);
-      } on Object {
-        return const ExportActionHandOverFailed(ExportActionKind.print);
-      }
-    },
-  );
+  Future<void> print(
+    ExportReport report,
+  ) => _run(report, ExportAction.print, ExportFileFormat.pdf, (
+    rendered,
+    stillPermitted,
+  ) async {
+    // The dialog takes the document when Print is pressed, and authority is decided
+    // again then: a loss while the dialog is open sends nothing (Slice 10).
+    ExportActionResult outcome;
+    try {
+      final sent = await ref.read(exportPrinterProvider)(
+        bytes: rendered.bytes,
+        jobName: _withoutExtension(rendered.fileName),
+        layout: () => exportPrintLayout(rendered.bytes, stillPermitted),
+      );
+      outcome = sent
+          ? const ExportActionHandedOver(ExportActionKind.print)
+          : const ExportActionCancelled(ExportActionKind.print);
+    } on Object {
+      outcome = const ExportActionHandOverFailed(ExportActionKind.print);
+    }
+    return stillPermitted() ? outcome : const ExportActionAbandoned();
+  });
 
   /// Shares the P&L PDF through the Android share sheet (D-293). The same bytes Save PDF
   /// writes on Windows; `reports.export` is the capability, as for any export.

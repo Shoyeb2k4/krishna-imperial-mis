@@ -332,7 +332,7 @@ void main() {
         tester,
         who: fxOwner,
         pnl: fxPnlView(fxCcrSeptember(), viewer: fxOwner),
-        printer: ({required bytes, required jobName}) async {
+        printer: ({required bytes, required jobName, required layout}) async {
           printed.add((bytes: bytes, jobName: jobName));
           return true;
         },
@@ -411,7 +411,8 @@ void main() {
         tester,
         who: fxOwner,
         pnl: fxPnlView(fxCcrSeptember(), viewer: fxOwner),
-        printer: ({required bytes, required jobName}) async => false,
+        printer: ({required bytes, required jobName, required layout}) async =>
+            false,
       );
       await tapAndFinish(tester, 'export-profitAndLoss-print');
       expect(
@@ -425,7 +426,7 @@ void main() {
         tester,
         who: fxOwner,
         pnl: fxPnlView(fxCcrSeptember(), viewer: fxOwner),
-        printer: ({required bytes, required jobName}) async =>
+        printer: ({required bytes, required jobName, required layout}) async =>
             throw StateError('no printer subsystem'),
       );
       await tapAndFinish(tester, 'export-profitAndLoss-print');
@@ -469,7 +470,7 @@ void main() {
           who: fxOwner,
           pnl: fxPnlView(fxCcrSeptember(), viewer: fxOwner),
           fonts: () => fontsGate.future,
-          printer: ({required bytes, required jobName}) async {
+          printer: ({required bytes, required jobName, required layout}) async {
             printed++;
             return true;
           },
@@ -499,6 +500,74 @@ void main() {
           tester.widget<Text>(key('export-profitAndLoss-outcome')).data,
           startsWith('Your access changed'),
         );
+      },
+    );
+
+    // The dialog asks for the document only after the person presses Print (the
+    // plugin's onLayout). A capability withdrawn while the dialog is open must stop the
+    // bytes there (Slice 10, found in the real executable).
+    testWidgets(
+      'reports.print lost while the print dialog is open prints nothing',
+      (tester) async {
+        late ProviderContainer container;
+        final sent = <Uint8List>[];
+        container = await pump(
+          tester,
+          who: fxOwner,
+          pnl: fxPnlView(fxCcrSeptember(), viewer: fxOwner),
+          printer: ({required bytes, required jobName, required layout}) async {
+            // The dialog is open; the capability goes; then Print is pressed.
+            (container.read(sessionProvider.notifier) as _Session).become(
+              _sessionOf(
+                fxPrincipal(fxOwner.userId, [
+                  for (final g in fxOwner.grants)
+                    if (g.capability != Capability.reportsPrint) g,
+                ]),
+              ),
+            );
+            final document = layout();
+            if (document.isNotEmpty) sent.add(document);
+            // A job with no document is aborted by the plugin and reported failed.
+            if (document.isEmpty) throw StateError('aborted');
+            return true;
+          },
+        );
+        await tapAndFinish(tester, 'export-profitAndLoss-print');
+        expect(sent, isEmpty, reason: 'no bytes reach the printer');
+        expect(
+          tester.widget<Text>(key('export-profitAndLoss-outcome')).data,
+          startsWith('Your access changed'),
+        );
+      },
+    );
+
+    testWidgets('with reports.print kept, the dialog is given the document', (
+      tester,
+    ) async {
+      final sent = <Uint8List>[];
+      await pump(
+        tester,
+        who: fxOwner,
+        pnl: fxPnlView(fxCcrSeptember(), viewer: fxOwner),
+        printer: ({required bytes, required jobName, required layout}) async {
+          sent.add(layout());
+          return true;
+        },
+      );
+      await tapAndFinish(tester, 'export-profitAndLoss-print');
+      expect(sent.single, isNotEmpty);
+      expect(
+        tester.widget<Text>(key('export-profitAndLoss-outcome')).data,
+        'Sent to the Windows print dialog.',
+      );
+    });
+
+    test(
+      'the print layout declines with no bytes, never a partial document',
+      () {
+        final pdf = Uint8List.fromList([1, 2, 3]);
+        expect(exportPrintLayout(pdf, () => true), pdf);
+        expect(exportPrintLayout(pdf, () => false), isEmpty);
       },
     );
   });
@@ -539,7 +608,7 @@ void main() {
           tester,
           who: fxOwner,
           dashboard: fxDashboard(viewer: fxOwner, freshness: fxFreshness()),
-          printer: ({required bytes, required jobName}) async {
+          printer: ({required bytes, required jobName, required layout}) async {
             printed.add(bytes);
             return true;
           },

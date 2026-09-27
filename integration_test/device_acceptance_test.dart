@@ -13198,12 +13198,21 @@ void main() {
         },
       ),
     ),
+    // Records what the dialog was actually given, when Print was pressed.
     exportPrinterProvider.overrideWithValue(({
       required bytes,
       required jobName,
+      required layout,
     }) {
-      p7Printed.add(bytes);
-      return printingLayoutPdf(bytes: bytes, jobName: jobName);
+      return printingLayoutPdf(
+        bytes: bytes,
+        jobName: jobName,
+        layout: () {
+          final document = layout();
+          if (document.isNotEmpty) p7Printed.add(document);
+          return document;
+        },
+      );
     }),
   ];
 
@@ -14126,12 +14135,16 @@ void main() {
           '${File(p7Path('lost-during-print.pdf')).existsSync()}',
         );
         await p7Host(tester, 'restore reports.print to accountant', 'restored');
+        // Microsoft Print to PDF creates its output file when the job starts, before the
+        // document is asked for, and leaves it empty when the job is aborted. No report
+        // content may reach it (accepted by the project lead, D-309).
+        final printedFile = File(p7Path('lost-during-print.pdf'));
         expect(
-          File(p7Path('lost-during-print.pdf')).existsSync(),
-          isFalse,
+          !printedFile.existsSync() || printedFile.lengthSync() == 0,
+          isTrue,
           reason: 'nothing is printed for a person who lost reports.print',
         );
-        expect(lostPrint, isNot(isA<ExportActionHandedOver>()));
+        expect(lostPrint, isA<ExportActionAbandoned>());
         p7Say('done', 'authority phase finished');
       } finally {
         await _admin.revokeScope('accountant@example.com', 'HKI');
@@ -14159,7 +14172,12 @@ void main() {
         await chooseCustom(tester, container, p6From.iso, p6To.iso);
         await refreshPnl(tester, container);
         await p7OpenExportCentre(tester);
-        if (p7Repro.contains('print')) {
+        // `x3` in the variant repeats the print, to show whether the save survives
+        // several print dialogs rather than one.
+        final prints = int.parse(
+          RegExp(r'x(\d+)').firstMatch(p7Repro)?.group(1) ?? '1',
+        );
+        for (var n = 0; p7Repro.contains('print') && n < prints; n++) {
           final r = await p7Act(
             tester,
             container,

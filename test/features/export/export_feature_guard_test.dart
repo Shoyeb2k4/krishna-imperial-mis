@@ -154,12 +154,21 @@ void main() {
           surfaceFileCode('$_dir/export_print.dart'),
         );
         expect(printing, contains('Printing.layoutPdf('));
-        expect(printing, contains('onLayout:(_)async=>bytes'));
+        // The dialog is given the layout, which is the renderer's bytes unchanged or,
+        // once authority is gone, nothing (Slice 10).
+        expect(printing, contains('onLayout:(_)async=>layout()'));
+        expect(printing, contains('stillPermitted()?bytes:Uint8List(0)'));
         expect(printing, contains('dynamicLayout:false'));
         final providers = surfaceDense(
           surfaceFileCode('$_dir/export_providers.dart'),
         );
         expect(providers, contains('ExportAction.print,ExportFileFormat.pdf,'));
+        expect(
+          providers,
+          contains(
+            'layout:()=>exportPrintLayout(rendered.bytes,stillPermitted)',
+          ),
+        );
       },
     );
 

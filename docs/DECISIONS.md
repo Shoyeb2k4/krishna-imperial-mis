@@ -10763,3 +10763,49 @@ executable, by the repro phase above.
 
 **Not balanced at exit, deliberately.** The process ends after its message loop; the existing single
 `CoUninitialize` is unchanged.
+
+## D-309 — Print decides authority again when Print is pressed
+**Date:** 2026-09-28 · **Status:** Implemented / Tested (project-lead ruling on the residue) —
+**a product defect found by the Phase 7 Slice 10 acceptance, proven RED first**
+
+**Symptom.** In the real `krishna_mis.exe`, the accountant opened the print dialog for the P&L. While
+the dialog was open, `reports.print` was withdrawn from the role. The person then pressed Print, and
+the report printed. The result was `ExportActionHandedOver` and the printed file held the document.
+Save already re-checked authority after its dialog closes (Slice 6). Print handed the bytes over with
+no re-check.
+
+**Why the check belongs inside `onLayout`.** `printing` asks for the document only after the person
+presses Print: `Printing.layoutPdf` calls `onLayout` from the native print job. That is the last
+moment the application can decline, so the check sits there. Two ways to decline were read in the
+plugin source (`printing` 5.15.1, `windows/printing.cpp`, `print_job.cpp`):
+
+| `onLayout` | What the plugin does | Chosen? |
+|---|---|---|
+| throws | deletes the job and never completes the Dart future; Print would stay "running" for ever | no |
+| returns no bytes | starts the document, fails to load it, `AbortDoc`, reports a failed completion | **yes** |
+
+**Decision.**
+- `ExportPrinter` gains `layout`, and the dialog is given `layout()`, not the bytes directly.
+- `exportPrintLayout(bytes, stillPermitted)` returns the renderer's bytes unchanged while the action
+  is still permitted, and no bytes once it is not.
+- The controller reports `ExportActionAbandoned` whenever authority has gone by the time the dialog
+  returns, whatever the plugin says.
+
+**The residue, accepted by the project lead.** With the virtual printer *Microsoft Print to PDF*, the
+driver asks where to save and creates that file at `StartDoc`, which runs before the document can be
+checked. When the job is then aborted the file is left **empty (0 bytes)**. It holds no report
+content. A physical printer prints nothing. Removing the prompt and the empty file would need a fork
+of the plugin's Windows code, a dependency change the project lead did not ask for. The acceptance
+rule is therefore **no report content reaches any file**: the file is absent or empty.
+
+**Proven.**
+- Host: a fake dialog that loses the capability before asking for the document gets no bytes, and
+  the outcome reads "Your access changed". With the controller's layout ignoring authority, that
+  test turns **red**. A second test keeps the document flowing when the capability is kept.
+- Real executable (`p7-windows-authority`): `ExportActionAbandoned`, and `lost-during-print.pdf` is
+  0 bytes. Before the fix it was `ExportActionHandedOver` with the report inside.
+
+**Guard.** `export_feature_guard_test.dart` now requires `onLayout` to return `layout()`, the layout
+to be `stillPermitted() ? bytes : Uint8List(0)`, and the controller to pass
+`exportPrintLayout(rendered.bytes, stillPermitted)`. The renderer's bytes are still the only
+document the dialog can receive.
