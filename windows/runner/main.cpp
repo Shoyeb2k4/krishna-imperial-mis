@@ -17,6 +17,18 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   // plugins.
   ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
 
+  // Hold a second reference to the same apartment (D-308).
+  //
+  // The first time the Windows print dialog opens, the print stack on this thread
+  // (WINSPOOL!GetCurrentNetworkId) calls CoUninitialize without a matching
+  // initialize. With one reference that releases the apartment, the thread falls
+  // into the process's multithreaded apartment, and the next Save As - an STA-only
+  // dialog - is marshalled back to this thread and waits for itself for ever
+  // (combase!MTAThreadWaitForCall). The second reference absorbs the stray release,
+  // so the thread stays single-threaded. The process exits after the message loop,
+  // so it is not balanced there.
+  ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+
   flutter::DartProject project(L"data");
 
   std::vector<std::string> command_line_arguments =

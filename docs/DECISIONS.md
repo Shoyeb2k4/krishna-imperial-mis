@@ -10715,3 +10715,51 @@ they are the same words.
 
 **7 · Every report prints.** `exportPrintable` is true for all four reports on Windows, from
 the same PDF bytes Save PDF writes. `reports.print` still decides.
+
+## D-308 — The Windows runner holds a second apartment reference, so a print cannot freeze the next Save As
+**Date:** 2026-09-28 · **Status:** Implemented / Tested (project-lead approval) — **a product defect
+found by the Phase 7 Slice 10 acceptance, proven RED first**
+
+**Symptom.** In the real `krishna_mis.exe`, opening the Windows print dialog once — printing or
+cancelling — and then choosing Save PDF or Save Excel froze the application. The Save As dialog never
+appeared and the window stopped responding. Saving without printing first always worked.
+
+**Diagnosis, from the frozen process rather than from theory** (WinDbg, with the project lead's
+agreement to diagnose before changing anything):
+- the main thread was blocked in `file_selector`'s `IFileSaveDialog::Show`, inside
+  `combase!MTAThreadWaitForCall`. The thread was in the multithreaded apartment, although the runner
+  starts it single-threaded (`windows/runner/main.cpp`);
+- a trace of every `CoInitializeEx` / `CoUninitialize` on that thread showed the Windows print stack
+  (`WINSPOOL!GetCurrentNetworkId`) calling `CoUninitialize` without a matching initialize during the
+  first print dialog. The next `CoInitializeEx(COINIT_MULTITHREADED)` on the thread, by the printer
+  driver's `PrintConfig`, then **succeeded**, which is only possible once the thread's single
+  apartment reference has gone;
+- with no apartment of its own, the thread falls into the process's implicit multithreaded
+  apartment. The file dialog is single-threaded only, so it is marshalled back to the same thread,
+  which is waiting for it: a deadlock.
+
+The defect is in Windows components the app does not own; neither `printing` nor `file_selector`
+misuses COM.
+
+**Decision.** The runner takes **one extra** single-threaded apartment reference at startup, with the
+reason written beside it. The stray release drops the count from two to one, and the thread stays
+single-threaded. No Dart change, no plugin fork, no export or finance change.
+
+**Proven both ways in the real executable** (`p7-windows-repro`):
+
+| Runner | Scenario | Result |
+|---|---|---|
+| committed (one reference) | print dialog, cancel, then Save As | **frozen** — reproduced four times |
+| two references | print dialog ×1, ×2, ×3 (cancelled), then Save As | saved |
+| two references | print to PDF ×1, ×2, ×3, then Save As | saved |
+
+The stray release happens once, not once per print: three print dialogs in a row leave the thread
+single-threaded.
+
+**Guard.** `test/app/windows_runner_apartment_test.dart` asserts the runner takes exactly two
+single-threaded references before the engine starts, never joins the multithreaded apartment, and
+names D-308. It fails on the committed runner. The behaviour itself is proven only in the real
+executable, by the repro phase above.
+
+**Not balanced at exit, deliberately.** The process ends after its message loop; the existing single
+`CoUninitialize` is unchanged.
