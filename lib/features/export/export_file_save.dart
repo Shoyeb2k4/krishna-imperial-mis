@@ -152,7 +152,21 @@ Future<ExportSaveOutcome> writeAtomically(
     } on FileSystemException {
       // The original failure is the one worth reporting.
     }
-    return ExportSaveFailed(exportSaveFailureOf(e));
+    final failure = exportSaveFailureOf(e);
+    // Windows refuses a rename over a file another program holds open as "access
+    // denied" — the same code as a folder the person may not write to. The destination
+    // itself tells them apart: opening it is a sharing violation only while it is open
+    // elsewhere. Opening to append changes nothing in the file.
+    if (failure == ExportSaveFailure.permissionDenied && target.existsSync()) {
+      try {
+        target.openSync(mode: FileMode.append).closeSync();
+      } on FileSystemException catch (held) {
+        if (exportSaveFailureOf(held) == ExportSaveFailure.fileInUse) {
+          return const ExportSaveFailed(ExportSaveFailure.fileInUse);
+        }
+      }
+    }
+    return ExportSaveFailed(failure);
   }
 }
 

@@ -134,6 +134,51 @@ void main() {
     expect(Directory(at('september.pdf')).listSync(), isEmpty);
   });
 
+  // Phase 7 Slice 10, found in the real application: with the previous copy open in
+  // Excel, Windows refuses the replacing rename as "access denied" (5) — the same code
+  // as a folder the person may not write to — and the person was told to choose another
+  // folder. The destination itself answers the question: opening it for writing is a
+  // sharing violation (32) exactly when another program has it open.
+  test('a destination another program holds open is reported as open, not as a '
+      'refused folder, and is left intact', () async {
+    final target = at('september.xlsx');
+    File(target).writeAsStringSync('the copy open in Excel');
+    final holder = await Process.start('powershell', [
+      '-NoProfile',
+      '-Command',
+      "\$f = [IO.File]::Open('$target', 'Open', 'ReadWrite', 'Read'); "
+          'Start-Sleep -Seconds 30; \$f.Close()',
+    ]);
+    try {
+      final deadline = DateTime.now().add(const Duration(seconds: 20));
+      var held = false;
+      while (!held && DateTime.now().isBefore(deadline)) {
+        try {
+          File(target).openSync(mode: FileMode.append).closeSync();
+          await Future<void>.delayed(const Duration(milliseconds: 200));
+        } on FileSystemException {
+          held = true;
+        }
+      }
+      expect(held, isTrue, reason: 'the second process holds the file');
+
+      final outcome = await saverAnswering(target).save(
+        bytes: bytes,
+        suggestedName: 'x.xlsx',
+        format: ExportFileFormat.xlsx,
+      );
+      expect(
+        (outcome as ExportSaveFailed).failure,
+        ExportSaveFailure.fileInUse,
+      );
+      expect(names(), ['september.xlsx'], reason: 'no partial file is left');
+    } finally {
+      holder.kill();
+      await holder.exitCode;
+    }
+    expect(File(target).readAsStringSync(), 'the copy open in Excel');
+  }, skip: Platform.isWindows ? false : 'a Windows file-sharing behaviour');
+
   test('a dialog that cannot open is stated, and nothing is written', () async {
     final saver = ExportFileSaver(
       pickLocation: ({required suggestedName, required format}) async =>
