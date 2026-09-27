@@ -101,6 +101,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:http/http.dart' as http;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
@@ -147,6 +148,18 @@ import 'package:uuid/uuid.dart';
 import '../test/support/money_layout.dart';
 import '../test/support/owner_settlement_reference.dart';
 import 'support/controllable_transport.dart';
+import 'package:krishna_mis/domain/finance/export_authority.dart';
+import 'package:krishna_mis/domain/finance/operating_margin.dart';
+import 'package:krishna_mis/features/export/export_centre_page.dart';
+import 'package:krishna_mis/features/export/export_file_save.dart';
+import 'package:krishna_mis/features/export/export_print.dart';
+import 'package:krishna_mis/features/export/export_providers.dart';
+import 'package:krishna_mis/features/export/export_share.dart';
+import 'package:path_provider/path_provider.dart'
+    show getApplicationSupportDirectory;
+import '../test/support/pdf_text.dart';
+import '../test/support/xlsx_reader.dart';
+import 'support/pdf_inflate.dart';
 
 const _phase = String.fromEnvironment('PHASE');
 
@@ -485,10 +498,14 @@ void main() {
   Future<void> launch(
     WidgetTester tester, {
     AttachmentSource? attachmentSource,
+    List<Override> recorders = const [],
   }) async {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          // Phase 7: recorders that wrap — never replace — the real Save As and print
+          // paths, so a phase can read what the native dialog returned.
+          ...recorders,
           if (attachmentSource != null)
             attachmentSourceProvider.overrideWithValue(attachmentSource),
           databaseProvider.overrideWithValue(boot.database),
@@ -13137,6 +13154,1242 @@ void main() {
           );
           await _admin.revokeScope('ccr.manager@example.com', 'HKI');
           debugPrint('P6 STEP 28: sweepPnlFixtures(client, marker: p6Marker);');
+          await p6SweepAfter(client);
+        }
+      },
+    );
+  });
+
+  // ── Phase 7 Slice 10 — export, Save As and printing in the real Windows application ──
+  //
+  // One process launch on Windows. The phase drives the application; a PERSON (or the
+  // acceptance operator) answers every native dialog, which no harness can reach — the
+  // Save As dialog, the overwrite question, the print dialog and "Save Print Output As".
+  // Nothing replaces those dialogs: the saver and printer are the production ones,
+  // wrapped only to record what the dialog returned and which bytes went to print.
+  //
+  //     flutter test integration_test/device_acceptance_test.dart -d windows \
+  //       --dart-define-from-file=config/dev.json \
+  //       --dart-define-from-file=<scratch>/identities.defines.json \
+  //       --dart-define=PHASE=p7-windows-export \
+  //       --dart-define=P7_OUT=<an empty folder> \
+  //       --dart-define=P7_STATUS=<a file the operator watches> \
+  //       --dart-define=P7_HOST=<a file the operator writes>
+  //
+  // Each dialog step writes {step, do} to P7_STATUS and waits, up to fifteen minutes,
+  // for the person to finish it. Steps that need the operator to act outside the app
+  // (open a file in Excel, change a development role) wait for P7_HOST to say so.
+  const p7Out = String.fromEnvironment('P7_OUT');
+  const p7StatusFile = String.fromEnvironment('P7_STATUS');
+  const p7HostFile = String.fromEnvironment('P7_HOST');
+  final p7Dialogs = <({String suggested, String? chosen})>[];
+  final p7Printed = <Uint8List>[];
+
+  List<Override> p7Recorders() => [
+    exportFileSaverProvider.overrideWithValue(
+      ExportFileSaver(
+        pickLocation: ({required suggestedName, required format}) async {
+          final chosen = await fileSelectorSaveLocation(
+            suggestedName: suggestedName,
+            format: format,
+          );
+          p7Dialogs.add((suggested: suggestedName, chosen: chosen));
+          return chosen;
+        },
+      ),
+    ),
+    exportPrinterProvider.overrideWithValue(({
+      required bytes,
+      required jobName,
+    }) {
+      p7Printed.add(bytes);
+      return printingLayoutPdf(bytes: bytes, jobName: jobName);
+    }),
+  ];
+
+  void p7Say(String step, String instruction) {
+    File(p7StatusFile).writeAsStringSync(
+      jsonEncode({
+        'step': step,
+        'do': instruction,
+        'at': DateTime.now().toIso8601String(),
+      }),
+    );
+    debugPrint('P7 $step: $instruction');
+  }
+
+  Future<void> p7AwaitHost(WidgetTester tester, String state) =>
+      pumpUntil(tester, 'the operator to report $state', () {
+        try {
+          return (jsonDecode(File(p7HostFile).readAsStringSync())
+                  as Map)['state'] ==
+              state;
+        } on Object {
+          return false;
+        }
+      }, timeout: const Duration(minutes: 20));
+
+  String p7Path(String name) => '$p7Out${Platform.pathSeparator}$name';
+
+  // Excel's own `~$name` owner file, present while a workbook is open, is Excel's.
+  List<String> p7Listing() => [
+    for (final e in Directory(p7Out).listSync())
+      if (!e.uri.pathSegments.last.startsWith(r'~$')) e.uri.pathSegments.last,
+  ]..sort();
+
+  Future<void> p7OpenExportCentre(WidgetTester tester) async {
+    await pumpUntil(
+      tester,
+      'the Reports destination',
+      () => visible('Reports'),
+    );
+    await tester.tap(find.text('Reports').first);
+    await pumpUntil(
+      tester,
+      'the Export Centre',
+      () => find.byKey(const Key('export-centre')).evaluate().isNotEmpty,
+    );
+    await tester.pump(const Duration(milliseconds: 600));
+  }
+
+  Future<void> p7Reveal(WidgetTester tester, Finder finder) async {
+    final list = find
+        .descendant(
+          of: find.byKey(const Key('export-centre')),
+          matching: find.byType(Scrollable),
+        )
+        .first;
+    tester.state<ScrollableState>(list).position.jumpTo(0);
+    await tester.pump(const Duration(milliseconds: 200));
+    await tester.scrollUntilVisible(finder, 160, scrollable: list);
+    await Scrollable.ensureVisible(
+      tester.element(finder.first),
+      alignment: 0.5,
+    );
+    await tester.pump(const Duration(milliseconds: 300));
+  }
+
+  bool p7Has(String key) => find.byKey(Key(key)).evaluate().isNotEmpty;
+
+  /// Taps an export or print control, tells the operator what to do in the native
+  /// dialog, and waits for the application's own outcome.
+  Future<ExportActionResult> p7Act(
+    WidgetTester tester,
+    ProviderContainer container,
+    String key,
+    String step,
+    String instruction,
+  ) async {
+    final before = container.read(exportActionProvider).last;
+    await p7Reveal(tester, find.byKey(Key(key)));
+    p7Say(step, instruction);
+    await tapWhenHittable(tester, find.byKey(Key(key)));
+    await pumpUntil(tester, 'the operator to finish $step', () {
+      final s = container.read(exportActionProvider);
+      return !s.isRunning && s.last != null && !identical(s.last, before);
+    }, timeout: const Duration(minutes: 15));
+    final result = container.read(exportActionProvider).last!.result;
+    final shown = find.byKey(Key('export-${key.split('-')[1]}-outcome'));
+    await p7Reveal(tester, shown);
+    expect(
+      tester.widget<Text>(shown).data,
+      exportActionMessage(result),
+      reason: 'the outcome is stated on screen as it happened',
+    );
+    p7Say('$step:done', exportActionMessage(result));
+    return result;
+  }
+
+  /// A saved file whose name the dialog returned, read back.
+  Uint8List p7Saved(ExportActionResult result) {
+    expect(result, isA<ExportActionSaved>(), reason: '$result');
+    final name = (result as ExportActionSaved).fileName;
+    // Read back from where the dialog actually put it, not from where it was asked to.
+    final chosen = p7Dialogs.last.chosen!;
+    final path = chosen.toLowerCase().endsWith(name.toLowerCase())
+        ? chosen
+        : '$chosen${name.substring(name.lastIndexOf('.'))}';
+    expect(File(path).parent.path, p7Out, reason: 'saved where asked: $path');
+    final bytes = File(path).readAsBytesSync();
+    expect(bytes, isNotEmpty);
+    return bytes;
+  }
+
+  String p7PdfText(Uint8List bytes) =>
+      PdfText.read(inflatePdfStreams(bytes)).lines.join('\n');
+
+  Set<String> p7Numbers(Uint8List xlsx) {
+    final book = StoredWorkbook(xlsx);
+    return {
+      for (final s in book.sheetNames)
+        for (final c in book.cells(s).values)
+          if (c.isNumber) c.value!,
+    };
+  }
+
+  /// Every figure is in the PDF exactly as the screen prints it, and in the workbook
+  /// as the exact numeric cell; the workbook holds no formula and no internal id.
+  void p7ExpectFigures(
+    String what,
+    Uint8List pdf,
+    Uint8List xlsx,
+    List<Money> figures, {
+    List<String> forbidden = const [],
+  }) {
+    final text = p7PdfText(pdf);
+    final numbers = p7Numbers(xlsx);
+    for (final m in figures) {
+      expect(
+        text,
+        contains(MoneyFormatter.standard.format(m)),
+        reason: '$what PDF ${m.paise}',
+      );
+      expect(
+        numbers,
+        contains(MoneyFormatter.decimalLiteral(m)),
+        reason: '$what XLSX ${m.paise}',
+      );
+    }
+    final book = StoredWorkbook(xlsx).allText;
+    expect(book, isNot(contains('<f>')), reason: '$what: no formula');
+    expect(book, isNot(contains('<f ')), reason: '$what: no formula');
+    for (final f in forbidden) {
+      expect(book, isNot(contains(f)), reason: '$what XLSX leaks $f');
+      expect(text, isNot(contains(f)), reason: '$what PDF leaks $f');
+      expect(
+        latin1.decode(inflatePdfStreams(pdf)),
+        isNot(contains(f)),
+        reason: '$what PDF bytes leak $f',
+      );
+    }
+  }
+
+  Money p7Top<L>(TopNOutcome<L>? outcome) {
+    expect(outcome, isA<TopNGrouped<L>>(), reason: '$outcome');
+    return (outcome! as TopNGrouped<L>).top.first.amount;
+  }
+
+  String p7Hash(String path) {
+    final bytes = File(path).readAsBytesSync();
+    var h = 0;
+    for (final b in bytes) {
+      h = (h * 31 + b) & 0x3fffffff;
+    }
+    return '${bytes.length}:$h';
+  }
+
+  /// The text of two renders of one document, less the one line that names when the
+  /// file was generated.
+  List<String> p7WithoutGenerated(Uint8List pdf) => [
+    for (final l in PdfText.read(inflatePdfStreams(pdf)).lines)
+      if (!l.contains('Generated on this device')) l,
+  ];
+
+  group('p7-windows-export', skip: _phase != 'p7-windows-export', () {
+    testWidgets('the Export Centre saves, prints and refuses through the real native dialogs, '
+        'offline too, and every file equals the screen to the paisa', (tester) async {
+      expect(p6Phone(), isFalse, reason: 'run on Windows');
+      for (final (name, value) in [
+        ('P7_OUT', p7Out),
+        ('P7_STATUS', p7StatusFile),
+        ('P7_HOST', p7HostFile),
+      ]) {
+        expect(value, isNotEmpty, reason: '$name names a path');
+      }
+      final out = Directory(p7Out)..createSync(recursive: true);
+      expect(out.listSync(), isEmpty, reason: 'P7_OUT starts empty');
+
+      await launch(tester, recorders: p7Recorders());
+      final container = await p6SignIn(tester, 'giridhar@hki.com');
+      final client = Supabase.instance.client;
+      final ownerId = container.read(principalProvider).userId;
+      await sweepPnlFixtures(client, marker: p6Marker);
+      try {
+        final ids = await p6Fixtures(client);
+
+        // ── The two reports the Export Centre exports from ────────────────────
+        await openPnl(tester, container);
+        await chooseCustom(tester, container, p6From.iso, p6To.iso);
+        await refreshPnl(tester, container);
+        expect(
+          (container.read(pnlViewProvider).value! as PnlReportView).scope,
+          isA<PnlConsolidatedScope>(),
+          reason: 'the Owner reads the consolidated P&L',
+        );
+        expectPnlMatchesServer(
+          tester,
+          container,
+          await serverPnl(client, [_ccr, _hki], p6From.iso, p6To.iso),
+        );
+        final pnl = computedPnl(container);
+
+        await p6OpenOverview(tester, container);
+        await p6Custom(tester, container, p6From, p6To);
+        await p6Refresh(tester, container);
+        await p6ExpectHeadline(tester, container, client);
+        final ready = p6Ready(container);
+        final dash = ready.view.resultOrNull!;
+
+        // ── The Export Centre: four reports, what each covers, its actions ────
+        await p7OpenExportCentre(tester);
+        for (final r in ExportReport.values) {
+          await p7Reveal(tester, find.byKey(Key('export-${r.name}')));
+          final covers = tester
+              .widget<Text>(find.byKey(Key('export-${r.name}-covers')))
+              .data!;
+          expect(covers, contains(dashboardConsolidatedScopeLabel));
+          expect(covers, contains('2027'), reason: '${r.name}: $covers');
+          expect(p7Has('export-${r.name}-freshness'), isTrue);
+          expect(p7Has('export-${r.name}-pdf'), isTrue, reason: r.name);
+          expect(p7Has('export-${r.name}-xlsx'), isTrue, reason: r.name);
+          expect(p7Has('export-${r.name}-print'), isTrue, reason: r.name);
+          debugPrint(
+            'P7 CARD ${r.name}: $covers | ${tester.widget<Text>(find.byKey(Key('export-${r.name}-freshness'))).data}',
+          );
+        }
+        final sync = (
+          container.read(pnlSyncProvider),
+          container.read(dashboardSyncProvider),
+        );
+
+        // ── Save As, one of each report and format ─────────────────────────────
+        final saved = <String, Uint8List>{};
+        for (final (report, format, file) in [
+          (ExportReport.profitAndLoss, 'pdf', 'p7-pnl.pdf'),
+          (ExportReport.profitAndLoss, 'xlsx', 'p7-pnl.xlsx'),
+          (ExportReport.revenueAnalysis, 'pdf', 'p7-revenue.pdf'),
+          (ExportReport.revenueAnalysis, 'xlsx', 'p7-revenue.xlsx'),
+          (ExportReport.expenseAnalysis, 'pdf', 'p7-expense.pdf'),
+          (ExportReport.expenseAnalysis, 'xlsx', 'p7-expense.xlsx'),
+          (ExportReport.businessComparison, 'pdf', 'p7-comparison.pdf'),
+          (ExportReport.businessComparison, 'xlsx', 'p7-comparison.xlsx'),
+        ]) {
+          final result = await p7Act(
+            tester,
+            container,
+            'export-${report.name}-$format',
+            'save ${report.name} $format',
+            'Save As: note the suggested name, then save as ${p7Path(file)}',
+          );
+          saved[file] = p7Saved(result);
+          final dialog = p7Dialogs.last;
+          debugPrint(
+            'P7 DIALOG suggested=${dialog.suggested} chose=${dialog.chosen}',
+          );
+          expect(dialog.suggested, startsWith('KrishnaImperialMIS_'));
+          expect(dialog.suggested, endsWith('.$format'));
+          expect(dialog.suggested, contains('2027-03-01_2027-03-31'));
+        }
+        expect(
+          p7Listing().where((n) => n.contains('.part')),
+          isEmpty,
+          reason: 'no temporary file is left beside a save',
+        );
+        expect(p7Listing(), hasLength(8));
+
+        // ── Parity: screen = PDF = XLSX, to the paisa ─────────────────────────
+        final forbidden = [
+          _ccr,
+          _hki,
+          ownerId,
+          ids.sale,
+          ids.room,
+          ids.shared,
+          ids.restaurant,
+          'reports.export',
+          'reports.view',
+          'row_version',
+          'snapshot',
+          p6Marker,
+          'C:\\',
+        ];
+        final split = PropertyComparison.of(pnl) as PropertyComparisonReady;
+        p7ExpectFigures('P&L', saved['p7-pnl.pdf']!, saved['p7-pnl.xlsx']!, [
+          pnl.grossSales,
+          pnl.gst,
+          pnl.netSales,
+          pnl.expenses,
+          pnl.operatingProfit,
+          for (final p in split.properties) ...[
+            p.result.netSales,
+            p.result.expenses,
+            p.result.operatingProfit,
+          ],
+          Money.fromPaise(2500000), // Kirana & Pulses, Crystal Canopy
+        ], forbidden: forbidden);
+        expect(
+          p7PdfText(saved['p7-pnl.pdf']!),
+          contains(pnl.margin.displayTwoDecimals),
+        );
+        expect(
+          p7Numbers(saved['p7-pnl.xlsx']!),
+          contains((pnl.margin as MarginRatio).displayedFractionLiteral),
+        );
+        final previous = ready.view.previous.resultOrNull!;
+        p7ExpectFigures(
+          'Revenue Analysis',
+          saved['p7-revenue.pdf']!,
+          saved['p7-revenue.xlsx']!,
+          [
+            dash.grossSales,
+            dash.gst,
+            dash.netSales,
+            previous.netSales,
+            p7Top(ready.view.topRevenueCategories),
+          ],
+          forbidden: forbidden,
+        );
+        p7ExpectFigures(
+          'Expense & Department Analysis',
+          saved['p7-expense.pdf']!,
+          saved['p7-expense.xlsx']!,
+          [
+            dash.expenses,
+            p7Top(ready.view.topExpenseCategories),
+            p7Top(ready.view.departmentSpending),
+          ],
+          forbidden: forbidden,
+        );
+        final comparison =
+            ready.view.propertyComparison! as PropertyComparisonReady;
+        p7ExpectFigures(
+          'Business Comparison',
+          saved['p7-comparison.pdf']!,
+          saved['p7-comparison.xlsx']!,
+          [
+            for (final p in comparison.properties) ...[
+              p.result.netSales,
+              p.result.expenses,
+              p.result.operatingProfit,
+            ],
+            comparison.total.netSales,
+            comparison.total.operatingProfit,
+          ],
+          forbidden: forbidden,
+        );
+        for (final entry in saved.entries.where(
+          (e) => e.key.endsWith('.pdf'),
+        )) {
+          final text = p7PdfText(entry.value);
+          expect(text, contains('Page 1 of'), reason: entry.key);
+          expect(text, contains('₹'), reason: entry.key);
+          expect(text, contains('Generated on this device'), reason: entry.key);
+        }
+
+        // ── Cancel ─────────────────────────────────────────────────────────────
+        final listing = p7Listing();
+        final cancelled = await p7Act(
+          tester,
+          container,
+          'export-profitAndLoss-pdf',
+          'cancel',
+          'Save As: press Cancel',
+        );
+        expect(cancelled, isA<ExportActionCancelled>());
+        expect(p7Listing(), listing, reason: 'a cancel writes nothing');
+
+        // ── Overwrite, confirmed in the dialog ─────────────────────────────────
+        final beforeOverwrite = File(p7Path('p7-pnl.pdf')).lastModifiedSync();
+        await tester.pump(const Duration(seconds: 2));
+        final replaced = await p7Act(
+          tester,
+          container,
+          'export-profitAndLoss-pdf',
+          'overwrite',
+          'Save As: choose ${p7Path('p7-pnl.pdf')} again and answer Yes to replace',
+        );
+        p7Saved(replaced);
+        expect(
+          File(
+            p7Path('p7-pnl.pdf'),
+          ).lastModifiedSync().isAfter(beforeOverwrite),
+          isTrue,
+        );
+        expect(p7Listing(), listing);
+
+        // ── A name typed without its extension ─────────────────────────────────
+        final xlsxBefore = p7Hash(p7Path('p7-pnl.xlsx'));
+        final noExtension = await p7Act(
+          tester,
+          container,
+          'export-profitAndLoss-xlsx',
+          'no-extension',
+          'Save As: type ${p7Path('p7-pnl')} (no extension). If Windows asks to '
+              'replace p7-pnl.xlsx, answer No, then Cancel',
+        );
+        debugPrint(
+          'P7 NO-EXTENSION dialog returned ${p7Dialogs.last.chosen}: $noExtension',
+        );
+        expect(
+          noExtension,
+          anyOf(
+            isA<ExportActionCancelled>(),
+            isA<ExportActionSaveFailed>().having(
+              (f) => f.failure,
+              'failure',
+              ExportSaveFailure.nameTaken,
+            ),
+          ),
+        );
+        expect(p7Hash(p7Path('p7-pnl.xlsx')), xlsxBefore);
+        expect(p7Listing(), listing);
+
+        // ── A write the file system refuses: the file is open in Excel ─────────
+        p7Say(
+          'excel-lock',
+          'Open ${p7Path('p7-pnl.xlsx')} in Microsoft Excel and leave it open, '
+              'then write {"state":"excel-open"} to P7_HOST',
+        );
+        await p7AwaitHost(tester, 'excel-open');
+        final locked = await p7Act(
+          tester,
+          container,
+          'export-profitAndLoss-xlsx',
+          'locked',
+          'Save As: choose ${p7Path('p7-pnl.xlsx')} and answer Yes to replace',
+        );
+        debugPrint('P7 LOCKED: $locked');
+        expect(
+          locked,
+          isA<ExportActionSaveFailed>().having(
+            (f) => f.failure,
+            'failure',
+            ExportSaveFailure.fileInUse,
+          ),
+          reason: 'the person is told the file is open, not to change folder',
+        );
+        expect(p7Hash(p7Path('p7-pnl.xlsx')), xlsxBefore);
+        expect(p7Listing(), listing, reason: 'no partial file is left');
+        p7Say(
+          'excel-close',
+          'Close Excel, then write {"state":"excel-closed"}',
+        );
+        await p7AwaitHost(tester, 'excel-closed');
+
+        // ── Print: the native dialog, the same PDF ─────────────────────────────
+        final printed = await p7Act(
+          tester,
+          container,
+          'export-profitAndLoss-print',
+          'print pnl',
+          'Print: choose Microsoft Print to PDF, Print, and save the output as '
+              '${p7Path('printed-pnl.pdf')}',
+        );
+        expect(printed, isA<ExportActionHandedOver>());
+        expect(
+          p7WithoutGenerated(p7Printed.last),
+          p7WithoutGenerated(File(p7Path('p7-pnl.pdf')).readAsBytesSync()),
+          reason: 'print receives the Save PDF document, not a second render',
+        );
+        final printCancel = await p7Act(
+          tester,
+          container,
+          'export-profitAndLoss-print',
+          'print cancel',
+          'Print: press Cancel',
+        );
+        expect(printCancel, isA<ExportActionCancelled>());
+        for (final (report, file) in [
+          (ExportReport.revenueAnalysis, 'printed-revenue.pdf'),
+          (ExportReport.expenseAnalysis, 'printed-expense.pdf'),
+          (ExportReport.businessComparison, 'printed-comparison.pdf'),
+        ]) {
+          final r = await p7Act(
+            tester,
+            container,
+            'export-${report.name}-print',
+            'print ${report.name}',
+            'Print: Microsoft Print to PDF, Print, save as ${p7Path(file)}',
+          );
+          expect(r, isA<ExportActionHandedOver>());
+          expect(
+            p7WithoutGenerated(p7Printed.last),
+            p7WithoutGenerated(
+              saved['p7-${switch (report) {
+                ExportReport.revenueAnalysis => 'revenue',
+                ExportReport.expenseAnalysis => 'expense',
+                _ => 'comparison',
+              }}.pdf']!,
+            ),
+          );
+        }
+        expect(
+          (
+            container.read(pnlSyncProvider),
+            container.read(dashboardSyncProvider),
+          ),
+          sync,
+          reason: 'no export or print started a synchronisation',
+        );
+
+        // ── Offline: exports from what is on the device ────────────────────────
+        _transport.online = false;
+        _transport.refusedWhileOffline.clear();
+        final freshness = {
+          for (final r in ExportReport.values)
+            r: tester
+                .widget<Text>(find.byKey(Key('export-${r.name}-freshness')))
+                .data,
+        };
+        final offline = <String, Uint8List>{};
+        for (final (key, file) in [
+          ('export-profitAndLoss-pdf', 'offline-pnl.pdf'),
+          ('export-profitAndLoss-xlsx', 'offline-pnl.xlsx'),
+          ('export-expenseAnalysis-xlsx', 'offline-expense.xlsx'),
+          ('export-businessComparison-pdf', 'offline-comparison.pdf'),
+        ]) {
+          offline[file] = p7Saved(
+            await p7Act(
+              tester,
+              container,
+              key,
+              'offline $file',
+              'OFFLINE. Save As: ${p7Path(file)}',
+            ),
+          );
+        }
+        final offlinePrint = await p7Act(
+          tester,
+          container,
+          'export-profitAndLoss-print',
+          'offline print',
+          'OFFLINE. Print: Microsoft Print to PDF, save as '
+              '${p7Path('offline-printed-pnl.pdf')}',
+        );
+        expect(offlinePrint, isA<ExportActionHandedOver>());
+        debugPrint('P7 OFFLINE refused: ${_transport.refusedWhileOffline}');
+        expect(
+          _transport.refusedWhileOffline.where(
+            (r) =>
+                r.contains('reporting') ||
+                r.contains('contribution') ||
+                r.contains('revenue') ||
+                r.contains('expense'),
+          ),
+          isEmpty,
+          reason: 'no export reached for a report',
+        );
+        expect((
+          container.read(pnlSyncProvider),
+          container.read(dashboardSyncProvider),
+        ), sync);
+        for (final r in ExportReport.values) {
+          await p7Reveal(tester, find.byKey(Key('export-${r.name}')));
+          expect(
+            tester
+                .widget<Text>(find.byKey(Key('export-${r.name}-freshness')))
+                .data,
+            freshness[r],
+            reason: 'freshness is what it was — offline changes no claim',
+          );
+        }
+        expect(
+          p7WithoutGenerated(offline['offline-pnl.pdf']!),
+          p7WithoutGenerated(saved['p7-pnl.pdf']!),
+        );
+        expect(
+          p7Numbers(offline['offline-pnl.xlsx']!),
+          p7Numbers(saved['p7-pnl.xlsx']!),
+        );
+
+        // ── Reconnect: reporting refreshes as normal ───────────────────────────
+        _transport.online = true;
+        await openPnl(tester, container);
+        await refreshPnl(tester, container);
+        expectPnlMatchesServer(
+          tester,
+          container,
+          await serverPnl(client, [_ccr, _hki], p6From.iso, p6To.iso),
+        );
+        await p6OpenOverview(tester, container);
+        await p6Refresh(tester, container);
+
+        // ── Open in Analytics goes to the report the card describes ────────────
+        await p7OpenExportCentre(tester);
+        await p7Reveal(
+          tester,
+          find.byKey(const Key('export-revenueAnalysis-open')),
+        );
+        await tapWhenHittable(
+          tester,
+          find.byKey(const Key('export-revenueAnalysis-open')),
+        );
+        await pumpUntil(
+          tester,
+          'Revenue Analysis',
+          () =>
+              container.read(analyticsSectionProvider) ==
+                  AnalyticsSection.revenue &&
+              find.byKey(const Key('analytics-page')).evaluate().isNotEmpty,
+        );
+        await p7OpenExportCentre(tester);
+        await p7Reveal(
+          tester,
+          find.byKey(const Key('export-profitAndLoss-open')),
+        );
+        await tapWhenHittable(
+          tester,
+          find.byKey(const Key('export-profitAndLoss-open')),
+        );
+        await pumpUntil(
+          tester,
+          'the P&L',
+          () =>
+              container.read(analyticsSectionProvider) ==
+                  AnalyticsSection.profitAndLoss &&
+              find.byKey(const Key('pnl-page')).evaluate().isNotEmpty,
+        );
+        p7Say('done', 'phase finished; ${p7Listing().length} files');
+        debugPrint('P7 FILES ${p7Listing()}');
+      } finally {
+        _transport.online = true;
+        await p6SweepAfter(client);
+      }
+    });
+  });
+
+  // ── Phase 7 Slice 10 — who is offered Export and Print, in the real application ───
+  //
+  // Run on Windows with the operator, like p7-windows-export. Some steps change a
+  // development role for a moment; the phase writes {step:"host:…"} and waits for
+  // P7_HOST to report "applied" and later "restored" (D-243). Nothing branches on a role
+  // name: every assertion is about which controls the capabilities produce.
+  Future<void> p7Host(WidgetTester tester, String step, String state) async {
+    p7Say('host:$step', 'HOST: $step, then write {"state":"$state"}');
+    await p7AwaitHost(tester, state);
+  }
+
+  /// Which of the three actions a report card offers now.
+  ({bool pdf, bool xlsx, bool print, bool refused}) p7Offered(ExportReport r) =>
+      (
+        pdf: p7Has('export-${r.name}-pdf'),
+        xlsx: p7Has('export-${r.name}-xlsx'),
+        print: p7Has('export-${r.name}-print'),
+        refused:
+            p7Has('export-${r.name}-not-offered') ||
+            p7Has('export-${r.name}-unavailable'),
+      );
+
+  Future<({bool pdf, bool xlsx, bool print, bool refused})> p7Card(
+    WidgetTester tester,
+    ExportReport r,
+  ) async {
+    await p7Reveal(tester, find.byKey(Key('export-${r.name}')));
+    await tester.pump(const Duration(milliseconds: 300));
+    final o = p7Offered(r);
+    debugPrint('P7 AUTH ${r.name}: $o');
+    return o;
+  }
+
+  Future<void> p7Reports(
+    WidgetTester tester,
+    ProviderContainer container,
+  ) async {
+    await openPnl(tester, container);
+    await chooseCustom(tester, container, p6From.iso, p6To.iso);
+    await refreshPnl(tester, container);
+    await p6OpenOverview(tester, container);
+    await p6Custom(tester, container, p6From, p6To);
+    await p6Refresh(tester, container);
+    await p7OpenExportCentre(tester);
+  }
+
+  group('p7-windows-authority', skip: _phase != 'p7-windows-authority', () {
+    testWidgets('Export needs view authority and reports.export, Print needs reports.print, for '
+        'the exact scope; a user switch, a role change and a loss while a dialog is open '
+        'each take the action away', (tester) async {
+      expect(p6Phone(), isFalse, reason: 'run on Windows');
+      for (final v in [p7Out, p7StatusFile, p7HostFile]) {
+        expect(v, isNotEmpty);
+      }
+      Directory(p7Out).createSync(recursive: true);
+      expect(Directory(p7Out).listSync(), isEmpty);
+
+      await launch(tester, recorders: p7Recorders());
+      var container = await p6SignIn(tester, 'giridhar@hki.com');
+      final ownerId = container.read(principalProvider).userId;
+      final client = Supabase.instance.client;
+      await sweepPnlFixtures(client, marker: p6Marker);
+      try {
+        await p6Fixtures(client);
+
+        // ── The Owner: everything, consolidated ────────────────────────────────
+        await p7Reports(tester, container);
+        for (final r in ExportReport.values) {
+          final o = await p7Card(tester, r);
+          expect((o.pdf, o.xlsx, o.print), (true, true, true), reason: r.name);
+        }
+
+        // ── A user switch: the Manager bundle holds reports.view only (D-292) ──
+        await signOutThroughTheUi(tester);
+        container = await p6SignIn(tester, 'ccr.manager@example.com');
+        expect(
+          container.read(exportActionProvider).last,
+          isNull,
+          reason: 'the previous person\'s outcome is not the next person\'s',
+        );
+        await p7Reports(tester, container);
+        for (final r in ExportReport.values) {
+          final o = await p7Card(tester, r);
+          expect(
+            (o.pdf, o.xlsx, o.print),
+            (false, false, false),
+            reason: '${r.name}: reading a report is not exporting it',
+          );
+        }
+        expect(
+          p7Has('export-profitAndLoss-not-offered'),
+          isTrue,
+          reason: 'the P&L says why nothing is offered',
+        );
+
+        // ── The Accountant: export and print, Crystal Canopy only ──────────────
+        await signOutThroughTheUi(tester);
+        container = await p6SignIn(tester, 'accountant@example.com');
+        await p7Reports(tester, container);
+        expect(
+          (container.read(pnlViewProvider).value! as PnlReportView).scope,
+          isA<PnlUnitScope>(),
+        );
+        for (final r in [
+          ExportReport.profitAndLoss,
+          ExportReport.revenueAnalysis,
+          ExportReport.expenseAnalysis,
+        ]) {
+          final o = await p7Card(tester, r);
+          expect((o.pdf, o.xlsx, o.print), (true, true, true), reason: r.name);
+        }
+        final comparison = await p7Card(
+          tester,
+          ExportReport.businessComparison,
+        );
+        expect(
+          (comparison.pdf, comparison.xlsx, comparison.print),
+          (false, false, false),
+          reason: 'Business Comparison needs consolidated authority',
+        );
+
+        // ── Two scoped grants are not consolidated authority (D-164) ───────────
+        await _admin.grantScope('accountant@example.com', 'accountant', 'HKI');
+        await s11AuthorityUntil(
+          tester,
+          container,
+          'the accountant with Hotel Krishna too',
+          (p) => PnlAuthority.mayReadUnit(p, _hki),
+        );
+        await p7OpenExportCentre(tester);
+        final both = await p7Card(tester, ExportReport.businessComparison);
+        expect((both.pdf, both.xlsx, both.print), (false, false, false));
+        await _admin.revokeScope('accountant@example.com', 'HKI');
+        await s11AuthorityUntil(
+          tester,
+          container,
+          'the accountant without Hotel Krishna',
+          (p) => !PnlAuthority.mayReadUnit(p, _hki),
+        );
+
+        // ── Export-only: reports.print taken from the role ─────────────────────
+        await p7Host(tester, 'remove reports.print from accountant', 'applied');
+        await s11AuthorityUntil(
+          tester,
+          container,
+          'the accountant without reports.print',
+          (p) => !p.canAnywhere(Capability.reportsPrint),
+        );
+        await p7OpenExportCentre(tester);
+        var pnl = await p7Card(tester, ExportReport.profitAndLoss);
+        expect((pnl.pdf, pnl.xlsx, pnl.print), (true, true, false));
+        await p7Host(tester, 'restore reports.print to accountant', 'restored');
+        await s11AuthorityUntil(
+          tester,
+          container,
+          'reports.print back',
+          (p) => p.canAnywhere(Capability.reportsPrint),
+        );
+
+        // ── Print-only: reports.export taken from the role ─────────────────────
+        await p7Host(
+          tester,
+          'remove reports.export from accountant',
+          'applied',
+        );
+        await s11AuthorityUntil(
+          tester,
+          container,
+          'the accountant without reports.export',
+          (p) => !p.canAnywhere(Capability.reportsExport),
+        );
+        await p7OpenExportCentre(tester);
+        pnl = await p7Card(tester, ExportReport.profitAndLoss);
+        expect((pnl.pdf, pnl.xlsx, pnl.print), (false, false, true));
+        await p7Host(
+          tester,
+          'restore reports.export to accountant',
+          'restored',
+        );
+        await s11AuthorityUntil(
+          tester,
+          container,
+          'reports.export back',
+          (p) => p.canAnywhere(Capability.reportsExport),
+        );
+
+        // ── reports.export lost while the Save As dialog is open ───────────────
+        await p7OpenExportCentre(tester);
+        await p7Reveal(
+          tester,
+          find.byKey(const Key('export-profitAndLoss-pdf')),
+        );
+        final beforeSave = container.read(exportActionProvider).last;
+        await tapWhenHittable(
+          tester,
+          find.byKey(const Key('export-profitAndLoss-pdf')),
+        );
+        await tester.pump(const Duration(seconds: 2));
+        await p7Host(
+          tester,
+          'save-dialog-open: remove reports.export from accountant '
+              '(leave the dialog open)',
+          'applied',
+        );
+        await s11AuthorityUntil(
+          tester,
+          container,
+          'the loss, while the dialog is open',
+          (p) => !p.canAnywhere(Capability.reportsExport),
+        );
+        p7Say(
+          'lost-during-save',
+          'Save As: save as ${p7Path('lost-during-save.pdf')}',
+        );
+        await pumpUntil(tester, 'the dialog to close', () {
+          final s = container.read(exportActionProvider);
+          return !s.isRunning && !identical(s.last, beforeSave);
+        }, timeout: const Duration(minutes: 15));
+        final lostSave = container.read(exportActionProvider).last!.result;
+        debugPrint('P7 LOST DURING SAVE: $lostSave');
+        expect(lostSave, isA<ExportActionAbandoned>());
+        expect(
+          File(p7Path('lost-during-save.pdf')).existsSync(),
+          isFalse,
+          reason: 'no file is written for a person who lost reports.export',
+        );
+        await p7Host(
+          tester,
+          'restore reports.export to accountant',
+          'restored',
+        );
+        await s11AuthorityUntil(
+          tester,
+          container,
+          'reports.export back',
+          (p) => p.canAnywhere(Capability.reportsExport),
+        );
+
+        // ── reports.print lost while the print dialog is open ──────────────────
+        await p7OpenExportCentre(tester);
+        await p7Reveal(
+          tester,
+          find.byKey(const Key('export-profitAndLoss-print')),
+        );
+        final beforePrint = container.read(exportActionProvider).last;
+        await tapWhenHittable(
+          tester,
+          find.byKey(const Key('export-profitAndLoss-print')),
+        );
+        await tester.pump(const Duration(seconds: 2));
+        await p7Host(
+          tester,
+          'print-dialog-open: remove reports.print from accountant '
+              '(leave the dialog open)',
+          'applied',
+        );
+        await s11AuthorityUntil(
+          tester,
+          container,
+          'the loss, while the print dialog is open',
+          (p) => !p.canAnywhere(Capability.reportsPrint),
+        );
+        p7Say(
+          'lost-during-print',
+          'Print: Microsoft Print to PDF, Print; if Windows asks where to save, '
+              'save as ${p7Path('lost-during-print.pdf')}',
+        );
+        await pumpUntil(tester, 'the print dialog to close', () {
+          final s = container.read(exportActionProvider);
+          return !s.isRunning && !identical(s.last, beforePrint);
+        }, timeout: const Duration(minutes: 15));
+        await tester.pump(const Duration(seconds: 5));
+        final lostPrint = container.read(exportActionProvider).last!.result;
+        debugPrint(
+          'P7 LOST DURING PRINT: $lostPrint; printed file exists: '
+          '${File(p7Path('lost-during-print.pdf')).existsSync()}',
+        );
+        await p7Host(tester, 'restore reports.print to accountant', 'restored');
+        expect(
+          File(p7Path('lost-during-print.pdf')).existsSync(),
+          isFalse,
+          reason: 'nothing is printed for a person who lost reports.print',
+        );
+        expect(lostPrint, isNot(isA<ExportActionHandedOver>()));
+        p7Say('done', 'authority phase finished');
+      } finally {
+        await _admin.revokeScope('accountant@example.com', 'HKI');
+        if (container.read(principalProvider).userId != ownerId) {
+          container = await p6SignIn(tester, 'giridhar@hki.com');
+        }
+        await p6SweepAfter(client);
+      }
+    });
+  });
+
+  // A save that follows a print, or that is made offline: reduced to one variable at a
+  // time, after the full export phase stopped responding at that point (Slice 10).
+  const p7Repro = String.fromEnvironment('P7_REPRO');
+  group('p7-windows-repro', skip: _phase != 'p7-windows-repro', () {
+    testWidgets('repro: $p7Repro', (tester) async {
+      Directory(p7Out).createSync(recursive: true);
+      await launch(tester, recorders: p7Recorders());
+      final container = await p6SignIn(tester, 'giridhar@hki.com');
+      final client = Supabase.instance.client;
+      await sweepPnlFixtures(client, marker: p6Marker);
+      try {
+        await p6Fixtures(client);
+        await openPnl(tester, container);
+        await chooseCustom(tester, container, p6From.iso, p6To.iso);
+        await refreshPnl(tester, container);
+        await p7OpenExportCentre(tester);
+        if (p7Repro.contains('print')) {
+          final r = await p7Act(
+            tester,
+            container,
+            'export-profitAndLoss-print',
+            p7Repro.contains('printcancel')
+                ? 'repro print cancel'
+                : 'repro print',
+            'Print Setup OK; save as ${p7Path('repro-printed.pdf')}',
+          );
+          debugPrint('P7 REPRO print: $r');
+        }
+        if (p7Repro.contains('offline')) _transport.online = false;
+        final r = await p7Act(
+          tester,
+          container,
+          'export-profitAndLoss-pdf',
+          'repro save',
+          'Save As: ${p7Path('repro-saved.pdf')}',
+        );
+        debugPrint('P7 REPRO save: $r');
+        expect(r, isA<ExportActionSaved>());
+      } finally {
+        _transport.online = true;
+        await p6SweepAfter(client);
+      }
+    });
+  });
+
+  // ── Phase 7 Slice 10 — the P&L PDF share on a real phone ──────────────────────
+  //
+  // Run on the Galaxy A06 over USB only (D-288). The system share sheet is outside the
+  // application, so the operator answers it over adb. The phase prints `P7PHONE STEP …`
+  // and waits for the operator to write the same step name, plus `:done`, into
+  // `<app files>/p7host.json` (`adb shell run-as <package> …`).
+  Future<void> p7PhoneStep(
+    WidgetTester tester,
+    String hostFile,
+    String step,
+    String instruction,
+  ) async {
+    debugPrint('P7PHONE STEP $step :: $instruction');
+    await pumpUntil(tester, 'the operator to finish $step', () {
+      try {
+        return File(hostFile).readAsStringSync().contains('$step:done');
+      } on Object {
+        return false;
+      }
+    }, timeout: const Duration(minutes: 20));
+  }
+
+  List<File> p7Shared(Directory cache) {
+    final folder = Directory('${cache.path}/share');
+    if (!folder.existsSync()) return const [];
+    return [
+      for (final e in folder.listSync())
+        if (e is File) e,
+    ];
+  }
+
+  Future<void> p7PhoneShare(
+    WidgetTester tester,
+    ProviderContainer container,
+  ) async {
+    final before = container.read(exportActionProvider).last;
+    await centrePnlControl(tester, find.byKey(const Key('pnl-share-pdf')));
+    await tapWhenHittable(tester, find.byKey(const Key('pnl-share-pdf')));
+    await pumpUntil(tester, 'the share to hand over', () {
+      final s = container.read(exportActionProvider);
+      return !s.isRunning && !identical(s.last, before);
+    }, timeout: const Duration(minutes: 2));
+  }
+
+  group('p7-android-share', skip: _phase != 'p7-android-share', () {
+    testWidgets(
+      'the phone shares the P&L PDF from its private cache, offline too, only with '
+      'reports.export, and offers no Excel, print or Export Centre',
+      (tester) async {
+        expect(s11Phone(), isTrue, reason: 'run on the Galaxy A06');
+        final hostFile =
+            '${(await getApplicationSupportDirectory()).path}/p7host.json';
+        final cache = await exportShareCacheRoot();
+        debugPrint('P7PHONE PATHS host=$hostFile cache=${cache.path}');
+        await launch(tester);
+        var container = await s11SignIn(tester, 'giridhar@hki.com');
+        final ownerId = container.read(principalProvider).userId;
+        final client = Supabase.instance.client;
+        await sweepPnlFixtures(client, marker: p6Marker);
+        try {
+          await p6Fixtures(client);
+          await openPhonePnl(tester, container);
+          await choosePhoneCustom(tester, container, p6From, p6To);
+          await refreshPhonePnl(tester, container);
+          final pnl = computedPnl(container);
+
+          // Only the P&L share: no Excel, no print, no Export Centre on a phone.
+          expect(find.byKey(const Key('pnl-share-pdf')), findsOneWidget);
+          expect(find.byKey(const Key('export-centre')), findsNothing);
+          expect(find.textContaining('Save Excel'), findsNothing);
+          expect(find.byIcon(Icons.print_outlined), findsNothing);
+          expect(find.byIcon(Icons.table_chart_outlined), findsNothing);
+
+          // ── Share one: the sheet opens; the file is in the private cache ──────
+          await p7PhoneShare(tester, container);
+          expect(
+            container.read(exportActionProvider).last!.result,
+            isA<ExportActionHandedOver>(),
+          );
+          var shared = p7Shared(cache);
+          debugPrint('P7PHONE SHARED ${[for (final f in shared) f.path]}');
+          expect(shared, hasLength(1));
+          final first = shared.single;
+          expect(first.path, startsWith(cache.path), reason: 'private cache');
+          expect(
+            first.uri.pathSegments.last,
+            'KrishnaImperialMIS_ProfitAndLoss_Consolidated_2027-03-01_2027-03-31.pdf',
+          );
+          final text = PdfText.read(
+            inflatePdfStreams(first.readAsBytesSync()),
+          ).lines.join('\n');
+          for (final m in [
+            pnl.grossSales,
+            pnl.gst,
+            pnl.netSales,
+            pnl.expenses,
+            pnl.operatingProfit,
+          ]) {
+            expect(text, contains(MoneyFormatter.standard.format(m)));
+          }
+          expect(text, contains('Both properties (consolidated)'));
+          expect(text, contains('1 Mar 2027 – 31 Mar 2027'));
+          expect(text, contains('Synchronised as of'));
+          expect(text, contains('₹'));
+          final firstModified = first.lastModifiedSync();
+          await p7PhoneStep(
+            tester,
+            hostFile,
+            'share1',
+            'the share sheet is open: inspect it, then press Back (cancel)',
+          );
+          await tester.pump(const Duration(seconds: 2));
+
+          // ── Share two, offline: the earlier file goes before the new one ──────
+          _transport.online = false;
+          await tester.pump(const Duration(seconds: 2));
+          await p7PhoneShare(tester, container);
+          expect(
+            container.read(exportActionProvider).last!.result,
+            isA<ExportActionHandedOver>(),
+            reason: 'a complete cached report shares offline',
+          );
+          shared = p7Shared(cache);
+          expect(
+            shared,
+            hasLength(1),
+            reason: 'the earlier export was removed',
+          );
+          expect(
+            shared.single.lastModifiedSync().isAfter(firstModified) ||
+                shared.single.lastModifiedSync() == firstModified,
+            isTrue,
+          );
+          await p7PhoneStep(
+            tester,
+            hostFile,
+            'share2',
+            'offline share sheet open: press Back',
+          );
+          _transport.online = true;
+
+          // ── Leaving the P&L and opening it again ───────────────────────────────
+          await p6OpenOverview(tester, container);
+          await openPhonePnl(tester, container);
+          await tester.pump(const Duration(seconds: 2));
+          debugPrint(
+            'P7PHONE AFTER RE-ENTRY ${[for (final f in p7Shared(cache)) f.path]}',
+          );
+
+          // ── The Manager bundle: reads the P&L, is offered no share (D-292) ────
+          await signOutThroughTheUi(tester);
+          container = await s11SignIn(tester, 'ccr.manager@example.com');
+          await openPhonePnl(tester, container);
+          await choosePhoneCustom(tester, container, p6From, p6To);
+          await refreshPhonePnl(tester, container);
+          expect(container.read(pnlViewProvider).value, isA<PnlReportView>());
+          expect(find.byKey(const Key('pnl-share-pdf')), findsNothing);
+
+          // ── The Accountant, then reports.export taken away ─────────────────────
+          await signOutThroughTheUi(tester);
+          container = await s11SignIn(tester, 'accountant@example.com');
+          await openPhonePnl(tester, container);
+          await choosePhoneCustom(tester, container, p6From, p6To);
+          await refreshPhonePnl(tester, container);
+          expect(find.byKey(const Key('pnl-share-pdf')), findsOneWidget);
+          await p7PhoneStep(
+            tester,
+            hostFile,
+            'remove-export',
+            'HOST: remove reports.export from the accountant role',
+          );
+          await s11AuthorityUntil(
+            tester,
+            container,
+            'the accountant without reports.export',
+            (p) => !p.canAnywhere(Capability.reportsExport),
+          );
+          await tester.pump(const Duration(seconds: 2));
+          expect(
+            find.byKey(const Key('pnl-share-pdf')),
+            findsNothing,
+            reason: 'a lost capability takes the share away',
+          );
+          await p7PhoneStep(
+            tester,
+            hostFile,
+            'restore-export',
+            'HOST: restore reports.export to the accountant role',
+          );
+          await s11AuthorityUntil(
+            tester,
+            container,
+            'reports.export back',
+            (p) => p.canAnywhere(Capability.reportsExport),
+          );
+          expect(find.byKey(const Key('pnl-share-pdf')), findsOneWidget);
+          debugPrint('P7PHONE DONE');
+        } finally {
+          _transport.online = true;
+          if (container.read(principalProvider).userId != ownerId) {
+            container = await s11SignIn(tester, 'giridhar@hki.com');
+          }
           await p6SweepAfter(client);
         }
       },
