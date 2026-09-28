@@ -6,7 +6,7 @@ Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
 Status: **Part proposal, part as-built.** Corrected at Phase 4 closure, 2026-09-07.
-Last updated: 2026-09-25 — **Phase 7 Slice 1 (governance)**: the §2 capability catalogue
+Last updated: 2026-09-28 — **Phase 7 closed with no schema change** (D-311). Previously 2026-09-25 — **Phase 7 Slice 1 (governance)**: the §2 capability catalogue
 now matches the shipped codes (D-300), and Phase 7 is planned with **no schema change**
 (see *Phase 7* at the end). Previously 2026-09-25 — **Phase 6 (Dashboard & Analytics)
 closed with no schema change**:
@@ -1901,3 +1901,15 @@ none writes a row.
 
 If any approved Phase 7 requirement turns out to need a schema, migration or server change,
 the work **stops and is reported** before anything is built.
+
+### Phase 7 closure (2026-09-28, D-311): confirmed, no database change
+
+Verified against the Phase 6 closure commit `b35611a`:
+- no file under `supabase/` changed;
+- nothing under `lib/data/local` changed (Drift **v21**);
+- the reporting data layer and reporting cache are unchanged;
+- the live migration ledger is **101**, latest `20260912100000`.
+
+Exports read only `PnlResult`, `DashboardView` and cached master names. The two deferred
+requirements above (a transaction-number column in the reporting cache, and Drift v22) remain
+**not built** (D-296).

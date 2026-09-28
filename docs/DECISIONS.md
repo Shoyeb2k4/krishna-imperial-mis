@@ -10851,3 +10851,55 @@ failing. It is now not retried.
 - the next-share cleanup still works.
 
 With the listener disabled, the sign-out and switch tests turn **red**.
+
+---
+
+# Phase 7 — Export, PDF & Printing: closure (2026-09-28)
+
+## D-311 — Phase 7 is closed, and this is what each of its decisions finally says
+**Date:** 2026-09-28 · **Status:** Accepted (project-lead approval: Slice 10 accepted, U.4 manual
+review PASS)
+
+Phase 7 closes at Slice 11. Slice 11 is documentation and closure gates only: no product code, no
+dependency, no schema, no migration and no server change. This entry gives the final disposition of
+every Phase 7 decision. **No earlier entry is rewritten or renumbered.**
+
+### Final dispositions
+
+| Decision | Final state |
+|---|---|
+| D-290 | Final. Windows exports four reports as PDF and Excel; Android shares the P&L PDF. No Overview export, chart image or screenshot |
+| D-291 | Final. Export = view authority ∩ `reports.export`; print = view authority ∩ `reports.print`, for the exact scope, decided on the client by design. The server's reporting authorization remains the confidentiality boundary. `reports.export` / `reports.print` stay on D-139's exemption list |
+| D-292 | Final. Role bundles unchanged; the Manager is offered no export or print, proven in the real app |
+| D-293 | Final. Android: the P&L PDF through the system share sheet, from the private cache, with no new permission. No Android Excel, no Android direct printing, no Android analysis export |
+| D-294 | Final. Money cells numeric, from integer paise, no formulas, no raw-paise column; conventional currency format (Excel may show lakh grouping by locale) |
+| D-295 | Final. Noto Sans Regular and Bold bundled with `OFL.txt`; nothing fetched at run time |
+| D-296 | Final. Transaction-list and drill-down export deferred; not built |
+| D-297 | Final. The Windows Reports destination is the Export Centre and holds no report state |
+| D-298 | Final. `pdf` 3.13.1, `printing` 5.15.1, `archive` 4.2.0 pinned; `excel` and `share_plus` rejected. PDFium is downloaded at Windows **build** time (Phase 9 reproducibility item) |
+| D-299 | Final. One document model, two renderers; printing sends the same PDF bytes; freshness is three separate statements |
+| D-300 | Final. The schema document's capability catalogue matches the shipped codes |
+| D-301 | Final. The host suite runs on a Linux cloud host as well as on Windows |
+| D-302 … D-307 | Final: the models, XLSX writer, PDF renderer, Export Centre, Android share and analysis exports as built |
+| **D-308** | Final. The Windows runner holds a second COM apartment reference so a print can never freeze a later Save As |
+| **D-309** | Final. Print decides authority again when Print is pressed. With Microsoft Print to PDF, an aborted job may leave an empty 0-byte file; the project lead accepted that (no report content reaches any file) |
+| **D-310** | Final. A shared PDF is removed at sign-out and when another person signs in; leaving the Reports tab is not a trigger |
+
+### What Phase 7 did not add, verified at closure against `b35611a` (Phase 6 closure)
+
+- No change under `supabase/` (no migration, no RPC).
+- No change under `lib/data/local` (Drift **v21**), and none in the reporting data layer or reporting
+  cache.
+- No Owner Accounts export, no transaction-list export, no Android Excel and no Android direct
+  printing. The phone P&L imports only the share action.
+
+### Carry-forwards
+
+| Class | Items |
+|---|---|
+| **Phase 8** | Export rendering performance, measured separately from reporting (§51.9, not measured in Phase 7). `may_read_expense` per-row cost (D-186). The `org_id`-leading local expense index (D-223). A review of other `FutureProvider`s for Riverpod 3's default retry-on-error (found in D-310). Making a missed tap fatal across the host suite. The D-248 diagnostic |
+| **Phase 9** | Production Supabase configuration; the D-146 fresh-branch migration replay; Android release signing, AAB, Play; Windows installer; a reproducible Windows build without the PDFium download (D-298); launching the release executable once D-247's installation is resolved; a physical printer on the target machine |
+| **Product lead** | The production 50:50 ownership effective-from date; disposal of the D-247 forensic database; the stale Administration placeholder copy; whether a transaction-list export is wanted (D-296); optionally, removing the Print-to-PDF empty-file residue, which needs a `printing` plugin fork (D-309) |
+| **Future analytics / Owner Accounts** | Unchanged from D-289 (category shares, per-category comparison, finalized Owner Statements, …) |
+
+**Open defects at closure: none.**

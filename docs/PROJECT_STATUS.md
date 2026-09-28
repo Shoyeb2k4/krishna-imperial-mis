@@ -5,7 +5,13 @@ Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
-Last updated: **2026-09-28** — **PHASE 7 SLICE 10 — FULL LOCAL ACCEPTANCE: COMPLETE.** Every
+Last updated: **2026-09-28** — **PHASE 7 — EXPORT, PDF & PRINTING: COMPLETE AND FORMALLY CLOSED
+at Slice 11** (D-311). Slices 1–11 are closed; the project lead's U.4 manual review passed.
+Phase 7 added no schema, migration, RPC or reporting-cache change. The closure record, evidence
+and carry-forwards are *PHASE 7 — EXPORT, PDF & PRINTING: COMPLETE AND CLOSED* at the end of
+this file. **Phase 8 — Production Hardening: not started.**
+
+Previously: **2026-09-28** — **PHASE 7 SLICE 10 — FULL LOCAL ACCEPTANCE: COMPLETE.** Every
 gate passed in the real applications:
 - Windows export, authority and print phases in the real executable;
 - the Galaxy A06 share phase over USB;
@@ -106,8 +112,10 @@ drill-down, and the Owner Accounts ledger, settlement engine and preview surface
 
 ## Current phase
 
-**Phase 7 — Export, PDF & Printing: IN PROGRESS (started 2026-09-25).** Slices 1–10 are
-complete; Slice 10 (full local acceptance) closed on 2026-09-28. Slice 11 (closure) is not
+**Phase 7 — Export, PDF & Printing: COMPLETE and formally closed (2026-09-28, Slice 11,
+D-311).** Its authoritative record is *PHASE 7 — EXPORT, PDF & PRINTING: COMPLETE AND CLOSED* at
+the **end** of this file. **Phase 8 is not started.** *(Superseded wording, kept:)* Slices 1–10
+were complete; Slice 10 (full local acceptance) closed on 2026-09-28. Slice 11 (closure) was not
 started. *(This paragraph read "Slice 10 waits for the project lead's review" until Slice 10.)*
 *(Earlier wording, kept:)* Slices 1–5 are
 complete through Slice 9. Slice 10 (full acceptance) waits for the project lead's review.
@@ -6689,7 +6697,7 @@ The Windows **Reports** placeholder becomes the **Export Centre** (D-297).
 | 8 | Android P&L PDF share | **COMPLETE** |
 | 9 | Windows analysis-section exports | **COMPLETE** |
 | 10 | Full acceptance | **COMPLETE** (2026-09-28; D-308, D-309) |
-| 11 | Closure | not started |
+| 11 | Closure | **CLOSED** (2026-09-28, D-311) |
 
 Transaction-list export is outside this plan (D-296).
 
@@ -7133,3 +7141,116 @@ Local schema **v21**, ledger **101**. No migration, RPC, cache or schema change.
 - **Not tested:** a physical printer (only Microsoft Print to PDF). The share sheet's receiving apps
   (Gmail, Drive, Messages) were not used, because sending company data to an external service needs
   the project lead. The project lead's own Excel/PDF approval (§U.4) is pending.
+
+---
+
+# PHASE 7 — EXPORT, PDF & PRINTING: COMPLETE AND CLOSED
+
+Closed on 2026-09-28 at Slice 11 (D-311). Master Spec **v1.2**, unchanged: Phase 7 renders
+spec §16 as written and moves no financial semantics. Local Drift schema **v21**; migration
+ledger **101**. Decisions **D-290 … D-311**.
+
+Slice 11 is documentation and closure gates only: no product code, dependency, schema, migration
+or server change. **Phase 8 — Production Hardening: not started.**
+
+## 1 · What Phase 7 delivered
+
+| Surface | Contents |
+|---|---|
+| **Windows Export Centre** (`/reports`) | The four reports — Profit & Loss, Revenue Analysis, Expense & Department Analysis, Business Comparison (consolidated only) — each offered as PDF, Excel and Print as authority allows, with scope, period and freshness shown and no figure. Open in Analytics |
+| **Save As** | Native Windows dialog, readable suggested names, atomic write, no silent overwrite, truthful failures (folder refused, file open in another program) |
+| **Printing** | The same PDF bytes through the native Windows print dialog; authority decided again when Print is pressed (D-309); no freeze after a print (D-308) |
+| **Android** | The P&L PDF through the system share sheet from the app's private cache; no new permission; removed before the next share, at sign-out and when another person signs in (D-310) |
+| **Foundation** | `ExportAuthority`; immutable document models; an internal OpenXML writer; the PDF renderer with bundled Noto Sans; one shared wording file held equal to the screens |
+
+## 2 · Slices
+
+| # | Slice | Commit(s) | State |
+|---|---|---|---|
+| 1 | Governance | `5451542` (+ `a69c450`, D-301) | CLOSED |
+| 2 | Export and print authorisation | `cb9cf04` | CLOSED |
+| 3 | Export document models | `ad9a234` | CLOSED |
+| 4 | XLSX foundation | `ebbb8c6` | CLOSED |
+| 5 | PDF foundation | `5a8ccbb` | CLOSED |
+| 6 | Export Centre and Save As | `0342cbc` | CLOSED |
+| 7 | Windows printing | `5373148` | CLOSED |
+| 8 | Android P&L PDF share | `49489f2` | CLOSED |
+| 9 | Analysis exports | `b521656` | CLOSED |
+| 10 | Full local acceptance | `2839b52`, `b4fa40a`, `99f0177`, `c91d188`, `a948da8`, `eee0f09`, `01f0b66` | CLOSED |
+| 11 | Closure | this record | CLOSED |
+
+## 3 · Final acceptance evidence (Slice 10, accepted by the project lead)
+
+| Gate | Result |
+|---|---|
+| Windows host suite | **2,974 passed, 0 skipped, 0 failed** |
+| Windows release build | PASS (`krishna_mis.exe` `775DABBE…0FA7`; Noto Sans + `OFL.txt`; PDFium) |
+| Android DEV APK | PASS — **SHA-256 `E230C6A036D8A6206F39600469AC6490782B2D0C26FA35DCD873DAAA185D0A92`**, 247,356,790 bytes, `config/dev.json` only, `INTERNET` permission only |
+| Galaxy A06 installation | PASS — the installed hash equals the build |
+| Windows Export Centre, native Save As | PASS (real application) |
+| Excel review / PDF review | PASS (real Microsoft Excel; rendered PDFs) |
+| Windows Print-to-PDF | PASS (all four reports; byte-equal to Save PDF) |
+| Android P&L share | PASS (Galaxy A06, USB only) |
+| Private share-cache cleanup on sign-out and user switch | PASS (D-310) |
+| Authorization and revocation | PASS (Owner, Manager, Accountant, export-only, print-only, loss during Save As, loss during Print) |
+| Offline and reconnect | PASS |
+| Screen / XLSX / PDF / print parity | PASS, to the paisa |
+| Secret scans | clean (tree, history, artefacts) |
+| **U.4 project-lead manual review** | **PASS** (2026-09-28) |
+
+## 4 · What Phase 7 did not add — verified at closure against `b35611a`
+
+- No schema migration: no change under `supabase/`. The live ledger stays at 101, latest
+  `20260912100000`.
+- No change to the local database: Drift **v21**.
+- No reporting RPC, no second reporting cache, and no change in the reporting data layer.
+- No Owner Accounts export and no transaction-list export (D-296).
+- No Android Excel and no Android direct printing (D-293).
+
+**Dependencies:** `pdf` 3.13.1, `printing` 5.15.1 and `archive` 4.2.0, pinned exactly (D-298),
+plus the bundled Noto Sans assets. Nothing else changed.
+
+## 5 · Limitations and observations carried out of Phase 7
+
+- **Printing tested on Microsoft Print to PDF only.** A physical printer is a Phase 9 check on
+  the target machine.
+- **When print authority is lost during the dialog, Print to PDF may leave an empty 0-byte
+  file** and still asks where to save. The project lead accepted this; removing it needs a
+  `printing` plugin fork (D-309).
+- **The release executable was not launched in acceptance** (D-247). It was verified by build,
+  inspection and scanning.
+- **The share sheet's receiving apps were not exercised.** Sending company data to an external
+  service needs the project lead.
+- **Excel shows lakh grouping by the Windows locale.** The stored values are exact (D-294).
+- **The P&L workbook's Treatment column is blank unless "No GST"**, as on the screen.
+- **Real sales `KI-REV-26-27-002509 … 002511` were preserved exactly.** They are not
+  acceptance fixtures.
+
+## 6 · Carry-forwards
+
+Carry-forwards are recorded in D-311:
+- **Phase 8:**
+  - export rendering performance;
+  - the `may_read_expense` per-row cost;
+  - the `org_id`-leading local index;
+  - the Riverpod 3 retry-default review;
+  - fatal missed taps across the host suite;
+  - the D-248 diagnostic.
+- **Phase 9:**
+  - production configuration and the D-146 migration replay;
+  - signing, AAB, Play and the Windows installer;
+  - a reproducible PDFium build;
+  - launching the release executable;
+  - a physical printer.
+- **Project lead:**
+  - the production 50:50 ownership effective-from date;
+  - the D-247 forensic database;
+  - the Administration placeholder copy;
+  - whether a transaction-list export is wanted;
+  - optionally, the Print-to-PDF empty-file residue.
+
+## 7 · Open defects at closure
+
+**None.**
+
+**PHASE 7 — EXPORT, PDF & PRINTING IS FORMALLY CLOSED. Phase 8 is not started.**

@@ -889,5 +889,18 @@ Details are in `PROJECT_STATUS.md`, *Phase 7 Slice 10*.
 
 ### U.4 Project lead
 
-- [ ] Excel and PDF exports reviewed and approved (§F).
-- [ ] Windows printing produces a correct, well-laid-out page (§F).
+- [x] Excel and PDF exports reviewed and approved (§F). **U.4 manual review PASS**, reported
+      by the project lead on 28 September 2026 for the generated Excel, PDF and printed-PDF
+      outputs.
+- [x] Windows printing produces a correct, well-laid-out page (§F). Accepted on Microsoft
+      Print to PDF output; a physical printer remains a Phase 9 check on the target machine.
+
+### U.5 Phase 7 closure gates (Slice 11)
+
+- [x] `dart format --set-exit-if-changed` and `flutter analyze` clean.
+- [x] Documentation invariants and the Phase 7 structural guards pass.
+- [x] `dart run tool/check_no_client_secrets.dart --history --artefacts` clean.
+- [x] No Phase 7 change under `supabase/`, `lib/data/local`, the reporting data layer or the
+      reporting cache; Drift v21, ledger 101 (D-311).
+- [x] No Owner Accounts export, transaction-list export, Android Excel or Android direct print.
+- [x] Clean working tree after the closure commit.
