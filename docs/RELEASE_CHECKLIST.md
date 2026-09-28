@@ -881,8 +881,11 @@ Details are in `PROJECT_STATUS.md`, *Phase 7 Slice 10*.
 - [x] P&L PDF opens the system share sheet. The temporary file is cleaned up. No new
       permission is requested. *(Host evidence: Slice 8, 11 share tests and the manifest
       check. The device run is Slice 10.)*
+- [x] A shared PDF is removed at sign-out and when another person signs in (D-310). Host
+      tests, plus `p7-android-share` on the Galaxy A06.
 - [x] Galaxy A06 pass, over USB only (D-288): `p7-android-share` PASS on SM-A066B, Android 16.
-      The clean dev APK (`1812D57A…`) is installed, and its installed hash equals the build.
+      The clean dev APK (`E230C6A0…`, rebuilt after D-310) is installed, and its installed hash
+      equals the build.
 
 ### U.4 Project lead
 

@@ -14251,167 +14251,210 @@ void main() {
   }
 
   group('p7-android-share', skip: _phase != 'p7-android-share', () {
-    testWidgets(
-      'the phone shares the P&L PDF from its private cache, offline too, only with '
-      'reports.export, and offers no Excel, print or Export Centre',
-      (tester) async {
-        expect(s11Phone(), isTrue, reason: 'run on the Galaxy A06');
-        final hostFile =
-            '${(await getApplicationSupportDirectory()).path}/p7host.json';
-        final cache = await exportShareCacheRoot();
-        debugPrint('P7PHONE PATHS host=$hostFile cache=${cache.path}');
-        await launch(tester);
-        var container = await s11SignIn(tester, 'giridhar@hki.com');
-        final ownerId = container.read(principalProvider).userId;
-        final client = Supabase.instance.client;
-        await sweepPnlFixtures(client, marker: p6Marker);
-        try {
-          await p6Fixtures(client);
-          await openPhonePnl(tester, container);
-          await choosePhoneCustom(tester, container, p6From, p6To);
-          await refreshPhonePnl(tester, container);
-          final pnl = computedPnl(container);
+    testWidgets('the phone shares the P&L PDF from its private cache, offline too, only with '
+        'reports.export, and offers no Excel, print or Export Centre', (tester) async {
+      expect(s11Phone(), isTrue, reason: 'run on the Galaxy A06');
+      final hostFile =
+          '${(await getApplicationSupportDirectory()).path}/p7host.json';
+      final cache = await exportShareCacheRoot();
+      debugPrint('P7PHONE PATHS host=$hostFile cache=${cache.path}');
+      await launch(tester);
+      var container = await s11SignIn(tester, 'giridhar@hki.com');
+      final ownerId = container.read(principalProvider).userId;
+      final client = Supabase.instance.client;
+      await sweepPnlFixtures(client, marker: p6Marker);
+      try {
+        await p6Fixtures(client);
+        await openPhonePnl(tester, container);
+        await choosePhoneCustom(tester, container, p6From, p6To);
+        await refreshPhonePnl(tester, container);
+        final pnl = computedPnl(container);
 
-          // Only the P&L share: no Excel, no print, no Export Centre on a phone.
-          expect(find.byKey(const Key('pnl-share-pdf')), findsOneWidget);
-          expect(find.byKey(const Key('export-centre')), findsNothing);
-          expect(find.textContaining('Save Excel'), findsNothing);
-          expect(find.byIcon(Icons.print_outlined), findsNothing);
-          expect(find.byIcon(Icons.table_chart_outlined), findsNothing);
+        // Only the P&L share: no Excel, no print, no Export Centre on a phone.
+        expect(find.byKey(const Key('pnl-share-pdf')), findsOneWidget);
+        expect(find.byKey(const Key('export-centre')), findsNothing);
+        expect(find.textContaining('Save Excel'), findsNothing);
+        expect(find.byIcon(Icons.print_outlined), findsNothing);
+        expect(find.byIcon(Icons.table_chart_outlined), findsNothing);
 
-          // ── Share one: the sheet opens; the file is in the private cache ──────
-          await p7PhoneShare(tester, container);
-          expect(
-            container.read(exportActionProvider).last!.result,
-            isA<ExportActionHandedOver>(),
-          );
-          var shared = p7Shared(cache);
-          debugPrint('P7PHONE SHARED ${[for (final f in shared) f.path]}');
-          expect(shared, hasLength(1));
-          final first = shared.single;
-          expect(first.path, startsWith(cache.path), reason: 'private cache');
-          expect(
-            first.uri.pathSegments.last,
-            'KrishnaImperialMIS_ProfitAndLoss_Consolidated_2027-03-01_2027-03-31.pdf',
-          );
-          final text = PdfText.read(
-            inflatePdfStreams(first.readAsBytesSync()),
-          ).lines.join('\n');
-          for (final m in [
-            pnl.grossSales,
-            pnl.gst,
-            pnl.netSales,
-            pnl.expenses,
-            pnl.operatingProfit,
-          ]) {
-            expect(text, contains(MoneyFormatter.standard.format(m)));
-          }
-          expect(text, contains('Both properties (consolidated)'));
-          expect(text, contains('1 Mar 2027 – 31 Mar 2027'));
-          expect(text, contains('Synchronised as of'));
-          expect(text, contains('₹'));
-          final firstModified = first.lastModifiedSync();
-          await p7PhoneStep(
-            tester,
-            hostFile,
-            'share1',
-            'the share sheet is open: inspect it, then press Back (cancel)',
-          );
-          await tester.pump(const Duration(seconds: 2));
-
-          // ── Share two, offline: the earlier file goes before the new one ──────
-          _transport.online = false;
-          await tester.pump(const Duration(seconds: 2));
-          await p7PhoneShare(tester, container);
-          expect(
-            container.read(exportActionProvider).last!.result,
-            isA<ExportActionHandedOver>(),
-            reason: 'a complete cached report shares offline',
-          );
-          shared = p7Shared(cache);
-          expect(
-            shared,
-            hasLength(1),
-            reason: 'the earlier export was removed',
-          );
-          expect(
-            shared.single.lastModifiedSync().isAfter(firstModified) ||
-                shared.single.lastModifiedSync() == firstModified,
-            isTrue,
-          );
-          await p7PhoneStep(
-            tester,
-            hostFile,
-            'share2',
-            'offline share sheet open: press Back',
-          );
-          _transport.online = true;
-
-          // ── Leaving the P&L and opening it again ───────────────────────────────
-          await p6OpenOverview(tester, container);
-          await openPhonePnl(tester, container);
-          await tester.pump(const Duration(seconds: 2));
-          debugPrint(
-            'P7PHONE AFTER RE-ENTRY ${[for (final f in p7Shared(cache)) f.path]}',
-          );
-
-          // ── The Manager bundle: reads the P&L, is offered no share (D-292) ────
-          await signOutThroughTheUi(tester);
-          container = await s11SignIn(tester, 'ccr.manager@example.com');
-          await openPhonePnl(tester, container);
-          await choosePhoneCustom(tester, container, p6From, p6To);
-          await refreshPhonePnl(tester, container);
-          expect(container.read(pnlViewProvider).value, isA<PnlReportView>());
-          expect(find.byKey(const Key('pnl-share-pdf')), findsNothing);
-
-          // ── The Accountant, then reports.export taken away ─────────────────────
-          await signOutThroughTheUi(tester);
-          container = await s11SignIn(tester, 'accountant@example.com');
-          await openPhonePnl(tester, container);
-          await choosePhoneCustom(tester, container, p6From, p6To);
-          await refreshPhonePnl(tester, container);
-          expect(find.byKey(const Key('pnl-share-pdf')), findsOneWidget);
-          await p7PhoneStep(
-            tester,
-            hostFile,
-            'remove-export',
-            'HOST: remove reports.export from the accountant role',
-          );
-          await s11AuthorityUntil(
-            tester,
-            container,
-            'the accountant without reports.export',
-            (p) => !p.canAnywhere(Capability.reportsExport),
-          );
-          await tester.pump(const Duration(seconds: 2));
-          expect(
-            find.byKey(const Key('pnl-share-pdf')),
-            findsNothing,
-            reason: 'a lost capability takes the share away',
-          );
-          await p7PhoneStep(
-            tester,
-            hostFile,
-            'restore-export',
-            'HOST: restore reports.export to the accountant role',
-          );
-          await s11AuthorityUntil(
-            tester,
-            container,
-            'reports.export back',
-            (p) => p.canAnywhere(Capability.reportsExport),
-          );
-          expect(find.byKey(const Key('pnl-share-pdf')), findsOneWidget);
-          debugPrint('P7PHONE DONE');
-        } finally {
-          _transport.online = true;
-          if (container.read(principalProvider).userId != ownerId) {
-            container = await s11SignIn(tester, 'giridhar@hki.com');
-          }
-          await p6SweepAfter(client);
+        // ── Share one: the sheet opens; the file is in the private cache ──────
+        await p7PhoneShare(tester, container);
+        expect(
+          container.read(exportActionProvider).last!.result,
+          isA<ExportActionHandedOver>(),
+        );
+        var shared = p7Shared(cache);
+        debugPrint('P7PHONE SHARED ${[for (final f in shared) f.path]}');
+        expect(shared, hasLength(1));
+        final first = shared.single;
+        expect(first.path, startsWith(cache.path), reason: 'private cache');
+        expect(
+          first.uri.pathSegments.last,
+          'KrishnaImperialMIS_ProfitAndLoss_Consolidated_2027-03-01_2027-03-31.pdf',
+        );
+        final text = PdfText.read(
+          inflatePdfStreams(first.readAsBytesSync()),
+        ).lines.join('\n');
+        for (final m in [
+          pnl.grossSales,
+          pnl.gst,
+          pnl.netSales,
+          pnl.expenses,
+          pnl.operatingProfit,
+        ]) {
+          expect(text, contains(MoneyFormatter.standard.format(m)));
         }
-      },
-    );
+        expect(text, contains('Both properties (consolidated)'));
+        expect(text, contains('1 Mar 2027 – 31 Mar 2027'));
+        expect(text, contains('Synchronised as of'));
+        expect(text, contains('₹'));
+        final firstModified = first.lastModifiedSync();
+        await p7PhoneStep(
+          tester,
+          hostFile,
+          'share1',
+          'the share sheet is open: inspect it, then press Back (cancel)',
+        );
+        await tester.pump(const Duration(seconds: 2));
+
+        // ── Share two, offline: the earlier file goes before the new one ──────
+        _transport.online = false;
+        await tester.pump(const Duration(seconds: 2));
+        await p7PhoneShare(tester, container);
+        expect(
+          container.read(exportActionProvider).last!.result,
+          isA<ExportActionHandedOver>(),
+          reason: 'a complete cached report shares offline',
+        );
+        shared = p7Shared(cache);
+        expect(shared, hasLength(1), reason: 'the earlier export was removed');
+        expect(
+          shared.single.lastModifiedSync().isAfter(firstModified) ||
+              shared.single.lastModifiedSync() == firstModified,
+          isTrue,
+        );
+        await p7PhoneStep(
+          tester,
+          hostFile,
+          'share2',
+          'offline share sheet open: press Back',
+        );
+        _transport.online = true;
+
+        // ── Leaving the P&L and opening it again ───────────────────────────────
+        await p6OpenOverview(tester, container);
+        await openPhonePnl(tester, container);
+        await tester.pump(const Duration(seconds: 2));
+        debugPrint(
+          'P7PHONE AFTER RE-ENTRY ${[for (final f in p7Shared(cache)) f.path]}',
+        );
+
+        // ── Sign-out takes the shared PDF with it (D-310) ──────────────────────
+        expect(p7Shared(cache), isNotEmpty, reason: 'shared, then signed out');
+        await signOutThroughTheUi(tester);
+        await pumpUntil(
+          tester,
+          'sign-out to remove the shared PDF',
+          () => p7Shared(cache).isEmpty,
+          timeout: const Duration(seconds: 20),
+        );
+        debugPrint('P7PHONE AFTER SIGN-OUT ${p7Shared(cache)}');
+
+        // ── The Manager bundle: reads the P&L, is offered no share (D-292) ────
+        container = await s11SignIn(tester, 'ccr.manager@example.com');
+        await openPhonePnl(tester, container);
+        await choosePhoneCustom(tester, container, p6From, p6To);
+        await refreshPhonePnl(tester, container);
+        expect(container.read(pnlViewProvider).value, isA<PnlReportView>());
+        expect(find.byKey(const Key('pnl-share-pdf')), findsNothing);
+
+        // ── The Accountant, then reports.export taken away ─────────────────────
+        await signOutThroughTheUi(tester);
+        container = await s11SignIn(tester, 'accountant@example.com');
+        await openPhonePnl(tester, container);
+        await choosePhoneCustom(tester, container, p6From, p6To);
+        await refreshPhonePnl(tester, container);
+        expect(find.byKey(const Key('pnl-share-pdf')), findsOneWidget);
+        await p7PhoneStep(
+          tester,
+          hostFile,
+          'remove-export',
+          'HOST: remove reports.export from the accountant role',
+        );
+        await s11AuthorityUntil(
+          tester,
+          container,
+          'the accountant without reports.export',
+          (p) => !p.canAnywhere(Capability.reportsExport),
+        );
+        await tester.pump(const Duration(seconds: 2));
+        expect(
+          find.byKey(const Key('pnl-share-pdf')),
+          findsNothing,
+          reason: 'a lost capability takes the share away',
+        );
+        await p7PhoneStep(
+          tester,
+          hostFile,
+          'restore-export',
+          'HOST: restore reports.export to the accountant role',
+        );
+        await s11AuthorityUntil(
+          tester,
+          container,
+          'reports.export back',
+          (p) => p.canAnywhere(Capability.reportsExport),
+        );
+        expect(find.byKey(const Key('pnl-share-pdf')), findsOneWidget);
+
+        // ── The Accountant shares, then the session changes hands (D-310) ─────
+        await p7PhoneShare(tester, container);
+        expect(
+          container.read(exportActionProvider).last!.result,
+          isA<ExportActionHandedOver>(),
+        );
+        expect(p7Shared(cache), hasLength(1));
+        await p7PhoneStep(
+          tester,
+          hostFile,
+          'share3',
+          "the accountant's share sheet is open: press Back",
+        );
+        await signOutThroughTheUi(tester);
+        await pumpUntil(
+          tester,
+          "sign-out to remove the accountant's shared PDF",
+          () => p7Shared(cache).isEmpty,
+          timeout: const Duration(seconds: 20),
+        );
+        // A file left from the previous person, as if the app had stopped before
+        // sign-out finished, and an unrelated file beside it.
+        final share = Directory('${cache.path}/share')
+          ..createSync(recursive: true);
+        final leftover = File(
+          '${share.path}/KrishnaImperialMIS_ProfitAndLoss_Leftover.pdf',
+        )..writeAsBytesSync([1, 2, 3]);
+        final unrelated = File('${share.path}/unrelated.txt')
+          ..writeAsStringSync('not ours');
+        container = await s11SignIn(tester, 'giridhar@hki.com');
+        await pumpUntil(
+          tester,
+          'the next person to remove the previous file',
+          () => !leftover.existsSync(),
+          timeout: const Duration(seconds: 20),
+        );
+        expect(unrelated.existsSync(), isTrue, reason: 'only our PDFs go');
+        unrelated.deleteSync();
+        debugPrint('P7PHONE SWITCH CLEANED ${p7Shared(cache)}');
+        debugPrint('P7PHONE DONE');
+      } finally {
+        _transport.online = true;
+        if (container.read(principalProvider).userId != ownerId) {
+          container = await s11SignIn(tester, 'giridhar@hki.com');
+        }
+        await p6SweepAfter(client);
+      }
+    });
   });
 }
 

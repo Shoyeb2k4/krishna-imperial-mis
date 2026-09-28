@@ -7106,7 +7106,7 @@ Local schema **v21**, ledger **101**. No migration, RPC, cache or schema change.
 | Privacy | no UUID, marker, path, email or capability code in any produced file |
 | Secret scan, tree + history + artefacts | clean, after removing the acceptance **Debug** bundle, which carries identities by design |
 | Windows release | `krishna_mis.exe` SHA-256 `775DABBE…0FA7`; `data/app.so` 13,321,104 bytes, `74387A63…17DC`; Noto Sans ×2 + `OFL.txt`; `pdfium.dll` + `printing_plugin.dll` present |
-| Android dev APK | 247,355,724 bytes, SHA-256 `1812D57A…52A3`, `config/dev.json` only. Permissions: `INTERNET` only (no storage). FileProvider `…flutter.printing`. Noto Sans ×2 + `OFL.txt`. **Installed on the A06, installed hash equal to the build** |
+| Android dev APK | *(superseded by `E230C6A0…0A92` after D-310, below)* 247,355,724 bytes, SHA-256 `1812D57A…52A3`, `config/dev.json` only. Permissions: `INTERNET` only (no storage). FileProvider `…flutter.printing`. Noto Sans ×2 + `OFL.txt`. **Installed on the A06, installed hash equal to the build** |
 | Backend baseline | role capabilities 80, hash `bd3b6b2b…`; grants 7 (5 active); roles 4; settings 0; closed periods 0; tax rules 4; open owner movements 0; storage 265 ↔ 265; dead helper absent; ledger 101 |
 
 ### Recorded, not changed
@@ -7114,11 +7114,15 @@ Local schema **v21**, ledger **101**. No migration, RPC, cache or schema change.
 - **The phone acceptance rebuilds `app-dev-debug.apk` with the identity defines.** The APK was
   rebuilt clean afterwards, reproducing the same hash, rescanned, and reinstalled. Build clean last,
   then scan: the Slice 13 lesson again.
-- **The earlier shared PDF stays in the app's private cache after leaving and reopening Reports.**
-  The phone shell keeps the Reports tab alive, so the "cleanup when the P&L opens" in D-306 happens
-  when the control is first built in a session, and before every share. It does not happen on each
-  visit, and not at sign-out. The file is readable only by the app. For the project lead to decide
-  whether a sign-out or resume cleanup is wanted.
+- **The shared PDF outlived sign-out.** The project lead ruled: it is also removed when the person
+  signs out or another person takes the session (**D-310**, `eee0f09`). Leaving and reopening the
+  Reports tab is deliberately not a trigger.
+  - Host tests: 6 new, red under control.
+  - Galaxy A06 (`p7-android-share`, **PASS**): sign-out left an empty share folder. A leftover
+    PDF from the previous person was removed when the next person signed in, and an unrelated
+    file beside it was left untouched.
+  - A clean dev APK (`E230C6A0…0A92`, 247,356,790 bytes) is installed; the installed hash equals
+    the build.
 - **Treatment column** on the P&L Revenue sheet is blank unless the treatment is `none` ("No GST"),
   as on the screen. The fixture has no Banquet sale, so no row shows it here; host tests cover it.
 - **Excel displayed lakh grouping** (₹1,23,642.00) on this machine. That comes from the Windows

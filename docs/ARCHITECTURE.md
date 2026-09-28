@@ -4454,9 +4454,12 @@ time as synchronisation time.
 - The file cannot be removed while the receiving app may still read it. This app's earlier
   shared exports are removed before the next share, and when the phone P&L's share control
   is first built in a session (D-306).
-  - The phone shell keeps the Reports tab alive, so returning to it does not repeat the
-    cleanup. Sign-out does not remove the file either.
-  - The file is readable only by the app (recorded in Slice 10).
+  - They are also removed when the person signs out, or when another person takes the
+    session (D-310). This is done by a provider kept alive at the app root that watches who
+    is signed in, and it never blocks sign-out.
+  - Returning to the Reports tab (kept alive by the phone shell) is deliberately not a
+    trigger.
+  - The file is readable only by the app.
 - No storage permission is declared.
 - `file_selector_android` cannot show a save dialog, so the share sheet is how a user saves
   (D-293).
