@@ -820,35 +820,35 @@ actually been run, with its result recorded in `PROJECT_STATUS.md`.
 
 ### U.1 Automated
 
-- [ ] **Parity.** The same fixture gives the same integer paise:
+- [x] **Parity.** The same fixture gives the same integer paise:
   - on screen, in the export document model, in the XLSX cells, and in the extracted PDF
     text (spec §21.3);
   - for the P&L and for each of the three analysis outputs.
-- [ ] **XLSX structure:**
+- [x] **XLSX structure:**
   - sheet names, cell types and number formats are as specified;
   - money cells are numeric and **there are no formulas**;
   - there is no raw-paise column;
   - the margin is a percentage, or "N/A".
-- [ ] **PDF content:**
+- [x] **PDF content:**
   - ₹ is drawn with the bundled Noto Sans, with the network absent;
   - pages are numbered;
   - the three freshness statements are separate;
   - profit and loss are stated in words.
-- [ ] **Authority matrix (D-291, D-292):**
+- [x] **Authority matrix (D-291, D-292):**
   - view without the action capability → no action offered;
   - the action capability without view authority → nothing;
   - consolidated scope with the action capability missing for one property → refused;
   - the Manager bundle → no Export or Print.
-- [ ] **Offline.** A complete, authorised report exports with the transport removed. A
+- [x] **Offline.** A complete, authorised report exports with the transport removed. A
       report that is not downloaded is refused and never shown as ₹0. No export triggers a
       sync.
-- [ ] **Byte-level leakage guard** over generated PDF and XLSX: no ids, capability codes,
+- [x] **Byte-level leakage guard** over generated PDF and XLSX: no ids, capability codes,
       paths, markers or credentials.
-- [ ] **Structural guards.** No arithmetic in the models, the XLSX writer or the PDF
+- [x] **Structural guards.** No arithmetic in the models, the XLSX writer or the PDF
       renderer. No runtime font fetch. No storage permission in the Android manifest.
-- [ ] **Font licence.** The bundled Noto Sans files ship with their SIL Open Font License
+- [x] **Font licence.** The bundled Noto Sans files ship with their SIL Open Font License
       (`assets/fonts/noto_sans/OFL.txt`) in both the Windows bundle and the APK.
-- [ ] **Schema and server unchanged.** Drift v21, ledger 101, no migration, no new RPC.
+- [x] **Schema and server unchanged.** Drift v21, ledger 101, no migration, no new RPC.
 
 *Host evidence to date (Slices 2–9, 25 September 2026), not yet the Slice 10 run:* parity to
 the paisa for the P&L and all three analyses (document, XLSX cells and PDF text); XLSX
@@ -859,21 +859,30 @@ the manifest check; no schema or server change. Full host suite **2,964 passed, 
 The font licence inside the built Windows bundle and APK is **not yet checked**: neither was
 built in the container.
 
+*Slice 10 run (28 September 2026):* full Windows host suite **2,974 passed, 0 skipped**. Fonts
+and `OFL.txt` were found in the Windows Release bundle and in the APK. `p7-windows-export`,
+`p7-windows-authority` and the Galaxy A06 `p7-android-share` all passed in the real applications.
+Details are in `PROJECT_STATUS.md`, *Phase 7 Slice 10*.
+
 ### U.2 Windows, real `krishna_mis.exe`
 
-- [ ] Export Centre offers exactly the four outputs; Business Comparison only for a
+- [x] Export Centre offers exactly the four outputs; Business Comparison only for a
       consolidated scope.
-- [ ] Save As: suggested filename, overwrite prompt, cancel, a write error — each behaves as
+- [x] Save As: suggested filename, overwrite prompt, cancel, a write error — each behaves as
       specified.
-- [ ] P&L prints through the native Windows print dialog from the same PDF.
-- [ ] Printing and file export verified on the target machine (§I).
+- [x] P&L prints through the native Windows print dialog from the same PDF.
+- [x] Printing and file export verified on the target machine (§I). Printing used Microsoft
+      Print to PDF; **no physical printer was tested**.
+- [x] A print never freezes a later Save As (D-308). A print whose `reports.print` is withdrawn
+      while the dialog is open sends nothing (D-309).
 
 ### U.3 Android
 
-- [ ] P&L PDF opens the system share sheet. The temporary file is cleaned up. No new
+- [x] P&L PDF opens the system share sheet. The temporary file is cleaned up. No new
       permission is requested. *(Host evidence: Slice 8, 11 share tests and the manifest
       check. The device run is Slice 10.)*
-- [ ] Galaxy A06 pass, over USB only (D-288).
+- [x] Galaxy A06 pass, over USB only (D-288): `p7-android-share` PASS on SM-A066B, Android 16.
+      The clean dev APK (`1812D57A…`) is installed, and its installed hash equals the build.
 
 ### U.4 Project lead
 

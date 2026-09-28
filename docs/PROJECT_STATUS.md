@@ -5,7 +5,22 @@ Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
-Last updated: **2026-09-25** — **PHASE 7 — EXPORT, PDF & PRINTING: IN PROGRESS.** Slices 1–9
+Last updated: **2026-09-28** — **PHASE 7 SLICE 10 — FULL LOCAL ACCEPTANCE: COMPLETE.** Every
+gate passed in the real applications:
+- Windows export, authority and print phases in the real executable;
+- the Galaxy A06 share phase over USB;
+- Microsoft Excel and PDF review;
+- host suite **2,974 passed**;
+- clean artefacts scanned.
+
+Three product defects were found and fixed, each in its own commit:
+- a file open in Excel was reported as a refused folder (`2839b52`);
+- **printing froze the next Save As** (D-308, `99f0177`);
+- **a print went through after `reports.print` was withdrawn** (D-309, `c91d188`).
+
+**Slice 11 (closure) is not started.** See *Phase 7 Slice 10* at the end of this file.
+
+Previously: **2026-09-25** — **PHASE 7 — EXPORT, PDF & PRINTING: IN PROGRESS.** Slices 1–9
 are complete (D-290 … D-307):
 - the Windows Export Centre with Save As;
 - Windows printing;
@@ -91,7 +106,10 @@ drill-down, and the Owner Accounts ledger, settlement engine and preview surface
 
 ## Current phase
 
-**Phase 7 — Export, PDF & Printing: IN PROGRESS (started 2026-09-25).** Slices 1–5 are
+**Phase 7 — Export, PDF & Printing: IN PROGRESS (started 2026-09-25).** Slices 1–10 are
+complete; Slice 10 (full local acceptance) closed on 2026-09-28. Slice 11 (closure) is not
+started. *(This paragraph read "Slice 10 waits for the project lead's review" until Slice 10.)*
+*(Earlier wording, kept:)* Slices 1–5 are
 complete through Slice 9. Slice 10 (full acceptance) waits for the project lead's review.
 *(This paragraph read "Slices 1–5 complete; 6–9 wait for review" until Slice 9, and "Slice 1
 … complete; Slice 2 is next" until Slice 4.)* Its record is *PHASE 7 — EXPORT, PDF & PRINTING* at the **end** of this
@@ -6670,7 +6688,7 @@ The Windows **Reports** placeholder becomes the **Export Centre** (D-297).
 | 7 | Windows printing (`printing` 5.15.1, native dialog) | **COMPLETE** |
 | 8 | Android P&L PDF share | **COMPLETE** |
 | 9 | Windows analysis-section exports | **COMPLETE** |
-| 10 | Full acceptance | not started |
+| 10 | Full acceptance | **COMPLETE** (2026-09-28; D-308, D-309) |
 | 11 | Closure | not started |
 
 Transaction-list export is outside this plan (D-296).
@@ -7050,3 +7068,64 @@ ledger **101**, and `pubspec.yaml` / `pubspec.lock` are unchanged.
 | Windows build | **Not tested** | this container is Linux; Slice 10 on the Windows machine (D-298: `printing` downloads PDFium at CMake time) |
 | Android build | **Blocked** | Maven Central returned HTTP 429 to Gradle three times (Slice 8); not retried |
 | A person reading the analysis files in Excel and a PDF viewer | **Not tested** | Slice 10, and the project lead's review (§U.4) |
+
+## Phase 7 Slice 10 — full local acceptance: **COMPLETE** (2026-09-28)
+
+Run against `krishna-mis-dev` only. The Windows phases ran in the real application, built by the
+acceptance harness, and the native dialogs were driven through Win32. The phone phase ran on the
+Galaxy A06 over USB only (D-288).
+
+**The release executable itself was not launched** (D-247). The machine's real installation
+database has no key store, so launching the release build would touch that installation. The
+release bundle is therefore verified by build, inspection and scanning.
+
+Local schema **v21**, ledger **101**. No migration, RPC, cache or schema change.
+
+### Defects found and fixed — each reproduced, regression-tested and committed separately
+
+| | Defect | Fix | Proof |
+|---|---|---|---|
+| 1 | Saving over a workbook open in Excel said the folder was refused | the destination is probed: a sharing violation means "open in another program" (`2839b52`) | Windows host test holding the file open; `excel-lock` step in the real app now reads "That file is open in another program" |
+| 2 | **Opening the print dialog once made the next Save As freeze the app** | the Windows runner holds a second COM apartment reference (**D-308**, `99f0177`) | diagnosed with WinDbg: WINSPOOL releases the main thread's apartment once and Save As deadlocks in `MTAThreadWaitForCall`. The committed runner froze four times; the fixed one passed print ×1–×3 (cancelled and to PDF) followed by Save As; host guard added |
+| 3 | **Withdrawing `reports.print` while the print dialog was open still printed** | authority is decided again when Print is pressed; the dialog gets no bytes otherwise (**D-309**, `c91d188`) | host test red under control; real app now `ExportActionAbandoned`. Microsoft Print to PDF leaves an empty 0-byte file, which the project lead accepted |
+
+### Evidence
+
+| Gate | Result |
+|---|---|
+| `dart format --set-exit-if-changed` | 404 files, 0 changed |
+| `flutter analyze` | no issues |
+| Full host suite, Windows | **2,974 passed, 0 skipped, 0 failed** |
+| `p7-windows-export`, real app, final code | **PASS**: 8 saves with suggested names; cancel; overwrite confirmation; a name without an extension refused rather than silently overwritten; file locked by Excel; P&L and three analysis prints through Microsoft Print to PDF, byte-equal to Save PDF; four offline saves plus an offline print with no refusal and no synchronisation; reconnect refresh; Open in Analytics |
+| `p7-windows-authority`, real app | **PASS**: Owner all; Manager none, with the reason shown; Accountant three reports without Business Comparison; two scoped grants still not consolidated; export-only; print-only; `reports.export` lost during Save As → Abandoned, no file; `reports.print` lost during the print dialog → Abandoned, nothing printed |
+| `p7-windows-repro`, real app | print-cancel ×2 → Save As **PASS**; print ×2 → Save As **PASS** |
+| `p7-android-share`, Galaxy A06 (SM-A066B, Android 16) | **PASS**: system share sheet with the PDF; cancel returns to the app; offline share; only one file in the private cache; Manager offered no share; Accountant loses and regains the share with `reports.export`; no Excel, print or Export Centre on the phone |
+| Parity | every figure in the saved PDFs, workbooks and printed PDFs equals the canonical `PnlResult` / `DashboardView` to the paisa (asserted in the real app) |
+| Microsoft Excel review | all four workbooks open with no repair prompt; money is numeric; no formulas; no raw-paise column; margins as percentages; a loss is negative and stated in words; Others is exact; frozen, filtered line tables; the one-month expense trend explains why there is no chart |
+| PDF review | ₹ in Noto Sans; scope, period and basis on every page; the three freshness lines separate; page *n* of *N*; the P&L is two pages with its table heading repeated; no document-information dictionary; the printed copy matches the saved PDF |
+| Privacy | no UUID, marker, path, email or capability code in any produced file |
+| Secret scan, tree + history + artefacts | clean, after removing the acceptance **Debug** bundle, which carries identities by design |
+| Windows release | `krishna_mis.exe` SHA-256 `775DABBE…0FA7`; `data/app.so` 13,321,104 bytes, `74387A63…17DC`; Noto Sans ×2 + `OFL.txt`; `pdfium.dll` + `printing_plugin.dll` present |
+| Android dev APK | 247,355,724 bytes, SHA-256 `1812D57A…52A3`, `config/dev.json` only. Permissions: `INTERNET` only (no storage). FileProvider `…flutter.printing`. Noto Sans ×2 + `OFL.txt`. **Installed on the A06, installed hash equal to the build** |
+| Backend baseline | role capabilities 80, hash `bd3b6b2b…`; grants 7 (5 active); roles 4; settings 0; closed periods 0; tax rules 4; open owner movements 0; storage 265 ↔ 265; dead helper absent; ledger 101 |
+
+### Recorded, not changed
+
+- **The phone acceptance rebuilds `app-dev-debug.apk` with the identity defines.** The APK was
+  rebuilt clean afterwards, reproducing the same hash, rescanned, and reinstalled. Build clean last,
+  then scan: the Slice 13 lesson again.
+- **The earlier shared PDF stays in the app's private cache after leaving and reopening Reports.**
+  The phone shell keeps the Reports tab alive, so the "cleanup when the P&L opens" in D-306 happens
+  when the control is first built in a session, and before every share. It does not happen on each
+  visit, and not at sign-out. The file is readable only by the app. For the project lead to decide
+  whether a sign-out or resume cleanup is wanted.
+- **Treatment column** on the P&L Revenue sheet is blank unless the treatment is `none` ("No GST"),
+  as on the screen. The fixture has no Banquet sale, so no row shows it here; host tests cover it.
+- **Excel displayed lakh grouping** (₹1,23,642.00) on this machine. That comes from the Windows
+  locale reading the conventional format (D-294); the stored value is exact either way.
+- **Three open sales** (`KI-REV-26-27-002509 … 002511`, business date 25 Sep, by the Owner identity,
+  no notes). They were created on 25–26 September, after the Phase 6 closure and before this
+  acceptance. They are not acceptance fixtures and were left untouched.
+- **Not tested:** a physical printer (only Microsoft Print to PDF). The share sheet's receiving apps
+  (Gmail, Drive, Messages) were not used, because sending company data to an external service needs
+  the project lead. The project lead's own Excel/PDF approval (§U.4) is pending.
