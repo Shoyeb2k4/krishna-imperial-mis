@@ -10903,3 +10903,275 @@ every Phase 7 decision. **No earlier entry is rewritten or renumbered.**
 | **Future analytics / Owner Accounts** | Unchanged from D-289 (category shares, per-category comparison, finalized Owner Statements, …) |
 
 **Open defects at closure: none.**
+
+---
+
+# Phase 8 — Performance, Hardening & Recovery (2026-09-29)
+
+Phase 7 closed at `ba1aed7`. Phase 8 was scoped by a read-only audit of the shipped code and
+of `krishna-mis-dev`. The project lead accepted the audit and ruled on its six questions and
+two further items (D1 … D8). D-312 records those rulings as given. D-313 … D-316 record what
+Slice 1 established on the strength of them.
+
+**The principle every entry below serves:** Phase 8 improves robustness and performance
+**without changing an approved financial semantic, an authority rule or a V1 feature**.
+Nothing is optimised because it looks faster; it is optimised because a measurement against
+an approved threshold says so.
+
+## D-312 — The project lead's Phase 8 rulings (D1 … D8)
+**Date:** 2026-09-29 · **Status:** Accepted (project-lead decisions)
+
+**D1 · Scale envelope.** Neither historical estimate (D-007's "order of 10⁵ rows per year",
+D-178's "a few thousand contributions a year") is a business forecast. Phase 8 validates
+against three engineering volumes:
+
+| Class | Volume |
+|---|---|
+| **CURRENT** | the actual development dataset at the time of measurement |
+| **SCALE** | 100,000 financial contribution rows per year |
+| **STRESS** | 500,000 financial contribution rows, about five years at the scale envelope |
+
+These are validation volumes, not a forecast of hotel activity. Every benchmark names its
+dataset, and numbers from different hardware are never compared as if equivalent.
+
+**D2 · Thresholds.** The binding intervention threshold stays `ARCHITECTURE.md` §9: a
+one-month canonical P&L above **400 ms on the reference Android device**. Exports of a
+normal, realistic report: **Windows < 1 s, Galaxy A06 < 2 s**, measured per stage
+(canonical result already available · document-model creation · XLSX rendering · PDF
+rendering · file write) and excluding every dialog and human wait. A deliberately large
+stress export is reported separately and is not automatically a defect.
+
+**D3 · Where D-186 is measured.** `krishna-mis-dev` for current real data and planner
+evidence; a **local PostgreSQL** for synthetic SCALE and STRESS data. The shared dev project
+is **not** populated with hundreds of thousands of synthetic rows. The local harness matches
+production PostgreSQL semantics, extensions and configuration as closely as practical, and a
+local timing is never presented as a Supabase production timing. D-186 is measured with
+`EXPLAIN (ANALYZE, BUFFERS)`, representative authority principals, one month, one financial
+year and both properties with breakdown, five warm runs, median and spread, and
+function-call evidence where PostgreSQL supports it. `may_read_expense` changes only if a
+measurement justifies it, and any authorisation rewrite needs the complete allow/deny matrix
+before acceptance.
+
+**D4 · Damaged local database recovery is built in Phase 8.** `ARCHITECTURE.md` §8.2 promises
+it and the shipped application stops on a dead-end screen (D-316). Binding rules:
+
+* never reset automatically, and never silently discard local data;
+* state plainly that unsynced local work may be unrecoverable;
+* require explicit destructive confirmation, **typed** for the final reset;
+* prefer quarantining or renaming the damaged database to deleting its bytes, preserved for
+  forensic or manual recovery where practical;
+* create a fresh local database only after confirmation;
+* re-download only what the current authenticated principal is authorised to receive, never
+  another user's cached data, respecting D-070 and D-074;
+* a failure during recovery is itself recoverable and retryable;
+* the D-247 forensic database is not touched unless separately scoped and approved;
+* choices are plain language — *Try again*, and where the condition qualifies *Reset local
+  data and download again* — and raw SQLite or Drift text is never the primary message;
+* the exact behaviour for pending, unsynced, rejected and conflicted work is recorded;
+* if quarantine conflicts with encryption or key handling, the limitation is reported rather
+  than security weakened.
+
+**D5 · Paging.** Keyset paging is **not** implemented to make old documentation true. Slice 1
+corrects the documentation to the implementation — LIMIT/OFFSET (D-314). Slice 4 fixes the
+expense ledger's ordering independently: `business_date`, `captured_at`, then a stable id, in
+the current list's direction. That ordering fix is a correctness requirement and needs no
+threshold breach. Keyset paging itself is built only if profiling at the approved scale shows
+OFFSET is materially problematic.
+
+**D6 · The D-223 index stays.** No index is added because D-223 existed, the existing unused
+index is not dropped, and Drift v22 is not created to remove it. The record states that the
+original candidate path is no longer the production reporting path (D-315). Removal is
+reconsidered only if measurement proves a meaningful write or storage cost.
+
+**D7 · Retry and hang hardening.** Riverpod retries are **not** disabled globally. Each
+provider is classified by its semantics, and a user-triggered one-shot action must not appear
+to hang because a provider it awaits is backing off before the controller marks the action
+as started. High-priority candidates: `pnlScopeOptionsProvider`, `businessDayRulesProvider`,
+`exportPdfFontsProvider`, and `masterGraphProvider` where a user action awaits it. For each:
+the current retry behaviour is established from the Riverpod package source, the failure is
+reproduced, the right behaviour is defined, regression evidence is added, and the smallest
+semantic correction is made. A P&L or dashboard sync must not look like "nothing started"
+while its prerequisites are awaited. **This is not claimed to fix D-248**, which stays a
+hypothesis, and the D-248 diagnostic stays in place throughout Phase 8.
+
+**D8 · Missed taps.** No global switch is flipped blindly. First the full-suite baseline; then
+fatal missed taps enabled experimentally; then every newly failing test listed and classified
+as a real missed interaction or a harness artefact; then a deliberate migration. The final
+state is global fatal missed taps, with an opt-out only where it is semantically justified and
+documented.
+
+**The plan, approved:** nine slices — (1) governance and baseline harnesses, (2) D-186 server
+profiling, (3) retry and hang hardening, (4) local expense-ledger profiling and deterministic
+ordering, (5) global missed-tap hardening, (6) export performance, (7) stress and recovery,
+including damaged-database recovery, (8) Windows, emulator and Galaxy A06 acceptance and
+regression, (9) closure. D-223 is disposed of in Slice 1 and Slice 4 without a schema change
+unless later measurement overturns the audit.
+
+## D-313 — How Phase 8 measures: environments, datasets, report format, thresholds
+**Date:** 2026-09-29 · **Status:** Accepted — the measurement contract every Phase 8 slice
+reports against (`ARCHITECTURE.md` §52)
+
+**Environments.** A result is valid only in the environment it names.
+
+| Id | Environment | Timing claims allowed |
+|---|---|---|
+| **E-DEV** | `krishna-mis-dev` (`loratzmactetjbqolwri`), Supabase, Mumbai. PostgreSQL 17.6; `jit` off; `shared_buffers` 224 MB; `work_mem` 2184 kB; `track_functions` none; extensions btree_gist 1.7, pg_stat_statements 1.11, pgcrypto 1.3, supabase_vault 0.3.1, uuid-ossp 1.1 (read 2026-09-28) | server-side plan timings for CURRENT only |
+| **E-LOCALPG** | a disposable PostgreSQL 17 cluster the harness initialises in a scratch directory, on its own port, loopback-only, holding only synthetic data | server-side plan timings for SCALE and STRESS, labelled local |
+| **E-WIN** | this Windows 11 workstation, real `krishna_mis.exe` or the Windows integration harness, real encrypted database | Windows timings |
+| **E-A06** | Galaxy A06 SM-A066B, Android 16 / API 36, over USB only (D-288) — the **reference Android device** for §9 | the binding Android timings |
+| **E-EMU** | `Pixel_8` emulator, x86_64 | indicative only; never used to pass or fail §9 |
+| **E-HOST** | `flutter test` on the host | counts, plans and correctness; **no timing is a verdict** |
+
+**E-LOCALPG never touches the machine's existing PostgreSQL service** (`postgresql-x64-17`,
+17.11, already running) or any database in it: it initialises its own cluster, so no
+credential for that service is needed or requested. Supabase-specific behaviour the harness
+cannot reproduce exactly — the `auth.uid()` claim path, the Supabase role set, the PostgREST
+transaction wrapper — is emulated by a documented minimal shim, and each deviation is listed
+beside the result.
+
+**Dataset classes.** A *financial contribution row* is one row of
+`revenue_period_contributions` (one revenue component) or `expense_period_contributions`
+(one expense period allocation) — the grain every report sums (D-060, D-157).
+
+| Class | Definition | Where it may live |
+|---|---|---|
+| **CURRENT** | the dev dataset as it stands; each report records the exact row counts it measured against, and how many of them are voided | E-DEV, and copies of its shape on devices |
+| **SCALE** | 100,000 contribution rows in one financial year | E-LOCALPG; device caches |
+| **STRESS** | 500,000 contribution rows over five financial years | E-LOCALPG; on a device only as a stated worst case, since local retention is the current and previous financial year (D-170) |
+
+CURRENT at the time of this record (2026-09-28, E-DEV): 2,150 expenses, 2,365 expense
+allocations, 2,475 expense period allocations, 2,601 revenue entries and 2,613 revenue
+components — most of them voided acceptance fixtures.
+
+Synthetic data is generated by a deterministic, seeded generator whose parameters are part of
+the result: the revenue/expense split (default 50/50), the number of properties (two), the
+share of voided documents, and the share of cross-period and cross-property splits. It carries
+no real name, amount or business fact (§32), is marked as synthetic, and never reaches
+`krishna-mis-dev`.
+
+**Measurement rules.**
+* Measure first. No change is proposed without a before figure, a threshold and a workload.
+* Warm figures are at least five runs after one discarded warm-up; the warm-up is reported,
+  never averaged in. Report median, minimum and maximum, and p90 when there are ten or more
+  runs.
+* Cold figures are reported separately and say what "cold" means in that environment.
+* Build mode is stated (debug, profile, release). A debug-build Dart timing is labelled as one.
+* Host tests assert **counts, plans and results**, never wall-clock budgets, because a timing
+  assertion on a shared machine fails for reasons unrelated to the code (D-152, D-075).
+* Human and dialog time is never part of a renderer's figure (D2).
+
+**Report format.** Every Phase 8 measurement is recorded as:
+
+```
+        Id · date · commit · environment · build mode
+        dataset class + exact row counts (and voided share)
+        principal (by capability set, never by role name)
+        workload · runs (warm-up discarded) · median · min · max · p90
+        threshold · verdict: inside / outside / no threshold
+        plan or stage breakdown where one exists · artefact location
+```
+
+Raw plans and timings stay out of the repository unless sanitised; the verdict and summary go
+in `PROJECT_STATUS.md`.
+
+**Thresholds.**
+
+| Id | Threshold | Source |
+|---|---|---|
+| **T1** | one-month canonical P&L ≤ **400 ms** on E-A06; local database ≤ **500 MB** | §9, D2 |
+| **T2** | normal export, total of model + render + write: E-WIN **< 1 s**, E-A06 **< 2 s** | D2 |
+| **T3** | a stress export is reported, not automatically a defect | D2 |
+
+**No other threshold is approved.** Where a slice measures a path T1–T3 do not cover — the
+server execution of `reporting_primitives` and `reporting_snapshot` (D-186), a ledger page at
+a deep offset (D5), the reporting sync — it uses 400 ms as a **reporting line**, records the
+result, and acts only on a finding the project lead has ruled on. A figure outside a reporting
+line is a question, not a licence to optimise.
+
+**Existing baselines**, restated so later slices compare like with like: see *Phase 8 Slice 1*
+in `PROJECT_STATUS.md`. None of them was measured at SCALE or STRESS.
+
+## D-314 — Every ledger pages with LIMIT/OFFSET, and the documents now say so
+**Date:** 2026-09-29 · **Status:** Implemented (documentation and code comments only)
+
+**The disagreement.** `ARCHITECTURE.md` §9 said ledgers use keyset pagination and "never
+OFFSET"; `PROJECT_STATUS.md` twice recorded the Windows ledger's "keyset paging" as built and
+tested; `RELEASE_CHECKLIST.md` §B asked for "keyset pagination"; and three code comments
+repeated it. **No keyset paging exists anywhere.** The expense, revenue and owner ledgers all
+use `LIMIT … OFFSET`, which the `windows-ledger` phase proves through the repository with
+`limit: 2, offset: 0` and `offset: 2`.
+
+**Decision (D5).** The documents and comments are corrected to LIMIT/OFFSET. Nothing else
+changes in Slice 1. The applied history is not rewritten: the earlier `PROJECT_STATUS.md`
+paragraphs keep their text with a correction beside them.
+
+**`ARCHITECTURE.md` §9 carried a second inaccuracy, corrected with it.** It said the
+`org_id`-led reporting indexes exist "both locally and in Postgres". On the server they do. On
+a device they cannot help: a device holds one organisation, so no local query constrains
+`org_id` (D-223, D-315), and the local reporting cache is indexed by owner, property and
+period instead.
+
+**Two findings for Slice 4, recorded and not fixed here.**
+
+1. **The expense ledger's order is not total.** `ExpenseRepository.query` orders by
+   `business_date DESC, captured_at DESC` with no id tie-break. Two documents captured in the
+   same instant have no defined order, so a page boundary can show one twice and skip another
+   — the hazard D-121 closed for revenue. Slice 4 adds the stable id (D5).
+2. **The Windows expense ledger shows one page.** `filteredExpensesProvider` calls
+   `query(filter)` with the default `limit: 100, offset: 0` and nothing asks for a second
+   page, so a filter matching more than 100 documents shows the newest 100 and says nothing
+   about the rest. The sync-state filter is then applied to those 100 rows in Dart, so it can
+   show fewer. The revenue ledger pages (`revenuePageSize = 50`, `revenueHasMoreProvider`).
+   Whether Slice 4 adds a next-page control on the revenue pattern is a change to what the
+   ledger shows, so it is **raised for the project lead** rather than decided here.
+
+## D-315 — D-223 is disposed of: the index is on a path production no longer takes
+**Date:** 2026-09-29 · **Status:** Accepted (D6) — no schema change
+
+**What D-223 described.** `ix_expense_contributions_reporting` on
+`expense_period_allocations (org_id, pnl_period_key, business_unit_id)` leads with `org_id`,
+which no local query constrains, so the local reporting query scanned instead (Phase 5
+Slice 3, measured at 0.07 ms on a two-year fixture).
+
+**What the audit found.** That index serves only `ExpenseRepository.contributions`,
+`contributionTotals` and `contributionTotalsByCategory`, which are called only by
+`DriftReportingSource`. **Production does not use `DriftReportingSource`**:
+`localReportingSourceProvider` builds `CachedReportingSource` over the canonical reporting
+cache (Phase 5 Slice 4, D-181), whose indexes all lead with the owner, the property and the
+period. The production P&L therefore never reads the path D-223 was about.
+
+**Decision.** Leave the index in place, add none, and create no Drift v22 for it (D6). If a
+Slice 4 or Slice 7 measurement shows a meaningful write or storage cost on
+`expense_period_allocations`, removal is reconsidered then. The real local question — the
+expense ledger's indexes, hydration and ordering — is Slice 4's and is measured there.
+
+## D-316 — The damaged-database recovery flow is promised and not built
+**Date:** 2026-09-29 · **Status:** Recorded — built in Slice 7 under D4
+
+**The promise.** `ARCHITECTURE.md` §8.2: when the key is unavailable the database cannot be
+opened, and "the app detects the failure, explains it in plain language, and offers to reset
+the local store and re-download from the server".
+
+**What ships.** `bootstrap()` opens the encrypted database and throws
+`EncryptedDatabaseUnreadable` when the key will not open it. `main()` catches **any** start-up
+error and shows `_StartupFailureApp`: a fixed sentence and then the raw exception as
+`SelectableText('$error')`. There is no *Try again*, no reset, no quarantine, and no test that
+drives the path (`EncryptedDatabaseUnreadable` is named in no test). The raw text can include
+a local file path.
+
+This is the D-072 and D-077 shape: a documented behaviour with nothing behind it, found by
+reading the code rather than the plan. §8.2 now says so beside the promise.
+
+**Open design points for Slice 7, stated now so they are decided rather than discovered:**
+* **What "damaged" means.** A missing key, a key that does not open the file, a file that
+  opens but fails its integrity or migration step, and a failure that is not the database at
+  all (for example a refused configuration) are different conditions. Only some of them
+  qualify for *Reset local data and download again*; a configuration refusal never does.
+* **Quarantine and the key.** A quarantined file is still ciphertext. If the key is lost, the
+  bytes are kept but cannot be read by this application. If the key still exists, keeping the
+  file useful for recovery means keeping its key too, under an identifier no normal start-up
+  reads — or accepting that quarantine preserves bytes only. Which is achievable without
+  weakening key handling (D-022, D-036, D-246, D-249) is a Slice 7 finding.
+* **Unsent work.** Every pending, failed, rejected or conflicted outbox entry lives in the
+  damaged database. The flow must count what it can and say plainly what will be lost, and
+  cannot count what it cannot open.

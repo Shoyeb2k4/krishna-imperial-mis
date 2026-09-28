@@ -196,7 +196,7 @@ class _ExpenseLedgerPageState extends ConsumerState<ExpenseLedgerPage> {
   }
 }
 
-/// The Windows table. Keyset-friendly: it renders whatever page it is given and never
+/// The Windows table. It renders whatever page it is given and never
 /// asks for "everything".
 class _LedgerTable extends StatelessWidget {
   const _LedgerTable({

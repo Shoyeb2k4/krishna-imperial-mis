@@ -1913,3 +1913,29 @@ Verified against the Phase 6 closure commit `b35611a`:
 Exports read only `PnlResult`, `DashboardView` and cached master names. The two deferred
 requirements above (a transaction-number column in the reporting cache, and Drift v22) remain
 **not built** (D-296).
+
+## Phase 8 — Performance, Hardening & Recovery: no schema change in Slice 1 (2026-09-29)
+
+Slice 1 changes no table, view, index, function or migration. Drift stays **v21** and the live
+migration ledger stays **101**.
+
+### D-223, disposed of (D-315, D6)
+
+`ix_expense_contributions_reporting` on `expense_period_allocations
+(org_id, pnl_period_key, business_unit_id)` stays as it is. It serves only the local
+`expense_period_contributions` view through `DriftReportingSource`, which production does not
+use; the production P&L reads the canonical reporting cache, whose indexes lead with
+`owner_user_id`, `business_unit_id` and the period. No index is added and none is dropped.
+
+### Local expense tables — what is indexed today
+
+| Table | Indexes besides the primary key |
+|---|---|
+| `expenses` | none |
+| `expense_allocations` | none |
+| `expense_period_allocations` | `ix_expense_contributions_reporting` (above) |
+
+The Windows expense ledger (`ExpenseRepository.query`) orders by `business_date` and
+`captured_at`, pages with LIMIT/OFFSET, and loads each row's allocations, contributions and
+attachments by `expense_id`. Whether any of that needs an index is measured in Phase 8 Slice 4
+at the CURRENT, SCALE and STRESS classes (D-313) before anything is added.

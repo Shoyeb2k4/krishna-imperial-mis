@@ -9,7 +9,7 @@ Status: **Sections 1–12 proposed (Phase 0, revised); sections 13–16 and 18�
 is built and verified; section 17 is the Phase 4 *plan*, since built — read §18–§26 for what
 shipped.** Sections 6, 5.3 and 8 carry the project lead's mandated corrections.
 Implementation status is tracked in `PROJECT_STATUS.md`.
-Last updated: 2026-09-28 — **Phase 7 closed** (D-311): section 51 now describes what shipped; 2026-09-28 — **Phase 7 Slice 10**: print authority re-check (D-309) and the runner apartment (D-308), sections 51.5 and 51.7; 2026-09-25 — **Phase 7 Slices 8–9**: Android sharing and the analysis exports, as built (sections 51.2, 51.5, 51.7); **Phase 7 Slice 1**: the export, PDF and printing contract (section 51); 2026-09-25 — **Phase 6 closed**: the stable contract Phase 7 may build on (section 50), and the final D-286 real-line rule (section 49); 2026-09-24 — money at large text sizes (section 49); 2026-09-23 — dashboard drill-down integration (section 48); the Windows Analytics workspace (section 47); the Android Home dashboard (section 46); 2026-09-22 — the Windows Overview (section 45); 2026-09-17 — Phase 6 dashboard periods and comparison rules (section 41); Slice 11's corrections and the Slice 12 closure architecture (section 40); 2026-09-13 — the Android P&L surface (section 38); the Windows P&L surface (section 37); Slice 7 reporting security closure (section 36); 2026-09-11 — the Owner Settlement surface and its security boundary (section 35); the Owner Settlement Engine (section 34); the Owner Ledger (section 33), with the V1 ownership vector in §33.3; Phase 5 Slice 6 corrective (section 32); Slice 5 in section 31; Slices 1-4 in sections 27-30
+Last updated: 2026-09-29 — **Phase 8 Slice 1**: the measurement contract (section 52), §9 corrected to LIMIT/OFFSET paging (D-314), §8.2 marks the recovery flow as not yet built (D-316); 2026-09-28 — **Phase 7 closed** (D-311): section 51 now describes what shipped; 2026-09-28 — **Phase 7 Slice 10**: print authority re-check (D-309) and the runner apartment (D-308), sections 51.5 and 51.7; 2026-09-25 — **Phase 7 Slices 8–9**: Android sharing and the analysis exports, as built (sections 51.2, 51.5, 51.7); **Phase 7 Slice 1**: the export, PDF and printing contract (section 51); 2026-09-25 — **Phase 6 closed**: the stable contract Phase 7 may build on (section 50), and the final D-286 real-line rule (section 49); 2026-09-24 — money at large text sizes (section 49); 2026-09-23 — dashboard drill-down integration (section 48); the Windows Analytics workspace (section 47); the Android Home dashboard (section 46); 2026-09-22 — the Windows Overview (section 45); 2026-09-17 — Phase 6 dashboard periods and comparison rules (section 41); Slice 11's corrections and the Slice 12 closure architecture (section 40); 2026-09-13 — the Android P&L surface (section 38); the Windows P&L surface (section 37); Slice 7 reporting security closure (section 36); 2026-09-11 — the Owner Settlement surface and its security boundary (section 35); the Owner Settlement Engine (section 34); the Owner Ledger (section 33), with the V1 ownership vector in §33.3; Phase 5 Slice 6 corrective (section 32); Slice 5 in section 31; Slices 1-4 in sections 27-30
 
 ---
 
@@ -472,6 +472,9 @@ known risk, not a surprise.
   language, and offers to reset the local store and re-download from the server. **Any
   mutation that had not yet synced is lost.** The mitigation is aggressive sync, not false
   reassurance. This is stated in the release notes and in the user-facing message.
+  **Not yet built (D-316, 2026-09-29):** the shipped application stops on a start-up failure
+  screen that shows the raw exception, with no *Try again* and no reset. Phase 8 Slice 7
+  builds the flow under the project lead's rules in D-312 (D4).
 - Changing the encryption key (rotation) is not a V1 feature.
 
 ### 8.3 Phase 1 obligation — discharged
@@ -499,9 +502,15 @@ duplication is deliberate, and the RLS/RPC suite asserts allow **and** deny for 
 ## 9. Performance plan
 
 - Indexed on `(org_id, pnl_period_key)`, `(org_id, business_date)`,
-  `(org_id, business_unit_id, pnl_date)`, `(org_id, category_id, pnl_date)` both locally
-  and in Postgres.
-- Ledger screens paginate (50/page) with keyset pagination, never OFFSET on large sets.
+  `(org_id, business_unit_id, pnl_date)`, `(org_id, category_id, pnl_date)` in Postgres.
+  *Corrected 2026-09-29 (D-314, D-315):* this line said "both locally and in Postgres". A
+  device holds one organisation, so no local query constrains `org_id` and an `org_id`-led
+  local index cannot serve it; the local reporting cache is indexed by owner, property and
+  period instead (§30).
+- Ledger screens paginate with **LIMIT/OFFSET** — the revenue ledger 50 rows a page, the
+  expense ledger one window of 100 (D-314). *Corrected 2026-09-29:* this line said "keyset
+  pagination, never OFFSET"; no keyset paging was ever built. Keyset paging is built only if
+  Phase 8 profiling shows OFFSET is materially problematic at the approved scale (D-312 D5).
 - Reports run as single aggregate queries; the UI never folds thousands of rows in Dart.
 - Local retention: full detail for current + previous FY; older ranges fetched on demand
   through `RemoteReportingEngine` — which is exactly why that engine exists.
@@ -4498,3 +4507,49 @@ A byte-level guard checks the generated PDF and XLSX in tests.
 - The Overview as its own export; chart images.
 - Any schema, migration, reporting RPC, reporting cache or server change. **If one turns out
   to be needed, stop and report.**
+
+## 52. Phase 8 — how performance and hardening are measured
+
+Decisions **D-312 … D-316**. This section is the contract Phase 8's slices report against. It
+adds no code, schema or behaviour.
+
+### 52.1 What Phase 8 may and may not change
+
+* **Frozen:** money, GST and inclusive-total semantics, business dates, the P&L and dashboard
+  rules, Owner Accounts accounting, `PnlAuthority`, export and print authority, D-070 and
+  D-074. No capability check becomes a role-name check.
+* **Allowed, on evidence only:** an index, a query rewrite, a retry policy, an ordering fix, a
+  recovery flow. A schema or index change first reports the query, its plan, current index
+  coverage, the before timing, the storage and write cost, the migration and the rollback.
+* **Not without a separate decision:** aggregate tables, materialised caches, a new RPC to
+  avoid local work, or reporting logic duplicated on the server.
+
+### 52.2 Environments and datasets
+
+Six environments (E-DEV, E-LOCALPG, E-WIN, E-A06, E-EMU, E-HOST) and three dataset classes
+(CURRENT, SCALE = 100,000 contribution rows a year, STRESS = 500,000 over five years), defined
+in D-313. A *contribution row* is one row of either contribution projection. A timing is a
+claim about its own environment and dataset only; E-A06 is the reference Android device, and
+E-HOST produces counts and plans, never a timing verdict.
+
+E-LOCALPG is a throwaway PostgreSQL 17 cluster the harness creates in a scratch directory on
+its own loopback port. It never uses the workstation's installed PostgreSQL service or its
+databases, and synthetic data never reaches `krishna-mis-dev`.
+
+### 52.3 Thresholds
+
+| Id | Threshold |
+|---|---|
+| T1 | one-month canonical P&L ≤ 400 ms on E-A06; local database ≤ 500 MB (§9) |
+| T2 | normal export, document model + XLSX or PDF render + file write: E-WIN < 1 s, E-A06 < 2 s; every dialog and human wait excluded |
+| T3 | a stress export is reported separately and is not automatically a defect |
+
+Anything else is measured against 400 ms as a **reporting line**: recorded, and acted on only
+after a ruling.
+
+### 52.4 How a result is reported
+
+Id, date, commit, environment, build mode, dataset class with exact row counts and voided
+share, principal by capability set, workload, run count with the warm-up discarded, median,
+minimum, maximum (p90 from ten runs), threshold and verdict, and the plan or stage breakdown.
+Host tests assert counts, plans and results — never a wall-clock budget.

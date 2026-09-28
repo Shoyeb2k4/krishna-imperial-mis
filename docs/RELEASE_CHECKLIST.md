@@ -40,7 +40,8 @@ Every box must be genuinely verified, not assumed. Anything unverified is report
 - [ ] Sync: duplicate delivery, timeout-after-send, kill mid-flight, 401 mid-batch,
       version conflict, **stale void rejected**, write into closed period rejected —
       each asserting exactly one financial record results and no stale intent applied
-- [ ] Repository/data: CRUD, filtering, keyset pagination, transactional integrity
+- [ ] Repository/data: CRUD, filtering, LIMIT/OFFSET pagination with a total order, transactional integrity
+      *(read "keyset pagination" until 2026-09-29; no keyset paging exists — D-314)*
 - [ ] Database: constraints, deferred allocation-sum trigger, hierarchy-consistency trigger
 - [ ] Database: RLS allow **and** deny per role, including unit-scoped managers
 - [ ] Migration audit: every `SECURITY DEFINER` function fixes `search_path`; the API
@@ -904,3 +905,45 @@ Details are in `PROJECT_STATUS.md`, *Phase 7 Slice 10*.
       reporting cache; Drift v21, ledger 101 (D-311).
 - [x] No Owner Accounts export, transaction-list export, Android Excel or Android direct print.
 - [x] Clean working tree after the closure commit.
+
+
+## V. Phase 8 — Performance, Hardening & Recovery
+
+Decisions D-312 … D-316; measurement contract `ARCHITECTURE.md` §52.
+
+### V.1 Every slice
+
+- [ ] `dart format --set-exit-if-changed` and `flutter analyze` clean.
+- [ ] The tests the slice touches pass; documentation invariants pass.
+- [ ] `dart run tool/check_no_client_secrets.dart --history` clean (`--artefacts` when the slice
+      builds one).
+- [ ] Every measurement reported in the D-313 format, naming environment and dataset class.
+- [ ] No financial semantic, authority rule or V1 feature changed (§52.1).
+- [ ] Any schema, index, server-function or authorisation change reported with query, plan,
+      before timing, cost and rollback before it is made; authorisation changes carry the full
+      allow/deny matrix.
+- [ ] No synthetic data in `krishna-mis-dev`; E-LOCALPG never uses the installed PostgreSQL
+      service.
+- [ ] Clean tree and a commit hash.
+
+### V.2 Slice gates
+
+- [x] **Slice 1** — decisions recorded; paging documentation corrected to LIMIT/OFFSET (D-314);
+      D-223 disposed of without a schema change (D-315); damaged-database gap recorded (D-316).
+- [ ] **Slice 2** — D-186: E-DEV plans for three principals × month / year / both-with-breakdown,
+      five warm runs; E-LOCALPG at SCALE and STRESS; change only on a measured breach.
+- [ ] **Slice 3** — retry behaviour read from the Riverpod source; each high-priority provider
+      reproduced, classified and regression-tested; a sync is visibly started before it awaits
+      its prerequisites. D-248 diagnostic still present.
+- [ ] **Slice 4** — expense ledger has a stable id tie-break; ledger plans and timings at
+      CURRENT, SCALE and STRESS; OFFSET kept unless measurably problematic.
+- [ ] **Slice 5** — full-suite baseline, then every test failing under global fatal missed taps
+      listed and classified; global setting on; each opt-out documented.
+- [ ] **Slice 6** — export stages timed separately at normal, realistic and stress sizes on
+      E-WIN and E-A06 against T2/T3.
+- [ ] **Slice 7** — damaged-database recovery built under D4: never automatic, typed
+      confirmation, quarantine before delete, re-download scoped to the current principal,
+      retryable; lock contention, interrupted migration and file-write failure covered.
+- [ ] **Slice 8** — Windows, emulator and Galaxy A06 (USB only, D-288) regression and
+      acceptance.
+- [ ] **Slice 9** — closure record, carry-forwards classified, clean artefacts scanned.

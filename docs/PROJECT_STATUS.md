@@ -5,7 +5,14 @@ Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
-Last updated: **2026-09-28** — **PHASE 7 — EXPORT, PDF & PRINTING: COMPLETE AND FORMALLY CLOSED
+Last updated: **2026-09-29** — **PHASE 8 — PERFORMANCE, HARDENING & RECOVERY: STARTED.**
+Slice 1 (governance and baseline harnesses) is complete: the project lead's rulings (D-312), the
+measurement contract (D-313, `ARCHITECTURE.md` §52), the paging documentation corrected to
+LIMIT/OFFSET (D-314), D-223 disposed of without a schema change (D-315), and the unbuilt
+damaged-database recovery recorded (D-316). No schema, index, server or behaviour change.
+**Slice 2 (D-186 server profiling) is not started.** See *PHASE 8* at the end of this file.
+
+Previously: **2026-09-28** — **PHASE 7 — EXPORT, PDF & PRINTING: COMPLETE AND FORMALLY CLOSED
 at Slice 11** (D-311). Slices 1–11 are closed; the project lead's U.4 manual review passed.
 Phase 7 added no schema, migration, RPC or reporting-cache change. The closure record, evidence
 and carry-forwards are *PHASE 7 — EXPORT, PDF & PRINTING: COMPLETE AND CLOSED* at the end of
@@ -111,6 +118,9 @@ drill-down, and the Owner Accounts ledger, settlement engine and preview surface
 ---
 
 ## Current phase
+
+**Phase 8 — Performance, Hardening & Recovery: IN PROGRESS (started 2026-09-29).** Slice 1 is
+complete; Slices 2–9 are not started. Its record is *PHASE 8* at the **end** of this file.
 
 **Phase 7 — Export, PDF & Printing: COMPLETE and formally closed (2026-09-28, Slice 11,
 D-311).** Its authoritative record is *PHASE 7 — EXPORT, PDF & PRINTING: COMPLETE AND CLOSED* at
@@ -836,7 +846,7 @@ idempotent delivery; `base_row_version` on every mutation; response-loss recover
 `Rejected` distinct from `Conflict`.
 
 *The surfaces.* Android entry, the Windows ledger with its complete filter surface and
-keyset paging, the detail panel, cross-period and cross-unit editors, the audit
+paging (*corrected 2026-09-29, D-314: LIMIT/OFFSET, not keyset*), the detail panel, cross-period and cross-unit editors, the audit
 presentation, **expense edit** (D-072a) and **void**.
 
 *Attachments end to end* (D-073a): staging, hashing, ordered upload, registration in
@@ -955,7 +965,7 @@ Blocked.**
 | Production picker **wiring**, both platforms | **Tested** | 6 host tests asserting what production resolves; the assertion that was missing while the picker did not exist (D-077) |
 | The OS file / photo picker itself, Android | **Tested — manual, PASS** | 2026-08-31, real Galaxy A06 5G: the system Photo Picker opened and returned the image, shown **Attached**. Failed the first attempt — see D-077 |
 | The OS file / photo picker itself, Windows | **Tested — manual, PASS** | 2026-08-31, real `krishna_mis.exe`: the native file dialog opened and returned the file, shown **Attached**. Failed the first attempt — see D-077 |
-| Windows ledger: the complete filter surface, keyset paging, scoped detail caption | **Tested** | `windows-ledger`, incl. the filter-dependency rule and a scoped share never captioned `TOTAL` |
+| Windows ledger: the complete filter surface, paging (*LIMIT/OFFSET, not keyset — corrected 2026-09-29, D-314*), scoped detail caption | **Tested** | `windows-ledger`, incl. the filter-dependency rule and a scoped share never captioned `TOTAL` |
 | Two-device Android ⇄ Windows expense propagation | **Tested** | `propagate-expense-a…e`: create with a bill, correct, stale edit conflicts, void, evidence still there |
 | Expense **edit** through the UI | **Tested** | `expense-edit` on both real clients: identity kept, version advanced, D+7/D+8, stale → Conflict (D-072a) |
 | D-070/D-074 financial cache retention and ownership | **Tested** | `d068-switch` + `d068-revoke`, 3 on the real APK and 3 inside the real `.exe`, the Windows ones against a database that had accumulated across runs |
@@ -7254,3 +7264,124 @@ Carry-forwards are recorded in D-311:
 **None.**
 
 **PHASE 7 — EXPORT, PDF & PRINTING IS FORMALLY CLOSED. Phase 8 is not started.**
+
+---
+
+# PHASE 8 — PERFORMANCE, HARDENING & RECOVERY: STARTED (2026-09-29)
+
+Phase 7 closed at `ba1aed7`. Phase 8 was scoped by a read-only audit; the project lead accepted
+it and ruled D1 … D8, recorded as **D-312**. The measurement contract is **D-313** and
+`ARCHITECTURE.md` §52.
+
+**The principle:** Phase 8 improves robustness and performance **without changing an approved
+financial semantic, authority rule or V1 feature**. Measure first; change only what a
+measurement against an approved threshold requires.
+
+## The approved slice plan
+
+| # | Slice | State |
+|---|---|---|
+| 1 | Governance and baseline harnesses | **COMPLETE** |
+| 2 | D-186 server profiling (E-DEV current data, E-LOCALPG at SCALE and STRESS) | not started |
+| 3 | Retry and hang hardening (D7) | not started |
+| 4 | Local expense-ledger profiling and deterministic ordering (D5, D-314, D-315) | not started |
+| 5 | Global missed-tap hardening (D8) | not started |
+| 6 | Export performance (D2, T2/T3) | not started |
+| 7 | Stress and recovery, including damaged-database recovery (D4, D-316) | not started |
+| 8 | Windows, emulator and Galaxy A06 acceptance and regression | not started |
+| 9 | Closure | not started |
+
+**Gates every slice closes on:** `dart format --set-exit-if-changed`, `flutter analyze`, the
+tests the slice touches, the documentation invariants, the secret scan, a clean tree and a
+commit hash. A slice that measures reports in the D-313 format. A slice that changes a schema,
+an index, a server function or an authorisation predicate first reports the query, the plan,
+the before timing, the cost and the rollback, and waits for the project lead where D-312 says
+so. Full list: `RELEASE_CHECKLIST.md` §V.
+
+## Phase 8 Slice 1 — governance and baseline harnesses: **COMPLETE**
+
+Documentation and code comments only. **No schema, index, migration, server function,
+dependency or product behaviour changed.** Local Drift schema stays **v21**; the migration
+ledger stays **101**.
+
+| Document | Change |
+|---|---|
+| `DECISIONS.md` | D-312 (the rulings), D-313 (measurement contract), D-314 (paging), D-315 (D-223), D-316 (damaged-database gap) |
+| `ARCHITECTURE.md` | §9 corrected (LIMIT/OFFSET; which indexes lead with `org_id`); §8.2 marks the recovery flow as not yet built; new §52, the Phase 8 measurement contract |
+| `DATABASE_SCHEMA.md` | *Phase 8* section: no schema change, the D-223 disposition, the local expense index inventory |
+| `RELEASE_CHECKLIST.md` | §B's "keyset pagination" corrected; new §V, the Phase 8 gates |
+| `PROJECT_STATUS.md` | this section; the two "keyset paging" statements annotated |
+| three code comments | `expense_repository.dart`, `expense_ledger_page.dart`, `revenue_recent_page.dart` no longer claim keyset paging. Comments only |
+| `SHOYEB_MASTER_SPEC.md` | **unchanged**, version 1.2 |
+
+### Dataset classes (D-313)
+
+| Class | Definition |
+|---|---|
+| **CURRENT** | the dev dataset at measurement time; on 2026-09-28: 2,150 expenses, 2,365 expense allocations, 2,475 expense period allocations, 2,601 revenue entries, 2,613 revenue components — mostly voided acceptance fixtures |
+| **SCALE** | 100,000 contribution rows in one financial year, synthetic, E-LOCALPG and device caches |
+| **STRESS** | 500,000 contribution rows over five financial years, synthetic, E-LOCALPG; on a device only as a stated worst case (retention is two financial years, D-170) |
+
+### Environments (D-313)
+
+E-DEV (`krishna-mis-dev`, PostgreSQL 17.6) · E-LOCALPG (a disposable PostgreSQL 17 cluster the
+harness initialises itself — never the machine's running `postgresql-x64-17` service) · E-WIN ·
+**E-A06, the reference Android device** · E-EMU (indicative only) · E-HOST (counts and plans,
+never a timing verdict).
+
+### Thresholds (D2, D-313)
+
+| Id | Threshold |
+|---|---|
+| T1 | one-month canonical P&L ≤ 400 ms on E-A06; local database ≤ 500 MB |
+| T2 | normal export, model + render + write: E-WIN < 1 s, E-A06 < 2 s, dialogs excluded |
+| T3 | stress export reported separately, not automatically a defect |
+
+Paths no threshold covers (server D-186, deep ledger pages, reporting sync) use 400 ms as a
+**reporting line** only.
+
+### Baselines already in the repository — none at SCALE or STRESS
+
+| Area | Figure | Environment · dataset · when |
+|---|---|---|
+| Server revenue, one financial year | 0.3 ms | E-DEV · CURRENT (then) · 2026-09-08 |
+| Server expense, one financial year | 368.7 ms over 1,094 rows, dominated by `may_read_expense` | E-DEV · CURRENT (then) · 2026-09-08 |
+| Server, both properties with breakdown | 774 → 398.6 ms after D-186 | E-DEV · 2026-09-08 |
+| Server, one month one property | 39 ms server; 98–185 ms end to end | E-DEV · 2026-09-08 |
+| Dashboard, worst warm (37 reports) | 168 ms, then 163 ms | E-WIN · 7,300-row fixture · Slices 3 and 10 |
+| Dashboard, worst warm | 31–41 ms, then 47 ms | E-EMU debug · same fixture · Slice 3, Phase 6 closure |
+| Local P&L queries (month / year) | 0.07–0.58 ms | E-HOST · two-year fixture · on the non-production path (D-315) |
+| First full reporting sync, 7,300 rows | 527–2,718 ms · 824–6,711 ms | E-WIN · E-EMU |
+| Exports, ledger listing, Owner Accounts, start-up | **never measured** | — |
+
+The E-DEV expense-period row count has grown from 1,094 to 2,475 since D-186 was measured, so
+the 368.7 ms figure is not today's.
+
+### Findings recorded for later slices, not fixed in Slice 1
+
+| Finding | Slice | Record |
+|---|---|---|
+| No keyset paging exists; every ledger is LIMIT/OFFSET | documented now | D-314 |
+| Expense ledger order has no stable id tie-break | 4 | D-314 (D5) |
+| Windows expense ledger requests one page of 100 and offers no next page; the sync-state filter then applies in Dart | 4, **needs a ruling** | D-314 |
+| D-223 index serves only the non-production reporting path | disposed of | D-315 |
+| Damaged-database recovery promised by §8.2, not built; start-up failure shows the raw exception | 7 | D-316 |
+| `PnlSyncController._run` and the dashboard sync await two providers before marking the run started — a plausible, unproven D-248 cause | 3 | D-312 (D7) |
+
+### Readiness for Slice 2
+
+E-DEV is readable. PostgreSQL 17.11 binaries are installed on this workstation
+(`C:\Program Files\PostgreSQL\17\bin`), so E-LOCALPG can initialise its own throwaway cluster
+without the running service's credentials. `track_functions` is `none` on E-DEV; whether a
+session may raise it is established in Slice 2.
+
+### Verified
+
+| Item | Status | Evidence |
+|---|---|---|
+| `dart format --set-exit-if-changed lib test integration_test tool` | **Tested** | 405 files, 0 changed |
+| `flutter analyze` | **Tested** | No issues found |
+| Documentation invariants (`migration_audit_test`, `backend_schema_parity_test`, `chart_guard_test`) | **Tested** | 68 passed |
+| Secret scan, tree and git history | **Tested** | clean, scanner controls passing |
+| Schema, migrations, server, dependencies | **Unchanged** | nothing under `supabase/`, `lib/data/local` or `pubspec.*` touched |
+| Full host suite | **Not run** | Slice 1 changes no executable code; the baseline is Slice 5's first act (D8) |

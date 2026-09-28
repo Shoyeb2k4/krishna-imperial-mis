@@ -1,6 +1,6 @@
 /// The sales recorded lately, on a phone.
 ///
-/// Deliberately **not** a ledger. The Windows ledger — filters, keyset paging, a detail
+/// Deliberately **not** a ledger. The Windows ledger — filters, paging, a detail
 /// panel, drill-down — is Slice 9, and building a small version of it here would be a
 /// second surface to keep in step with the first. What this is for is the question an
 /// operator asks straight after saving: *did that go in, and has it reached the office?*

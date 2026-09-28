@@ -775,7 +775,7 @@ class ExpenseRepository {
 
   /// The ledger, filtered and paged in SQL.
   ///
-  /// Keyset-style: the caller asks for a window and gets exactly that. Nothing here
+  /// LIMIT/OFFSET: the caller asks for a window and gets exactly that. Nothing here
   /// fetches "all expenses" and narrows them in Dart — at a year of history that is the
   /// difference between a ledger that opens and one that does not (spec §27).
   Future<List<LocalExpense>> query(
