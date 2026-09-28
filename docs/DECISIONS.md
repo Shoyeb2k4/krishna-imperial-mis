@@ -10809,3 +10809,45 @@ rule is therefore **no report content reaches any file**: the file is absent or 
 to be `stillPermitted() ? bytes : Uint8List(0)`, and the controller to pass
 `exportPrintLayout(rendered.bytes, stillPermitted)`. The renderer's bytes are still the only
 document the dialog can receive.
+
+## D-310 — A shared PDF goes when its person signs out or another person signs in
+**Date:** 2026-09-28 · **Status:** Implemented / Tested (project-lead decision) — security and
+privacy hygiene, not a new feature
+
+**Context.** The Slice 10 acceptance found that the P&L PDF shared from the phone stays in the app's
+private cache. It survives leaving and reopening Reports, because the phone shell keeps that tab
+alive and the cleanup in D-306 runs when the share control is first built. It also survives
+sign-out. The file is derived management financial data.
+
+**Decision (project lead).**
+- The cleanup before each new share stays.
+- The shared PDF is **also** removed when the person signs out, or when the authenticated person
+  changes (a user switch, or a session ending).
+- Leaving the Reports tab, a tab kept alive, or a widget that does not rebuild does **not** need
+  to trigger cleanup.
+
+**How.** `sharedExportCleanupProvider` watches only who is signed in (`sessionProvider` → `userId`).
+When the person changes it runs `removeEarlierShares` on the private cache, and the application
+root keeps it alive.
+- It runs after the change and never inside `signOut`, so a cache that cannot be reached never
+  blocks signing out.
+- It touches only this app's `KrishnaImperialMIS_*.pdf` files in `<cache>/share/`.
+- It uses no new permission, no public storage, and no report or reporting-cache data.
+- A refresh for the same person removes nothing. A change from nobody to somebody (sign-in or
+  session restore) also runs, which is harmless and closes the case of a restart between two
+  people.
+
+**Found while building it.** `exportShareCacheRootProvider` was retried by Riverpod 3's default
+backoff when its future failed, so anything awaiting it, including a share, would wait instead of
+failing. It is now not retried.
+
+**Proven.** Six host tests:
+- sign-out removes the file;
+- a user switch removes the previous person's file;
+- the same person keeps it;
+- unrelated cache content, including a `KrishnaImperialMIS_` text file and a PDF outside `share/`,
+  is untouched;
+- an unreachable cache does not block sign-out;
+- the next-share cleanup still works.
+
+With the listener disabled, the sign-out and switch tests turn **red**.
