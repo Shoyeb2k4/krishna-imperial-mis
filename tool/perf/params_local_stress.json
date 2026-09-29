@@ -1,0 +1,98 @@
+{
+ "target": "local",
+ "note": "D-313 STRESS on E-LOCALPG: FY 2022-23 .. 2026-27, 100,000 contribution rows a year. Same principals and units as SCALE; 'since' = max change_seq - 200 after synth.sh stress.",
+ "baseline": {
+  "unit": "ce13c1ce-daed-5084-a23c-c35bb8da0fa8",
+  "month": [
+   "2027-01-01",
+   "2027-01-31"
+  ],
+  "fy": [
+   "2026-04-01",
+   "2027-03-31"
+  ]
+ },
+ "principals": {
+  "owner": {
+   "id": "a0000000-0000-4000-8000-000000000001",
+   "unit": "ce13c1ce-daed-5084-a23c-c35bb8da0fa8",
+   "units": [
+    "ce13c1ce-daed-5084-a23c-c35bb8da0fa8",
+    "061dfcf5-10bc-58d5-9700-0ffa0e659abe"
+   ],
+   "both": [
+    "ce13c1ce-daed-5084-a23c-c35bb8da0fa8",
+    "061dfcf5-10bc-58d5-9700-0ffa0e659abe"
+   ],
+   "month": [
+    "2027-01-01",
+    "2027-01-31"
+   ],
+   "fy": [
+    "2026-04-01",
+    "2027-03-31"
+   ],
+   "since": 1617582
+  },
+  "ccr_manager": {
+   "id": "a0000000-0000-4000-8000-000000000002",
+   "unit": "ce13c1ce-daed-5084-a23c-c35bb8da0fa8",
+   "units": [
+    "ce13c1ce-daed-5084-a23c-c35bb8da0fa8"
+   ],
+   "both": [
+    "ce13c1ce-daed-5084-a23c-c35bb8da0fa8",
+    "061dfcf5-10bc-58d5-9700-0ffa0e659abe"
+   ],
+   "month": [
+    "2027-01-01",
+    "2027-01-31"
+   ],
+   "fy": [
+    "2026-04-01",
+    "2027-03-31"
+   ],
+   "since": 1617582
+  },
+  "accountant": {
+   "id": "a0000000-0000-4000-8000-000000000004",
+   "unit": "ce13c1ce-daed-5084-a23c-c35bb8da0fa8",
+   "units": [
+    "ce13c1ce-daed-5084-a23c-c35bb8da0fa8"
+   ],
+   "both": [
+    "ce13c1ce-daed-5084-a23c-c35bb8da0fa8",
+    "061dfcf5-10bc-58d5-9700-0ffa0e659abe"
+   ],
+   "month": [
+    "2027-01-01",
+    "2027-01-31"
+   ],
+   "fy": [
+    "2026-04-01",
+    "2027-03-31"
+   ],
+   "since": 1617582
+  },
+  "data_entry": {
+   "id": "a0000000-0000-4000-8000-000000000005",
+   "unit": "ce13c1ce-daed-5084-a23c-c35bb8da0fa8",
+   "units": [
+    "ce13c1ce-daed-5084-a23c-c35bb8da0fa8"
+   ],
+   "both": [
+    "ce13c1ce-daed-5084-a23c-c35bb8da0fa8",
+    "061dfcf5-10bc-58d5-9700-0ffa0e659abe"
+   ],
+   "month": [
+    "2027-01-01",
+    "2027-01-31"
+   ],
+   "fy": [
+    "2026-04-01",
+    "2027-03-31"
+   ],
+   "since": 1617582
+  }
+ }
+}

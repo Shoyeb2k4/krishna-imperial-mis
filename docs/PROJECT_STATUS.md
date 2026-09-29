@@ -5,12 +5,20 @@ Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
-Last updated: **2026-09-29** — **PHASE 8 — PERFORMANCE, HARDENING & RECOVERY: STARTED.**
+Last updated: **2026-09-29** — **PHASE 8 SLICE 2 — D-186 SERVER PROFILING: MEASURED, STOPPED
+AT THE APPROVAL GATE.** The expense reporting predicate costs ~0.335 ms per expense row on
+krishna-mis-dev. At CURRENT volume every reporting path is under 1.1 s. At SCALE a financial-year
+report and every reporting sync exceed the 8 s `authenticated` statement timeout (demonstrated);
+at STRESS a first full sync exceeds PostgreSQL's 256 MB `jsonb` limit (demonstrated). A server
+change is justified; **none was made** — the redesign in D-318 awaits the project lead. The
+harness is `tool/perf/` (D-319). The Expense ledger pagination ruling for Slice 4 is recorded
+(D-317). **Slice 3 is not started.** See *Phase 8 Slice 2* at the end of this file.
+
+Previously: **2026-09-29** — **PHASE 8 — PERFORMANCE, HARDENING & RECOVERY: STARTED.**
 Slice 1 (governance and baseline harnesses) is complete: the project lead's rulings (D-312), the
 measurement contract (D-313, `ARCHITECTURE.md` §52), the paging documentation corrected to
 LIMIT/OFFSET (D-314), D-223 disposed of without a schema change (D-315), and the unbuilt
 damaged-database recovery recorded (D-316). No schema, index, server or behaviour change.
-**Slice 2 (D-186 server profiling) is not started.** See *PHASE 8* at the end of this file.
 
 Previously: **2026-09-28** — **PHASE 7 — EXPORT, PDF & PRINTING: COMPLETE AND FORMALLY CLOSED
 at Slice 11** (D-311). Slices 1–11 are closed; the project lead's U.4 manual review passed.
@@ -119,8 +127,11 @@ drill-down, and the Owner Accounts ledger, settlement engine and preview surface
 
 ## Current phase
 
-**Phase 8 — Performance, Hardening & Recovery: IN PROGRESS (started 2026-09-29).** Slice 1 is
-complete; Slices 2–9 are not started. Its record is *PHASE 8* at the **end** of this file.
+**Phase 8 — Performance, Hardening & Recovery: IN PROGRESS (started 2026-09-29).** Slices 1 and 2
+are complete; Slice 2 measured a D-186 breach and stopped before any authorisation change, so the
+D-318 redesign awaits the project lead. Slices 3–9 are not started. Its record is *PHASE 8* at the
+**end** of this file. *(This paragraph read "Slice 1 is complete; Slices 2–9 are not started"
+until Slice 2.)*
 
 **Phase 7 — Export, PDF & Printing: COMPLETE and formally closed (2026-09-28, Slice 11,
 D-311).** Its authoritative record is *PHASE 7 — EXPORT, PDF & PRINTING: COMPLETE AND CLOSED* at
@@ -7282,7 +7293,7 @@ measurement against an approved threshold requires.
 | # | Slice | State |
 |---|---|---|
 | 1 | Governance and baseline harnesses | **COMPLETE** |
-| 2 | D-186 server profiling (E-DEV current data, E-LOCALPG at SCALE and STRESS) | not started |
+| 2 | D-186 server profiling (E-DEV current data, E-LOCALPG at SCALE and STRESS) | **COMPLETE — breach measured; redesign awaits approval (D-318)** |
 | 3 | Retry and hang hardening (D7) | not started |
 | 4 | Local expense-ledger profiling and deterministic ordering (D5, D-314, D-315) | not started |
 | 5 | Global missed-tap hardening (D8) | not started |
@@ -7385,3 +7396,88 @@ session may raise it is established in Slice 2.
 | Secret scan, tree and git history | **Tested** | clean, scanner controls passing |
 | Schema, migrations, server, dependencies | **Unchanged** | nothing under `supabase/`, `lib/data/local` or `pubspec.*` touched |
 | Full host suite | **Not run** | Slice 1 changes no executable code; the baseline is Slice 5's first act (D8) |
+
+## Phase 8 Slice 2 — D-186 server profiling: **MEASURED — STOPPED AT THE APPROVAL GATE**
+
+Measure-first, as D-312 (D3) requires. Decisions **D-317** (the project lead's Slice 4 pagination
+ruling, recorded before Slice 2 began), **D-318** (the measurements and the proposed redesign)
+and **D-319** (the harness). **No product code, schema, migration, RPC or authorisation change.**
+Local Drift schema stays **v21**; the migration ledger stays **101**.
+
+### In plain words
+
+The check that decides whether a person may see an expense runs once for every expense row a
+report touches, costs about a third of a millisecond each time, and runs on rows the report then
+throws away — voided documents, the other property, and on a sync, the whole history. Today's
+data is small enough that nothing is slow (the worst is a sync at about one second). At the
+approved scale of 100,000 rows a year, a full-year report and every reporting sync take longer
+than Supabase allows a signed-in user's request (8 seconds) and are cancelled; at five years of
+that, a new device's first sync fails outright because the reply is larger than PostgreSQL can
+build. **A fix is justified and is proposed in D-318; nothing was changed, because it alters how
+authorisation is evaluated and needs the project lead's approval.**
+
+### Dev dataset (CURRENT, 2026-09-29)
+
+2,150 expenses (2,089 voided) · 2,365 expense allocations · **2,475 expense period rows** ·
+2,601 revenue entries (2,598 voided) · **2,613 revenue components** · 2 properties.
+
+### Results in brief — full tables in D-318
+
+| | CURRENT (dev) | SCALE (99,869 rows) | STRESS (499,975 rows) |
+|---|---|---|---|
+| One-property month, `reporting_primitives` | ~230 ms | 2.6–2.9 s local · ~1.7 s projected | 1.35–1.41 s local |
+| One-property financial year, `reporting_primitives` | ~770 ms | 35–39 s local · **~20.5 s projected — over 8 s** | 15.6–16.0 s local |
+| Reporting sync, 200-generation delta | ~0.9 s | 16–36 s local · **~20.8 s projected — cancelled at 8 s (shown)** | **137 s** local |
+| First full reporting sync | ~1.04 s | 31–35 s local · ~20.8 s projected | **fails: jsonb > 256 MB (shown)** |
+| `may_read_expense` calls, FY report | 2,247 | 49,514 | 49,514 |
+| Same aggregate, no authorisation | 0.18–0.66 ms | 83–120 ms local | 116–244 ms local |
+
+Projections multiply exact call counts by dev's measured per-call cost; local timings varied up
+to ~3× with host load (D-319).
+
+### Answers to the slice's twelve questions
+
+1. **Commit** — see the commit recorded for this slice.
+2. **Dev dataset** — above.
+3. **Dev timings** — D-318, three principals, eleven workloads each, five warm runs.
+4. **Local SCALE** — D-318; four principals.
+5. **Local STRESS** — D-318; Owner and CCR Manager.
+6. **Plans and buffers** — an Index Scan on `expense_period_allocations_category_period_idx`
+   with `Filter: may_read_expense(expense_id)` per row, before the join that removes voided and
+   unnumbered rows; all shared-buffer hits on dev (e.g. FY report 29,110 hits, 0 reads).
+7. **Call evidence** — exact per-workload counts from `pg_stat_xact_user_functions`, enabled
+   with `SET LOCAL track_functions` inside rolled-back transactions only.
+8. **400 ms risk** — T1 is the device's local engine and is not directly threatened; the
+   threat is functional: at SCALE the sync that fills the device's cache stops working.
+9. **Server change justified** — yes, by measurement; **not implemented**, pending approval.
+10. **Harness limitations** — D-319 findings 3–5.
+11. **Clean tree** — yes, after the commit.
+12. **Slice 3** — independent of D-186 (Riverpod retry and hang hardening, client-only) and
+    safe to begin; not started.
+
+### Verified
+
+| Item | Status | Evidence |
+|---|---|---|
+| `dart format --set-exit-if-changed` | **Tested** | 406 files, 0 changed |
+| `flutter analyze` | **Tested** | No issues found |
+| Full host suite | **Tested** | **2,987 passed**, 0 failed (includes the 7 new harness-guard tests) |
+| Harness guard (`test/tool/perf_harness_guard_test.dart`) | **Tested** | 7 passed; a planted TCP listener turned it red, restored byte-identical (`cmp`) |
+| Harness authorisation self-test, SCALE | **Tested** | 8/8 PASS; positive control red (32,961 rows seen vs 2,922 own); restore hash equal to dev's |
+| Local ↔ dev definition fidelity | **Tested** | 36 objects: 34 byte-identical, 2 identical apart from comments |
+| Dev measurements | **Tested** | 3 principals × 11 workloads + baselines, 5 warm runs, every batch rolled back |
+| SCALE / STRESS measurements | **Tested** | local; heavy STRESS workloads at 1–2 runs, recorded per result |
+| 8 s timeout and 256 MB failures | **Tested** | both reproduced locally at SCALE / STRESS |
+| Secret scan, tree and git history | **Tested** | clean, the scanner's own controls passing |
+| Schema, migrations, server, dependencies | **Unchanged** | nothing under `supabase/`, `lib/` or `pubspec.*` touched |
+| Synthetic data in krishna-mis-dev | **None** | dev batches create only a temporary function and roll back |
+| D-318 redesign | **Not implemented** | awaits the project lead |
+
+### Carried forward
+
+* **The D-318 redesign** (R1 set-based authority; R2 requested-property scan; R3 bounded, paged
+  sync transport) — needs the project lead's approval; R3 is a client–server contract change.
+* **D-146 replay order** (D-319 finding 1) — Phase 9's staging replay must follow the ledger.
+* **The revenue projection** carries the same per-row shape, one level shallower (~0.08 ms per
+  component) — within R1's scope.
+* **Slice 4** starts from D-317.

@@ -11175,3 +11175,262 @@ reading the code rather than the plan. §8.2 now says so beside the promise.
 * **Unsent work.** Every pending, failed, rejected or conflicted outbox entry lives in the
   damaged database. The flow must count what it can and say plainly what will be lost, and
   cannot count what it cannot open.
+
+## D-317 — The Expense ledger pages, and every filter runs before the page is cut
+**Date:** 2026-09-29 · **Status:** Accepted (project-lead ruling) — **binding on Phase 8
+Slice 4; not implemented in Slice 2**
+
+**What was found (D-314).** The Windows Expense ledger asks for the newest 100 documents
+and nothing more: there is no next page and no *load more*, nothing tells the reader that
+older matching documents exist, and the sync-state filter is applied in Dart to those 100
+rows — so it can show far fewer than 100 while older matching documents are never asked
+for at all.
+
+**The ruling.** This is not acceptable for V1 hardening, and Slice 4 corrects it:
+
+1. The Expense ledger gains explicit pagination — a *load more* in the Revenue ledger's
+   pattern (`revenuePageSize`, `revenueHasMoreProvider`) wherever that fits the Expense
+   ledger's architecture.
+2. **Raising the hard-coded limit is not a fix** and is not acceptable.
+3. **Every active filter is applied in the database before the page is cut**: date range,
+   property and scope, category and the other supported filters, search, and sync state.
+4. The order is total and deterministic: `business_date`, then `captured_at`, then a stable
+   id, in the direction that keeps today's newest-first reading.
+5. Paging starts as LIMIT/OFFSET.
+6. Keyset paging is built **only if** Slice 4's profiling at the approved dataset envelope
+   (D-312 D1, D-313) shows OFFSET is materially problematic.
+7. The ledger says clearly when more documents are available.
+8. Changing a filter, the search or the scope resets the paging.
+9. Loading another page never duplicates a row, skips a row, or reorders rows already on
+   screen.
+
+**Scope.** This is ledger correctness and usability hardening. It is not evidence that
+Phase 8 should widen into general feature work, and it adds no new filter, column or
+screen. It supersedes the "raised for the project lead" note in D-314 finding 2.
+
+## D-318 — D-186 measured: the per-row expense predicate breaks the reporting sync at SCALE
+**Date:** 2026-09-29 · **Status:** Measured (Phase 8 Slice 2). **Intervention warranted —
+nothing changed.** Work stopped before any authorisation change, as D-312 (D3) requires; the
+redesign below **awaits the project lead's approval**.
+
+**What was measured.** `public.may_read_expense(uuid)` — the D-169 document predicate — on
+every reporting path that evaluates it: `expense_period_contributions`, `reporting_primitives`,
+`reporting_snapshot`, the `expense_period_allocations` RLS policy and `expense_document`.
+Principals by capability set: Owner (unscoped), Crystal Canopy Manager, Crystal Canopy
+Accountant; locally also the `expense.view.own` principal. EXPLAIN (ANALYZE, BUFFERS), one
+discarded warm-up, five measured runs unless stated, and the exact number of calls each
+workload made to each function (`pg_stat_xact_user_functions`, per transaction). Tooling and
+harness: D-319.
+
+### The finding
+
+Cost is **linear in the rows the predicate is evaluated on — about 0.335 ms per expense row on
+krishna-mis-dev** — and the predicate is evaluated on far more rows than any report needs:
+
+| Rows it is evaluated on | Evidence |
+|---|---|
+| **every voided and unnumbered row in range** — `voided_at`/`txn_number` live on `expenses`, so they are applied after the security-barrier view's own qual has run at the scan | dev, Jan 2027, Crystal Canopy: **434 calls for 0 live rows** |
+| **the other property's rows** in `reporting_primitives` — the requested property is applied by joining the `authority` CTE, not as a scan predicate | dev: a Crystal-Canopy-only month makes **664** calls; the view filtered by property needs 434 |
+| **a refused request, in full** — a scoped reader's consolidated request is refused per property, but the expense scan still runs | dev, CCR Manager, consolidated FY: refused, **2,247 calls, 780 ms** |
+| **the whole history on a delta pull** — `reporting_snapshot`'s `change_seq` bound is applied after the predicate, and there is no date bound | dev: a 28-row delta makes **2,475** calls (895 ms) against 1,044 ms for the full pull |
+
+Without the authorisation layer the same reads take **0.18–0.66 ms on dev**: the predicate is
+over 99.9% of the cost. Per call on dev: `has_capability` ≈ 0.23 ms, `current_org_id` ≈
+0.14 ms, `may_read_expense`'s own body ≈ 0.11 ms — three nested SECURITY DEFINER SQL functions,
+each with `SET search_path`, none of them inlinable. The revenue projection has the same shape
+with one level (`has_capability` per component, ≈ 0.08 ms).
+
+### Dev, CURRENT (2,150 expenses · 2,475 expense period rows, 97% voided · 2,613 revenue components)
+
+Median ms (min–max), five warm runs. Workloads: `epc` = the view directly, one property or
+both with breakdown; `rp` = `reporting_primitives`; `rs` = `reporting_snapshot`; month =
+Jan 2027 (the busiest, 664 rows); FY = 2026-27.
+
+| Workload | Owner | CCR Manager | Accountant | `may_read_expense` calls |
+|---|---|---|---|---|
+| epc, month, one property | 145.0 (144.8–149.0) | 151.2 (148.5–151.5) | 148.6 (146.0–149.8) | 434 |
+| epc, FY, one property | 579.0 (576.8–583.3) | 593.2 (589.5–598.2) | 589.1 (586.1–591.8) | 1,730 |
+| epc, FY, both, breakdown | 758.8 (755.0–759.8) | 786.6 (773.4–793.8) | 763.6 (759.7–784.8) | 2,247 |
+| rp, month, one property | 232.7 (229.3–239.2) | 229.8 (228.0–232.5) | 229.2 (227.9–232.4) | 664 |
+| rp, FY, one property | 769.7 (768.6–795.9) | 778.5 (776.4–789.0) | 771.5 (766.4–772.3) | 2,247 |
+| rp, month, both, breakdown | 234.6 (231.4–236.1) | 230.0 (228.9–264.1) *refused* | — | 664 |
+| rp, FY, both, breakdown | 782.5 (770.7–813.3) | 780.2 (769.1–822.2) *refused* | 770.2 (766.5–778.0) *refused* | 2,247 |
+| rs, full | 1,044.1 (1,039.8–1,113.9) | 1,034.1 (1,031.1–1,043.8) | 1,025.1 (1,008.6–1,031.3) | 2,475 |
+| rs, delta (200 generations) | 895.2 (890.2–904.9) | 917.5 (913.8–928.3) | 894.8 (893.8–896.7) | 2,475 |
+| RLS read, month | 246.7 (223.3–351.2) | 150.0 (148.6–152.3) | 148.3 (147.6–150.5) | 664 / 434 / 434 |
+| `expense_document`, month | 238.5 (233.0–255.1) | 230.0 (228.8–230.9) | 229.2 (228.2–232.6) | 656 |
+| *no authorisation, session role* | month 0.18 · FY one property 0.61 · FY both 0.66 | | | 0 |
+
+Shared buffers all hits, no reads (e.g. `rs` full 31,250). **Nothing at CURRENT crosses 8 s**;
+the largest is the full sync at ~1.04 s.
+
+### Local SCALE and STRESS (E-LOCALPG — indicative timings, exact call counts)
+
+SCALE = 99,869 contribution rows in FY 2026-27 (49,869 expense, 50,000 revenue, 10% voided).
+STRESS = 499,975 over FY 2022-23 … 2026-27. The local per-call cost ranged from 0.29 ms (a
+quiet run — dev is 0.335 ms) to ~0.9 ms under host load, so timings for identical call counts
+vary up to ~3× between runs. The **call counts** are the portable evidence, and the
+**projection** multiplies them by dev's measured per-call costs (0.335 ms per expense row,
+0.082 ms per revenue component).
+
+| Workload | SCALE calls | SCALE local, CCR Mgr / Acct | STRESS calls | STRESS local, CCR Mgr | Projected on dev-class hardware, SCALE and STRESS |
+|---|---|---|---|---|---|
+| rp, month, one property | 4,205 | 2,560 / 2,883 ms | 4,205 | 1,414 ms | ~1.7 s (both) |
+| rp, FY, one property | 49,514 | 35.4 / 38.8 s | 49,514 | 15.6 s | **~20.5 s (both) — over 8 s** |
+| rs, delta | 49,869 | 36.4 / 28.0 s | 249,975 | **136.9 s** | **~20.8 s / ~104 s — over 8 s** |
+| rs, full | 49,869 | 31.5 / 31.4 s | 249,975 | **fails** (below) | ~20.8 s / fails |
+| epc, month, one property | 2,829 | 1.8 / 1.4 s | 2,829 | 0.92 s | ~0.95 s |
+
+Owner at SCALE: same call counts, timings recorded but noisy (the run overlapped two host test
+runs). Owner at STRESS, a quiet run: `rp` one-property month **1,348 ms** (1,283–1,679), `rp` FY
+**15,959 ms** (one run), `epc` FY both with breakdown **16,023 ms** (one run) — the same call
+counts as the Manager.
+
+**Two failures, demonstrated, not projected:**
+
+1. **The 8-second timeout.** krishna-mis-dev gives `authenticated` `statement_timeout = 8s`.
+   At SCALE, as the CCR Manager with that timeout: a one-month report returns; the
+   **financial-year report and a 200-generation delta `reporting_snapshot` are cancelled**
+   (`canceling statement due to statement timeout` in `has_capability` ← `may_read_expense`).
+   The device's reporting cache is filled only by `reporting_snapshot`, so a device on a
+   dataset of this size **cannot synchronise its P&L** and reports "not downloaded".
+2. **The 256 MB JSON ceiling.** At STRESS, the Owner's first full `reporting_snapshot` fails
+   before any timeout: `total size of jsonb object elements exceeds the maximum of 268435455
+   bytes`. The transport has no date bound, so a fresh install asks for the entire history in
+   one JSON document.
+
+**Against the thresholds.** T1 (one-month P&L ≤ 400 ms on the Galaxy A06) is measured on the
+device's local engine and is not the server path. D-186 threatens the reporting budget
+**functionally, not by latency**: the transport that fills the local cache stops working. At the
+dev-class per-call cost (≈0.42 ms per expense-and-revenue pair) the full or delta sync crosses
+8 s at about **38,000 contribution rows of history**, voided rows included, and a remote
+financial-year report at about **38,000 contribution rows in that year**. CURRENT holds 5,088.
+At the D-312 envelope of 100,000 rows a year, that is **under five months of trading**.
+
+### Proposed redesign — for approval, not implemented
+
+1. **Slow queries.** `reporting_snapshot(units, since, since)` (every sync, full or delta) and
+   `reporting_primitives(units, FY-from, FY-to, …)`; underneath, the qual
+   `may_read_expense(p.expense_id)` in `expense_period_contributions`.
+2. **Principal.** All. The cost does not depend on who asks; a scoped reader pays for rows it
+   will never see.
+3. **Dataset.** Breaks at SCALE (99,869 rows); fails outright at STRESS (499,975).
+4. **Plan.** Index Scan on `expense_period_allocations_category_period_idx`
+   (org, property, `pnl_date`) with `Filter: may_read_expense(expense_id)` per row; the hash join
+   to `expenses` that applies `voided_at`/`txn_number` comes after; `reporting_snapshot` has no
+   date bound, so the scan is the whole table.
+5. **Timings.** Above.
+6. **Function calls.** One `may_read_expense` (plus one `current_org_id` and one or more
+   `has_capability`) per expense period row scanned; one `has_capability` per revenue component.
+7. **Bottleneck.** A per-row SECURITY DEFINER predicate, three nested non-inlinable functions
+   deep, evaluated before every cheaper filter.
+8. **Candidate redesign.**
+   * **R1 — set-based authority in the read paths.** Resolve the caller's authority once per
+     statement (organisation, user id, the properties where they hold `expense.view.all`, the
+     properties where they hold `expense.view.own`), and express the D-169 document test as
+     plain indexed SQL inside the security-barrier view and the three expense RLS policies:
+     *a line in a view-all property, or the caller recorded it and a line is in a view-own
+     property* — exactly `may_read_expense`'s rule. `may_read_expense` stays for the
+     single-document checks (attachments, RPCs). The same move for the revenue projection's
+     per-row `has_capability`.
+   * **R2 — `reporting_primitives` scans only authorised, requested properties.** Apply the
+     requested and authorised property set as a scan predicate, and skip the expense scan when
+     nothing is authorised. Narrowing only; worth ~30% at a 70/30 split and all of a refused
+     request. **R2 alone does not remove the timeout.**
+   * **R3 — the transport stops asking for all history at once.** Bound `reporting_snapshot` to
+     the requested financial years and page it, so a first sync is never one unbounded JSON
+     document. This is a transport contract change (client and server) and needs its own
+     approval; R1 does not fix the 256 MB ceiling.
+9. **Expected benefit.** The same aggregates without the predicate take 0.2–0.7 ms on dev
+   (90–240 ms locally at SCALE and STRESS). R1 should take a financial-year report and a full
+   SCALE sync from ~20 s projected to well under a second; this must be measured in the harness
+   on the same matrix before anything is deployed.
+10. **Authorisation and security risk.** High if wrong: a divergence exposes another property's
+    or another author's costs (D-169), or reopens the covert channel D-062 closes. It is an
+    authorisation implementation change with the same semantics, so it must be **proven
+    equivalent**, not argued.
+11. **Migration and server impact.** One migration: replace `expense_period_contributions`,
+    `expense_document`, and the `expenses`, `expense_allocations` and
+    `expense_period_allocations` read policies; add at most one authority helper (API-surface
+    invariant restated). No table, column or data change; no Drift change; no client change for
+    R1 and R2. Rollback: restore the previous definitions. R3 changes the client transport.
+12. **Allow/deny matrix required before acceptance.**
+    * **Differential equivalence, in the harness**: for every principal below and every
+      expense at SCALE, the set of document ids, line ids and period-row ids visible through
+      each surface is identical before and after — plus the rolled-back positive control.
+    * **Principals**: Owner unscoped; Manager CCR; Manager HKI; Accountant CCR; Data Entry CCR
+      (`view.own`); a principal holding `view.own` on one property and `view.all` on the other;
+      a revoked grant; a deactivated profile; no claims; a user of another organisation; a
+      principal holding only `reports.view`.
+    * **Documents**: single-property CCR by others; CCR by the `view.own` principal; HKI; a
+      shared CCR+HKI document by the Owner; a shared document recorded by the `view.own`
+      principal; voided; unnumbered; another organisation's.
+    * **Surfaces**: `expense_document` (including the withheld total on a partial view,
+      D-062), `expense_period_contributions`, the three tables under RLS,
+      `expense_attachments` and Storage (`may_read_expense_attachments`,
+      `may_attach_to_expense`), `reporting_primitives` (per property and consolidated, D-164,
+      D-187), `reporting_snapshot`, and the expense RPCs.
+    * **Live**: the existing live reporting, parity, expense and D-169 suites on
+      krishna-mis-dev, unchanged and green.
+
+## D-319 — The D-186 harness, and what building it found
+**Date:** 2026-09-29 · **Status:** Implemented / Tested (Phase 8 Slice 2) — benchmark tooling
+only; no product code, schema, migration, RPC or authorisation change
+
+**The tooling, `tool/perf/`.**
+
+| File | Does |
+|---|---|
+| `d186_probe.sql` | `pg_temp.d186_probe`, a **temporary** function: emulates a principal the way PostgREST does (`SET LOCAL ROLE authenticated` + `request.jwt.claims`), one discarded warm-up, N × EXPLAIN (ANALYZE, BUFFERS), the flattened plan, one timed plain run, and the exact per-function call counts from `pg_stat_xact_user_functions` |
+| `d186.py` | builds the workload matrix; `emit` prints one batch (a single transaction ending in ROLLBACK); `run-local` runs it against the harness socket only; `summarize` prints the D-313 table |
+| `localpg.sh` | a throwaway PostgreSQL 17 cluster in `%TEMP%\krishna_mis_perf_pg`, settings mirroring krishna-mis-dev, **no TCP listener** — one Unix-domain socket in its own directory |
+| `supabase_shim.sql` | the minimum Supabase surface the migrations reference, every deviation listed |
+| `bootstrap_identities.sql` | five synthetic principals at `.invalid` addresses, provisioned through the real admin RPCs |
+| `synth.sh`, `synth.sql` | deterministic SCALE and STRESS datasets through every constraint and trigger; refuses to run outside the harness |
+| `selftest.sql` | authorisation allow/deny against ground truth for every principal, plus a rolled-back positive control |
+
+`test/tool/perf_harness_guard_test.dart` holds the safety properties as host tests: no TCP
+listener, refusal guards present, no hosted project or credential named, one transaction ending
+in ROLLBACK, `.invalid` identities, the positive control present. Planting a TCP listener turns
+it red.
+
+**Fidelity, checked rather than assumed.** After replay, 36 object definitions were fingerprinted
+on both sides — the seven authority and reporting functions, the three reporting views, the
+three expense RLS policies, 21 indexes and both property ids. **34 are byte-identical**; the two
+RPCs differ **only in comments** (D-203's pattern) and are identical after comments and
+whitespace are removed. The self-test passed 8/8 at SCALE; with `may_read_expense` replaced by
+`true` inside a rolled-back transaction, the `expense.view.own` principal saw 32,961 rows instead
+of their own 2,922, and the restored definition hashed exactly as krishna-mis-dev's.
+
+**Findings.**
+
+1. **The committed migrations do not replay in filename order** — relevant to D-146's
+   fresh-branch replay before the first staging deploy (Phase 9).
+   `20260829090500_api_surface_invariant.sql` is the ledger's `api_surface_invariant_v5`
+   (20260829133240), applied **after** `20260829100000_usage_and_attachment_storage.sql`,
+   because it names two functions that file creates. Filename order fails there. With that one
+   file moved after its anchor, all 94 migrations replay. And
+   `20260901132225_revenue_verified_baseline_fy2627` refuses to install without an owner
+   profile, which on the server was bootstrapped by hand in Phase 2: a staging replay has to
+   bootstrap its owner before that file. Neither was known before.
+2. **Function call tracking is available per transaction on krishna-mis-dev.** `pg_settings`
+   lists `track_functions` as superuser-only and `has_parameter_privilege` says `postgres` may
+   not set it, yet `SET LOCAL track_functions = 'all'` inside a transaction is accepted and
+   `pg_stat_xact_user_functions` then counts exactly. Only ever used `LOCAL`, inside a
+   transaction that rolls back; no server-wide setting was changed.
+3. **This session could not open a TCP listener** (`could not bind IPv4 address "127.0.0.1":
+   Permission denied`, not a reserved port range), so the harness uses a Unix-domain socket
+   only — which is stricter isolation than a loopback port and is kept.
+4. **Local timings are indicative.** For identical call counts they varied up to ~3× with host
+   load; the quietest run's per-call cost (0.29 ms) matched krishna-mis-dev's (0.335 ms). The
+   Owner's SCALE run overlapped two host test runs and is recorded as noisy; the Owner's clean
+   figures come from STRESS, whose month and year workloads are the same size because they are
+   date-bounded. At STRESS the heavy workloads used one or two measured runs, recorded in each
+   result.
+5. **Supabase-specific behaviour not reproduced**, and why it does not matter here: the
+   PostgREST wrapper (emulated), supautils, Storage's API, and PostgreSQL 17.11 against 17.6.
+   `postgres` is a superuser locally and a BYPASSRLS non-superuser on Supabase; both bypass RLS
+   inside the SECURITY DEFINER bodies and neither is the measured principal.
+
+**Nothing synthetic touched krishna-mis-dev.** Every dev batch was a single transaction ending in
+ROLLBACK that created only a temporary function.

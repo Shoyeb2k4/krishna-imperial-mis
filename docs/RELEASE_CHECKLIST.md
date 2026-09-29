@@ -909,7 +909,7 @@ Details are in `PROJECT_STATUS.md`, *Phase 7 Slice 10*.
 
 ## V. Phase 8 — Performance, Hardening & Recovery
 
-Decisions D-312 … D-316; measurement contract `ARCHITECTURE.md` §52.
+Decisions D-312 … D-319; measurement contract `ARCHITECTURE.md` §52.
 
 ### V.1 Every slice
 
@@ -930,13 +930,24 @@ Decisions D-312 … D-316; measurement contract `ARCHITECTURE.md` §52.
 
 - [x] **Slice 1** — decisions recorded; paging documentation corrected to LIMIT/OFFSET (D-314);
       D-223 disposed of without a schema change (D-315); damaged-database gap recorded (D-316).
-- [ ] **Slice 2** — D-186: E-DEV plans for three principals × month / year / both-with-breakdown,
+- [x] **Slice 2** — D-186: E-DEV plans for three principals × month / year / both-with-breakdown,
       five warm runs; E-LOCALPG at SCALE and STRESS; change only on a measured breach.
+      *Measured (D-318): a breach at SCALE and STRESS; the redesign awaits the project lead and
+      nothing was changed. Harness `tool/perf/` (D-319).*
+- [ ] **Slice 2 follow-up (only if approved)** — the D-318 redesign, proven by the harness's
+      differential equivalence over SCALE for every principal and surface, the rolled-back
+      positive control, the full allow/deny matrix and the live suites, then re-measured on the
+      same matrix.
+- [ ] **Phase 9 staging replay (D-146)** — replay in **ledger** order, not filename order:
+      `20260829090500_api_surface_invariant.sql` after `20260829100000_…`; bootstrap the owner
+      before `20260901132225_revenue_verified_baseline_fy2627` (D-319).
 - [ ] **Slice 3** — retry behaviour read from the Riverpod source; each high-priority provider
       reproduced, classified and regression-tested; a sync is visibly started before it awaits
       its prerequisites. D-248 diagnostic still present.
 - [ ] **Slice 4** — expense ledger has a stable id tie-break; ledger plans and timings at
-      CURRENT, SCALE and STRESS; OFFSET kept unless measurably problematic.
+      CURRENT, SCALE and STRESS; OFFSET kept unless measurably problematic. The Expense ledger
+      pages with *load more*, every filter (sync state included) applied in the database before
+      the page is cut, the ledger says when more exist, and a filter change resets paging (D-317).
 - [ ] **Slice 5** — full-suite baseline, then every test failing under global fatal missed taps
       listed and classified; global setting on; each opt-out documented.
 - [ ] **Slice 6** — export stages timed separately at normal, realistic and stress sizes on
