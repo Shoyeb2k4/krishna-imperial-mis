@@ -44,14 +44,51 @@ def arr(units: list[str]) -> str:
     return "array[" + ", ".join(lit(u) + "::uuid" for u in units) + "]"
 
 
-def workloads(p: dict) -> list[tuple[str, str]]:
-    """(label, sql) for one principal. `p` holds the dataset's units and dates."""
+def paged_loop(units: list[str], years: list[int], since: int, page: int) -> str:
+    """The whole paged run (D-320) as one statement: each recursive step is one call of
+    reporting_snapshot_page with the previous page's cursor, exactly as the client walks
+    it. Returns the page count and the documents delivered, so the result is checkable."""
+    ys = "array[" + ", ".join(str(y) for y in years) + "]::int[]"
+    call = (f"public.reporting_snapshot_page({arr(units)}, {ys}, {since}, {since}, "
+            "{rs}, {ri}, {es}, {ei}, " + str(page) + ")")
+    first = call.format(rs="null", ri="null", es="null", ei="null")
+    nxt = call.format(rs="pg.rs", ri="pg.ri", es="pg.es", ei="pg.ei")
+    step = ("(s.x->'revenue_documents'->-1->>'seq')::bigint as rs, "
+            "(s.x->'revenue_documents'->-1->>'id')::uuid as ri, "
+            "(s.x->'expense_documents'->-1->>'seq')::bigint as es, "
+            "(s.x->'expense_documents'->-1->>'id')::uuid as ei, "
+            "coalesce((s.x->>'revenue_has_more')::boolean, false) "
+            "or coalesce((s.x->>'expense_has_more')::boolean, false) as more, "
+            "jsonb_array_length(s.x->'revenue_documents') "
+            "+ jsonb_array_length(s.x->'expense_documents') as docs, "
+            "jsonb_array_length(s.x->'revenue') + jsonb_array_length(s.x->'expense') as rows")
+    return (
+        "with recursive pg(n, rs, ri, es, ei, more, docs, rows) as ("
+        f"select 1, v.* from (select {first} as x) s, lateral (select {step}) v "
+        "union all "
+        "select pg.n + 1, coalesce(v.rs, pg.rs), coalesce(v.ri, pg.ri), "
+        "coalesce(v.es, pg.es), coalesce(v.ei, pg.ei), v.more, v.docs, v.rows "
+        f"from pg cross join lateral (select {nxt} as x) s, lateral (select {step}) v "
+        "where pg.more) "
+        "select count(*) as pages, sum(docs) as documents, sum(rows) as rows from pg"
+    )
+
+
+def workloads(p: dict, old: bool = False) -> list[tuple[str, str]]:
+    """(label, sql) for one principal. `p` holds the dataset's units and dates.
+
+    With `old`, the same reads are also issued against `perf_old` — the pre-redesign
+    projections and functions captured by capture_old.sql — so before and after are
+    measured on identical data, in the same session (D-318 performance acceptance)."""
     unit = p["unit"]                     # the primary property this principal reports on
     units = p["units"]                   # every property the principal is offered
     both = p["both"]                     # both properties: the consolidated request
     m0, m1 = p["month"]
     f0, f1 = p["fy"]
     since = p["since"]
+    fy_start = int(f0[:4])
+    fy_years = p.get("retained_years") or [fy_start - 1, fy_start]
+    years = "array[" + ", ".join(str(y) for y in fy_years) + "]::int[]"
     epc = ("select business_unit_id, count(*), sum(amount_minor) "
            "from public.expense_period_contributions "
            "where voided_at is null and txn_number is not null "
@@ -62,7 +99,7 @@ def workloads(p: dict) -> list[tuple[str, str]]:
               "and pnl_date >= {a} and pnl_date <= {b} "
               "group by business_unit_id, department_id, section_id, category_id")
     one = f"and business_unit_id = {lit(unit)}::uuid"
-    return [
+    items = [
         ("epc.month.unit", epc.format(a=lit(m0), b=lit(m1), u=one)),
         ("epc.fy.unit", epc.format(a=lit(f0), b=lit(f1), u=one)),
         ("epc.fy.all.breakdown", epc_bd.format(a=lit(f0), b=lit(f1))),
@@ -74,8 +111,20 @@ def workloads(p: dict) -> list[tuple[str, str]]:
          f"select public.reporting_primitives({arr(both)}, {lit(m0)}, {lit(m1)}, true)"),
         ("rp.fy.both.breakdown",
          f"select public.reporting_primitives({arr(both)}, {lit(f0)}, {lit(f1)}, true)"),
-        ("rs.full", f"select public.reporting_snapshot({arr(units)}, 0, 0)"),
-        ("rs.delta", f"select public.reporting_snapshot({arr(units)}, {since}, {since})"),
+        # The paged transport (D-320). Retention is the current and previous financial
+        # year; the first page is what a device's first request costs, the loop what the
+        # whole bootstrap costs, the delta what an ordinary refresh costs.
+        ("rsp.first",
+         f"select public.reporting_snapshot_page({arr(units)}, {years}, 0, 0, "
+         f"null, null, null, null, 1000)"),
+        ("rsp.delta",
+         f"select public.reporting_snapshot_page({arr(units)}, {years}, {since}, {since}, "
+         f"null, null, null, null, 1000)"),
+        ("rsp.bootstrap.all", paged_loop(units, fy_years, 0, 1000)),
+        # With `history_years`, the bootstrap over every year the dataset holds: D-320 has
+        # no retention cutoff, so the whole history must page without a size limit.
+        *([("rsp.bootstrap.history", paged_loop(units, p["history_years"], 0, 1000))]
+          if p.get("history_years") else []),
         ("rls.epa.month",
          "select count(*) from public.expense_period_allocations "
          f"where pnl_date >= {lit(m0)} and pnl_date <= {lit(m1)}"),
@@ -83,6 +132,27 @@ def workloads(p: dict) -> list[tuple[str, str]]:
          "select count(*), sum(visible_amount_minor) from public.expense_document "
          f"where business_date >= {lit(m0)} and business_date <= {lit(m1)}"),
     ]
+    if not old:
+        return items
+    before = [
+        ("old.epc.month.unit", epc.format(a=lit(m0), b=lit(m1), u=one)),
+        ("old.epc.fy.unit", epc.format(a=lit(f0), b=lit(f1), u=one)),
+        ("old.epc.fy.all.breakdown", epc_bd.format(a=lit(f0), b=lit(f1))),
+        ("old.rp.month.unit",
+         f"select perf_old.reporting_primitives({arr([unit])}, {lit(m0)}, {lit(m1)}, false)"),
+        ("old.rp.fy.unit",
+         f"select perf_old.reporting_primitives({arr([unit])}, {lit(f0)}, {lit(f1)}, false)"),
+        ("old.rp.month.both.breakdown",
+         f"select perf_old.reporting_primitives({arr(both)}, {lit(m0)}, {lit(m1)}, true)"),
+        ("old.rp.fy.both.breakdown",
+         f"select perf_old.reporting_primitives({arr(both)}, {lit(f0)}, {lit(f1)}, true)"),
+        ("old.rs.delta",
+         f"select perf_old.reporting_snapshot({arr(units)}, {since}, {since})"),
+    ]
+    before = [(label, sql.replace("public.expense_period_contributions",
+                                  "perf_old.expense_period_contributions"))
+              for label, sql in before]
+    return items + before
 
 
 def baseline(p: dict) -> list[tuple[str, str]]:
@@ -110,12 +180,13 @@ def is_heavy(label: str) -> bool:
     """Whole-financial-year and snapshot workloads. At STRESS a single run of these takes
     tens of seconds, so --heavy-runs may lower their repetitions; the result records the
     run count it actually used, so the deviation from D-313's five runs is never hidden."""
-    return ".fy." in label or label.startswith("rs.")
+    return (".fy." in label or label.startswith("rs.") or label.startswith("old.rs.")
+            or label.startswith("rsp.bootstrap."))
 
 
 def batch(p: dict, principal: str | None, runs: int, only: list[str] | None,
-          heavy_runs: int | None = None) -> str:
-    items = baseline(p) if principal is None else workloads(p)
+          heavy_runs: int | None = None, old: bool = False) -> str:
+    items = baseline(p) if principal is None else workloads(p, old)
     if only:
         items = [w for w in items if w[0] in only]
     out = ["begin;", "set local track_functions = 'all';",
@@ -175,6 +246,8 @@ def main() -> None:
         s.add_argument("--runs", type=int, default=5)
         s.add_argument("--heavy-runs", type=int)
         s.add_argument("--only", nargs="*")
+        s.add_argument("--old", action="store_true",
+                       help="also measure the perf_old (pre-redesign) reads, same data")
         s.add_argument("--out")
         s.add_argument("--psql", default=r"C:\Program Files\PostgreSQL\17\bin\psql.exe")
     s = sub.add_parser("summarize")
@@ -189,7 +262,7 @@ def main() -> None:
 
     params = load_params(a.params)
     who, p = principal_params(params, a.principal)
-    sql = batch(p, who, a.runs, a.only, a.heavy_runs)
+    sql = batch(p, who, a.runs, a.only, a.heavy_runs, a.old)
     if a.cmd == "emit":
         print(sql)
         return

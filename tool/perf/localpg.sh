@@ -91,6 +91,12 @@ EOF
         20260901132225_*)
           psql_ -d "$DB" -f "$(winpath "$HERE/bootstrap_identities.sql")" >/dev/null ;;
       esac
+      # The D-320 equivalence harness keeps the pre-redesign read paths beside the new ones:
+      # captured once, just before the first migration after 20260912100000.
+      if [ -z "${captured:-}" ] && [[ "$(basename "$f")" > "20260912100000_zzz" ]]; then
+        psql_ -d "$DB" -f "$(winpath "$HERE/capture_old.sql")" >/dev/null
+        captured=1
+      fi
       if ! psql_ -d "$DB" -f "$(winpath "$f")" >/dev/null 2>"$ROOT/last_error.txt"; then
         echo "FAILED at $(basename "$f")"; cat "$ROOT/last_error.txt"; exit 1
       fi
