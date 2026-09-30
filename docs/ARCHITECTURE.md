@@ -9,7 +9,7 @@ Status: **Sections 1–12 proposed (Phase 0, revised); sections 13–16 and 18�
 is built and verified; section 17 is the Phase 4 *plan*, since built — read §18–§26 for what
 shipped.** Sections 6, 5.3 and 8 carry the project lead's mandated corrections.
 Implementation status is tracked in `PROJECT_STATUS.md`.
-Last updated: 2026-09-29 — **Phase 8 Slice 2**: the D-186 harness and what the reporting predicate costs at scale (§52.5, D-318, D-319); **Phase 8 Slice 1**: the measurement contract (section 52), §9 corrected to LIMIT/OFFSET paging (D-314), §8.2 marks the recovery flow as not yet built (D-316); 2026-09-28 — **Phase 7 closed** (D-311): section 51 now describes what shipped; 2026-09-28 — **Phase 7 Slice 10**: print authority re-check (D-309) and the runner apartment (D-308), sections 51.5 and 51.7; 2026-09-25 — **Phase 7 Slices 8–9**: Android sharing and the analysis exports, as built (sections 51.2, 51.5, 51.7); **Phase 7 Slice 1**: the export, PDF and printing contract (section 51); 2026-09-25 — **Phase 6 closed**: the stable contract Phase 7 may build on (section 50), and the final D-286 real-line rule (section 49); 2026-09-24 — money at large text sizes (section 49); 2026-09-23 — dashboard drill-down integration (section 48); the Windows Analytics workspace (section 47); the Android Home dashboard (section 46); 2026-09-22 — the Windows Overview (section 45); 2026-09-17 — Phase 6 dashboard periods and comparison rules (section 41); Slice 11's corrections and the Slice 12 closure architecture (section 40); 2026-09-13 — the Android P&L surface (section 38); the Windows P&L surface (section 37); Slice 7 reporting security closure (section 36); 2026-09-11 — the Owner Settlement surface and its security boundary (section 35); the Owner Settlement Engine (section 34); the Owner Ledger (section 33), with the V1 ownership vector in §33.3; Phase 5 Slice 6 corrective (section 32); Slice 5 in section 31; Slices 1-4 in sections 27-30
+Last updated: 2026-09-30 — **Phase 8**: the D-318 redesign as built and measured (§52.6, D-320, D-321); 2026-09-29 — **Phase 8 Slice 2**: the D-186 harness and what the reporting predicate costs at scale (§52.5, D-318, D-319); **Phase 8 Slice 1**: the measurement contract (section 52), §9 corrected to LIMIT/OFFSET paging (D-314), §8.2 marks the recovery flow as not yet built (D-316); 2026-09-28 — **Phase 7 closed** (D-311): section 51 now describes what shipped; 2026-09-28 — **Phase 7 Slice 10**: print authority re-check (D-309) and the runner apartment (D-308), sections 51.5 and 51.7; 2026-09-25 — **Phase 7 Slices 8–9**: Android sharing and the analysis exports, as built (sections 51.2, 51.5, 51.7); **Phase 7 Slice 1**: the export, PDF and printing contract (section 51); 2026-09-25 — **Phase 6 closed**: the stable contract Phase 7 may build on (section 50), and the final D-286 real-line rule (section 49); 2026-09-24 — money at large text sizes (section 49); 2026-09-23 — dashboard drill-down integration (section 48); the Windows Analytics workspace (section 47); the Android Home dashboard (section 46); 2026-09-22 — the Windows Overview (section 45); 2026-09-17 — Phase 6 dashboard periods and comparison rules (section 41); Slice 11's corrections and the Slice 12 closure architecture (section 40); 2026-09-13 — the Android P&L surface (section 38); the Windows P&L surface (section 37); Slice 7 reporting security closure (section 36); 2026-09-11 — the Owner Settlement surface and its security boundary (section 35); the Owner Settlement Engine (section 34); the Owner Ledger (section 33), with the V1 ownership vector in §33.3; Phase 5 Slice 6 corrective (section 32); Slice 5 in section 31; Slices 1-4 in sections 27-30
 
 ---
 
@@ -4570,4 +4570,51 @@ evaluated before voided, unnumbered, unrequested-property and delta filters. The
 transport (`reporting_snapshot`) has no date bound. At CURRENT volume every path is under
 1.1 s; at SCALE a financial-year report and every sync exceed the 8 s `authenticated`
 statement timeout, and at STRESS a first full sync exceeds PostgreSQL's 256 MB `jsonb` limit.
-A redesign is proposed in D-318 and is **not** built.
+A redesign is proposed in D-318 and is **not** built. *(Superseded: built as D-320, §52.6.)*
+
+### 52.6 The D-318 redesign as built (D-320, D-321)
+
+**Authority, once per statement (R1).** The two reporting projections no longer call a
+SECURITY DEFINER predicate per row. The caller's view-all, view-own and revenue-view property
+sets are each computed once, as scalar InitPlans, by `has_capability` over every property;
+the D-169 document rule is stated in set form. `may_read_expense` still guards every
+single-document path. Exactness rests on the D-040 key ladder: every line's property is a
+`business_units` row.
+
+**Scoped scans (R2).** `reporting_primitives` applies the requested and authorised
+properties as a scan predicate, so a one-property report reads only that property and a
+refused request reads nothing.
+
+**A paged transport (R3).** `reporting_snapshot_page` replaces `reporting_snapshot`:
+
+```
+        client                                   server (one SQL statement per page)
+        ──────                                   ─────────────────────────────────
+        cursor = start                     ──►   documents after cursor, in (generation, id)
+        stage page under <owner>#staging   ◄──   ≤ n per dataset, never split; their rows in
+        save resume state                         the requested years; has_more; snapshot id
+        …repeat until both has_more=false
+        publish: staged + final page +
+          markers + evidence, one transaction
+```
+
+* **The document is the unit** of paging, as it is of replacement (D-178). The delta cursor
+  is the document's own generation, which every server writer of lines advances (D-177,
+  guarded by `document_generation_invariant_test.dart`).
+* **No retention cutoff.** A first synchronisation walks every authorised document in the
+  requested years, however many pages that takes; a delta lists every changed document,
+  including one whose rows all left the requested years, so it can be cleared.
+* **Coherence (D-188, amended).** The final page certifies the run. Because the pass is
+  ordered by generation, a document changed after an earlier page reappears later at its
+  newer version, so the published cache equals the final page's snapshot, up to the
+  late-commit hazard the overlap already mitigates (D-180).
+* **A page's cost is its own neighbourhood of the index, not the history** (D-321). The
+  projections are security-barrier views, so `ORDER BY … LIMIT` cannot be pushed into them;
+  a plain comparison on the generation can, and a bounded range on it is an index range. A
+  page therefore reads a generation window that starts at its cursor and grows fourfold
+  until it holds the page's 4n + 1 candidate rows, then fetches the page's rows inside its
+  documents' own generation range. The answer is identical to an unbounded scan; the cost is
+  not.
+* **Nothing half-run is readable.** Intermediate pages live under the staging owner key; a
+  run resumes only with an identical scope and authority generation (D-240), and is
+  discarded on any change of authority, session or authorised set.

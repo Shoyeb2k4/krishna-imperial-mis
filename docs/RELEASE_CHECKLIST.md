@@ -957,4 +957,9 @@ Decisions D-312 … D-319; measurement contract `ARCHITECTURE.md` §52.
       retryable; lock contention, interrupted migration and file-write failure covered.
 - [ ] **Slice 8** — Windows, emulator and Galaxy A06 (USB only, D-288) regression and
       acceptance.
+      **Rebuild every installed client first:** builds made before D-320 call the dropped
+      `reporting_snapshot` and cannot synchronise reporting against `krishna-mis-dev`.
+- [ ] **Phase 9 / D-146** — the fresh-branch replay must follow the ledger order, not
+      filename order, and bootstrap the owner before `revenue_verified_baseline_fy2627`
+      (D-319 finding 1); the D-320 migrations then apply in their own order.
 - [ ] **Slice 9** — closure record, carry-forwards classified, clean artefacts scanned.

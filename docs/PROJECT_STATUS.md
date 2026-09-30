@@ -5,7 +5,16 @@ Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
-Last updated: **2026-09-29** — **PHASE 8 SLICE 2 — D-186 SERVER PROFILING: MEASURED, STOPPED
+Last updated: **2026-09-30** — **PHASE 8 — THE D-318 REDESIGN: BUILT, PROVEN AND MEASURED;
+D-318 CLOSED (D-320, D-321).** Reporting no longer evaluates a per-row authority predicate,
+a one-property report reads only its property, and synchronisation is paged with no
+historical cutoff. Row identity is proven exactly (238 of 238 checks, 1,833,274 rows, every
+control red). At STRESS no page exceeds 3.1 s against the 8 s timeout, and a whole five-year
+first sync takes about 30 s where the first paged body took 19–32 minutes. Four server
+migrations, no local schema change. **Slice 3 is not started.** See *The D-318 redesign* at the
+end of this file.
+
+Previously: **2026-09-29** — **PHASE 8 SLICE 2 — D-186 SERVER PROFILING: MEASURED, STOPPED
 AT THE APPROVAL GATE.** The expense reporting predicate costs ~0.335 ms per expense row on
 krishna-mis-dev. At CURRENT volume every reporting path is under 1.1 s. At SCALE a financial-year
 report and every reporting sync exceed the 8 s `authenticated` statement timeout (demonstrated);
@@ -7293,7 +7302,7 @@ measurement against an approved threshold requires.
 | # | Slice | State |
 |---|---|---|
 | 1 | Governance and baseline harnesses | **COMPLETE** |
-| 2 | D-186 server profiling (E-DEV current data, E-LOCALPG at SCALE and STRESS) | **COMPLETE — breach measured; redesign awaits approval (D-318)** |
+| 2 | D-186 server profiling (E-DEV current data, E-LOCALPG at SCALE and STRESS) | **COMPLETE** — breach measured (D-318); the approved redesign is built and D-318 closed (D-320, D-321) |
 | 3 | Retry and hang hardening (D7) | not started |
 | 4 | Local expense-ledger profiling and deterministic ordering (D5, D-314, D-315) | not started |
 | 5 | Global missed-tap hardening (D8) | not started |
@@ -7481,3 +7490,79 @@ to ~3× with host load (D-319).
 * **The revenue projection** carries the same per-row shape, one level shallower (~0.08 ms per
   component) — within R1's scope.
 * **Slice 4** starts from D-317.
+
+## Phase 8 — the D-318 redesign (D-320, D-321): **COMPLETE — D-318 CLOSED**
+
+Approved by the project lead with one modification: **no global historical retention
+cutoff**. Built as a follow-on to Slice 2, not as Slice 3, which is not started.
+
+### In plain words
+
+Every report and every synchronisation used to ask "may this person see this expense?" once
+per row, including rows it then discarded. That question is now answered once per request.
+A report for one property reads only that property. Synchronisation arrives in bounded pages
+and still delivers the whole authorised history. The result is the same rows for every
+person — proven row by row, not by counting — and the paths that were cancelled at SCALE
+and failed at STRESS now take milliseconds to about a second.
+
+Accepting the transport found one more problem, fixed before it was accepted: the first
+paged version sorted the whole history on every page, so a five-year first sync took 19–32
+minutes. Pages now read only their own neighbourhood of an index; the same sync takes about
+30 seconds.
+
+### Server changes (krishna-mis-dev)
+
+| Ledger version | Name | What |
+|---|---|---|
+| 20260929163951 | `reporting_authority_evaluated_once` | R1 authority in set form, once per statement; R2 scoped scans |
+| 20260929164052 | `reporting_snapshot_paged` | R3: `reporting_snapshot` dropped, `reporting_snapshot_page` added, three indexes |
+| 20260930125903 | `reporting_snapshot_page_windowed` | each page reads a bounded generation window |
+| 20260930132722 | `reporting_snapshot_page_window_stops` | the window stops early and ends tight |
+
+Ledger **105**; reviewed API **57**; executable-SQL identity checked for all four
+(`LEDGER.md`). **Local Drift schema unchanged at v21.**
+
+### Client changes
+
+`ReportingGateway` pages; `ReportingCache` stages pages under the owner key
+`<owner>#reporting-staging` and publishes a run in one transaction; `ReportingSync` resumes
+an interrupted run with an identical scope and discards it on any authority, session or
+scope change (D-240); the purge covers staging and resume state (D-070, D-074).
+
+### Headline measurements (full tables in D-321)
+
+| | Before | After |
+|---|---|---|
+| dev, FY report (Owner) | 769.7 ms | 9.4 ms |
+| dev, full sync / first page (Owner) | 1,044 ms | 210 ms (whole first sync 419 ms, 3 pages) |
+| dev, delta sync | 895 ms | 23 ms |
+| SCALE, FY report | 7.6–8.1 s (cancelled under 8 s) | 227–240 ms |
+| SCALE, delta sync | 7.5–8.2 s (cancelled) | 14–17 ms |
+| STRESS, first full sync | fails (jsonb > 256 MB) | 30.8 s over 250 pages, largest page 3.1 s |
+| STRESS, delta sync | 86–137 s | 14–22 ms |
+| `may_read_expense` calls in reporting | one per expense row | 0 |
+
+### Verified
+
+| Item | Status | Evidence |
+|---|---|---|
+| Equivalence gate, exact row identity | **Tested** | 238 / 238, 1,833,274 rows, final body, fresh SCALE replay |
+| Positive controls C1, C2, C3 | **Tested** | all red: +29,705 rows, +25,049 rows, 53 rows |
+| STRESS page-by-page comparison with the original paged body | **Tested** | 19 pages × 2 corrected bodies, 0 mismatches |
+| 8 s timeout, SCALE and STRESS | **Tested** | old paths cancelled; every new page ≤ 3.1 s |
+| Dev before / after | **Tested** | three principals, five warm runs, every batch rolled back |
+| Document-generation invariant | **Tested** | host guard with a planted-violation self-check |
+| `dart format` / `flutter analyze` | **Tested** | 408 files, 0 changed / no issues |
+| Host suite | **Tested** | **2,999 passed** |
+| Live suites on dev | **Tested** | see below |
+| Secret scan, tree and history | **Tested** | clean |
+| Android / Windows builds and device acceptance | **Not tested** | installed pre-D-320 clients cannot sync reporting until rebuilt; that rebuild is Slice 8 |
+
+### Recorded and carried
+
+* The expense RLS read and `expense_document` are still per row (500–740 ms a month at
+  SCALE and STRESS) — Slice 4, with the Expense ledger (D-317).
+* The migration-replay order finding for Phase 9's D-146 staging replay stands (D-319).
+* The revenue live suite's bucket-reconciliation test exceeds five minutes against the
+  accumulated bucket (a Slice 11 characteristic, D-076 family); the bucket still reconciled
+  exactly (0 stranded).

@@ -6,7 +6,7 @@ Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
 Status: **Part proposal, part as-built.** Corrected at Phase 4 closure, 2026-09-07.
-Last updated: 2026-09-28 — **Phase 7 closed with no schema change** (D-311). Previously 2026-09-25 — **Phase 7 Slice 1 (governance)**: the §2 capability catalogue
+Last updated: 2026-09-30 — **Phase 8 — the D-318 redesign**: four server migrations, no local schema change (D-320, D-321). Previously 2026-09-28 — **Phase 7 closed with no schema change** (D-311). Previously 2026-09-25 — **Phase 7 Slice 1 (governance)**: the §2 capability catalogue
 now matches the shipped codes (D-300), and Phase 7 is planned with **no schema change**
 (see *Phase 7* at the end). Previously 2026-09-25 — **Phase 6 (Dashboard & Analytics)
 closed with no schema change**:
@@ -1939,3 +1939,35 @@ The Windows expense ledger (`ExpenseRepository.query`) orders by `business_date`
 `captured_at`, pages with LIMIT/OFFSET, and loads each row's allocations, contributions and
 attachments by `expense_id`. Whether any of that needs an index is measured in Phase 8 Slice 4
 at the CURRENT, SCALE and STRESS classes (D-313) before anything is added.
+
+## Phase 8 — the D-318 redesign (D-320): server changes, no local schema change (2026-09-29)
+
+**Server** — two migrations, `reporting_authority_evaluated_once` and
+`reporting_snapshot_paged`. No table, no column on a table, no data change.
+
+| Object | Change |
+|---|---|
+| `expense_period_contributions` | authority in set form, evaluated once per statement (R1); one trailing column `document_change_seq` (= `expenses.change_seq`). Existing columns, order and types unchanged, so every grant is kept |
+| `revenue_period_contributions` | the per-row `has_capability('revenue.view', …)` evaluated once per statement (R1) |
+| `reporting_primitives` | the requested **and** authorised units are also a scan predicate (R2) |
+| `reporting_snapshot(uuid[], bigint, bigint)` | **dropped** |
+| `reporting_snapshot_page(uuid[], integer[], bigint, bigint, bigint, uuid, bigint, uuid, integer)` | **new**, the paged transport (D-320). SECURITY INVOKER; granted to `authenticated` only |
+| `reporting_newer_than` | same answer, asked over document generations |
+| `expenses_org_change_seq_idx` on `expenses (org_id, change_seq, id)` | new — the ordered expense document pass |
+| `revenue_entries_org_change_seq_idx` on `revenue_entries (org_id, change_seq, id)` | new — the ordered revenue document pass |
+| `expense_period_allocations_expense_idx` on `expense_period_allocations (expense_id)` | new — a page's rows by document |
+
+The reviewed API surface stays at **57** functions: one dropped, one added.
+`may_read_expense` and the three expense RLS policies are unchanged.
+
+**Two further migrations, `reporting_snapshot_page_windowed` and
+`reporting_snapshot_page_window_stops` (D-321)**, replace the body of
+`reporting_snapshot_page` only — same signature, same grants, same answer. Each page reads a
+bounded generation window on the two `*_org_change_seq_idx` indexes instead of sorting the
+caller's whole history, because an `ORDER BY … LIMIT` cannot be pushed into a
+security-barrier view. No table, column, index or grant changes.
+
+**Local (Drift)** — **no change; schema v21.** Staged pages live in the existing
+`reporting_*_contributions` tables under the owner key `<owner>#reporting-staging`, and the
+resume state is one `app_meta` row, `reporting.sync.resume.v1:<owner>`. Both are purged with
+the reader's own reporting cache (D-070, D-074).

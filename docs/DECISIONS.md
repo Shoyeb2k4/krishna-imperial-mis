@@ -11434,3 +11434,273 @@ of their own 2,922, and the restored definition hashed exactly as krishna-mis-de
 
 **Nothing synthetic touched krishna-mis-dev.** Every dev batch was a single transaction ending in
 ROLLBACK that created only a temporary function.
+
+## D-320 — The D-318 redesign as approved: set-based authority, scoped scans, a paged transport
+**Date:** 2026-09-29 · **Status:** Accepted (project-lead approval of D-318 with one
+modification) — implemented in migrations `reporting_authority_evaluated_once` and
+`reporting_snapshot_paged`; results in D-321
+
+**The approval.** R1, R2 and R3 were approved with one modification: **no global historical
+retention cutoff**. The transport pages; it does not forget. A first synchronisation still
+delivers every authorised document the caller asks about, in bounded pages, until there are
+none left. Everything else in the approval is binding on this entry: the row set must be
+identical for every principal (R1 is an optimisation only), a single-property report must
+not authorise another property's rows (R2), and no role name enters any of it.
+
+**R1 · authority resolved once per statement.** `expense_period_contributions` and
+`revenue_period_contributions` no longer call a SECURITY DEFINER predicate per row. The
+properties where the caller holds `expense.view.all`, `expense.view.own` and
+`revenue.view` are each computed once, by `has_capability` itself over every
+`business_units` row, as a scalar InitPlan; the D-169 document rule is stated in set form:
+
+```
+        a line in a view-all property
+     ∨ (the caller recorded the document ∧ a line in a view-own property)
+```
+
+It is exact because every allocation's and every revenue entry's unit is a
+`business_units` row (the D-040 composite key ladder), so `unit = any(set)` is true exactly
+when `has_capability(cap, unit)` is. `may_read_expense` is unchanged and still guards every
+single-document path — the three expense RLS policies, attachments, Storage and the RPCs.
+
+**R2 · a report scans only what it asked for and may see.** `reporting_primitives` applies
+the requested **and** authorised units as a scan predicate on each projection. A
+Crystal-Canopy-only report no longer reads Hotel Krishna's rows; a refused request scans
+nothing. The authority join stays, so the predicate can only narrow.
+
+**R3 · the paged transport.** `reporting_snapshot` is dropped and replaced by
+`reporting_snapshot_page(units, financial_years, revenue_since, expense_since,
+revenue_after_seq, revenue_after_id, expense_after_seq, expense_after_id, page_documents)`:
+
+| | |
+|---|---|
+| unit of paging | a **document** — a page never splits one (the unit of replacement already, D-178) |
+| order | (document generation, document id): `expenses.change_seq`, `revenue_entries.change_seq` |
+| page size | up to `page_documents` documents per dataset (client default 1,000; server clamps 1–2,000) |
+| a page returns | the documents (id, generation), their rows inside the requested financial years, `has_more`, the snapshot identity and server time |
+| first sync (`since = 0`) | lists documents with a row in the requested years; the client replaces the requested segment whole |
+| delta (`since > 0`) | lists **every** changed document, including one whose rows all left the requested years, so the client can clear it |
+| authority | decided per unit on every page, D-164 ∩ D-187, SECURITY INVOKER |
+
+**The delta cursor moves from row grain to document grain.** The old transport keyed a delta
+on each row's `greatest(header, allocation, period)` generation; the new one keys on the
+document's own generation. That is complete only because **no server path changes a
+document's reporting rows without stamping its header in the same transaction** —
+`expense_create`, `expense_update` and `expense_void` all write `public.expenses`, and the
+revenue RPCs write `revenue_entries` (D-177). A host guard now holds that over the latest
+definition of every function (`document_generation_invariant_test.dart`), with a planted
+headerless writer as its self-check.
+
+**D-188 is amended, not relaxed.** A multi-page run's coherence claim is carried by the page
+whose datasets **both** report `has_more = false`: its snapshot identity and server time
+become the markers' evidence. Because the pass is ordered by generation, a document changed
+after an earlier page was delivered appears again, later in the same pass, at its newer
+version — so the published cache equals the final page's snapshot, with only the late-commit
+hazard the safety overlap already mitigates (D-180, ARCHITECTURE §5.2). A single-page run is
+exactly the D-188 case.
+
+**The client (not a new architecture).** Same cache tables, same markers, same evidence,
+same lock:
+
+* intermediate pages are **staged** under the owner key `<owner>#reporting-staging`, never
+  under the reader's own key, so nothing half-run is ever readable;
+* the final page and every staged page are **published in one transaction** — staged
+  documents replace published ones per financial year, a first sync clears the requested
+  segment first, and the markers and evidence are written last (D-108);
+* an interrupted run **resumes** from its cursor only when its scope is identical — user,
+  units, years, on-demand flag, both `since` values, page size and the D-240 authority
+  generation; otherwise the staged pages are discarded;
+* a change in the authorised set between pages, a session or authority transition (D-240),
+  or a refusal **discards** the staged pages and abandons the run;
+* the purge (D-070, D-074) removes staged pages and the resume state with the reader's own.
+
+**Residual behaviours, recorded rather than hidden.**
+
+1. A scoped reader keeps a stale row if a shared expense is re-apportioned **wholly** to a
+   property the reader cannot see: the delta lists the document only where the reader is
+   authorised, and after the move there is no authorised row to list. This is the pre-existing
+   D-062 boundary, unchanged by paging.
+2. In a multi-page **first** synchronisation, a document moved entirely out of the requested
+   years mid-run is removed at the next delta, not in the same run.
+3. The head-check (`reporting_newer_than`) and the markers' generation are now document
+   generations. An older marker's row-grain generation is at least as high as any document
+   generation it covered, so the first delta after upgrade misses nothing.
+4. Installed clients built before this change call the dropped `reporting_snapshot` and fail
+   their reporting sync on `krishna-mis-dev` until rebuilt. There are no production users;
+   the dev APK and the Windows build are rebuilt in Slice 8.
+
+## D-321 — The D-318 redesign measured, and the page cost the acceptance found
+**Date:** 2026-09-30 · **Status:** Implemented / Tested (Phase 8 Slice 3a — the approved
+D-318 follow-on). Measured on krishna-mis-dev (CURRENT) and the local harness (SCALE,
+STRESS) to the D-313 contract. **D-318 is closed** on this evidence.
+
+### 1 · Row identity, proven exactly (the equivalence gate)
+
+`tool/perf/equivalence.sql`, run on a freshly replayed SCALE harness against the
+pre-redesign definitions captured in `perf_old`, compares **row ids**, never counts.
+
+| | |
+|---|---|
+| Checks | **238 of 238 identical**, 0 different, **1,833,274 rows compared** |
+| Principals | Owner (unscoped), CCR Manager, HKI Manager, Accountant, Data Entry (`view.own`), a mixed `view.own` + `view.all` principal, no authority, revoked, `reports.view` only, two scoped grants, a second Owner |
+| Scopes | CCR, HKI, consolidated, invalid consolidated (two scoped grants) |
+| Surfaces | `expense_period_contributions`, `revenue_period_contributions`, `expense_document`, the expense RLS tables, `reporting_primitives` (per property and consolidated), the paged transport walked to completion (first and delta), `reporting_newer_than` |
+| Documents | own and other authors', single- and multi-allocation, both properties, cross-period, voided, unnumbered, permitted and denied |
+| Transitions | capability revocation, property-scope loss, consolidated loss, user switch, and a stale in-flight publication |
+
+**The delta changed grain on purpose (D-320).** The old transport keyed a delta on each
+row's own generation; the new one on the document's. The gate therefore compares a delta
+against the old rows **of documents whose generation is above `since`**, and reports what
+it set aside: synthetic child rows carry generations far above their headers, which no
+production writer produces (every writer stamps the header — D-177, guarded by
+`document_generation_invariant_test.dart`). On krishna-mis-dev only 27 of 2,150 documents
+have a child generation above the header, the largest gap 4, inside the safety overlap.
+
+**Three positive controls, each required to go red** (asserted, not eyeballed):
+
+| Control | Result |
+|---|---|
+| C1 — the Data Entry set widened to `view.all` in the new projection | old 3,256 rows, widened 32,961: **29,705 extra rows** — red |
+| C2 — `reporting_primitives` with the HKI manager's refusal removed | old 24,951, widened 50,000: **25,049 extra rows** — red |
+| C3 — the paged transport with the reporting-authority check removed, as the mixed principal on CCR | **53 expense rows** where the real function returns 0 — red |
+
+### 2 · What the acceptance found: pages bounded in size, not in cost
+
+The first measurement of `reporting_snapshot_page` at STRESS showed every page sorting the
+caller's **whole history**. The projections are security-barrier views, so PostgreSQL plans
+them as subqueries and cannot push `ORDER BY … LIMIT` into them. Evidence:
+
+| STRESS, first body | |
+|---|---|
+| one page, warm | 3.1 s (Owner), 3.8 s (CCR Manager) |
+| one page, **cold**, under the 8 s `authenticated` timeout | **cancelled** at 8.05 s (CCR Manager) |
+| Owner, 2-year first sync, 1,000-document pages | 265 s end to end |
+| Owner, 5-year first sync | **1,161 s** |
+
+A size-bounded page whose cost grows with history makes a first sync quadratic. That fails
+R3's intent, so it was corrected before acceptance rather than reported as a risk.
+
+**The correction — `reporting_snapshot_page_windowed`, same contract, same answer.** A
+comparison on the generation (bigint, leakproof) *is* pushed into the view and served by
+`*_org_change_seq_idx`. Each page now reads a generation window starting at its cursor
+(or `since + 1`, or — on a first page — the lowest generation in the requested years) that
+grows fourfold until it holds the page's 4n + 1 candidates. Rows outside the window all
+have higher generations, so the candidates, documents, rows and `has_more` are exactly the
+old body's. Four further findings made it fast rather than merely correct:
+
+* fetching a page's rows with `document id IN (…)` cannot cross the barrier either and
+  scanned the whole history; the rows are now bounded by their documents' own generation
+  range (every row of a document carries its generation);
+* the planner estimated the page's document list at one row and re-scanned the window once
+  per document (1.9 s a page at SCALE); the membership test is now an array comparison.
+* a scope with no authorised property searched every window for nothing (1.1 s); it now
+  searches none (12.6 ms).
+* on krishna-mis-dev, where fewer than 4n + 1 rows exist at all, the window then grew
+  about two dozen times to the top of the generation range, re-counting everything each
+  step: a first page went from 119 ms to 597 ms. A second migration stops growing once a
+  step finds nothing new, and ends a full window at the highest generation it actually
+  holds (597 → 210 ms on dev, and less sorting at scale).
+
+Both corrections are their own migrations — `reporting_snapshot_page_windowed`
+(20260930125903) and `reporting_snapshot_page_window_stops` (20260930132722) — because an
+applied migration is never edited. On STRESS, each corrected body was compared page by page
+with the original paged body on 19 sampled pages across seven walks (Owner and CCR
+Manager; first, second, third and final pages; 2-year and 5-year first syncs; deltas):
+**0 mismatches**, both times. The SCALE gate in §1 was run from a fresh replay on the
+final body.
+
+### 3 · Before and after — krishna-mis-dev (CURRENT)
+
+Rows: before 2,150 expenses · 2,475 expense period rows · 2,601 revenue entries · 2,613
+components (2026-09-29); after 2,276 (2,215 voided) · 2,610 · 2,792 (2,789 voided) · 2,805
+(2026-09-30 — the live suites' voided fixtures since). Median ms of five warm runs, EXPLAIN
+ANALYZE, every batch rolled back; `r` = refused.
+
+| Workload | Owner before → after | CCR Manager before → after | Accountant before → after |
+|---|---|---|---|
+| expense projection, month, one property | 145.0 → 1.9 | 151.2 → 1.5 | 148.6 → 1.4 |
+| expense projection, FY, one property | 579.0 → 2.5 | 593.2 → 2.4 | 589.1 → 2.4 |
+| expense projection, FY, both, breakdown | 758.8 → 2.5 | 786.6 → 2.7 | 763.6 → 2.8 |
+| `reporting_primitives`, month | 232.7 → 5.7 | 229.8 → 6.3 | 229.2 → 6.3 |
+| `reporting_primitives`, FY | 769.7 → 9.4 | 778.5 → 9.8 | 771.5 → 10.0 |
+| `reporting_primitives`, both, FY | 782.5 → 13.0 | 780.2 r → 4.3 r | 770.2 r → 4.5 r |
+| full sync (old one call → new first page) | 1,044.1 → 209.7 | 1,034.1 → 191.9 | 1,025.1 → 193.0 |
+| delta sync, 200 generations | 895.2 → 23.0 | 917.5 → 23.5 | 894.8 → 23.8 |
+| whole first sync, paged (Owner, 3 pages, 5,063 documents) | — → 418.6 | | |
+| `may_read_expense` calls, FY report | 2,247 → **0** | 2,247 → **0** | 2,247 → **0** |
+
+Unchanged by design and still per row (§6): the expense RLS read, 253 / 171 / 167 ms, and
+`expense_document`, 264 / 263 / 262 ms, for one month.
+
+### 4 · Before and after — SCALE (local harness, 99,869 contribution rows in one year)
+
+Same data, same harness; before = the pre-redesign definitions kept in `perf_old`. Median
+(five runs; three for FY and whole-sync workloads). Timings on this workstation vary with
+host load (D-319) — the call counts and the order of magnitude are the evidence, not the
+last digit.
+
+| Workload | Owner before → after | CCR Manager before → after | Accountant after |
+|---|---|---|---|
+| expense projection, month | 426.6 → 16.4 | 420.8 → 14.0 | 15.6 |
+| expense projection, FY | 4,895 → 146.4 | 4,713 → 148.7 | 136.1 |
+| `reporting_primitives`, FY | 8,127 → 240.1 | 7,608 → 227.1 | 235.0 |
+| `reporting_primitives`, both, FY | 7,599 → 362.9 | 7,779 r → 3.5 r | 3.2 r |
+| delta sync | 7,459 → 16.5 | 8,221 → 13.7 | 13.6 |
+| first page | (old full sync: > 8 s, cancelled) → 489.8 | → 368.6 | 327.1 |
+| whole first sync, paged | → 4,902 (50 pages) | → 3,712 (31 pages) | 3,740 |
+
+**Under the 8 s `authenticated` statement timeout** (single cold statements): the old full
+sync, old delta and old financial-year report were each cancelled at 8.0 s for both the
+Owner and the Manager; the new first page took 438 / 318 ms, a delta page 17 / 14 ms, the
+FY report 351 / 215 ms, and the largest page of a whole first sync 459 / 299 ms.
+
+### 5 · Before and after — STRESS (local harness, 499,975 rows over five years)
+
+| Workload | Owner before → after | CCR Manager before → after | Accountant after |
+|---|---|---|---|
+| expense projection, month | 910.0 → 19.4 | 1,414 (D-318) → 18.7 | 20.5 |
+| `reporting_primitives`, FY | 17,579 → 320.9 | 15,600–16,000 (D-318) → 305.7 | 321.7 |
+| delta sync | 85,755 → 21.6 | 136,900 (D-318) → 14.3 | 14.1 |
+| old full sync | **fails** — jsonb > 256 MB (D-318) | | |
+| first page (first paged body → final) | 3,080 → 1,057 | 3,786 → 738 | 774 |
+| whole 2-year first sync (first paged body → final) | 265 s → **11.9 s** (100 pages) | 213 s → **10.4 s** (61 pages) | 9.7 s |
+| whole 5-year first sync (first paged body → final) | 1,161 s → **30.8 s** (250 pages) | 1,923 s → **26.5 s** (151 pages) | — |
+
+The CCR Manager's pre-redesign STRESS figures in this run were taken under visible host
+load (every workload about 3.5× the Owner's), so the table uses D-318's quiet-run figures
+for them; the Accountant's first-paged-body run was likewise loaded and is not quoted.
+
+**Under the 8 s timeout at STRESS** (cold, single statements, final body): first page
+827 ms (Manager) and 1,095 ms (Owner); delta page 15 / 18 ms; FY report 299 / 506 ms. The
+largest page of any whole first sync: 762 ms (Manager, 2 years), 1,840 ms (Manager, 5
+years), 1,234 ms (Owner, 2 years), 3,103 ms (Owner, 5 years) — the first page, which finds
+the lowest generation across every requested year. **No page came near the timeout**;
+before the correction a cold first page was cancelled.
+
+### 6 · What is still per row, deliberately
+
+R1 changed the two reporting projections only. The three expense RLS policies and
+`expense_document` still call `may_read_expense` per row, as D-320 left them: one month
+costs 500–740 ms at SCALE and STRESS (2,829–4,205 calls). Those surfaces serve single
+documents and the ledger's own reads, not reporting; they are recorded for Slice 4, which
+owns the expense ledger (D-317), and no reporting path depends on them.
+
+### 7 · The transport, as delivered
+
+| | |
+|---|---|
+| page size | client 1,000 documents per dataset; server clamps 1–2,000 |
+| pages, first sync | dev 3 · SCALE 31–50 · STRESS 61–100 (2 years), 151–250 (5 years) |
+| largest page | 2,000 documents / 2,783 rows (SCALE gate, 2,000-document pages) |
+| delta | lists every changed document, tombstones included; 13–24 ms a page at every volume |
+| coherence | the final page's snapshot certifies the run (D-188 as amended by D-320) |
+| authority | re-decided per unit on every page; a refused scope searches nothing (1.6–12.6 ms) |
+
+### 8 · Closure
+
+D-318's three failures are gone and measured gone: no reporting path evaluates a per-row
+predicate, a single-property report reads only its property, no synchronisation is one
+unbounded document, and at the approved STRESS envelope no page exceeds 3.1 s against an
+8 s timeout. Row identity is proven exactly for every principal, scope, surface and
+transition the directive named, with every control red. **D-318 is closed.** The residuals
+recorded in D-320 stand, and §6 is carried to Slice 4.
