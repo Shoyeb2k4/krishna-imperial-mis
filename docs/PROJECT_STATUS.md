@@ -7554,7 +7554,9 @@ scope change (D-240); the purge covers staging and resume state (D-070, D-074).
 | Document-generation invariant | **Tested** | host guard with a planted-violation self-check |
 | `dart format` / `flutter analyze` | **Tested** | 408 files, 0 changed / no issues |
 | Host suite | **Tested** | **2,999 passed** |
-| Live suites on dev | **Tested** | see below |
+| Live suites on dev, final body, serial | **Tested** | **163 passed**: reporting 13, parity 30 (incl. the bounded-page walk), drill-down 5, owner accounts 31, completeness audit 8, settlement 20, expense 56 |
+| Live revenue suite on dev | **Partially tested** | 67 passed, 1 deliberately skipped, **1 failed**: the bucket sweep hit its own 5-minute limit (carried below); its teardown reconciled the bucket, 0 stranded |
+| Dev baseline after | **Tested** | open expenses 61 (hash `15906076…`), open revenue 3 (the pre-existing real sales), owner movements 0, settings 0, closed periods 0, grants 7 (5 active), roles 4, role capabilities 80 (hash `c1b4870f…`), tax rules 4, ledger 105, API 57, anon 0, tables without RLS 0 |
 | Secret scan, tree and history | **Tested** | clean |
 | Android / Windows builds and device acceptance | **Not tested** | installed pre-D-320 clients cannot sync reporting until rebuilt; that rebuild is Slice 8 |
 
