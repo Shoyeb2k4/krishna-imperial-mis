@@ -14,7 +14,7 @@
 /// differently only because of the capabilities their bundles hold.
 ///
 /// This is not the security boundary. The server refuses in `reporting_primitives` and
-/// `reporting_snapshot`, and the canonical cache adapter refuses at the read (Slice 7). This
+/// `reporting_snapshot_page`, and the canonical cache adapter refuses at the read (Slice 7). This
 /// decides what a surface offers, and lets a direct provider read refuse before it reads.
 library;
 

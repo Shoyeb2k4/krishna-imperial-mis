@@ -98,6 +98,9 @@ final class _Gateway extends ReportingGateway {
     required List<String> businessUnitIds,
     required int revenueSince,
     required int expenseSince,
+    List<int> financialYears = const [],
+    ReportingPageCursor after = const ReportingPageCursor.start(),
+    int pageDocuments = ReportingPageCursor.defaultPageDocuments,
   }) async {
     if (gate case final waiting?) await waiting.future;
     if (snapshotUnreachable case final failure?) {

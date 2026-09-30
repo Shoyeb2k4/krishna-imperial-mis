@@ -63,6 +63,13 @@ String _seedId(String path) =>
 
 final _ccr = _seedId('bu:CCR');
 final _hki = _seedId('bu:HKI');
+
+/// The current and previous financial year: the reporting retention a device asks for.
+final List<int> _retainedYears = () {
+  final now = DateTime.now();
+  final current = now.month >= 4 ? now.year : now.year - 1;
+  return [current - 1, current];
+}();
 final _kirana = _seedId('cat:CCR/FB/FOOD_PROD/KIRANA');
 final _ccrDept = _seedId('dept:CCR/FB');
 final _ccrSection = _seedId('sec:CCR/FB/FOOD_PROD');
@@ -1589,9 +1596,10 @@ void main() {
       final before = DateTime.now().toUtc();
       final first =
           await owner.rpc<dynamic>(
-                'reporting_snapshot',
+                'reporting_snapshot_page',
                 params: {
                   'p_business_unit_ids': [_ccr, _hki],
+                  'p_financial_years': _retainedYears,
                   'p_revenue_since': 0,
                   'p_expense_since': 0,
                 },
@@ -1635,9 +1643,10 @@ void main() {
       // not, and a test asserting it would be asserting a coincidence.
       final quiet =
           await owner.rpc<dynamic>(
-                'reporting_snapshot',
+                'reporting_snapshot_page',
                 params: {
                   'p_business_unit_ids': [_ccr, _hki],
+                  'p_financial_years': _retainedYears,
                   'p_revenue_since': 0,
                   'p_expense_since': 0,
                 },
@@ -1656,9 +1665,10 @@ void main() {
       await createSale(unitId: _ccr, category: 'RESTAURANT', paise: 310000);
       final after =
           await owner.rpc<dynamic>(
-                'reporting_snapshot',
+                'reporting_snapshot_page',
                 params: {
                   'p_business_unit_ids': [_ccr, _hki],
+                  'p_financial_years': _retainedYears,
                   'p_revenue_since': 0,
                   'p_expense_since': 0,
                 },
@@ -1673,15 +1683,113 @@ void main() {
       );
     });
 
+    test(
+      'the transport walks bounded pages to the same answer as one page (D-320)',
+      () async {
+        await createSale(unitId: _ccr, category: 'RESTAURANT', paise: 120000);
+        await createSale(unitId: _ccr, category: 'NANDBHOG', paise: 45000);
+        await createExpense(allocations: [ccrAllocation(90000)]);
+
+        Future<Map<String, dynamic>> page(
+          Map<String, dynamic> cursor,
+          int size,
+        ) async =>
+            await owner.rpc<dynamic>(
+                  'reporting_snapshot_page',
+                  params: {
+                    'p_business_unit_ids': [_ccr, _hki],
+                    'p_financial_years': _retainedYears,
+                    'p_revenue_since': 0,
+                    'p_expense_since': 0,
+                    ...cursor,
+                    'p_page_documents': size,
+                  },
+                )
+                as Map<String, dynamic>;
+
+        Set<String> ids(Map<String, dynamic> p, String key) => {
+          for (final r in p[key] as List) (r as Map)['id'] as String,
+        };
+
+        // A complete run: every page, until both datasets report no more. The development
+        // project already holds more documents than one page may carry, so a single call
+        // is not a reference — only a completed walk is.
+        Future<({Set<String> revenue, Set<String> expense, int pages})> walk(
+          int size,
+        ) async {
+          final revenue = <String>{};
+          final expense = <String>{};
+          var cursor = <String, dynamic>{};
+          var pages = 0;
+          while (true) {
+            pages++;
+            final p = await page(cursor, size);
+            for (final id in ids(p, 'revenue')) {
+              expect(
+                revenue.add(id),
+                isTrue,
+                reason: 'no row is delivered twice',
+              );
+            }
+            for (final id in ids(p, 'expense')) {
+              expect(
+                expense.add(id),
+                isTrue,
+                reason: 'no row is delivered twice',
+              );
+            }
+            final rd = p['revenue_documents'] as List;
+            final ed = p['expense_documents'] as List;
+            expect(rd.length, lessThanOrEqualTo(size));
+            expect(ed.length, lessThanOrEqualTo(size));
+            cursor = {
+              ...cursor,
+              if (rd.isNotEmpty) ...{
+                'p_revenue_after_seq': (rd.last as Map)['seq'],
+                'p_revenue_after_id': (rd.last as Map)['id'],
+              },
+              if (ed.isNotEmpty) ...{
+                'p_expense_after_seq': (ed.last as Map)['seq'],
+                'p_expense_after_id': (ed.last as Map)['id'],
+              },
+            };
+            if (p['revenue_has_more'] != true &&
+                p['expense_has_more'] != true) {
+              break;
+            }
+            expect(pages, lessThan(100000), reason: 'paging terminates');
+          }
+          return (revenue: revenue, expense: expense, pages: pages);
+        }
+
+        final large = await walk(2000);
+        final small = await walk(7);
+        expect(
+          small.pages,
+          greaterThan(large.pages),
+          reason: 'a page of seven documents forces a longer walk',
+        );
+        expect(
+          small.revenue,
+          large.revenue,
+          reason: 'none missing, none extra, whatever the page size',
+        );
+        expect(small.expense, large.expense);
+        expect(large.revenue, isNotEmpty);
+        expect(large.expense, isNotEmpty);
+      },
+    );
+
     test('the transport preserves the reporting authority boundary', () async {
       // A property-scoped manager. The Slice 5 rule is unchanged by the new transport:
       // reports.view AND revenue.view AND expense.view.all, per unit (D-164, D-187).
       final manager = await sessionFor('ccr.manager@example.com');
       final payload =
           await manager.rpc<dynamic>(
-                'reporting_snapshot',
+                'reporting_snapshot_page',
                 params: {
                   'p_business_unit_ids': [_ccr, _hki],
+                  'p_financial_years': _retainedYears,
                   'p_revenue_since': 0,
                   'p_expense_since': 0,
                 },
@@ -1719,12 +1827,17 @@ void main() {
         config['SUPABASE_URL'] as String,
         config['SUPABASE_ANON_KEY'] as String,
       );
-      for (final fn in const ['reporting_snapshot', 'reporting_newer_than']) {
+      for (final fn in const [
+        'reporting_snapshot_page',
+        'reporting_newer_than',
+      ]) {
         await expectLater(
           anon.rpc<dynamic>(
             fn,
             params: {
               'p_business_unit_ids': [_ccr],
+              if (fn == 'reporting_snapshot_page')
+                'p_financial_years': _retainedYears,
               'p_revenue_since': 0,
               'p_expense_since': 0,
             },

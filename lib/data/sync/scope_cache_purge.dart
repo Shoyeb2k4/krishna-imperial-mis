@@ -63,6 +63,7 @@
 library;
 
 import 'package:drift/drift.dart';
+import 'package:krishna_mis/data/repositories/reporting_cache.dart';
 import 'package:krishna_mis/data/local/app_database.dart';
 import 'package:krishna_mis/data/local/cache_authority_generation.dart';
 import 'package:krishna_mis/domain/auth/authority.dart';
@@ -292,13 +293,17 @@ class ScopeCachePurge {
               'SELECT business_unit_id AS id FROM reporting_coverage_markers '
               'WHERE owner_user_id = ? '
               'UNION SELECT business_unit_id AS id '
-              'FROM reporting_revenue_contributions WHERE owner_user_id = ? '
+              'FROM reporting_revenue_contributions WHERE owner_user_id IN (?, ?) '
               'UNION SELECT business_unit_id AS id '
-              'FROM reporting_expense_contributions WHERE owner_user_id = ?',
+              'FROM reporting_expense_contributions WHERE owner_user_id IN (?, ?)',
+              // A multi-page run stages under its own key (D-320); a unit held only there
+              // is still held by this person.
               variables: [
                 Variable<String>(ownerUserId),
                 Variable<String>(ownerUserId),
+                Variable<String>(ReportingCache.stagingOwnerFor(ownerUserId)),
                 Variable<String>(ownerUserId),
+                Variable<String>(ReportingCache.stagingOwnerFor(ownerUserId)),
               ],
             )
             .get())
@@ -649,16 +654,23 @@ class ScopeCachePurge {
       'reporting_expense_contributions',
     ]) {
       final count = await db.customUpdate(
-        'DELETE FROM $table WHERE owner_user_id = ? '
+        'DELETE FROM $table WHERE owner_user_id IN (?, ?) '
         'AND business_unit_id IN ${_in(units)}',
         variables: [
           Variable<String>(ownerUserId),
+          // Rows a multi-page run staged but has not published are this person's too
+          // (D-320), and go with the published ones.
+          Variable<String>(ReportingCache.stagingOwnerFor(ownerUserId)),
           for (final unit in units) Variable<String>(unit),
         ],
         updates: const {},
       );
       removed.update(table, (value) => value + count, ifAbsent: () => count);
     }
+    // The run those rows belonged to cannot resume over a scope that has lost them.
+    await db.customStatement('DELETE FROM app_meta WHERE key = ?', <Object>[
+      ReportingCache.resumeKeyFor(ownerUserId),
+    ]);
   }
 
   /// The canonical owner cache (OA-2), on the same terms and for the same reason.

@@ -166,6 +166,9 @@ final class _Reporting extends ReportingGateway {
     required List<String> businessUnitIds,
     required int revenueSince,
     required int expenseSince,
+    List<int> financialYears = const [],
+    ReportingPageCursor after = const ReportingPageCursor.start(),
+    int pageDocuments = ReportingPageCursor.defaultPageDocuments,
   }) async => RemoteOk({
     'snapshot_id': 'rep-1',
     'server_time': '2026-07-01T08:00:00.000Z',

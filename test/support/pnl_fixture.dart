@@ -53,6 +53,9 @@ final class FakeReportingGateway extends ReportingGateway {
     required List<String> businessUnitIds,
     required int revenueSince,
     required int expenseSince,
+    List<int> financialYears = const [],
+    ReportingPageCursor after = const ReportingPageCursor.start(),
+    int pageDocuments = ReportingPageCursor.defaultPageDocuments,
   }) async {
     askedUnits.add(businessUnitIds.toSet());
     if (gate case final waiting?) await waiting.future;

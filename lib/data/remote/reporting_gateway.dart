@@ -87,31 +87,44 @@ class ReportingGateway extends SupabaseGateway {
     return all;
   });
 
-  /// One authoritative reporting snapshot: both datasets, from one server statement.
+  /// One bounded page of the canonical reporting transport (D-320).
   ///
-  /// This replaces a delta per dataset (D-188). Two queries are two MVCC snapshots, and
-  /// ordinary concurrent financial writes between them leave the cache holding revenue as
-  /// it stood at one moment beside expenses as they stood at another — a pair that was
-  /// never true of the hotel, and which nothing in the stored evidence could detect.
+  /// Both datasets come from **one server statement**, so a page is one MVCC snapshot
+  /// (D-188). Documents are paged in (generation, id) order and a page never splits a
+  /// document's rows, because the document is the unit of replacement (D-178). The page on
+  /// which both datasets report `has_more = false` certifies the whole run: because the
+  /// pass is ordered by generation, every document that changed after an earlier page was
+  /// delivered again, later, at its newer version — so the cache then equals that final
+  /// page's snapshot, with only the late-commit hazard the safety overlap already covers.
   ///
-  /// The response carries the snapshot's own identity and the **server's** transaction
-  /// time from that same statement. A second call asking the clock afterwards would
-  /// describe a different moment, and the device clock is not evidence about a server at
-  /// all.
+  /// [financialYears] bounds which rows come back, never which documents are listed on a
+  /// delta: a document whose rows all left the requested years is still listed, with no
+  /// rows, so the client can clear what it held for it. It is not a retention cutoff — the
+  /// caller asks for exactly the years it caches (D-170).
   ///
-  /// The cursors stay per dataset because they answer a different question — where the
-  /// next delta resumes — and each is already reduced by the caller's safety overlap.
+  /// The response carries the page's own snapshot identity and the **server's**
+  /// transaction time from that same statement; the device clock is not evidence about a
+  /// server at all.
   Future<RemoteOutcome<Map<String, dynamic>>> snapshot({
     required List<String> businessUnitIds,
     required int revenueSince,
     required int expenseSince,
+    List<int> financialYears = const [],
+    ReportingPageCursor after = const ReportingPageCursor.start(),
+    int pageDocuments = ReportingPageCursor.defaultPageDocuments,
   }) => guard(() async {
     final answer = await client.rpc<dynamic>(
-      'reporting_snapshot',
+      'reporting_snapshot_page',
       params: {
         'p_business_unit_ids': businessUnitIds,
+        'p_financial_years': financialYears,
         'p_revenue_since': revenueSince,
         'p_expense_since': expenseSince,
+        'p_revenue_after_seq': after.revenueSeq,
+        'p_revenue_after_id': after.revenueId,
+        'p_expense_after_seq': after.expenseSeq,
+        'p_expense_after_id': after.expenseId,
+        'p_page_documents': pageDocuments,
       },
     );
     return Map<String, dynamic>.from(answer as Map);
@@ -184,4 +197,37 @@ class ReportingGateway extends SupabaseGateway {
         .inFilter(dataset.documentColumn, documentIds);
     return [for (final row in rows) Map<String, dynamic>.from(row)];
   });
+}
+
+/// Where the next page of a reporting run resumes, per dataset (D-320).
+///
+/// The position is the last document delivered — its generation and its id — so the order
+/// is total and a page boundary can neither repeat nor skip a document.
+final class ReportingPageCursor {
+  const ReportingPageCursor({
+    this.revenueSeq,
+    this.revenueId,
+    this.expenseSeq,
+    this.expenseId,
+  });
+
+  const ReportingPageCursor.start()
+    : revenueSeq = null,
+      revenueId = null,
+      expenseSeq = null,
+      expenseId = null;
+
+  /// How many documents per dataset a page carries. The server clamps to 1 … 2,000.
+  static const defaultPageDocuments = 1000;
+
+  final int? revenueSeq;
+  final String? revenueId;
+  final int? expenseSeq;
+  final String? expenseId;
+
+  bool get isStart =>
+      revenueSeq == null &&
+      revenueId == null &&
+      expenseSeq == null &&
+      expenseId == null;
 }

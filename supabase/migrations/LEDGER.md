@@ -499,6 +499,10 @@ The divergences are confined to comments, blank lines, indentation and that head
 20260911131130 owner_ledger_snapshot_requires_settlement_view
 20260911131228 api_surface_invariant_owner_settlement
 20260912100000 remove_dead_expense_whole_org_helper
+20260929163951 reporting_authority_evaluated_once
+20260929164052 reporting_snapshot_paged
+20260930125903 reporting_snapshot_page_windowed
+20260930132722 reporting_snapshot_page_window_stops
 ```
 
 ## Phase 5 Slice 7 — dead reporting helper removed
@@ -514,3 +518,51 @@ repository file match in full after LF normalisation: MD5
 `54951899d004206b58330ff683a21f18`. The full 101-entry version/name ledger matches the list
 above (LF-joined sorted lines MD5 `c24732d3a792a8ea09ddfd1d5712a02f`).
 See `docs/SLICE7_SECURITY_AUDIT.md` for the live privilege and capability evidence.
+
+## Phase 8 — the D-318 redesign (D-320)
+
+| Ledger version | Ledger name | Committed file |
+|---|---|---|
+| 20260929163951 | `reporting_authority_evaluated_once` | `20260929163951_reporting_authority_evaluated_once.sql` |
+| 20260929164052 | `reporting_snapshot_paged` | `20260929164052_reporting_snapshot_paged.sql` |
+
+Applied to `krishna-mis-dev` on 2026-09-29, only after the local harness proved exact row
+identity for every principal, scope and surface (238 of 238 checks, D-321). Both deploy-time
+invariant blocks passed. Executable-SQL identity, checked mechanically (D-203: blank lines
+and `--` lines removed, each line trimmed), against
+`supabase_migrations.schema_migrations.statements`:
+
+| Version | Executable lines | MD5 |
+|---|---|---|
+| 20260929163951 | 268 | `56bc64c744787f0482f99400a0bdaa48` |
+| 20260929164052 | 299 | `3d0f748a68eee0919a8734653435f7c7` |
+
+The files were written as `20260929120000_…` and `20260929120100_…` and renamed to the
+versions the server assigned. The ledger now holds 103 versions; the reviewed API surface
+stays at 57 (`reporting_snapshot` dropped, `reporting_snapshot_page` added).
+
+## Phase 8 — the paged transport made page-bounded (D-321)
+
+| Ledger version | Ledger name | Committed file |
+|---|---|---|
+| 20260930125903 | `reporting_snapshot_page_windowed` | `20260930125903_reporting_snapshot_page_windowed.sql` |
+| 20260930132722 | `reporting_snapshot_page_window_stops` | `20260930132722_reporting_snapshot_page_window_stops.sql` |
+
+Both replace the body of `reporting_snapshot_page` only — same signature, grants and answer
+— after the STRESS acceptance found every page sorting the caller's whole history (D-321).
+The second exists because the first, once on `krishna-mis-dev`, made small datasets and the
+last page of every walk slower (a window grew about two dozen times when fewer than 4n + 1
+rows remained); the applied first file is not edited. Each was applied only after the local
+harness passed the equivalence gate on that exact body from a fresh replay — the final body:
+238 of 238 identical over 1,833,274 rows, all three controls red — and sampled STRESS pages
+matched the original paged body exactly. Both deploy-time invariant blocks passed.
+Executable-SQL identity (D-203), checked mechanically against
+`supabase_migrations.schema_migrations.statements`:
+
+| Version | Executable lines | MD5 |
+|---|---|---|
+| 20260930125903 | 340 | `b04e2d653a3020780128542ce96454db` |
+| 20260930132722 | 350 | `51a2d95f664465ee9a0f381704e68bcb` |
+
+Written as `20260930120000_…` and `20260930140000_…` and renamed to the versions the server
+assigned. The ledger now holds 105 versions; the reviewed API surface stays at 57.

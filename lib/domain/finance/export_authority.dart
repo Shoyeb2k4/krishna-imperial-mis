@@ -17,7 +17,7 @@
 ///
 /// **This is a product-action control, evaluated on the client by design (D-291).** The
 /// confidentiality boundary for financial data is the server's reporting authorization
-/// (`reporting_primitives`, `reporting_snapshot` and the RLS behind them), which already
+/// (`reporting_primitives`, `reporting_snapshot_page` and the RLS behind them), which already
 /// decides which figures reach the device. Nothing on the server evaluates
 /// `reports.export` or `reports.print`, and nothing here claims otherwise.
 library;

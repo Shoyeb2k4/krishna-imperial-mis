@@ -25,6 +25,8 @@
 /// transaction as the rows it certifies (D-108).
 library;
 
+import 'dart:convert';
+
 import 'package:drift/drift.dart';
 import 'package:krishna_mis/data/local/app_database.dart';
 import 'package:krishna_mis/data/remote/reporting_gateway.dart';
@@ -492,6 +494,7 @@ final class ReportingCache {
     required bool onDemand,
     required DateTime now,
     Future<void> Function()? stillCurrent,
+    Set<ReportingDataset> bootstrapDatasets = const {},
   }) => _db.transaction(() async {
     // D-231: decided inside the transaction that writes, so a purge cannot commit between
     // the check and the rows. A stale run throws here and writes nothing.
@@ -500,6 +503,17 @@ final class ReportingCache {
       final application = datasets[dataset];
       if (application == null) continue;
       for (final year in financialYears) {
+        // A first synchronisation lists only documents with a row in the requested years
+        // (D-320), so anything this owner held there is replaced whole rather than by
+        // document: a document that left the years would otherwise never be named again.
+        if (bootstrapDatasets.contains(dataset)) {
+          await _clearPublishedSegment(
+            dataset: dataset,
+            ownerUserId: ownerUserId,
+            financialYear: year,
+            businessUnitIds: businessUnitIds,
+          );
+        }
         await _applyYearWithin(
           ownerUserId: ownerUserId,
           orgId: orgId,
@@ -517,6 +531,216 @@ final class ReportingCache {
       }
     }
   });
+
+  // ── Multi-page runs (D-320) ────────────────────────────────────────────────
+  //
+  // A run whose answer spans more than one page stages every page but the last under a
+  // separate owner key that no reader ever asks for, and publishes the staged pages with
+  // the final page in ONE transaction. So a multi-page run, like a single-page one, is
+  // published whole or not at all: a run that fails or is interrupted leaves the previous
+  // coherent snapshot exactly as it was, and resumes from its cursor next time.
+
+  /// The owner key intermediate pages are staged under. Readers query their own owner id,
+  /// so staged rows are invisible to every report; purges by unit reach them as they reach
+  /// any row, and the per-owner purge names this key explicitly.
+  static String stagingOwnerFor(String ownerUserId) =>
+      '$ownerUserId$stagingSuffix';
+
+  static const stagingSuffix = '#reporting-staging';
+
+  /// Where a multi-page run's resume state lives in `app_meta`: cursors, scope and the
+  /// documents a delta must clear — no figures.
+  static String resumeKeyFor(String ownerUserId) =>
+      'reporting.sync.resume.v1:$ownerUserId';
+
+  /// The resume state of this owner's unfinished multi-page run, if any.
+  Future<Map<String, dynamic>?> readResume(String ownerUserId) async {
+    final rows = await _db
+        .customSelect(
+          'SELECT value FROM app_meta WHERE key = ?',
+          variables: [Variable<String>(resumeKeyFor(ownerUserId))],
+        )
+        .get();
+    if (rows.isEmpty) return null;
+    try {
+      final decoded = jsonDecode(rows.single.data['value'] as String);
+      return decoded is Map ? Map<String, dynamic>.from(decoded) : null;
+    } on FormatException {
+      return null;
+    }
+  }
+
+  /// Stages one intermediate page and records where the run resumes, in one transaction.
+  Future<void> stagePage({
+    required String ownerUserId,
+    required String orgId,
+    required List<int> financialYears,
+    required Map<ReportingDataset, DatasetApplication> datasets,
+    required Map<String, dynamic> resumeState,
+    required DateTime now,
+    Future<void> Function()? stillCurrent,
+  }) => _db.transaction(() async {
+    if (stillCurrent != null) await stillCurrent();
+    final staging = stagingOwnerFor(ownerUserId);
+    for (final dataset in ReportingDataset.values) {
+      final application = datasets[dataset];
+      if (application == null) continue;
+      for (final year in financialYears) {
+        // No units: a staged page certifies nothing. A document delivered again later in
+        // the run replaces its staged rows here, exactly as it replaces published ones.
+        await _applyYearWithin(
+          ownerUserId: staging,
+          orgId: orgId,
+          dataset: dataset,
+          financialYear: year,
+          businessUnitIds: const {},
+          documentIds: application.documentIds,
+          rows: application.rowsFor(year),
+          generation: 0,
+          onDemand: false,
+          now: now,
+        );
+      }
+    }
+    await _writeResume(ownerUserId, resumeState, now);
+  });
+
+  /// Publishes a multi-page run: the staged pages, then the final page and the markers
+  /// with its snapshot evidence, in one transaction (D-188, D-320).
+  ///
+  /// [clearedDocuments] are documents a delta listed without any row in the requested
+  /// years — a document whose rows all left them — whose held rows must still go.
+  Future<void> publishRun({
+    required String ownerUserId,
+    required String orgId,
+    required String snapshotId,
+    required DateTime serverConfirmedAt,
+    required Set<String> businessUnitIds,
+    required List<int> financialYears,
+    required Map<ReportingDataset, DatasetApplication> finalPage,
+    required Set<ReportingDataset> bootstrapDatasets,
+    required Map<ReportingDataset, List<String>> clearedDocuments,
+    required bool onDemand,
+    required DateTime now,
+    Future<void> Function()? stillCurrent,
+  }) => _db.transaction(() async {
+    if (stillCurrent != null) await stillCurrent();
+    final staging = stagingOwnerFor(ownerUserId);
+    for (final dataset in ReportingDataset.values) {
+      final table = _tableFor(dataset);
+      final documentColumn = _documentColumnFor(dataset);
+      final staged = [
+        for (final row
+            in await _db
+                .customSelect(
+                  'SELECT DISTINCT $documentColumn AS d FROM $table '
+                  'WHERE owner_user_id = ?',
+                  variables: [Variable<String>(staging)],
+                )
+                .get())
+          row.data['d'] as String,
+      ];
+      final replaced = {...staged, ...?clearedDocuments[dataset]}.toList();
+      final application = finalPage[dataset];
+      for (final year in financialYears) {
+        if (bootstrapDatasets.contains(dataset)) {
+          await _clearPublishedSegment(
+            dataset: dataset,
+            ownerUserId: ownerUserId,
+            financialYear: year,
+            businessUnitIds: businessUnitIds,
+          );
+        } else {
+          for (final chunk in _chunked(replaced, 400)) {
+            final placeholders = List.filled(chunk.length, '?').join(', ');
+            await _db.customStatement(
+              'DELETE FROM $table WHERE owner_user_id = ? AND financial_year = ? '
+              'AND $documentColumn IN ($placeholders)',
+              <Object>[ownerUserId, year, ...chunk],
+            );
+          }
+        }
+        await _db.customStatement(
+          'UPDATE $table SET owner_user_id = ? '
+          'WHERE owner_user_id = ? AND financial_year = ?',
+          <Object>[ownerUserId, staging, year],
+        );
+        // The final page last: it may deliver a document again at a newer version, and it
+        // writes the markers and the evidence.
+        await _applyYearWithin(
+          ownerUserId: ownerUserId,
+          orgId: orgId,
+          dataset: dataset,
+          financialYear: year,
+          businessUnitIds: businessUnitIds,
+          documentIds: application?.documentIds ?? const [],
+          rows: application?.rowsFor(year) ?? const [],
+          generation: application?.generationFor(year) ?? 0,
+          onDemand: onDemand,
+          serverConfirmedAt: serverConfirmedAt,
+          snapshotId: snapshotId,
+          now: now,
+        );
+      }
+    }
+    await _discardStagedWithin(ownerUserId);
+  });
+
+  /// Removes an unfinished run's staged pages and resume state.
+  Future<void> discardStaged(String ownerUserId) =>
+      _db.transaction(() => _discardStagedWithin(ownerUserId));
+
+  Future<void> _discardStagedWithin(String ownerUserId) async {
+    final staging = stagingOwnerFor(ownerUserId);
+    for (final dataset in ReportingDataset.values) {
+      await _db.customStatement(
+        'DELETE FROM ${_tableFor(dataset)} WHERE owner_user_id = ?',
+        <Object>[staging],
+      );
+    }
+    await _db.customStatement('DELETE FROM app_meta WHERE key = ?', <Object>[
+      resumeKeyFor(ownerUserId),
+    ]);
+  }
+
+  Future<void> _writeResume(
+    String ownerUserId,
+    Map<String, dynamic> state,
+    DateTime now,
+  ) => _db.customStatement(
+    'INSERT INTO app_meta (key, value, updated_at) VALUES (?, ?, ?) '
+    'ON CONFLICT(key) DO UPDATE SET value = excluded.value, '
+    'updated_at = excluded.updated_at',
+    <Object>[
+      resumeKeyFor(ownerUserId),
+      jsonEncode(state),
+      now.toUtc().toIso8601String(),
+    ],
+  );
+
+  Future<void> _clearPublishedSegment({
+    required ReportingDataset dataset,
+    required String ownerUserId,
+    required int financialYear,
+    required Set<String> businessUnitIds,
+  }) async {
+    if (businessUnitIds.isEmpty) return;
+    final units = businessUnitIds.toList();
+    final placeholders = List.filled(units.length, '?').join(', ');
+    await _db.customStatement(
+      'DELETE FROM ${_tableFor(dataset)} WHERE owner_user_id = ? '
+      'AND financial_year = ? AND business_unit_id IN ($placeholders)',
+      <Object>[ownerUserId, financialYear, ...units],
+    );
+  }
+
+  static String _tableFor(ReportingDataset dataset) =>
+      dataset == ReportingDataset.revenue
+      ? 'reporting_revenue_contributions'
+      : 'reporting_expense_contributions';
+
+  static String _documentColumnFor(ReportingDataset dataset) =>
+      dataset == ReportingDataset.revenue ? 'revenue_entry_id' : 'expense_id';
 
   Future<void> _applyYearWithin({
     required String ownerUserId,

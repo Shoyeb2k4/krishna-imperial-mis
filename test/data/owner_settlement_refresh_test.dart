@@ -35,6 +35,9 @@ final class _Reporting extends ReportingGateway {
     required List<String> businessUnitIds,
     required int revenueSince,
     required int expenseSince,
+    List<int> financialYears = const [],
+    ReportingPageCursor after = const ReportingPageCursor.start(),
+    int pageDocuments = ReportingPageCursor.defaultPageDocuments,
   }) async {
     if (unreachableWith case final failure?) return RemoteUnreachable(failure);
     snapshots++;

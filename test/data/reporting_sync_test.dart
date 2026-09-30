@@ -81,6 +81,9 @@ final class _FakeReportingGateway extends ReportingGateway {
     required List<String> businessUnitIds,
     required int revenueSince,
     required int expenseSince,
+    List<int> financialYears = const [],
+    ReportingPageCursor after = const ReportingPageCursor.start(),
+    int pageDocuments = ReportingPageCursor.defaultPageDocuments,
   }) async {
     asked.add((dataset: ReportingDataset.revenue, since: revenueSince));
     asked.add((dataset: ReportingDataset.expense, since: expenseSince));
@@ -2121,12 +2124,18 @@ final class _HalfFailingGateway extends ReportingGateway {
     required List<String> businessUnitIds,
     required int revenueSince,
     required int expenseSince,
+    List<int> financialYears = const [],
+    ReportingPageCursor after = const ReportingPageCursor.start(),
+    int pageDocuments = ReportingPageCursor.defaultPageDocuments,
   }) async {
     if (_shouldFail()) return RemoteUnreachable(RemoteFailure.offline);
     return _delegate.snapshot(
       businessUnitIds: businessUnitIds,
       revenueSince: revenueSince,
       expenseSince: expenseSince,
+      financialYears: financialYears,
+      after: after,
+      pageDocuments: pageDocuments,
     );
   }
 }

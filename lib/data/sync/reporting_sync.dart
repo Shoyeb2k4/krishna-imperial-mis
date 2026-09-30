@@ -41,6 +41,8 @@
 /// property's books.
 library;
 
+import 'dart:convert';
+
 import 'package:krishna_mis/data/local/cache_authority_generation.dart';
 import 'package:krishna_mis/data/remote/remote_outcome.dart';
 import 'package:krishna_mis/data/remote/reporting_gateway.dart';
@@ -137,9 +139,13 @@ final class ReportingSyncReport {
     this.outcomes, {
     this.snapshotId,
     this.serverConfirmedAt,
+    this.pages = 1,
   });
 
   final List<DatasetSyncOutcome> outcomes;
+
+  /// How many bounded pages the run read (D-320). One for an ordinary delta.
+  final int pages;
 
   /// The authoritative snapshot every segment of this run was certified from, and the
   /// server's own time for it. Null when nothing was certified — a run that failed
@@ -172,6 +178,7 @@ final class ReportingSync {
     required this.ownerUserId,
     required this.orgId,
     this.safetyOverlap = defaultSafetyOverlap,
+    this.pageDocuments = ReportingPageCursor.defaultPageDocuments,
     DateTime Function()? clock,
   }) : _clock = clock ?? DateTime.now;
 
@@ -194,13 +201,18 @@ final class ReportingSync {
   final String ownerUserId;
   final String orgId;
   final int safetyOverlap;
+
+  /// How many documents per dataset one page carries (D-320). The server clamps it to
+  /// 1 … 2,000; a page never splits a document.
+  final int pageDocuments;
   final DateTime Function() _clock;
 
   /// Synchronises both datasets for [businessUnitIds] over [years].
   ///
-  /// **One server statement, one local transaction** (D-188). The snapshot arrives whole
-  /// or not at all, and it is applied whole or not at all, so the cache never holds
-  /// revenue from one moment beside expenses from another.
+  /// **Bounded pages, one publication** (D-188, D-320). Each page is one server statement
+  /// over one MVCC snapshot; the pages of a run are staged and published together, with
+  /// the final page's snapshot as the run's evidence, so the cache never holds a
+  /// half-published run and never holds revenue from one run beside expenses from another.
   ///
   /// [onDemand] marks the coverage as fetched outside normal retention, so pruning can
   /// tell a year somebody deliberately asked for from one that is merely current.
@@ -256,36 +268,14 @@ final class ReportingSync {
       askFrom[dataset] = since - safetyOverlap < 0 ? 0 : since - safetyOverlap;
     }
 
-    final outcome = await gateway.snapshot(
-      businessUnitIds: businessUnitIds.toList(),
-      revenueSince: askFrom[ReportingDataset.revenue]!,
-      expenseSince: askFrom[ReportingDataset.expense]!,
+    return _runPages(
+      businessUnitIds: businessUnitIds,
+      years: years,
+      held: held,
+      askFrom: askFrom,
+      onDemand: onDemand,
+      startedUnder: startedUnder,
     );
-
-    switch (outcome) {
-      case RemoteUnreachable(:final failure):
-        // Unknown is not revoked (D-048 section 1). Nothing written, nothing withdrawn,
-        // and the previous coherent snapshot stands exactly as it was.
-        return ReportingSyncReport([
-          for (final dataset in ReportingDataset.values)
-            DatasetUnreachable(dataset, failure),
-        ]);
-      case RemoteRefused(:final refusal):
-        return ReportingSyncReport([
-          for (final dataset in ReportingDataset.values)
-            DatasetRefused(dataset, refusal),
-        ]);
-      case RemoteOk(:final value):
-        return _applySnapshot(
-          response: value,
-          businessUnitIds: businessUnitIds,
-          years: years,
-          held: held,
-          askFrom: askFrom,
-          onDemand: onDemand,
-          startedUnder: startedUnder,
-        );
-    }
   }
 
   /// Asks whether canonical reporting facts have moved past what this device holds.
@@ -339,8 +329,15 @@ final class ReportingSync {
     };
   }
 
-  Future<ReportingSyncReport> _applySnapshot({
-    required Map<String, dynamic> response,
+  /// Walks the answer in bounded pages (D-320) and publishes it whole.
+  ///
+  /// Every page but the last is **staged** — under a key no reader asks for — and the
+  /// last one publishes everything in one transaction, carrying the final page's snapshot
+  /// evidence. So the cache moves from one coherent snapshot to the next or not at all:
+  /// an interrupted run publishes nothing, and the next run resumes from its cursor when
+  /// the scope, the owner and the authority generation are all unchanged, and otherwise
+  /// discards what it staged and starts again.
+  Future<ReportingSyncReport> _runPages({
     required Set<String> businessUnitIds,
     required List<FinancialYear> years,
     required Map<ReportingDataset, Map<String, int>> held,
@@ -348,6 +345,220 @@ final class ReportingSync {
     required bool onDemand,
     required CacheGeneration? startedUnder,
   }) async {
+    final unitList = businessUnitIds.toList()..sort();
+    final yearList = [for (final year in years) year.openingYear]..sort();
+    // A dataset asked from zero is a first synchronisation of its segment: the server lists
+    // only documents with a row in the requested years, so the segment is replaced whole.
+    final bootstrap = {
+      for (final dataset in ReportingDataset.values)
+        if (askFrom[dataset] == 0) dataset,
+    };
+    final scope = <String, dynamic>{
+      'units': unitList,
+      'years': yearList,
+      'on_demand': onDemand,
+      'revenue_since': askFrom[ReportingDataset.revenue],
+      'expense_since': askFrom[ReportingDataset.expense],
+      'page_documents': pageDocuments,
+      'epoch': startedUnder?.epoch,
+      'user': startedUnder?.userId,
+    };
+
+    var run = _PageRun(scope);
+    final saved = await cache.readResume(ownerUserId);
+    if (saved != null) {
+      final resumed = _PageRun.resume(saved, scope);
+      if (resumed != null) {
+        run = resumed;
+      } else {
+        // Staged for a different scope, owner or authority: none of it may be published.
+        await cache.discardStaged(ownerUserId);
+      }
+    }
+
+    Future<void> stillCurrent() => CacheAuthorityGeneration(
+      cache.database,
+    ).ensureStillCurrent(startedUnder: startedUnder, ownerUserId: ownerUserId);
+
+    while (true) {
+      final outcome = await gateway.snapshot(
+        businessUnitIds: unitList,
+        revenueSince: askFrom[ReportingDataset.revenue]!,
+        expenseSince: askFrom[ReportingDataset.expense]!,
+        financialYears: yearList,
+        after: run.cursor,
+        pageDocuments: pageDocuments,
+      );
+
+      final Map<String, dynamic> response;
+      switch (outcome) {
+        case RemoteUnreachable(:final failure):
+          // Unknown is not revoked (D-048 section 1). Nothing published, nothing withdrawn;
+          // what was staged stays staged so the next run resumes rather than restarts.
+          return ReportingSyncReport([
+            for (final dataset in ReportingDataset.values)
+              DatasetUnreachable(dataset, failure),
+          ]);
+        case RemoteRefused(:final refusal):
+          await cache.discardStaged(ownerUserId);
+          return ReportingSyncReport([
+            for (final dataset in ReportingDataset.values)
+              DatasetRefused(dataset, refusal),
+          ]);
+        case RemoteOk(:final value):
+          response = value;
+      }
+
+      final page = _parsePage(response, businessUnitIds, years);
+
+      // The authority the server applied must not move between the pages of one run: rows
+      // staged under the earlier answer may belong to a property this caller has since
+      // lost, and publishing them would certify what the server no longer grants.
+      if (run.authorised != null &&
+          !_sameSet(run.authorised!, page.authorised)) {
+        await cache.discardStaged(ownerUserId);
+        return ReportingSyncReport([
+          for (final dataset in ReportingDataset.values)
+            DatasetAbandoned(dataset),
+        ]);
+      }
+      run.authorised ??= page.authorised;
+
+      if (page.authorised.isEmpty) {
+        await cache.discardStaged(ownerUserId);
+        return ReportingSyncReport([
+          for (final dataset in ReportingDataset.values)
+            DatasetSynchronised(
+              dataset,
+              sinceGeneration: askFrom[dataset]!,
+              generation: 0,
+              documentsReplaced: 0,
+              rowsStored: 0,
+              rowsDropped: 0,
+              years: const [],
+            ),
+        ], pages: run.pages + 1);
+      }
+
+      run.absorb(page, bootstrap);
+
+      if (page.hasMore) {
+        final next = page.nextCursor(run.cursor);
+        if (_sameCursor(next, run.cursor)) {
+          // A page that says there is more but does not advance would loop for ever.
+          throw StateError(
+            'reporting snapshot page reported more documents without advancing its '
+            'cursor (D-320)',
+          );
+        }
+        run.cursor = next;
+        run.pages++;
+        try {
+          await cache.stagePage(
+            ownerUserId: ownerUserId,
+            orgId: orgId,
+            financialYears: yearList,
+            datasets: page.applications,
+            resumeState: run.toJson(),
+            now: _clock(),
+            stillCurrent: stillCurrent,
+          );
+        } on StaleCacheGeneration {
+          await cache.discardStaged(ownerUserId);
+          return _abandoned();
+        }
+        continue;
+      }
+
+      // The final page: every year certified to the highest document generation the run
+      // saw, or to what this scope already held if that is higher — one run is one
+      // authoritative boundary, so a quiet property is certified with a busy one.
+      final finalPage = <ReportingDataset, DatasetApplication>{
+        for (final dataset in ReportingDataset.values)
+          dataset: DatasetApplication(
+            documentIds: page.applications[dataset]!.documentIds,
+            rowsByYear: {
+              for (final year in yearList)
+                year: page.applications[dataset]!.rowsFor(year),
+            },
+            generationByYear: {
+              for (final year in yearList)
+                year: _max(
+                  run.maxSeq[dataset]!,
+                  _maxHeldFor(held[dataset]!, page.authorised, year),
+                ),
+            },
+          ),
+      };
+
+      try {
+        if (run.pages == 0) {
+          await cache.applySnapshot(
+            ownerUserId: ownerUserId,
+            orgId: orgId,
+            snapshotId: page.snapshotId,
+            serverConfirmedAt: page.serverTime,
+            businessUnitIds: page.authorised,
+            financialYears: yearList,
+            datasets: finalPage,
+            onDemand: onDemand,
+            now: _clock(),
+            stillCurrent: stillCurrent,
+            bootstrapDatasets: bootstrap,
+          );
+        } else {
+          await cache.publishRun(
+            ownerUserId: ownerUserId,
+            orgId: orgId,
+            snapshotId: page.snapshotId,
+            serverConfirmedAt: page.serverTime,
+            businessUnitIds: page.authorised,
+            financialYears: yearList,
+            finalPage: finalPage,
+            bootstrapDatasets: bootstrap,
+            clearedDocuments: {
+              for (final dataset in ReportingDataset.values)
+                dataset: run.cleared[dataset]!.toList(),
+            },
+            onDemand: onDemand,
+            now: _clock(),
+            stillCurrent: stillCurrent,
+          );
+        }
+      } on StaleCacheGeneration {
+        await cache.discardStaged(ownerUserId);
+        return _abandoned();
+      }
+
+      return ReportingSyncReport(
+        [
+          for (final dataset in ReportingDataset.values)
+            DatasetSynchronised(
+              dataset,
+              sinceGeneration: askFrom[dataset]!,
+              generation: run.maxSeq[dataset]!,
+              documentsReplaced: run.documents[dataset]!,
+              rowsStored: run.rowsStored[dataset]!,
+              rowsDropped: run.rowsDropped[dataset]!,
+              years: yearList,
+            ),
+        ],
+        snapshotId: page.snapshotId,
+        serverConfirmedAt: page.serverTime,
+        pages: run.pages + 1,
+      );
+    }
+  }
+
+  static ReportingSyncReport _abandoned() => ReportingSyncReport([
+    for (final dataset in ReportingDataset.values) DatasetAbandoned(dataset),
+  ]);
+
+  _Page _parsePage(
+    Map<String, dynamic> response,
+    Set<String> businessUnitIds,
+    List<FinancialYear> years,
+  ) {
     final snapshotId = response['snapshot_id'] as String?;
     final serverTime = _serverTime(response['server_time']);
     if (snapshotId == null || serverTime == null) {
@@ -368,23 +579,11 @@ final class ReportingSync {
           entry['business_unit_id'] as String,
     }..retainAll(businessUnitIds);
 
-    if (authorised.isEmpty) {
-      return ReportingSyncReport([
-        for (final dataset in ReportingDataset.values)
-          DatasetSynchronised(
-            dataset,
-            sinceGeneration: askFrom[dataset]!,
-            generation: 0,
-            documentsReplaced: 0,
-            rowsStored: 0,
-            rowsDropped: 0,
-            years: const [],
-          ),
-      ]);
-    }
-
     final applications = <ReportingDataset, DatasetApplication>{};
-    final outcomes = <DatasetSyncOutcome>[];
+    final listed = <ReportingDataset, List<({String id, int seq})>>{};
+    final withRows = <ReportingDataset, Set<String>>{};
+    final dropped = <ReportingDataset, int>{};
+    final hasMore = <ReportingDataset, bool>{};
 
     for (final dataset in ReportingDataset.values) {
       final rows = [
@@ -392,22 +591,36 @@ final class ReportingSync {
           Map<String, dynamic>.from(row as Map),
       ];
 
-      final documents = <String>{};
+      // The documents this page speaks for, in cursor order. A server that lists them
+      // lets a document with no row left in the requested years be cleared; an older
+      // answer without the list speaks for exactly the documents its rows name.
+      final documents = <({String id, int seq})>[];
+      final named = <String>{};
+      final declared = response['${dataset.wireName}_documents'];
+      if (declared is List) {
+        for (final entry in declared) {
+          final map = entry as Map;
+          final id = map['id'] as String;
+          if (named.add(id)) {
+            documents.add((id: id, seq: (map['seq'] as num?)?.toInt() ?? 0));
+          }
+        }
+      }
+
       final keep = <int, List<ReportingRowValues>>{};
-      var dropped = 0;
-      var generation = 0;
+      final kept = <String>{};
+      final requestedYears = {for (final year in years) year.openingYear};
+      var droppedHere = 0;
 
       for (final row in rows) {
         final documentId = row[dataset.documentColumn] as String;
-        documents.add(documentId);
+        final seq = _documentSeqOf(row);
+        if (named.add(documentId)) documents.add((id: documentId, seq: seq));
 
-        final seq = (row['change_seq'] as num?)?.toInt() ?? 0;
-        if (seq > generation) generation = seq;
-
-        // A voided document contributes nothing and is not stored. Its rows still counted
-        // above, which is the whole point: the document is replaced by nothing.
+        // A voided document contributes nothing and is not stored. It is still listed,
+        // which is the whole point: the document is replaced by nothing.
         if (row['voided_at'] != null) {
-          dropped++;
+          droppedHere++;
           continue;
         }
 
@@ -424,76 +637,49 @@ final class ReportingSync {
         }
         final year = FinancialYear.of(date).openingYear;
         (keep[year] ??= []).add(_valuesFor(dataset, row, pnlDate));
+        if (requestedYears.contains(year)) kept.add(documentId);
       }
 
       applications[dataset] = DatasetApplication(
-        documentIds: documents.toList(),
+        documentIds: [for (final document in documents) document.id],
         rowsByYear: {
           for (final year in years)
             year.openingYear:
                 keep[year.openingYear] ?? const <ReportingRowValues>[],
         },
-        generationByYear: {
-          for (final year in years)
-            // One run is one authoritative boundary, so a unit that happened to have no
-            // changed document is certified to the same point as one that did - otherwise
-            // a quiet property would drift behind a busy one for ever.
-            year.openingYear: _max(
-              generation,
-              _maxHeldFor(held[dataset]!, authorised, year.openingYear),
-            ),
-        },
+        generationByYear: const {},
       );
-
-      outcomes.add(
-        DatasetSynchronised(
-          dataset,
-          sinceGeneration: askFrom[dataset]!,
-          generation: generation,
-          documentsReplaced: documents.length,
-          rowsStored: [
-            for (final year in years)
-              (keep[year.openingYear] ?? const <ReportingRowValues>[]).length,
-          ].fold(0, (a, b) => a + b),
-          rowsDropped: dropped,
-          years: [for (final year in years) year.openingYear],
-        ),
-      );
+      listed[dataset] = documents;
+      withRows[dataset] = kept;
+      dropped[dataset] = droppedHere;
+      hasMore[dataset] = response['${dataset.wireName}_has_more'] == true;
     }
 
-    // One transaction for the whole snapshot: both datasets, every year, the markers and
-    // the snapshot evidence last. A failure anywhere leaves the previous coherent
-    // snapshot exactly as it was.
-    try {
-      await cache.applySnapshot(
-        ownerUserId: ownerUserId,
-        orgId: orgId,
-        snapshotId: snapshotId,
-        serverConfirmedAt: serverTime,
-        businessUnitIds: authorised,
-        financialYears: [for (final year in years) year.openingYear],
-        datasets: applications,
-        onDemand: onDemand,
-        now: _clock(),
-        stillCurrent: () =>
-            CacheAuthorityGeneration(cache.database).ensureStillCurrent(
-              startedUnder: startedUnder,
-              ownerUserId: ownerUserId,
-            ),
-      );
-    } on StaleCacheGeneration {
-      return ReportingSyncReport([
-        for (final dataset in ReportingDataset.values)
-          DatasetAbandoned(dataset),
-      ]);
-    }
-
-    return ReportingSyncReport(
-      outcomes,
+    return _Page(
       snapshotId: snapshotId,
-      serverConfirmedAt: serverTime,
+      serverTime: serverTime,
+      authorised: authorised,
+      applications: applications,
+      listed: listed,
+      withRows: withRows,
+      dropped: dropped,
+      hasMoreByDataset: hasMore,
     );
   }
+
+  static int _documentSeqOf(Map<String, dynamic> row) =>
+      (row['document_change_seq'] as num?)?.toInt() ??
+      (row['change_seq'] as num?)?.toInt() ??
+      0;
+
+  static bool _sameSet(Set<String> a, Set<String> b) =>
+      a.length == b.length && a.containsAll(b);
+
+  static bool _sameCursor(ReportingPageCursor a, ReportingPageCursor b) =>
+      a.revenueSeq == b.revenueSeq &&
+      a.revenueId == b.revenueId &&
+      a.expenseSeq == b.expenseSeq &&
+      a.expenseId == b.expenseId;
 
   static DateTime? _serverTime(Object? value) => switch (value) {
     String text => DateTime.tryParse(text)?.toUtc(),
@@ -521,7 +707,7 @@ final class ReportingSync {
       enteredBasis: row['entered_basis'] as String,
       valueBandId: row['value_band_id'] as String?,
       supplySubtypeId: row['supply_subtype_id'] as String?,
-      documentGeneration: (row['change_seq'] as num?)?.toInt() ?? 0,
+      documentGeneration: _documentSeqOf(row),
     ),
     ReportingDataset.expense => ExpenseRowValues(
       contributionId: row['id'] as String,
@@ -535,7 +721,7 @@ final class ReportingSync {
       pnlDate: pnlDate,
       pnlPeriodKey: row['pnl_period_key'] as String,
       amountMinor: (row['amount_minor'] as num).toInt(),
-      documentGeneration: (row['change_seq'] as num?)?.toInt() ?? 0,
+      documentGeneration: _documentSeqOf(row),
     ),
   };
 
@@ -549,6 +735,163 @@ final class ReportingSync {
 
   static int _min(int a, int b) => a < b ? a : b;
   static int _max(int a, int b) => a > b ? a : b;
+}
+
+/// One parsed page of a paged snapshot (D-320).
+final class _Page {
+  _Page({
+    required this.snapshotId,
+    required this.serverTime,
+    required this.authorised,
+    required this.applications,
+    required this.listed,
+    required this.withRows,
+    required this.dropped,
+    required this.hasMoreByDataset,
+  });
+
+  final String snapshotId;
+  final DateTime serverTime;
+  final Set<String> authorised;
+  final Map<ReportingDataset, DatasetApplication> applications;
+
+  /// The documents this page speaks for, per dataset, in cursor order.
+  final Map<ReportingDataset, List<({String id, int seq})>> listed;
+
+  /// The documents with at least one active row in the requested years.
+  final Map<ReportingDataset, Set<String>> withRows;
+  final Map<ReportingDataset, int> dropped;
+  final Map<ReportingDataset, bool> hasMoreByDataset;
+
+  bool get hasMore => hasMoreByDataset.values.any((more) => more);
+
+  /// Where the next page starts: after the last document this page listed, per dataset.
+  /// A dataset this page listed nothing for keeps its cursor.
+  ReportingPageCursor nextCursor(ReportingPageCursor current) {
+    final revenue = listed[ReportingDataset.revenue]!;
+    final expense = listed[ReportingDataset.expense]!;
+    return ReportingPageCursor(
+      revenueSeq: revenue.isEmpty ? current.revenueSeq : revenue.last.seq,
+      revenueId: revenue.isEmpty ? current.revenueId : revenue.last.id,
+      expenseSeq: expense.isEmpty ? current.expenseSeq : expense.last.seq,
+      expenseId: expense.isEmpty ? current.expenseId : expense.last.id,
+    );
+  }
+}
+
+/// The state of one run across its pages, and what it resumes from (D-320).
+///
+/// It carries cursors, scope and document identities — never a figure. Figures live in
+/// the staged rows, under the same encryption and purge rules as every other cache row.
+final class _PageRun {
+  _PageRun(this.scope);
+
+  final Map<String, dynamic> scope;
+  ReportingPageCursor cursor = const ReportingPageCursor.start();
+  Set<String>? authorised;
+  int pages = 0;
+
+  final Map<ReportingDataset, int> maxSeq = {
+    for (final dataset in ReportingDataset.values) dataset: 0,
+  };
+  final Map<ReportingDataset, int> documents = {
+    for (final dataset in ReportingDataset.values) dataset: 0,
+  };
+  final Map<ReportingDataset, int> rowsStored = {
+    for (final dataset in ReportingDataset.values) dataset: 0,
+  };
+  final Map<ReportingDataset, int> rowsDropped = {
+    for (final dataset in ReportingDataset.values) dataset: 0,
+  };
+
+  /// Documents a delta listed with no active row left in the requested years: their held
+  /// rows must go at publication, because nothing staged will name them.
+  final Map<ReportingDataset, Set<String>> cleared = {
+    for (final dataset in ReportingDataset.values) dataset: <String>{},
+  };
+
+  void absorb(_Page page, Set<ReportingDataset> bootstrap) {
+    for (final dataset in ReportingDataset.values) {
+      for (final document in page.listed[dataset]!) {
+        if (document.seq > maxSeq[dataset]!) maxSeq[dataset] = document.seq;
+      }
+      documents[dataset] = documents[dataset]! + page.listed[dataset]!.length;
+      rowsStored[dataset] =
+          rowsStored[dataset]! +
+          page.applications[dataset]!.rowsByYear.values.fold<int>(
+            0,
+            (total, rows) => total + rows.length,
+          );
+      rowsDropped[dataset] = rowsDropped[dataset]! + page.dropped[dataset]!;
+      if (!bootstrap.contains(dataset)) {
+        for (final document in page.listed[dataset]!) {
+          if (!page.withRows[dataset]!.contains(document.id)) {
+            cleared[dataset]!.add(document.id);
+          }
+        }
+      }
+    }
+  }
+
+  Map<String, dynamic> toJson() => {
+    'scope': scope,
+    'cursor': {
+      'revenue_seq': cursor.revenueSeq,
+      'revenue_id': cursor.revenueId,
+      'expense_seq': cursor.expenseSeq,
+      'expense_id': cursor.expenseId,
+    },
+    'authorised': authorised?.toList(),
+    'pages': pages,
+    for (final dataset in ReportingDataset.values)
+      dataset.wireName: {
+        'max_seq': maxSeq[dataset],
+        'documents': documents[dataset],
+        'rows_stored': rowsStored[dataset],
+        'rows_dropped': rowsDropped[dataset],
+        'cleared': cleared[dataset]!.toList(),
+      },
+  };
+
+  /// The run [saved] describes, if it was started for exactly [scope] — the same owner's
+  /// units, years, watermarks, page size and authority generation. Anything else answers
+  /// null and the caller discards what was staged.
+  static _PageRun? resume(
+    Map<String, dynamic> saved,
+    Map<String, dynamic> scope,
+  ) {
+    try {
+      if (jsonEncode(saved['scope']) != jsonEncode(scope)) return null;
+      final run = _PageRun(scope);
+      final cursor = saved['cursor'] as Map;
+      run.cursor = ReportingPageCursor(
+        revenueSeq: (cursor['revenue_seq'] as num?)?.toInt(),
+        revenueId: cursor['revenue_id'] as String?,
+        expenseSeq: (cursor['expense_seq'] as num?)?.toInt(),
+        expenseId: cursor['expense_id'] as String?,
+      );
+      final authorised = saved['authorised'];
+      run.authorised = authorised is List
+          ? {for (final unit in authorised) unit as String}
+          : null;
+      run.pages = (saved['pages'] as num).toInt();
+      if (run.pages < 1 || run.authorised == null) return null;
+      for (final dataset in ReportingDataset.values) {
+        final state = saved[dataset.wireName] as Map;
+        run.maxSeq[dataset] = (state['max_seq'] as num).toInt();
+        run.documents[dataset] = (state['documents'] as num).toInt();
+        run.rowsStored[dataset] = (state['rows_stored'] as num).toInt();
+        run.rowsDropped[dataset] = (state['rows_dropped'] as num).toInt();
+        run.cleared[dataset]!.addAll([
+          for (final id in state['cleared'] as List) id as String,
+        ]);
+      }
+      return run;
+    } on Object {
+      // A resume record that cannot be read is not a resume record.
+      return null;
+    }
+  }
 }
 
 /// Retention: current and previous financial year, plus whatever was asked for on demand.
