@@ -26,13 +26,19 @@ import 'dart:io';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
+import 'package:krishna_mis/core/export/export_wording.dart';
 import 'package:krishna_mis/core/export/pdf/pdf_fonts.dart';
+import 'package:krishna_mis/core/formatting/money_formatter.dart';
+import 'package:krishna_mis/domain/export/export_document.dart';
+import 'package:krishna_mis/domain/finance/export_authority.dart';
 import 'package:krishna_mis/features/export/export_pipeline.dart'
     show ExportFileFormat;
 import 'package:path_provider/path_provider.dart';
 import 'package:timezone/data/latest.dart' as tzdata;
 
 import '../test/support/export_workload.dart';
+import '../test/support/pdf_text.dart';
+import 'support/pdf_inflate.dart';
 
 const _runs = int.fromEnvironment('KRISHNA_EXPORT_RUNS', defaultValue: 5);
 const _sizes = String.fromEnvironment(
@@ -70,6 +76,70 @@ void main() {
           'fonts load+check ${(fontWatch.elapsedMicroseconds / 1000).toStringAsFixed(1)} ms '
           '(once per session)',
         );
+
+        // What this device actually produced: the P&L PDF, as written, read back.
+        for (final size in ExportWorkloadSize.values) {
+          if (!_sizes.split(',').contains(size.name)) continue;
+          final workload = exportWorkloads(
+            size,
+          ).firstWhere((w) => w.report == ExportReport.profitAndLoss);
+          final document = workload.build() as PnlExportDocument;
+          // The first P&L of its size in this process: for `normal`, the session's very
+          // first export (fonts already loaded, reported above).
+          final first = await timeExport(
+            workload,
+            ExportFileFormat.pdf,
+            fonts,
+            out,
+          );
+          _report(
+            '${size.name} · P&L · pdf · FIRST in session · '
+            'model ${(first.model / 1000).toStringAsFixed(1)} · '
+            'render ${(first.render / 1000).toStringAsFixed(1)} · '
+            'write ${(first.write / 1000).toStringAsFixed(1)} · '
+            'TOTAL ${(first.total / 1000).toStringAsFixed(1)} ms',
+          );
+          final written = File('${out.path}${Platform.pathSeparator}PL.pdf');
+          expect(
+            written.path,
+            startsWith(root.path),
+            reason: 'the app-private cache',
+          );
+          final pdf = PdfText.read(
+            inflatePdfStreams(written.readAsBytesSync()),
+          );
+          final text = pdf.lines.join('\n');
+          final scope = document.scopeStatement;
+          final money = MoneyFormatter.standard;
+          expect(text, contains('₹'));
+          expect(text, contains(document.header.scopeLabel));
+          expect(text, contains(exportRangeLabel(document.header.range)));
+          expect(text, contains('Synchronised as of'));
+          for (final figure in [
+            scope.grossSales,
+            scope.gst,
+            scope.netSales,
+            scope.expenses,
+            scope.operatingProfit,
+          ]) {
+            expect(text, contains(money.format(figure)), reason: 'whole');
+          }
+          for (final line in scope.revenueLines!) {
+            expect(text, contains(line.categoryLabel));
+            expect(text, contains(money.format(line.net)));
+          }
+          for (final line in scope.expenseLines!) {
+            expect(text, contains(line.categoryLabel));
+            expect(text, contains(money.format(line.amount)));
+          }
+          _report(
+            '${size.name} · P&L · pdf verified on device: '
+            '${pdf.pages.length} pages · '
+            '${scope.revenueLines!.length} revenue + '
+            '${scope.expenseLines!.length} expense lines, each printed whole · '
+            'scope, period, freshness and ₹ present · under ${root.path}',
+          );
+        }
 
         for (final size in ExportWorkloadSize.values) {
           if (!_sizes.split(',').contains(size.name)) continue;

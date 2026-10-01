@@ -12169,3 +12169,75 @@ workload renders, and that every P&L line reaches both the workbook and the PDF 
 also asserts that the atomic writer leaves no `.part` file behind. Two positive controls
 went red and were restored byte-identically (`cmp`): the PDF dropping expense lines past
 100, and the workbook doing the same.
+
+## D-327 (A06) — The realistic export is inside T2 on the Galaxy A06; Slice 6 closes
+**Date:** 2026-10-01 · **Status:** Measured / Tested (Phase 8 Slice 6 device acceptance). The
+entry above stands as written, because this log is append-only.
+
+**Threshold.** T2 is **< 2 s** on the Galaxy A06 and < 1 s on Windows.
+
+**Device.** Galaxy A06, SM-A066B, Android 16 (API 36), USB serial `R9ZY50M3GVX`, USB only
+(D-288). The build was dev flavour, `config/dev.json`, HEAD `71118c1`. `flutter test` runs a
+**debug** build, the slow case for Dart.
+
+**The benchmark.** `integration_test/export_performance_test.dart` uses the same workloads as
+the Windows run, 10 warm runs each. It now also reads back the P&L PDF it wrote and checks it
+on the device:
+- every revenue and expense line, and every amount, printed whole;
+- ₹, scope, period and freshness present;
+- the file is under the app-private cache, `/data/user/0/in.krishnaimperial.mis.dev/cache`.
+
+| P&L PDF | Font load (once) | First in session | Warm median (min–max) | Stages, warm (model · render · write) | Pages |
+|---|---|---|---|---|---|
+| **normal** (4 + 23 lines) | 75.3 ms | **484.5 ms** (model 1.3 · render 455.1 · write 28.2) | **60.5 ms (49.1–94.9)** | 0.7 · 50.1 · 9.1 | 2 |
+| stress (40 + 600 lines) | — | 1,116.8 ms | 871.4 ms (834.6–904.8) | 6.9 · 851.5 · 9.1 | 17 |
+
+- **The other reports.** Every normal report's PDF has a warm median of 36–61 ms, and every
+  XLSX 12–16 ms. On the phone the XLSX exercise is internal only; Android still offers the
+  P&L PDF alone (D-293).
+- **Verdict, T2:** the session's first realistic P&L PDF is about 560 ms including the font
+  load, against 2 s: **inside**. **T3:** the stress P&L PDF is reported, not a verdict.
+
+**Share and D-310 on the device** (`p7-android-share`). The Android share sheet
+(`ChooserActivity`) opened online and offline. Back cancelled it each time and returned to
+the app; nothing was sent to any app. The shared file sat in `cache/share/`, its contents
+were checked against the canonical P&L, and the earlier file was removed before the next
+share. Sign-out emptied the share folder.
+
+**Not exercised on the device this run.** The phase's accountant-revocation step needs
+`reports.export` removed from the accountant role on `krishna-mis-dev`. This session's
+permission classifier refused that change, so it was not made and not worked around. The
+phase therefore failed at that step, by design, and its cleanup voided its 3 sales and
+7 expenses. The capability-loss share check and the user-switch half of D-310 come after
+that step, so they did not run on the device. Host tests still cover both
+(`shared_export_cleanup_test`, `pnl_share_test`). This is carried to Slice 8.
+
+**Smoke.** `p6-android-dashboard` passed: sign-in, Dashboard, reporting sync against the
+D-318 paged backend, and P&L. The clean build launched to an empty sign-in screen with no
+Flutter error in the log.
+
+**v22 upgrade.** It was **not exercised on the device**: `flutter test` uninstalls the app at
+the end of a run, so no earlier database survived. Host migration tests cover it (D-323).
+
+**Clean APK installed.**
+
+| | |
+|---|---|
+| File | `build/app/outputs/flutter-apk/app-dev-debug.apk` |
+| Size | 247,423,705 bytes |
+| SHA-256 | `4aa6fcb90ebb931efa7c5b4e8aee39d3972a7d914d2ac75a99bafc95244c49ac` |
+| Secrets | 0 of 6 development passwords and no acceptance marker in any of 562 entries; the scanner is clean over the tree, history and artefacts |
+| Installed copy | pulled `base.apk` hash matches |
+| Permissions | `INTERNET` only |
+
+**Backend.** Ended at the captured baseline:
+
+| | |
+|---|---|
+| Role capabilities | 80, hash `c1b4870f…` |
+| Grants | 7 rows, 5 active |
+| Open revenue · open expenses | 3 · 61, all pre-existing |
+| Settings rows · closed periods | 0 · 0 |
+
+**The 20-page PDF limit.** It stays as ruled: non-blocking for V1, already handled safely,
+and not changed.
