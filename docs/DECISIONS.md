@@ -12086,3 +12086,86 @@ failure-then-retry test on each form.
 
 Full host suite **3,068 passed, 0 skipped**. No schema, server, outbox, validation, button
 design or navigation change.
+
+---
+
+# Phase 8 Slice 6 — Export performance (2026-10-01)
+
+## D-327 — Exports are well inside T2 on Windows; no change is justified
+**Date:** 2026-10-01 · **Status:** Measured (Phase 8 Slice 6, under D-312 D2 and D-313).
+No product code changed.
+
+**What was measured.** Each of the four reports, as PDF and Excel, in three stages:
+1. the document model (`ExportDocuments.*`);
+2. the render (`pnlPdf` / `pnlWorkbook` and their analysis counterparts);
+3. the file write (`writeAtomically`).
+
+These are the same functions `ExportPipeline.render` and the Save As path call. The stage
+D2 calls "canonical result already available" is the starting point: workloads are built
+from `Pnl.compute`, `PnlComparison`, `DashboardTrends`, `TopN` and `PropertyComparison`,
+with no database underneath (`test/support/export_workload.dart`). Dialogs and human waits
+are excluded. The one-off font load is reported on its own line.
+
+| Size | Contents |
+|---|---|
+| **normal** | both properties for a month: the four revenue categories and the 23 expense concepts of spec §4, a 30-day daily Net Sales trend, and a 12-month expense trend |
+| **stress** (T3) | 40 revenue lines, 600 expense lines and a 60-month expense trend — deliberately far past a real hotel |
+
+### E-WIN — the real `krishna_mis.exe`, debug build, fonts from the app bundle
+
+One warm-up discarded, then five runs. Each cell is the median TOTAL (model + render +
+write) in ms, with the range in brackets; the first-export warm-up comes after the dot.
+
+| | normal PDF | normal XLSX | stress PDF | stress XLSX |
+|---|---|---|---|---|
+| P&L | 19.9 (18.6–45.7) · warm-up 137.5 | 4.3 · 19.4 | 205.3 (196.1–218.4) · 235.5 | 8.4 · 9.1 |
+| Revenue Analysis | 15.6 · 27.7 | 4.1 · 5.9 | 11.8 · 13.1 | 4.0 · 5.5 |
+| Expense Analysis | 12.9 · 13.1 | 3.6 · 5.6 | 15.7 · 16.9 | 5.9 · 5.9 |
+| Business Comparison | 9.5 · 9.7 | 2.8 · 5.9 | 9.7 · 8.9 | 3.3 · 3.7 |
+
+- **Font load and check:** 19.2 ms, once per session.
+- **Stage split:** the model takes 0.1–1.7 ms, the write 1.5–2.4 ms, and the render is the
+  rest.
+- **Sizes:** the normal PDFs are 1–2 pages and 17–23 KB. The stress P&L PDF is 17 pages and
+  84 KB.
+
+**Verdict, T2 (E-WIN < 1 s): inside.** The worst normal export is the session's first P&L
+PDF: 19.2 + 137.5 ≈ **157 ms**. This was a debug build, the slow case for Dart, so release
+can only be faster. **T3:** the stress P&L PDF takes 205 ms and is reported, not a verdict.
+
+**E-A06: Not tested.** No Android device was attached. The same harness runs there
+unchanged:
+
+```
+flutter test integration_test/export_performance_test.dart -d <device>
+```
+
+This belongs with Slice 8's device runs. Until then, T2's Android verdict is open.
+
+**What was therefore not done.** Nothing was optimised: no isolate, no caching, no
+change to any renderer.
+
+### Findings, recorded and not changed
+
+1. **A P&L PDF has a ceiling of about 840 category lines.** `pw.MultiPage` keeps the `pdf`
+   package's default limit of 20 pages:
+
+   | Lines | Pages |
+   |---|---|
+   | 760 | 20 |
+   | 840 | 21 |
+   | 900 | fails with `PdfTooBigPageException` |
+
+   The export controller catches it and reports `ExportActionError`: no file is made, and
+   nothing hangs or crashes. A real hotel has tens of lines, so this is far outside use.
+   - **Proposed fix:** one argument on `exportPdfDocument`'s `MultiPage`, `maxPages`.
+   - **Not applied.** It is a product choice, and no threshold requires it.
+2. **PDF rendering runs on the UI isolate.** The stress P&L blocks about 200 ms of frames
+   on Windows. The normal exports block 10–20 ms once warm. This breaches no threshold, and
+   the A06 figure decides whether it matters on the phone.
+
+**Guards.** `test/core/export/export_performance_test.dart` (8 tests) asserts that every
+workload renders, and that every P&L line reaches both the workbook and the PDF text. It
+also asserts that the atomic writer leaves no `.part` file behind. Two positive controls
+went red and were restored byte-identically (`cmp`): the PDF dropping expense lines past
+100, and the workbook doing the same.

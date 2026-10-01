@@ -5,7 +5,9 @@ Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
-Last updated: **2026-10-01** — **D-326 FIXED.** A second Save press before the button rebuilds now returns at once on Revenue and Expense entry, and a failed save releases the form for a retry. Host suite **3,068 passed, 0 skipped**. No schema or server change. **Slice 6 is next.**
+Last updated: **2026-10-01** — **PHASE 8 SLICE 6 — EXPORT PERFORMANCE: MEASURED, NO CHANGE (D-327).** On the real Windows executable (debug build) every normal export, PDF or Excel, finishes in under 160 ms including the one-off font load. That is far inside T2's 1 s, so nothing was optimised. A deliberately huge P&L (640 lines, 17 pages) takes 205 ms. The Galaxy A06 half of T2 is **not tested**: no device was attached, and the same harness runs there in Slice 8. One finding is recorded and not fixed: a P&L PDF with more than about 840 category lines hits the `pdf` package's 20-page limit and is reported as "could not be made". **Slice 7 is not started.** See *Phase 8 Slice 6* at the end of this file.
+
+Previously: **2026-10-01** — **D-326 FIXED.** A second Save press before the button rebuilds now returns at once on Revenue and Expense entry, and a failed save releases the form for a retry. Host suite **3,068 passed, 0 skipped**. No schema or server change. **Slice 6 is next.**
 
 Previously: **2026-10-01** — **PHASE 8 SLICE 5 — GLOBAL MISSED-TAP TEST HARDENING: COMPLETE
 (D-325).** A tap that misses its target now fails the test, everywhere in the host suite, by one
@@ -175,7 +177,7 @@ drill-down, and the Owner Accounts ledger, settlement engine and preview surface
 **Phase 8 — Performance, Hardening & Recovery: IN PROGRESS (started 2026-09-29).** Slices 1 and 2
 are complete, with the approved D-318 redesign built and D-318 closed (D-320, D-321); Slice 3
 (retry and hang hardening, D-322), Slice 4 (the Expense ledger, D-323, D-324) and Slice 5
-(global missed-tap hardening, D-325) are complete. Slices 6–9 are not started. Its record is
+(global missed-tap hardening, D-325) are complete; D-326 is fixed; Slice 6 (export performance, D-327) is complete, with the Galaxy A06 measurement pending. Slices 7–9 are not started. Its record is
 *PHASE 8* at the **end** of this file. *(This paragraph read "Slice 1 is complete; Slices 2–9
 are not started" until Slice 2, "Slices 3–9 are not started" until Slice 3, "Slices 4–9 are not
 started" until Slice 4, and "Slices 5–9 are not started" until Slice 5.)*
@@ -7346,7 +7348,7 @@ measurement against an approved threshold requires.
 | 3 | Retry and hang hardening (D7) | **COMPLETE** (D-322) |
 | 4 | Local expense-ledger profiling and deterministic ordering (D5, D-314, D-315) | **COMPLETE** (D-323, D-324) |
 | 5 | Global missed-tap hardening (D8) | **COMPLETE** (D-325; D-326 reported) |
-| 6 | Export performance (D2, T2/T3) | not started |
+| 6 | Export performance (D2, T2/T3) | **COMPLETE** — measured, inside T2 on Windows; A06 pending (D-327) |
 | 7 | Stress and recovery, including damaged-database recovery (D4, D-316) | not started |
 | 8 | Windows, emulator and Galaxy A06 acceptance and regression | not started |
 | 9 | Closure | not started |
@@ -7783,3 +7785,36 @@ a small product defect (D-326), which is reported for a decision and not fixed h
   a real-executable run, belonging with Slice 8.
 * **The device acceptance suite** has two `warnIfMissed: false` drags (scroll steps that may start
   outside the target); `integration_test/` is outside the guard's scope.
+
+## D-326 remediation (2026-10-01): **DONE** — commit `69693cd`
+
+On Revenue and Expense entry, a second Save press that lands before the button rebuilds now
+returns at once, before the controller. A save that fails releases the form for a retry.
+- The skipped revenue test is re-enabled.
+- There are 3 new tests and 4 positive controls.
+- Host suite: **3,068 passed, 0 skipped**.
+- No schema, server, outbox or validation change.
+
+## Phase 8 Slice 6 — Export performance: **COMPLETE** (2026-10-01)
+
+Decision **D-327**. No product code, schema, migration or server change. Local Drift
+schema **v22**, ledger **105**.
+
+### In plain words
+
+We timed every export the app makes, in each of its stages, on the real Windows program.
+The slowest everyday export takes about a seventh of a second the first time, and a fiftieth
+of a second after that, against a limit of one second. Nothing needed speeding up. The phone
+has not been measured yet, because it was not plugged in.
+
+### Verified
+
+| Item | Status | Evidence |
+|---|---|---|
+| Export workloads, normal and stress | **Tested** | `test/support/export_workload.dart`, built from canonical domain objects |
+| Completeness at size | **Tested** | 8 host tests: every P&L line reaches the PDF and the workbook; no `.part` left behind |
+| Positive controls | **Tested** | PDF and workbook truncating lines: both **red**, restored (`cmp`) |
+| E-WIN, real executable, debug | **Tested** | normal worst 157 ms including fonts (T2 < 1 s: inside); stress P&L PDF 205 ms (T3, reported) |
+| E-A06 | **Not tested** | no device attached; `integration_test/export_performance_test.dart` runs unchanged (Slice 8) |
+| PDF page ceiling | **Recorded** | about 840 lines / 21 pages; beyond that the export fails safely (`ExportActionError`); fix proposed, not applied |
+
