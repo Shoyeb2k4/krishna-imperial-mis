@@ -155,6 +155,41 @@ def workloads(p: dict, old: bool = False) -> list[tuple[str, str]]:
     return items + before
 
 
+def single_document(p: dict) -> list[tuple[str, str]]:
+    """The expense reads the product actually issues against the server (Phase 8 Slice 4).
+
+    Every production read of `expense_document` and of the expense tables under RLS names
+    one document: `ExpenseGateway.fetchDocument / fetchAllocations /
+    fetchPeriodContributions / fetchAttachments` filter by id, and the attachment worker's
+    `hashOf` by storage path. The month reads are D-321's benchmark shapes, kept beside them
+    so the two can be compared; no client issues them."""
+    doc = p["doc"]
+    path = p["doc_path"]
+    m0, m1 = p["month"]
+    unit = p["unit"]
+    return [
+        ("doc.by_id", f"select * from public.expense_document where id = {lit(doc)}::uuid"),
+        ("alloc.by_expense",
+         f"select * from public.expense_allocations where expense_id = {lit(doc)}::uuid"),
+        ("epc.by_expense",
+         f"select * from public.expense_period_contributions where expense_id = {lit(doc)}::uuid"),
+        ("att.by_expense",
+         f"select * from public.expense_attachments where expense_id = {lit(doc)}::uuid"),
+        ("att.by_path",
+         f"select content_hash from public.expense_attachments where storage_path = {lit(path)}"),
+        ("rls.epa.month",
+         "select count(*) from public.expense_period_allocations "
+         f"where pnl_date >= {lit(m0)} and pnl_date <= {lit(m1)}"),
+        ("rls.epa.month.unit",
+         "select count(*) from public.expense_period_allocations "
+         f"where pnl_date >= {lit(m0)} and pnl_date <= {lit(m1)} "
+         f"and business_unit_id = {lit(unit)}::uuid"),
+        ("doc.month",
+         "select count(*), sum(visible_amount_minor) from public.expense_document "
+         f"where business_date >= {lit(m0)} and business_date <= {lit(m1)}"),
+    ]
+
+
 def baseline(p: dict) -> list[tuple[str, str]]:
     """The same reads with no authorization layer, run as the session role (which bypasses
     RLS on both targets). The difference to the principal's figure is the cost of
@@ -185,8 +220,11 @@ def is_heavy(label: str) -> bool:
 
 
 def batch(p: dict, principal: str | None, runs: int, only: list[str] | None,
-          heavy_runs: int | None = None, old: bool = False) -> str:
-    items = baseline(p) if principal is None else workloads(p, old)
+          heavy_runs: int | None = None, old: bool = False, single: bool = False) -> str:
+    if single:
+        items = single_document(p)
+    else:
+        items = baseline(p) if principal is None else workloads(p, old)
     if only:
         items = [w for w in items if w[0] in only]
     out = ["begin;", "set local track_functions = 'all';",
@@ -248,6 +286,8 @@ def main() -> None:
         s.add_argument("--only", nargs="*")
         s.add_argument("--old", action="store_true",
                        help="also measure the perf_old (pre-redesign) reads, same data")
+        s.add_argument("--single", action="store_true",
+                       help="the single-document reads the client issues (Slice 4)")
         s.add_argument("--out")
         s.add_argument("--psql", default=r"C:\Program Files\PostgreSQL\17\bin\psql.exe")
     s = sub.add_parser("summarize")
@@ -262,7 +302,7 @@ def main() -> None:
 
     params = load_params(a.params)
     who, p = principal_params(params, a.principal)
-    sql = batch(p, who, a.runs, a.only, a.heavy_runs, a.old)
+    sql = batch(p, who, a.runs, a.only, a.heavy_runs, a.old, a.single)
     if a.cmd == "emit":
         print(sql)
         return

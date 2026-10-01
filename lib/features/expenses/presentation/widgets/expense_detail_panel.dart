@@ -32,6 +32,7 @@ import 'package:krishna_mis/features/expenses/presentation/expense_edit_loader.d
 import 'package:krishna_mis/features/expenses/presentation/expense_providers.dart';
 import 'package:krishna_mis/features/expenses/presentation/widgets/edit_launcher.dart';
 import 'package:krishna_mis/features/expenses/presentation/widgets/expense_document_body.dart';
+import 'package:krishna_mis/features/expenses/presentation/widgets/expense_read_failure.dart';
 import 'package:krishna_mis/features/expenses/presentation/widgets/void_dialog.dart';
 
 class ExpenseDetailPanel extends ConsumerWidget {
@@ -45,10 +46,17 @@ class ExpenseDetailPanel extends ConsumerWidget {
 
     return expense.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, _) => Padding(
-        padding: const EdgeInsets.all(AppSpacing.xl),
-        child: Text('This expense could not be read. $error'),
-      ),
+      // Plain words and a retry, never the exception (D-323).
+      error: (error, stack) {
+        logExpenseReadFailure('An expense', error, stack);
+        return ExpenseReadFailure(
+          title: 'This expense could not be read',
+          body:
+              'Nothing has changed. This device could not read it just now. '
+              'Try again; if it keeps happening, restart the app.',
+          onRetry: () => ref.invalidate(expenseDetailProvider(expenseId)),
+        );
+      },
       data: (loaded) => loaded == null
           ? const Padding(
               padding: EdgeInsets.all(AppSpacing.xl),

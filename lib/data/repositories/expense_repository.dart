@@ -713,45 +713,15 @@ class ExpenseRepository {
     );
   }
 
-  /// The ledger, most recent business date first.
+  /// The ledger, most recent business date first — every document this device may
+  /// browse, voided ones included.
   ///
   /// Excludes documents retained through a revocation (D-068). Those rows exist only so
   /// the actor can inspect and reconcile their own unsent intent; they are not authorised
   /// financial data and must never appear in a ledger. [listRetainedAfterRevocation] is
   /// the one way to reach them.
-  Future<List<LocalExpense>> list({int limit = 50, int offset = 0}) async {
-    final rows =
-        await (_db.select(_db.expenses)
-              ..where((t) => t.scopeRevokedAt.isNull())
-              ..orderBy([
-                (t) => OrderingTerm(
-                  expression: t.businessDate,
-                  mode: OrderingMode.desc,
-                ),
-                (t) => OrderingTerm(
-                  expression: t.capturedAt,
-                  mode: OrderingMode.desc,
-                ),
-              ])
-              ..limit(limit, offset: offset))
-            .get();
-    return [
-      for (final row in rows)
-        LocalExpense(
-          row: row,
-          allocations: await (_db.select(
-            _db.expenseAllocations,
-          )..where((t) => t.expenseId.equals(row.id))).get(),
-          periodContributions: await (_db.select(
-            _db.expensePeriodAllocations,
-          )..where((t) => t.expenseId.equals(row.id))).get(),
-          attachments: await (_db.select(
-            _db.expenseAttachments,
-          )..where((t) => t.expenseId.equals(row.id))).get(),
-          syncState: await _syncStateFor(row),
-        ),
-    ];
-  }
+  Future<List<LocalExpense>> list({int limit = 50, int offset = 0}) =>
+      query(const _EveryBrowsableExpense(), limit: limit, offset: offset);
 
   /// Sync state, read from the outbox rather than from a column.
   ///
@@ -759,6 +729,9 @@ class ExpenseRepository {
   /// intent has vanished without being reconciled is *not* quietly called synced — it is
   /// reported as pending, because something went wrong and saying "sent" would be a
   /// guess.
+  ///
+  /// The ledger asks the same question in SQL ([ledgerSyncStateSql]), generated from this
+  /// rule rather than written beside it, so the two cannot disagree (D-119, D-323).
   Future<SyncState> _syncStateFor(ExpenseRow row) async {
     final mutationId = row.pendingMutationId;
     if (mutationId == null) {
@@ -773,120 +746,214 @@ class ExpenseRepository {
     return OutboxStatus.fromName(entry.status).userVisibleState;
   }
 
-  /// The ledger, filtered and paged in SQL.
+  /// [_syncStateFor], as one SQL expression over `expenses e` left-joined to
+  /// `sync_outbox o` on `o.mutation_id = e.pending_mutation_id`.
   ///
-  /// LIMIT/OFFSET: the caller asks for a window and gets exactly that. Nothing here
-  /// fetches "all expenses" and narrows them in Dart — at a year of history that is the
-  /// difference between a ledger that opens and one that does not (spec §27).
+  /// Generated from [OutboxStatus.userVisibleState] — the project's one mapping — so a
+  /// status added later is mapped here by the same switch that maps it everywhere else.
+  /// A status this build does not know becomes NULL, which matches no filter.
+  ///
+  /// It exists so a sync-state filter is decided **before** the page is cut. Applied
+  /// afterwards, as it was until Phase 8 Slice 4, it searched the newest window only and
+  /// answered "one conflict" for a device holding forty-six (D-317, D-323).
+  static final String ledgerSyncStateSql = () {
+    final arms = [
+      for (final status in OutboxStatus.values)
+        "WHEN '${status.name}' THEN '${status.userVisibleState.name}'",
+    ].join(' ');
+    return 'CASE '
+        'WHEN e.pending_mutation_id IS NULL THEN '
+        "CASE WHEN e.txn_number IS NULL THEN '${SyncState.pendingSync.name}' "
+        "ELSE '${SyncState.synced.name}' END "
+        "WHEN o.mutation_id IS NULL THEN '${SyncState.pendingSync.name}' "
+        'ELSE CASE o.status $arms END '
+        'END';
+  }();
+
+  /// The ledger, filtered, ordered and paged **in SQL** (D-317, D-323).
+  ///
+  /// Every filter — the hierarchy, the dates, the search, payment, vendor, voided and
+  /// **sync state** — is a predicate of the one statement that cuts the page, so a page
+  /// holds `limit` matching documents whenever that many exist. Nothing is narrowed in
+  /// Dart after the window is taken.
+  ///
+  /// Ordering is `business_date desc, captured_at desc, id desc`. The third term is not
+  /// decoration: documents captured in the same instant would otherwise have no defined
+  /// order, and an undefined order across a page boundary is how a row is shown twice or
+  /// never (D-121, which closed the same hazard for revenue).
+  ///
+  /// LIMIT/OFFSET, measured rather than assumed sufficient (D-314, D-323).
   Future<List<LocalExpense>> query(
     ExpenseQuery filter, {
     int limit = 100,
     int offset = 0,
-  }) async {
-    final select = _db.select(_db.expenses);
+  }) async => _hydrateAll(
+    await _ledgerSelect(filter, limit: limit, offset: offset).get(),
+  );
 
-    // D-068: never browsable, whatever the filter asks for. First predicate rather than
-    // last, so a future filter branch cannot be written that forgets it.
-    select.where((t) => t.scopeRevokedAt.isNull());
+  /// The same page as a stream that re-emits whenever a document, a line, a
+  /// contribution, an attachment or the outbox changes.
+  ///
+  /// A row's sync state arrives from the **sync worker**, which invalidates no provider
+  /// and knows about no screen; a one-shot read keeps whatever state it saw (D-131,
+  /// D-160). Streaming removes the staleness by construction.
+  Stream<List<LocalExpense>> watchQuery(
+    ExpenseQuery filter, {
+    int limit = 100,
+    int offset = 0,
+  }) => _ledgerSelect(
+    filter,
+    limit: limit,
+    offset: offset,
+  ).watch().asyncMap(_hydrateAll);
 
-    if (!filter.includeVoided) {
-      select.where((t) => t.voidedAt.isNull());
+  Selectable<QueryRow> _ledgerSelect(
+    ExpenseQuery filter, {
+    required int limit,
+    required int offset,
+  }) {
+    final where = <String>[
+      // D-068: never browsable, whatever the filter asks for. First predicate rather
+      // than last, so a future branch cannot be written that forgets it.
+      'e.scope_revoked_at IS NULL',
+    ];
+    final variables = <Variable<Object>>[];
+
+    void add(String predicate, List<String> values) {
+      where.add(predicate);
+      variables.addAll(values.map(Variable<String>.new));
     }
-    if (filter.from case final from?) {
-      select.where((t) => t.businessDate.isBiggerOrEqualValue(from));
+
+    if (!filter.includeVoided) where.add('e.voided_at IS NULL');
+    // Business **date**, never a capture instant (D-067).
+    if (filter.from case final from? when from.isNotEmpty) {
+      add('e.business_date >= ?', [from]);
     }
-    if (filter.to case final to?) {
-      select.where((t) => t.businessDate.isSmallerOrEqualValue(to));
+    if (filter.to case final to? when to.isNotEmpty) {
+      add('e.business_date <= ?', [to]);
     }
     if (filter.paymentStatus case final status?) {
-      select.where((t) => t.paymentStatus.equals(status));
+      add('e.payment_status = ?', [status]);
     }
-    if (filter.vendorId case final vendor?) {
-      select.where((t) => t.vendorId.equals(vendor));
-    }
+    if (filter.vendorId case final vendor?) add('e.vendor_id = ?', [vendor]);
     if (filter.search case final term? when term.trim().isNotEmpty) {
       final needle = '%${term.trim()}%';
-      select.where(
-        (t) => t.txnNumber.like(needle) | t.referenceNumber.like(needle),
+      add('(e.txn_number LIKE ? OR e.reference_number LIKE ?)', [
+        needle,
+        needle,
+      ]);
+    }
+    // Classification lives on the allocation line, never on the document (D-003), so
+    // "expenses in Housekeeping" means "documents with at least one visible line in
+    // Housekeeping". A shared bill charging two departments belongs in both views.
+    //
+    // A correlated EXISTS, answered through `ix_expense_allocations_expense` (v22). The
+    // ledger is then walked in its own index order and stops after one page. Before v22
+    // the same EXISTS scanned the whole allocation table once per document — quadratic,
+    // 112 s for one page at SCALE — and an uncorrelated `IN` that avoided that forced a
+    // sort of every matching document instead (D-323).
+    for (final (column, value) in [
+      ('business_unit_id', filter.businessUnitId),
+      ('department_id', filter.departmentId),
+      ('section_id', filter.sectionId),
+      ('category_id', filter.categoryId),
+    ]) {
+      if (value == null) continue;
+      add(
+        'EXISTS (SELECT 1 FROM expense_allocations a '
+        'WHERE a.expense_id = e.id AND a.$column = ?)',
+        [value],
       );
     }
-    if (filter.businessUnitId case final unit?) {
-      // A document is in scope of the filter if any visible line charges that unit.
-      select.where(
-        (t) => existsQuery(
-          _db.selectOnly(_db.expenseAllocations)
-            ..addColumns([_db.expenseAllocations.id])
-            ..where(
-              _db.expenseAllocations.expenseId.equalsExp(t.id) &
-                  _db.expenseAllocations.businessUnitId.equals(unit),
-            ),
-        ),
-      );
-    }
-    // Department, section and category are the same shape as the business-unit filter
-    // and for the same reason: classification lives on the allocation line, never on the
-    // document (D-003), so "expenses in Housekeeping" means "documents with at least one
-    // visible line in Housekeeping". A shared bill charging two departments belongs in
-    // both views, and that is correct rather than a duplicate.
-    if (filter.departmentId case final department?) {
-      select.where(
-        (t) => existsQuery(
-          _db.selectOnly(_db.expenseAllocations)
-            ..addColumns([_db.expenseAllocations.id])
-            ..where(
-              _db.expenseAllocations.expenseId.equalsExp(t.id) &
-                  _db.expenseAllocations.departmentId.equals(department),
-            ),
-        ),
-      );
-    }
-    if (filter.sectionId case final section?) {
-      select.where(
-        (t) => existsQuery(
-          _db.selectOnly(_db.expenseAllocations)
-            ..addColumns([_db.expenseAllocations.id])
-            ..where(
-              _db.expenseAllocations.expenseId.equalsExp(t.id) &
-                  _db.expenseAllocations.sectionId.equals(section),
-            ),
-        ),
-      );
-    }
-    if (filter.categoryId case final category?) {
-      select.where(
-        (t) => existsQuery(
-          _db.selectOnly(_db.expenseAllocations)
-            ..addColumns([_db.expenseAllocations.id])
-            ..where(
-              _db.expenseAllocations.expenseId.equalsExp(t.id) &
-                  _db.expenseAllocations.categoryId.equals(category),
-            ),
-        ),
-      );
+    if (filter.syncState case final state?) {
+      add('($ledgerSyncStateSql) = ?', [state.name]);
     }
 
-    select
-      ..orderBy([
-        (t) =>
-            OrderingTerm(expression: t.businessDate, mode: OrderingMode.desc),
-        (t) => OrderingTerm(expression: t.capturedAt, mode: OrderingMode.desc),
-      ])
-      ..limit(limit, offset: offset);
-
-    final rows = await select.get();
-    final loaded = <LocalExpense>[];
-    for (final row in rows) {
-      final expense = await _hydrate(row);
-      // Sync state is derived from the outbox, so it cannot be a SQL predicate without
-      // duplicating it into a column. The window is already bounded by the query above,
-      // so filtering it here costs nothing meaningful.
-      if (filter.syncState != null && expense.syncState != filter.syncState) {
-        continue;
-      }
-      loaded.add(expense);
-    }
-    return loaded;
+    return _db.customSelect(
+      'SELECT e.*, ($ledgerSyncStateSql) AS ledger_sync_state '
+      '  FROM expenses e '
+      '  LEFT JOIN sync_outbox o ON o.mutation_id = e.pending_mutation_id '
+      ' WHERE ${where.join(' AND ')} '
+      ' ORDER BY e.business_date DESC, e.captured_at DESC, e.id DESC '
+      ' LIMIT ? OFFSET ?',
+      variables: [...variables, Variable<int>(limit), Variable<int>(offset)],
+      // What the page shows, so Drift knows when to re-run it.
+      readsFrom: {
+        _db.expenses,
+        _db.expenseAllocations,
+        _db.expensePeriodAllocations,
+        _db.expenseAttachments,
+        _db.syncOutbox,
+      },
+    );
   }
+
+  /// Hydrates a page in **three** statements, however many documents it holds.
+  ///
+  /// The lines, contributions and attachments of every document on the page are read
+  /// with one `IN` list per table and grouped here. The earlier shape read them one
+  /// document at a time — three statements a row plus an outbox lookup, 154 for a page of
+  /// fifty — and each one scanned its whole table (D-323).
+  Future<List<LocalExpense>> _hydrateAll(List<QueryRow> page) async {
+    if (page.isEmpty) return const [];
+    final rows = [for (final r in page) _db.expenses.map(r.data)];
+    final ids = [for (final r in rows) r.id];
+
+    final allocations = <String, List<ExpenseAllocationRow>>{};
+    final periods = <String, List<ExpensePeriodAllocationRow>>{};
+    final attachments = <String, List<ExpenseAttachmentRow>>{};
+    // Chunked well inside SQLite's bound-parameter limit, so a large window is still a
+    // handful of statements rather than one that fails.
+    const chunk = 500;
+    for (var i = 0; i < ids.length; i += chunk) {
+      final part = ids.sublist(
+        i,
+        i + chunk > ids.length ? ids.length : i + chunk,
+      );
+      for (final a
+          in await (_db.select(_db.expenseAllocations)
+                ..where((t) => t.expenseId.isIn(part))
+                ..orderBy([
+                  (t) => OrderingTerm(expression: t.sortOrder),
+                  (t) => OrderingTerm(expression: t.id),
+                ]))
+              .get()) {
+        (allocations[a.expenseId] ??= []).add(a);
+      }
+      for (final p
+          in await (_db.select(_db.expensePeriodAllocations)
+                ..where((t) => t.expenseId.isIn(part))
+                ..orderBy([(t) => OrderingTerm(expression: t.id)]))
+              .get()) {
+        (periods[p.expenseId] ??= []).add(p);
+      }
+      for (final f
+          in await (_db.select(_db.expenseAttachments)
+                ..where((t) => t.expenseId.isIn(part))
+                ..orderBy([(t) => OrderingTerm(expression: t.id)]))
+              .get()) {
+        (attachments[f.expenseId] ??= []).add(f);
+      }
+    }
+
+    return [
+      for (var i = 0; i < rows.length; i++)
+        LocalExpense(
+          row: rows[i],
+          allocations: allocations[rows[i].id] ?? const [],
+          periodContributions: periods[rows[i].id] ?? const [],
+          attachments: attachments[rows[i].id] ?? const [],
+          syncState: _ledgerState(page[i].data['ledger_sync_state']),
+        ),
+    ];
+  }
+
+  /// The SQL-derived state, read back. A status this build cannot name is reported as
+  /// pending rather than as synced: saying "sent" would be a guess.
+  static SyncState _ledgerState(Object? name) => SyncState.values.firstWhere(
+    (s) => s.name == name,
+    orElse: () => SyncState.pendingSync,
+  );
 
   Future<LocalExpense> _hydrate(ExpenseRow row) async => LocalExpense(
     row: row,
@@ -1110,3 +1177,32 @@ class ExpenseRepository {
 /// Convenience for a business date read back out of the local text column.
 BusinessDate? parseLocalDate(String? iso) =>
     iso == null ? null : BusinessDate.tryParse(iso);
+
+/// Every document the ledger may browse, voided ones included: what
+/// [ExpenseRepository.list] has always returned, now through the one ledger statement.
+final class _EveryBrowsableExpense implements ExpenseQuery {
+  const _EveryBrowsableExpense();
+
+  @override
+  String? get from => null;
+  @override
+  String? get to => null;
+  @override
+  String? get businessUnitId => null;
+  @override
+  String? get departmentId => null;
+  @override
+  String? get sectionId => null;
+  @override
+  String? get categoryId => null;
+  @override
+  String? get vendorId => null;
+  @override
+  String? get paymentStatus => null;
+  @override
+  SyncState? get syncState => null;
+  @override
+  String? get search => null;
+  @override
+  bool get includeVoided => true;
+}

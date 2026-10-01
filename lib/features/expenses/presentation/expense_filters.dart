@@ -209,15 +209,122 @@ final expenseFilterProvider =
       ExpenseFilterNotifier.new,
     );
 
-/// The ledger page, filtered and paged in SQL.
-final filteredExpensesProvider = FutureProvider<List<LocalExpense>>((ref) {
-  // Re-read on a change of principal for the same reason `recentExpensesProvider` does:
-  // a cached ledger must not outlive the session that filled it (D-072 acceptance).
-  ref.watch(principalProvider);
+/// How many documents one "Load more" adds to the ledger (D-317, D-323).
+const expenseLedgerPageSize = 50;
+
+/// Who the ledger is being read for: the person and every grant they hold.
+///
+/// A `Provider<String>` so Riverpod notifies only when the value changes: a session
+/// refresh that leaves the person and their grants exactly as they were keeps the pages
+/// a reader has loaded (D-245), while a different person or a changed capability starts
+/// the ledger again from its first page.
+final expenseLedgerAuthorityKeyProvider = Provider<String>((ref) {
+  final principal = ref.watch(principalProvider);
+  final grants = [
+    for (final g in principal.grants)
+      '${g.capability.code}@${g.businessUnitId ?? '*'}',
+  ]..sort();
+  return '${principal.userId}|${grants.join(',')}';
+});
+
+/// How many pages of the ledger are loaded.
+///
+/// Any change to the filter, the search or the reader's authority starts again from
+/// one page. Staying on page six of a result set that changed underneath it is how a
+/// ledger shows somebody rows from a question they are no longer asking.
+class ExpenseLedgerPagesNotifier extends Notifier<int> {
+  @override
+  int build() {
+    ref
+      ..watch(expenseFilterProvider)
+      ..watch(expenseLedgerAuthorityKeyProvider);
+    return 1;
+  }
+
+  void loadMore() => state = state + 1;
+}
+
+final expenseLedgerPagesProvider =
+    NotifierProvider<ExpenseLedgerPagesNotifier, int>(
+      ExpenseLedgerPagesNotifier.new,
+    );
+
+/// What the ledger is showing, and which question it answers.
+///
+/// Stamped with the reader's authority and the exact filter and page count it was read
+/// for, so a surface can refuse to show a window computed for somebody or something
+/// else while the next one loads (D-074, D-231).
+@immutable
+final class ExpenseLedgerWindow {
+  const ExpenseLedgerWindow({
+    required this.authorityKey,
+    required this.filter,
+    required this.pages,
+    required this.rows,
+    required this.hasMore,
+  });
+
+  final String authorityKey;
+  final ExpenseFilter filter;
+  final int pages;
+
+  /// Every matching document up to `pages × expenseLedgerPageSize`, in ledger order.
+  final List<LocalExpense> rows;
+
+  /// Whether at least one further matching document exists.
+  final bool hasMore;
+}
+
+/// The loaded window of the ledger: every filter applied in SQL, then cut (D-317).
+///
+/// **One statement for the whole window**, not one per page appended to the last. A
+/// page appended by OFFSET is cut against whatever the table held at that moment, so an
+/// expense recorded or synced between two "Load more" presses would shift every later
+/// page by one and show a row twice or never. Re-reading the window as one ordered
+/// query cannot duplicate, skip or reorder anything, and the measurement shows the cost
+/// does not justify anything cleverer (D-323).
+///
+/// Asks for one row beyond the window to learn whether more exist, rather than counting
+/// the whole filtered set to draw a button.
+///
+/// **A stream (D-160).** A row's sync state arrives from the sync worker, which
+/// invalidates no provider and knows about no screen.
+final filteredExpensesProvider = StreamProvider<ExpenseLedgerWindow>((ref) {
+  final key = ref.watch(expenseLedgerAuthorityKeyProvider);
+  final filter = ref.watch(expenseFilterProvider);
+  final pages = ref.watch(expenseLedgerPagesProvider);
+  final limit = pages * expenseLedgerPageSize;
+
   return ref
       .watch(expenseRepositoryProvider)
-      .query(ref.watch(expenseFilterProvider));
+      .watchQuery(filter, limit: limit + 1)
+      .map(
+        (rows) => ExpenseLedgerWindow(
+          authorityKey: key,
+          filter: filter,
+          pages: pages,
+          rows: rows.length > limit ? rows.sublist(0, limit) : rows,
+          hasMore: rows.length > limit,
+        ),
+      );
 });
+
+/// The window to show, or null while the one for the current question is loading.
+///
+/// A provider re-reading keeps its previous value while it loads. That is right when a
+/// sync lands and wrong the moment the person, their authority or the question changed:
+/// the previous window answered something else (D-074, D-231). Compared by identity on
+/// the filter, because the filter provider hands out a new object for every change.
+ExpenseLedgerWindow? expenseLedgerShownTo(
+  ExpenseLedgerWindow? window, {
+  required String authorityKey,
+  required ExpenseFilter filter,
+}) {
+  if (window == null) return null;
+  if (window.authorityKey != authorityKey) return null;
+  if (!identical(window.filter, filter)) return null;
+  return window;
+}
 
 /// The desktop filter surface (D-073 §19).
 ///

@@ -100,6 +100,7 @@ void main() {
           ..execute(v7ExpenseTablesDdl[0])
           ..execute(v7ExpenseTablesDdl[1])
           ..execute(v7ExpenseTablesDdl[2])
+          ..execute(v10ExpenseAttachmentsDdl)
           ..execute('''
           CREATE TABLE revenue_entries (
             id TEXT NOT NULL PRIMARY KEY, org_id TEXT NOT NULL,

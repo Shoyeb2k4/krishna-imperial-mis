@@ -25,6 +25,7 @@ import 'package:krishna_mis/features/expenses/presentation/widgets/allocation_ed
 import 'package:krishna_mis/features/expenses/presentation/widgets/amount_field.dart';
 import 'package:krishna_mis/features/expenses/presentation/widgets/classification_picker.dart';
 import 'package:krishna_mis/features/expenses/presentation/widgets/expense_optional_details.dart';
+import 'package:krishna_mis/features/expenses/presentation/widgets/expense_read_failure.dart';
 
 class ExpenseEntryPage extends ConsumerStatefulWidget {
   const ExpenseEntryPage({super.key}) : editing = null, capturedAt = null;
@@ -89,10 +90,19 @@ class _ExpenseEntryPageState extends ConsumerState<ExpenseEntryPage> {
       ),
       body: graphAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) => _Message(
-          title: 'The set-up could not be read',
-          body: 'Nothing has been saved. $error',
-        ),
+        // Plain words and a retry, never the exception: a SQLite or Drift message is
+        // nothing a manager can act on (D-322, D-323). The detail goes to the log.
+        error: (error, stack) {
+          logExpenseReadFailure('The expense set-up', error, stack);
+          return ExpenseReadFailure(
+            title: 'The set-up could not be read',
+            body:
+                'Nothing has been saved. This device could not read its list of '
+                'properties and categories just now. Try again; if it keeps '
+                'happening, restart the app.',
+            onRetry: () => ref.invalidate(masterGraphProvider),
+          );
+        },
         data: (graph) => _form(context, graph, principal),
       ),
     );

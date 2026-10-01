@@ -308,3 +308,35 @@ const List<String> v7ExpenseTablesDdl = [
   )
   ''',
 ];
+
+/// `expense_attachments` as every device from **v10** has it — the fourth expense table,
+/// which also arrives at v7 and took its eight-state lifecycle at v10 (D-073).
+///
+/// Kept apart from [v7ExpenseTablesDdl] because the v9 attachment-migration fixture needs
+/// the table in its *v9* shape, which is the thing it tests. A v12 or v14 fixture without it
+/// is a schema no device has had — and from local schema v22 it matters, because the
+/// ledger's index on `expense_attachments (expense_id)` is created on every upgrade path
+/// (D-323). The fourth time a partial migration fixture has had to be completed (D-073a,
+/// D-159, Phase 5 Slice 1, and this).
+const String v10ExpenseAttachmentsDdl = """
+  CREATE TABLE expense_attachments (
+    id TEXT NOT NULL PRIMARY KEY,
+    org_id TEXT NOT NULL,
+    expense_id TEXT NOT NULL REFERENCES expenses (id) ON DELETE CASCADE,
+    file_name TEXT NOT NULL,
+    content_type TEXT NOT NULL,
+    byte_size INTEGER NOT NULL,
+    content_hash TEXT NOT NULL,
+    local_path TEXT NULL,
+    upload_state TEXT NOT NULL DEFAULT 'staged',
+    storage_path TEXT NULL,
+    attempt_count INTEGER NOT NULL DEFAULT 0,
+    next_attempt_at TEXT NULL,
+    last_error TEXT NULL,
+    uploaded_at TEXT NULL,
+    reclaimable_after TEXT NULL,
+    uploaded_by TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )
+""";

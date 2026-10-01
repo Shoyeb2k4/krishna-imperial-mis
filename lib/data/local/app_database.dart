@@ -107,10 +107,18 @@ class AppDatabase extends _$AppDatabase {
   ///       removing an effect, a replay applying twice — is a hazard of maintaining it
   ///       (D-157).
   ///
+  /// v22 — the expense ledger's read path (Phase 8 Slice 4, D-323): an index on
+  ///       `expense_id` for each of the three expense child tables, and the ledger's own
+  ///       order — `business_date desc, captured_at desc, id desc` over browsable rows.
+  ///       **Indexes only**: no table, column or row changes, and dropping them loses no
+  ///       data. Measured before it was added: at five years of synthetic history a
+  ///       ledger page cost 390-606 ms on the development host without them and 4-68 ms
+  ///       with them, for 5% more write time and 19% more file.
+  ///
   /// Financial tables raise this number as they land, each with a migration step and a
   /// migration test (docs/RELEASE_CHECKLIST.md §C).
   @override
-  int get schemaVersion => 21;
+  int get schemaVersion => 22;
 
   /// Timestamps are stored as ISO-8601 **UTC text**, not as unix seconds.
   ///
@@ -139,6 +147,7 @@ class AppDatabase extends _$AppDatabase {
       await _createExpensePeriodContributionsView();
       await _createRevenueIndexes();
       await _createExpenseReportingIndex();
+      await _createExpenseLedgerIndexes();
       await _createReportingCacheIndexes();
       await _createImmutableBandTrigger();
       await _createOwnerLedgerIndexes();
@@ -440,6 +449,16 @@ class AppDatabase extends _$AppDatabase {
           ownerSettlementCoverage.ownershipStartDate,
         );
       }
+      if (from < 22) {
+        // Phase 8 Slice 4 — the expense ledger's read path (D-323).
+        //
+        // Indexes only. No version floor is needed: the three expense child tables and
+        // `expenses` arrive at v7 and `scope_revoked_at` — which the ledger index is
+        // partial on — at v9, and both steps run before this one in source order, so
+        // every column named here exists on every upgrade path (D-144 avoided by
+        // sequence, as at v16).
+        await _createExpenseLedgerIndexes();
+      }
     },
     beforeOpen: (details) async {
       // Referential integrity is not optional in a financial database. Without this,
@@ -617,6 +636,35 @@ class AppDatabase extends _$AppDatabase {
     'CREATE INDEX IF NOT EXISTS ix_expense_contributions_reporting '
     'ON expense_period_allocations (org_id, pnl_period_key, business_unit_id)',
   );
+
+  /// The expense ledger's read path (D-323), as SQL.
+  ///
+  /// * **`expense_id` on each child table.** A ledger page reads the lines,
+  ///   contributions and attachments of its documents; a document's detail reads them
+  ///   too; a hierarchy filter asks whether a document has a line in a unit, department,
+  ///   section or category; and SQLite enforces `ON DELETE CASCADE` from `expenses` by
+  ///   looking each child table up on this column. Without an index every one of those
+  ///   is a scan of the whole table. The server has had the same three indexes since
+  ///   Phase 3 (`expense_allocations_expense_idx` and its siblings).
+  /// * **The ledger's own order**, partial on browsable rows (D-068), so the first page
+  ///   is read in order and stops after fifty rows instead of sorting the table.
+  static const expenseLedgerIndexStatements = [
+    'CREATE INDEX IF NOT EXISTS ix_expense_allocations_expense '
+        'ON expense_allocations (expense_id)',
+    'CREATE INDEX IF NOT EXISTS ix_expense_period_allocations_expense '
+        'ON expense_period_allocations (expense_id)',
+    'CREATE INDEX IF NOT EXISTS ix_expense_attachments_expense '
+        'ON expense_attachments (expense_id)',
+    'CREATE INDEX IF NOT EXISTS ix_expenses_ledger '
+        'ON expenses (business_date DESC, captured_at DESC, id DESC) '
+        'WHERE scope_revoked_at IS NULL',
+  ];
+
+  Future<void> _createExpenseLedgerIndexes() async {
+    for (final statement in expenseLedgerIndexStatements) {
+      await customStatement(statement);
+    }
+  }
 
   /// What a cache-backed report reads: an owner's rows for a property in a period.
   ///

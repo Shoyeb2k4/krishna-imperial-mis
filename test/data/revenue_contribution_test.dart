@@ -33,7 +33,7 @@ import 'package:krishna_mis/domain/value_objects/money.dart';
 import 'package:timezone/data/latest.dart' as tzdata;
 
 import '../support/expense_fixtures.dart'
-    show createTempDatabaseFile, v7ExpenseTablesDdl;
+    show createTempDatabaseFile, v10ExpenseAttachmentsDdl, v7ExpenseTablesDdl;
 import '../support/revenue_parity_vectors.dart';
 
 const _org = 'org-1';
@@ -1084,6 +1084,7 @@ void main() {
         ..execute(v7ExpenseTablesDdl[0])
         ..execute(v7ExpenseTablesDdl[1])
         ..execute(v7ExpenseTablesDdl[2])
+        ..execute(v10ExpenseAttachmentsDdl)
         ..execute('''
           CREATE TABLE revenue_entries (
             id TEXT NOT NULL PRIMARY KEY, org_id TEXT NOT NULL,

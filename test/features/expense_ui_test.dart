@@ -28,6 +28,7 @@ import 'package:krishna_mis/features/expenses/presentation/expense_providers.dar
 import 'package:krishna_mis/features/expenses/presentation/widgets/expense_detail_panel.dart';
 import 'package:uuid/uuid.dart';
 
+import '../support/ui_harness.dart';
 import '../support/money_layout.dart';
 import '../support/expense_fixtures.dart';
 import '../support/test_session.dart';
@@ -397,9 +398,7 @@ void main() {
   });
 
   group('what the ledger says about state', () {
-    testWidgets('a locally saved expense shows a pending number', (
-      tester,
-    ) async {
+    uiTest('a locally saved expense shows a pending number', (tester) async {
       final expense = simpleExpense();
       await ExpenseRepository(db).createLocally(
         expense,
@@ -418,7 +417,7 @@ void main() {
       expect(find.textContaining('KI-EXP'), findsNothing);
     });
 
-    testWidgets('an empty ledger says something operationally useful', (
+    uiTest('an empty ledger says something operationally useful', (
       tester,
     ) async {
       await pump(

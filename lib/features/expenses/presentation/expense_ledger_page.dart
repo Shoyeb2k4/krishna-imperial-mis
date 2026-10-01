@@ -21,6 +21,7 @@ import 'package:krishna_mis/app/routing/app_router.dart';
 import 'package:krishna_mis/data/repositories/expense_repository.dart';
 import 'package:krishna_mis/features/expenses/presentation/expense_filters.dart';
 import 'package:krishna_mis/features/expenses/presentation/widgets/expense_detail_panel.dart';
+import 'package:krishna_mis/features/expenses/presentation/widgets/expense_read_failure.dart';
 
 class ExpenseLedgerPage extends ConsumerStatefulWidget {
   const ExpenseLedgerPage({required this.shellKind, super.key});
@@ -36,20 +37,67 @@ class _ExpenseLedgerPageState extends ConsumerState<ExpenseLedgerPage> {
 
   @override
   Widget build(BuildContext context) {
-    final expenses = ref.watch(filteredExpensesProvider);
-    final desktop = widget.shellKind == AppShellKind.desktop;
-
-    return expenses.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, _) =>
-          _Empty(title: 'The ledger could not be read', body: '$error'),
-      data: (rows) => desktop ? _desktop(rows) : _mobile(rows),
+    final state = ref.watch(filteredExpensesProvider);
+    // Only the window computed for this person and this exact question is shown. While
+    // the next one loads, the previous one answered something else (D-074, D-231).
+    final shown = expenseLedgerShownTo(
+      state.value,
+      authorityKey: ref.watch(expenseLedgerAuthorityKeyProvider),
+      filter: ref.watch(expenseFilterProvider),
     );
+    final desktop = widget.shellKind == AppShellKind.desktop;
+    final body = shown != null
+        ? null
+        : state.hasError && !state.isLoading
+        ? _failure(state.error!, state.stackTrace)
+        : const Center(child: CircularProgressIndicator());
+
+    return desktop ? _desktop(shown, body) : body ?? _mobile(shown!);
+  }
+
+  /// Plain words and a retry, never the exception (D-323). The detail goes to the
+  /// developer log.
+  Widget _failure(Object error, StackTrace? stack) {
+    logExpenseReadFailure('The expense ledger', error, stack);
+    return ExpenseReadFailure(
+      title: 'The ledger could not be read',
+      body:
+          'Nothing has changed. This device could not read its stored expenses '
+          'just now. Try again; if it keeps happening, restart the app.',
+      onRetry: () => ref.invalidate(filteredExpensesProvider),
+    );
+  }
+
+  /// What to say when nothing matches. Every filter is applied before the ledger is
+  /// cut, so an empty answer means nothing on this device matches at all (D-317).
+  Widget _empty({required bool desktop}) {
+    if (!ref.watch(expenseFilterProvider).isEmpty) {
+      return const _Empty(
+        key: Key('expense-ledger-no-match'),
+        title: 'No expenses match these filters.',
+        body:
+            'Every expense on this device was searched. Change or clear the '
+            'filters to see others.',
+      );
+    }
+    return desktop
+        ? const _Empty(
+            key: Key('expense-ledger-none'),
+            title: 'No expenses recorded yet.',
+            body: 'Record one from the Transactions screen.',
+          )
+        : const _Empty(
+            key: Key('expense-ledger-none'),
+            title: 'No expenses recorded yet.',
+            body: 'Use the + button to record one. It works offline.',
+          );
   }
 
   // ── Windows: dense table, filters, persistent detail panel ────────────────
 
-  Widget _desktop(List<LocalExpense> rows) => Row(
+  /// The filter bar stays on screen while a window loads or fails, so changing a filter
+  /// never takes the controls away from the person changing it.
+  Widget _desktop(ExpenseLedgerWindow? shown, Widget? body) => Row(
     children: [
       Expanded(
         flex: 3,
@@ -59,18 +107,25 @@ class _ExpenseLedgerPageState extends ConsumerState<ExpenseLedgerPage> {
             const ExpenseFilterBar(),
             const Divider(height: 1),
             Expanded(
-              child: rows.isEmpty
-                  ? const _Empty(
-                      title: 'No expenses recorded for this period.',
-                      body:
-                          'Change the filters above, or record one from the '
-                          'Transactions screen.',
-                    )
-                  : _LedgerTable(
-                      rows: rows,
-                      selectedId: _selectedId,
-                      onSelect: (id) => setState(() => _selectedId = id),
-                    ),
+              child:
+                  body ??
+                  (shown!.rows.isEmpty
+                      ? _empty(desktop: true)
+                      : Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Expanded(
+                              child: _LedgerTable(
+                                rows: shown.rows,
+                                selectedId: _selectedId,
+                                onSelect: (id) =>
+                                    setState(() => _selectedId = id),
+                              ),
+                            ),
+                            const Divider(height: 1),
+                            _LedgerFooter(window: shown),
+                          ],
+                        )),
             ),
           ],
         ),
@@ -90,18 +145,16 @@ class _ExpenseLedgerPageState extends ConsumerState<ExpenseLedgerPage> {
 
   // ── Android: a compact recent list, not the Windows table shrunk ──────────
 
-  Widget _mobile(List<LocalExpense> rows) {
-    if (rows.isEmpty) {
-      return const _Empty(
-        title: 'No expenses recorded yet.',
-        body: 'Use the + button to record one. It works offline.',
-      );
-    }
+  Widget _mobile(ExpenseLedgerWindow shown) {
+    final rows = shown.rows;
+    if (rows.isEmpty) return _empty(desktop: false);
     return ListView.separated(
-      itemCount: rows.length,
+      // The last item is the footer: how many are shown, and "Load more" when there are.
+      itemCount: rows.length + 1,
       separatorBuilder: (_, _) =>
           const Divider(height: 1, indent: AppSpacing.lg),
       itemBuilder: (context, index) {
+        if (index == rows.length) return _LedgerFooter(window: shown);
         final expense = rows[index];
         return InkWell(
           onTap: () => Navigator.of(context).push(
@@ -401,8 +454,52 @@ class _VoidedBadge extends StatelessWidget {
   );
 }
 
+/// How much of the ledger is on screen, and the way to the rest of it (D-317).
+///
+/// Says plainly whether more matching expenses exist, so a ledger that stops is never
+/// mistaken for a ledger that has shown everything.
+class _LedgerFooter extends ConsumerWidget {
+  const _LedgerFooter({required this.window});
+
+  final ExpenseLedgerWindow window;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final count = window.rows.length;
+    final noun = count == 1 ? 'expense' : 'expenses';
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.lg,
+        vertical: AppSpacing.sm,
+      ),
+      child: Wrap(
+        alignment: WrapAlignment.spaceBetween,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: AppSpacing.md,
+        runSpacing: AppSpacing.xs,
+        children: [
+          Text(
+            window.hasMore
+                ? 'Showing the newest $count $noun. More match these filters.'
+                : 'Showing all $count matching $noun.',
+            key: const Key('expense-ledger-shown-count'),
+            style: AppTypography.caption.copyWith(color: AppColors.inkMuted),
+          ),
+          if (window.hasMore)
+            OutlinedButton(
+              key: const Key('expense-ledger-load-more'),
+              onPressed: () =>
+                  ref.read(expenseLedgerPagesProvider.notifier).loadMore(),
+              child: const Text('Load $expenseLedgerPageSize more'),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 class _Empty extends StatelessWidget {
-  const _Empty({required this.title, required this.body});
+  const _Empty({required this.title, required this.body, super.key});
   final String title;
   final String body;
 
