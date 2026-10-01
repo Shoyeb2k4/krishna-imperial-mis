@@ -148,11 +148,27 @@ class DashboardSelectionController extends Notifier<DashboardSelection> {
 // ── The engine ──────────────────────────────────────────────────────────────
 
 /// The one dashboard path. Every figure a surface shows comes through this.
+///
+/// Derived from the reporting engine, so it answers once ([noAutomaticRetry]); a dashboard
+/// Try again reaches it ([retryFailedDashboardInputs], Phase 8 Slice 3).
 final dashboardEngineProvider = FutureProvider<DashboardEngine>(
   (ref) async => DashboardEngine(
     reports: await ref.watch(localReportingEngineProvider.future),
     lock: ref.watch(canonicalCacheLockProvider),
   ),
+  retry: noAutomaticRetry,
+);
+
+/// [retryFailedReportInputs] for a dashboard, whose engine is one input more.
+void retryFailedDashboardInputs(
+  bool Function(FutureProvider<Object?> provider) exists,
+  AsyncValue<Object?> Function(FutureProvider<Object?> provider) read,
+  void Function(FutureProvider<Object?> provider) invalidate,
+) => retryFailedReportInputs(
+  exists,
+  read,
+  invalidate,
+  also: [dashboardEngineProvider],
 );
 
 // ── What a dashboard asks the engine for ────────────────────────────────────
@@ -606,6 +622,7 @@ final class DashboardSyncStatus {
     this.refused = false,
     this.serverHasNewer = false,
     this.newerKey,
+    this.localFailure = false,
   });
 
   final DashboardSyncPhase phase;
@@ -613,6 +630,10 @@ final class DashboardSyncStatus {
 
   /// Why the last run did not arrive, when it did not arrive.
   final RemoteFailure? failure;
+
+  /// Whether the last run failed on this device rather than at the server. Nothing was
+  /// changed, and Refresh tries again.
+  final bool localFailure;
 
   /// Whether the server declined the last run. Never turned into "not authorised" for a
   /// dashboard: a refusal is not evidence about which figures this person may read.
@@ -673,23 +694,73 @@ class DashboardSyncController extends Notifier<DashboardSyncStatus> {
         PnlAuthority.readKey(ref.read(sessionProvider).principal) ==
             authorityKey;
 
-    final options = await ref.read(pnlScopeOptionsProvider.future);
-    final rules = await ref.read(businessDayRulesProvider.future);
+    // Visible before anything is awaited, exactly as on the P&L (Phase 8 Slice 3).
+    final before = state;
+    state = DashboardSyncStatus(
+      action == DashboardSyncAction.download
+          ? DashboardSyncPhase.downloading
+          : DashboardSyncPhase.synchronising,
+      lastAction: action,
+      serverHasNewer: before.serverHasNewer,
+      newerKey: before.newerKey,
+    );
+    retryFailedDashboardInputs(ref.exists, ref.read, ref.invalidate);
+
+    try {
+      await _synchronise(
+        action,
+        reportingSync,
+        principal,
+        authorityKey,
+        before,
+        stillCurrent,
+      );
+    } on Object {
+      // Never left running, and never silent. Nothing was written (D-048).
+      if (!stillCurrent()) return;
+      state = DashboardSyncStatus(
+        DashboardSyncPhase.failed,
+        lastAction: action,
+        localFailure: true,
+        serverHasNewer: before.serverHasNewer,
+        newerKey: before.newerKey,
+      );
+    }
+  }
+
+  Future<void> _synchronise(
+    DashboardSyncAction action,
+    ReportingSync reportingSync,
+    Principal principal,
+    String authorityKey,
+    DashboardSyncStatus before,
+    bool Function() stillCurrent,
+  ) async {
+    // Read once, directly: a one-shot act does not wait on a provider's retries.
+    final inputs = await readReportSyncInputs(
+      ref.read(masterRepositoryProvider),
+      principal,
+    );
     final resolved = _resolve(
       authorityKey: authorityKey,
       principal: principal,
-      options: options,
+      options: inputs.options,
       selection: ref.read(dashboardSelectionProvider),
-      rules: rules,
+      rules: inputs.rules,
       now: ref.read(reportingClockProvider)(),
     );
     if (!stillCurrent()) return;
     // Nothing this authority may read, or no period to read: there is nothing to fetch,
     // and fetching anyway would ask the server about properties the surface will not show.
-    if (resolved is! _Target) return;
+    // The status goes back to exactly what it was.
+    if (resolved is! _Target) {
+      state = before;
+      return;
+    }
     final target = resolved;
 
-    final previousNewer = state.serverHasNewer && state.newerKey == target.key;
+    final previousNewer =
+        before.serverHasNewer && before.newerKey == target.key;
     state = DashboardSyncStatus(
       action == DashboardSyncAction.download
           ? DashboardSyncPhase.downloading

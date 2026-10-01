@@ -174,6 +174,24 @@ DashboardMessage _dataMessage(
         message: 'Bringing the dashboard for $range up to date on this device.',
       );
     }
+    if (sync.phase == DashboardSyncPhase.failed && sync.localFailure) {
+      return DashboardMessage(
+        key: const Key('dashboard-sync-local-failure'),
+        icon: Icons.error_outline,
+        title: sync.lastAction == DashboardSyncAction.download
+            ? 'Download could not start'
+            : 'Synchronisation could not start',
+        message: dashboardLocalFailureText,
+        action: !canAsk
+            ? null
+            : sync.lastAction == DashboardSyncAction.download
+            ? DashboardMessageAction.retryDownload
+            : DashboardMessageAction.synchronise,
+        actionKey: sync.lastAction == DashboardSyncAction.download
+            ? const Key('dashboard-download')
+            : const Key('dashboard-synchronise'),
+      );
+    }
     if (sync.phase == DashboardSyncPhase.failed &&
         sync.lastAction == DashboardSyncAction.download) {
       return DashboardMessage(
@@ -251,6 +269,12 @@ String _coverageText(ReportingCoverage coverage) => switch (coverage) {
   ReportingCoverage.notAuthorised => 'not available to your account',
 };
 
+/// A synchronisation that failed on this device before or after asking the server.
+const dashboardLocalFailureText =
+    'This device could not prepare or record the synchronisation, so nothing was asked '
+    'of the server and nothing was changed. Nothing is shown rather than an incomplete '
+    'dashboard. Try again; if it persists, report it.';
+
 /// Shown when the dashboard could not be read at all.
 const dashboardReadErrorMessage = DashboardMessage(
   key: Key('dashboard-read-error'),
@@ -286,6 +310,16 @@ DashboardNotice? dashboardNoticeFor(DashboardSyncStatus sync) {
       text: sync.phase == DashboardSyncPhase.downloading
           ? 'Downloading. The figures below are as last synchronised.'
           : 'Refreshing. The figures below are as last synchronised.',
+    );
+  }
+  if (sync.phase == DashboardSyncPhase.failed && sync.localFailure) {
+    return const DashboardNotice(
+      key: Key('dashboard-sync-local-failure-notice'),
+      icon: Icons.error_outline,
+      text:
+          'The refresh could not run on this device, so nothing was asked of the server. '
+          'These figures are the complete dashboard this device last synchronised. '
+          'Refresh to try again.',
     );
   }
   if (sync.phase == DashboardSyncPhase.failed) {

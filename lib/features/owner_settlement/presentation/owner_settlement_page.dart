@@ -134,9 +134,12 @@ class _OwnerSettlementPageState extends ConsumerState<OwnerSettlementPage> {
         key: const Key('owner-settlement-sync-failed'),
         icon: Icons.cloud_off_outlined,
         title: 'Could not synchronise',
-        message:
-            '${_reasonText(reason).message} The server could not be reached, so '
-            'nothing is shown rather than an incomplete figure.',
+        message: sync.localFailure
+            ? '${_reasonText(reason).message} This device could not prepare or record '
+                  'the synchronisation, so nothing was asked of the server and nothing is '
+                  'shown rather than an incomplete figure.'
+            : '${_reasonText(reason).message} The server could not be reached, so '
+                  'nothing is shown rather than an incomplete figure.',
         onRetry: () => ref.read(ownerSettlementSyncProvider.notifier).refresh(),
       );
     }
@@ -311,6 +314,14 @@ class _SyncNotice extends StatelessWidget {
     if (preview is! OwnerSettlementPreviewReady) return const SizedBox.shrink();
 
     return switch (sync.phase) {
+      OwnerSettlementSyncPhase.failed when sync.localFailure => const _Notice(
+        key: Key('owner-settlement-local-failure'),
+        icon: Icons.error_outline,
+        text:
+            'The refresh could not run on this device, so nothing was asked of the '
+            'server. These figures are the complete history this device last '
+            'synchronised, dated below. Refresh to try again.',
+      ),
       OwnerSettlementSyncPhase.failed => const _Notice(
         key: Key('owner-settlement-offline'),
         icon: Icons.cloud_off_outlined,

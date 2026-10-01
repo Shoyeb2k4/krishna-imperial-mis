@@ -257,6 +257,45 @@ void main() {
     );
   });
 
+  // Phase 8 Slice 3: the fonts answer once. Before, a font load failing with an Exception
+  // was retried in the background — and since nothing watches the fonts, never re-run — so
+  // the export sat at "making the file" for ever.
+  testWidgets(
+    'fonts that cannot load are reported at once, and the next press tries afresh',
+    (tester) async {
+      var attempts = 0;
+      await pump(
+        tester,
+        who: fxOwner,
+        pnl: fxPnlView(fxCcrSeptember(), viewer: fxOwner),
+        fonts: () async {
+          attempts++;
+          if (attempts == 1) throw const FileSystemException('font unreadable');
+          return fxFonts;
+        },
+      );
+      await tapAndFinish(tester, 'export-profitAndLoss-pdf');
+      expect(attempts, 1);
+      expect(dir.listSync(), isEmpty);
+      expect(
+        tester.widget<Text>(key('export-profitAndLoss-outcome')).data,
+        'The file could not be made. Nothing was saved.',
+      );
+
+      await tester.tap(key('export-profitAndLoss-pdf'));
+      bool saved() => dir.listSync().any((f) => f.path.endsWith('.pdf'));
+      for (var i = 0; i < 400 && !saved(); i++) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 10)),
+        );
+        await tester.pump();
+      }
+      await tester.pumpAndSettle();
+      expect(attempts, 2, reason: 'a fresh attempt, not the stored failure');
+      expect(dir.listSync().whereType<File>().single.path, endsWith('.pdf'));
+    },
+  );
+
   testWidgets('cancelling Save As writes nothing and says so plainly', (
     tester,
   ) async {

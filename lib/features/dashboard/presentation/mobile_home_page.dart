@@ -136,7 +136,14 @@ class _MobileHomePageState extends ConsumerState<MobileHomePage> {
               _MessageCard(
                 message: dashboardReadErrorMessage,
                 actionLabel: 'Try again',
-                onAction: () => ref.invalidate(dashboardViewProvider),
+                onAction: () {
+                  retryFailedDashboardInputs(
+                    ref.exists,
+                    ref.read,
+                    ref.invalidate,
+                  );
+                  ref.invalidate(dashboardViewProvider);
+                },
               )
             else
               _Body(presentation: presentation, sync: sync),

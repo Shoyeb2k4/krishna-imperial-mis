@@ -37,6 +37,7 @@ import 'package:krishna_mis/data/sync/canonical_cache_lock.dart';
 import 'package:krishna_mis/app/providers.dart';
 import 'package:krishna_mis/data/remote/remote_outcome.dart';
 import 'package:krishna_mis/data/reporting/reporting_engine.dart';
+import 'package:krishna_mis/data/repositories/master_repository.dart';
 import 'package:krishna_mis/data/sync/reporting_sync.dart';
 import 'package:krishna_mis/domain/auth/capability.dart';
 import 'package:krishna_mis/domain/expenses/expense_number.dart'
@@ -45,6 +46,7 @@ import 'package:krishna_mis/domain/finance/pnl_authority.dart';
 import 'package:krishna_mis/domain/finance/reporting_period.dart';
 import 'package:krishna_mis/domain/finance/reporting_presets.dart';
 import 'package:krishna_mis/domain/finance/reporting_source.dart';
+import 'package:krishna_mis/domain/masters/master_graph.dart';
 import 'package:krishna_mis/domain/value_objects/business_date.dart';
 import 'package:meta/meta.dart';
 
@@ -61,12 +63,16 @@ final reportingClockProvider = Provider<DateTime Function()>(
 
 /// Each cached property's business-date rules. Absent for a property whose stored rules
 /// cannot be read, which then refuses a relative preset rather than being defaulted.
+///
+/// Answers once ([noAutomaticRetry]): only reporting surfaces read it, and each offers Try
+/// again, which reaches it ([retryFailedReportInputs]) — a report no longer waits 38
+/// seconds of backoff on a local read before saying it could not be read (Phase 8 Slice 3).
 final businessDayRulesProvider = FutureProvider<Map<String, BusinessDayRule>>((
   ref,
 ) {
   ref.watch(sessionProvider);
   return ref.watch(masterRepositoryProvider).businessDayRules();
-});
+}, retry: noAutomaticRetry);
 
 // ── Selection ───────────────────────────────────────────────────────────────
 
@@ -197,6 +203,24 @@ final class PnlScopeOptions {
   /// Whether the unscoped consolidated authority is held.
   final bool consolidatedAllowed;
 
+  /// The scopes [principal] may report on, among the properties in [graph].
+  factory PnlScopeOptions.of(Principal principal, MasterGraph graph) {
+    // Archived properties included: a property archived today still traded in the periods
+    // being reported.
+    final names = {
+      for (final unit in graph.businessUnits(includeArchived: true))
+        unit.id: unit.name,
+    };
+    final permitted = PnlAuthority.permittedUnits(principal, names.keys);
+    return PnlScopeOptions(
+      units: [
+        for (final id in permitted) PnlUnitOption(id: id, name: names[id]!),
+      ],
+      consolidatedAllowed: PnlAuthority.mayReadConsolidated(principal),
+      viewerUserId: principal.userId,
+    );
+  }
+
   bool get isEmpty => units.isEmpty;
 
   /// Consolidated when permitted, otherwise the first permitted property, otherwise none.
@@ -219,24 +243,68 @@ final class PnlScopeOptions {
   };
 }
 
+/// Derived from the master graph, so it answers once ([noAutomaticRetry]): its own retry
+/// only re-read the graph's failure, and doubled the wait to 76 seconds (Phase 8 Slice 3).
+/// When the graph recovers, this rebuilds with it.
 final pnlScopeOptionsProvider = FutureProvider<PnlScopeOptions>((ref) async {
   final principal = ref.watch(sessionProvider).principal;
   final graph = await ref.watch(masterGraphProvider.future);
-  // Archived properties included: a property archived today still traded in the periods
-  // being reported.
-  final names = {
-    for (final unit in graph.businessUnits(includeArchived: true))
-      unit.id: unit.name,
-  };
-  final permitted = PnlAuthority.permittedUnits(principal, names.keys);
-  return PnlScopeOptions(
-    units: [
-      for (final id in permitted) PnlUnitOption(id: id, name: names[id]!),
-    ],
-    consolidatedAllowed: PnlAuthority.mayReadConsolidated(principal),
-    viewerUserId: principal.userId,
-  );
+  return PnlScopeOptions.of(principal, graph);
+}, retry: noAutomaticRetry);
+
+// ── Inputs a report reads first ─────────────────────────────────────────────
+
+/// The local inputs every report and its document rows read before any figure.
+///
+/// None of them retries automatically except the master graph, and that one only in the
+/// background. So a person's Try again — and a refresh they start — has to reach whichever
+/// of them failed ([retryFailedReportInputs]); re-reading the report alone would only meet
+/// the same stored failure.
+final List<FutureProvider<Object?>> pnlReportInputs = [
+  masterGraphProvider,
+  businessDayRulesProvider,
+  pnlScopeOptionsProvider,
+  localReportingSourceProvider,
+  localReportingEngineProvider,
+  reportingDrilldownSourceProvider,
+];
+
+/// A person asked again: each report input that is failing gets one fresh attempt now,
+/// rather than waiting out a backoff or staying failed. Inputs that are fine are left alone.
+///
+/// Takes `exists`, `read` and `invalidate` so a widget's ref and a provider's ref can both
+/// call it. An input nobody has read yet is left unread: it has not failed.
+void retryFailedReportInputs(
+  bool Function(FutureProvider<Object?> provider) exists,
+  AsyncValue<Object?> Function(FutureProvider<Object?> provider) read,
+  void Function(FutureProvider<Object?> provider) invalidate, {
+  Iterable<FutureProvider<Object?>> also = const [],
+}) {
+  for (final input in [...pnlReportInputs, ...also]) {
+    if (exists(input) && read(input).hasError) invalidate(input);
+  }
+}
+
+/// What a synchronisation needs before it can ask the server anything, read once.
+typedef ReportSyncInputs = ({
+  PnlScopeOptions options,
+  Map<String, BusinessDayRule> rules,
 });
+
+/// Reads [ReportSyncInputs] for [principal] directly from the repository, once.
+///
+/// Not through [pnlScopeOptionsProvider] and [businessDayRulesProvider]: awaiting a
+/// provider's `.future` waits through its automatic retries, and never settles at all when
+/// nothing is watching it (Phase 8 Slice 3). A refresh is a one-shot act; a failure here is
+/// its failure, reported at once, and the person tries again.
+Future<ReportSyncInputs> readReportSyncInputs(
+  MasterRepository masters,
+  Principal principal,
+) async {
+  final graph = await masters.loadGraph();
+  final rules = await masters.businessDayRules();
+  return (options: PnlScopeOptions.of(principal, graph), rules: rules);
+}
 
 // ── What a surface may show, and to whom ────────────────────────────────────
 
@@ -548,6 +616,7 @@ final class PnlSyncStatus {
     this.refused = false,
     this.serverHasNewer = false,
     this.newerKey,
+    this.localFailure = false,
   });
 
   final PnlSyncPhase phase;
@@ -555,6 +624,10 @@ final class PnlSyncStatus {
 
   /// Why the last run did not arrive, when it did not arrive.
   final RemoteFailure? failure;
+
+  /// Whether the last run failed on this device — reading what it needed, or writing what
+  /// arrived — rather than at the server. Nothing was changed, and Refresh tries again.
+  final bool localFailure;
 
   /// Whether the server declined the last run. Never turned into "not authorised" for a
   /// report: a refusal is not evidence about which figures this person may read.
@@ -604,22 +677,75 @@ class PnlSyncController extends Notifier<PnlSyncStatus> {
     bool stillTheSamePerson() =>
         ref.mounted &&
         ref.read(sessionProvider).principal.userId == principal.userId;
-    final options = await ref.read(pnlScopeOptionsProvider.future);
-    final rules = await ref.read(businessDayRulesProvider.future);
+
+    // Visible before anything is awaited: from here until it settles the surface says the
+    // refresh is running, and a second tap is ignored rather than starting a second run
+    // (Phase 8 Slice 3). The confirmed server-newer mark is kept as it was.
+    final before = state;
+    state = PnlSyncStatus(
+      action == PnlSyncAction.download
+          ? PnlSyncPhase.downloading
+          : PnlSyncPhase.synchronising,
+      lastAction: action,
+      serverHasNewer: before.serverHasNewer,
+      newerKey: before.newerKey,
+    );
+    // The person asked again: whatever the report could not read gets a fresh attempt now.
+    retryFailedReportInputs(ref.exists, ref.read, ref.invalidate);
+
+    try {
+      await _synchronise(
+        action,
+        reportingSync,
+        principal,
+        before,
+        stillTheSamePerson,
+      );
+    } on Object {
+      // Never left running, and never silent: a failure on this device is this run's
+      // outcome. Nothing was written (a failed run writes nothing, D-048), the figures on
+      // screen stay as they were, and Refresh tries again.
+      if (!stillTheSamePerson()) return;
+      state = PnlSyncStatus(
+        PnlSyncPhase.failed,
+        lastAction: action,
+        localFailure: true,
+        serverHasNewer: before.serverHasNewer,
+        newerKey: before.newerKey,
+      );
+    }
+  }
+
+  Future<void> _synchronise(
+    PnlSyncAction action,
+    ReportingSync reportingSync,
+    Principal principal,
+    PnlSyncStatus before,
+    bool Function() stillTheSamePerson,
+  ) async {
+    final inputs = await readReportSyncInputs(
+      ref.read(masterRepositoryProvider),
+      principal,
+    );
     final resolved = _resolve(
       principal: principal,
-      options: options,
+      options: inputs.options,
       selection: ref.read(pnlSelectionProvider),
-      rules: rules,
+      rules: inputs.rules,
       now: ref.read(reportingClockProvider)(),
     );
     if (!stillTheSamePerson()) return;
     // Nothing this person may read, or no period to read: there is nothing to fetch, and
-    // fetching anyway would ask the server about properties the surface will not show.
-    if (resolved is! _Target) return;
+    // fetching anyway would ask the server about properties the surface will not show. The
+    // status goes back to exactly what it was.
+    if (resolved is! _Target) {
+      state = before;
+      return;
+    }
     final target = resolved;
 
-    final previousNewer = state.serverHasNewer && state.newerKey == target.key;
+    final previousNewer =
+        before.serverHasNewer && before.newerKey == target.key;
     state = PnlSyncStatus(
       action == PnlSyncAction.download
           ? PnlSyncPhase.downloading

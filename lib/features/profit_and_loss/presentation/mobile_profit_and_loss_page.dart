@@ -100,7 +100,10 @@ class _MobileProfitAndLossPageState
               _MessageCard(
                 message: pnlReadErrorMessage,
                 actionLabel: 'Try again',
-                onAction: () => ref.invalidate(pnlViewProvider),
+                onAction: () {
+                  retryFailedReportInputs(ref.exists, ref.read, ref.invalidate);
+                  ref.invalidate(pnlViewProvider);
+                },
               )
             else
               const _Loading(),

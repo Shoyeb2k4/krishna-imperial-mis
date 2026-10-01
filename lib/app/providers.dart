@@ -203,6 +203,22 @@ final authorizerProvider = Provider<Authorizer>(
   (ref) => Authorizer(periodRegistry: ref.watch(periodRegistryProvider)),
 );
 
+// ── Retry ───────────────────────────────────────────────────────────────────
+
+/// The retry policy for a provider that must answer once (Phase 8 Slice 3).
+///
+/// Riverpod 3 retries a failed provider up to ten times, 200 ms doubling to 6.4 s — about
+/// 38 seconds — and a `.future` awaited meanwhile stays pending throughout. It only re-runs
+/// a provider somebody is watching, so a `.future` read by a one-shot action on a provider
+/// nothing watches never settles at all. Three kinds of provider therefore answer once:
+///
+/// * one derived from another provider, whose own retry only re-reads a failure;
+/// * one awaited while the canonical cache lock is held, where every retry holds the lock;
+/// * one whose failure no repetition can mend.
+///
+/// A person retries instead, explicitly, and that reaches the failed provider directly.
+Duration? noAutomaticRetry(int retryCount, Object error) => null;
+
 // ── Master data ─────────────────────────────────────────────────────────────
 
 /// The whole master hierarchy as one snapshot.
@@ -213,6 +229,10 @@ final authorizerProvider = Provider<Authorizer>(
 /// Without this dependency the hierarchy is whatever happened to be on disk the first
 /// time a screen asked, which showed up as an empty Masters panel immediately after
 /// signing in, and as a stale one immediately after a purge.
+///
+/// Keeps Riverpod's automatic retry: the entry forms and Masters screens it serves recover
+/// from a passing failure on their own. No one-shot action awaits it — a refresh reads the
+/// hierarchy from the repository itself, once (Phase 8 Slice 3).
 final masterGraphProvider = FutureProvider<MasterGraph>((ref) {
   ref.watch(sessionProvider);
   return ref.watch(masterRepositoryProvider).loadGraph();
@@ -306,6 +326,11 @@ final reportingSyncProvider = Provider<ReportingSync?>((ref) {
 /// A `FutureProvider` because coverage is loaded once per report rather than queried per
 /// property per year, and it depends on the session: a user switch must not leave the
 /// previous person's markers standing behind this person's figures (D-072a §3, D-074).
+///
+/// Answers once ([noAutomaticRetry]): a report awaits it while holding the canonical cache
+/// lock, so each automatic retry kept every synchronisation waiting behind it — 76 seconds
+/// for one unreadable coverage table, measured (Phase 8 Slice 3). Every synchronisation
+/// re-reads it, and a person's Try again reaches it.
 final localReportingSourceProvider = FutureProvider<ReportingFactsSource>((
   ref,
 ) async {
@@ -317,18 +342,21 @@ final localReportingSourceProvider = FutureProvider<ReportingFactsSource>((
     principal: session.principal,
     coverage: await MarkerCoverage.load(cache, owner),
   );
-});
+}, retry: noAutomaticRetry);
 
-/// The P&L engine over the canonical cache.
+/// The P&L engine over the canonical cache. Derived, so it answers once: its own retry
+/// would only re-read the source's failure, under the same lock.
 final localReportingEngineProvider = FutureProvider<LocalReportingEngine>(
   (ref) async => LocalReportingEngine(
     await ref.watch(localReportingSourceProvider.future),
   ),
+  retry: noAutomaticRetry,
 );
 
 /// Document rows beneath a P&L, from the same cache and the same coverage markers as the
 /// report itself, gated by the same authority (Phase 5 Slice 10). Rebuilt on a session
-/// change, so nobody reads another person's rows (D-074).
+/// change, so nobody reads another person's rows (D-074). Answers once, like the report
+/// source beside it, and for the same reason.
 final reportingDrilldownSourceProvider = FutureProvider<CachedDrilldownSource>((
   ref,
 ) async {
@@ -339,7 +367,7 @@ final reportingDrilldownSourceProvider = FutureProvider<CachedDrilldownSource>((
     principal: session.principal,
     coverage: await MarkerCoverage.load(cache, session.principal.userId),
   );
-});
+}, retry: noAutomaticRetry);
 
 /// Opens a document from a report: read from the authorised projections on demand and held
 /// in memory only (D-233). Null with no backend, which the surface reports as detail that is

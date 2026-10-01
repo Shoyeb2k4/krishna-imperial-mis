@@ -146,10 +146,18 @@ enum OwnerSettlementSyncPhase {
 
 @immutable
 final class OwnerSettlementSyncStatus {
-  const OwnerSettlementSyncStatus(this.phase, {this.report});
+  const OwnerSettlementSyncStatus(
+    this.phase, {
+    this.report,
+    this.localFailure = false,
+  });
 
   final OwnerSettlementSyncPhase phase;
   final OwnerSettlementRefreshReport? report;
+
+  /// Whether the last refresh failed on this device rather than at the server. Nothing was
+  /// changed, and Refresh tries again (Phase 8 Slice 3).
+  final bool localFailure;
 }
 
 final ownerSettlementSyncProvider =
@@ -183,24 +191,45 @@ class OwnerSettlementSyncController
       OwnerSettlementSyncPhase.synchronising,
     );
 
-    final month = ref.read(settlementMonthProvider);
-    final graph = await ref.read(masterGraphProvider.future);
-    final report = await refresher.refresh(
-      businessUnitIds: {
-        for (final unit in graph.businessUnits(includeArchived: true)) unit.id,
-      },
-      periodEnd: month.lastDay,
-      today: ref.read(currentBusinessDateProvider),
-      // Inside the shared lock: the next report or drill-down read loads the coverage these
-      // runs wrote, not the markers it held before them (D-227).
-      onCommitted: () {
-        if (!ref.mounted) return;
-        ref
-          ..invalidate(localReportingSourceProvider)
-          ..invalidate(reportingDrilldownSourceProvider);
-      },
-    );
-    if (!ref.mounted) return;
+    final userId = ref.read(sessionProvider).principal.userId;
+    bool stillTheSamePerson() =>
+        ref.mounted && ref.read(sessionProvider).principal.userId == userId;
+
+    final OwnerSettlementRefreshReport report;
+    try {
+      final month = ref.read(settlementMonthProvider);
+      // Read once, from the repository: awaiting the master graph provider waited through
+      // its automatic retries, and never settled when nothing was watching it (Phase 8
+      // Slice 3).
+      final graph = await ref.read(masterRepositoryProvider).loadGraph();
+      report = await refresher.refresh(
+        businessUnitIds: {
+          for (final unit in graph.businessUnits(includeArchived: true))
+            unit.id,
+        },
+        periodEnd: month.lastDay,
+        today: ref.read(currentBusinessDateProvider),
+        // Inside the shared lock: the next report or drill-down read loads the coverage
+        // these runs wrote, not the markers it held before them (D-227).
+        onCommitted: () {
+          if (!ref.mounted) return;
+          ref
+            ..invalidate(localReportingSourceProvider)
+            ..invalidate(reportingDrilldownSourceProvider);
+        },
+      );
+    } on Object {
+      // Never left synchronising, and never silent: a failure on this device is this
+      // refresh's outcome. Nothing was written; Refresh tries again.
+      if (stillTheSamePerson()) {
+        state = const OwnerSettlementSyncStatus(
+          OwnerSettlementSyncPhase.failed,
+          localFailure: true,
+        );
+      }
+      return;
+    }
+    if (!stillTheSamePerson()) return;
 
     // Superseded by a session or authority transition (D-231): nothing was written.
     if (report.owner is OwnerSettlementSyncAbandoned ||

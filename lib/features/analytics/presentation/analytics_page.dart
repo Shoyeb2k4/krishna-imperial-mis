@@ -239,7 +239,10 @@ class _AnalyticsWorkspaceState extends ConsumerState<AnalyticsWorkspace> {
         if (stateAsync.hasError && presentation is DashboardLoading)
           DashboardMessageView(
             message: dashboardReadErrorMessage,
-            onAction: () => ref.invalidate(dashboardViewProvider),
+            onAction: () {
+              retryFailedDashboardInputs(ref.exists, ref.read, ref.invalidate);
+              ref.invalidate(dashboardViewProvider);
+            },
             actionLabel: 'Try again',
           )
         else

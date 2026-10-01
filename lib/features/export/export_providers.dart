@@ -40,11 +40,16 @@ import 'package:meta/meta.dart';
 // ── Inputs ──────────────────────────────────────────────────────────────────
 
 /// The bundled Noto Sans, read once from the application bundle (D-295). Never fetched.
+///
+/// Answers once ([noAutomaticRetry]): a font missing from the bundle, or one that cannot
+/// draw the rupee sign, is not mended by asking again, and the export that awaits it must
+/// not sit at "making the file" through a backoff — or for ever, since nothing watches this
+/// provider (Phase 8 Slice 3). A failed export clears it, so the next press tries afresh.
 final exportPdfFontsProvider = FutureProvider<ExportPdfFonts>((ref) async {
   final regular = await rootBundle.load(exportPdfRegularFontAsset);
   final bold = await rootBundle.load(exportPdfBoldFontAsset);
   return ExportPdfFonts.fromBytes(regular: regular, bold: bold);
-});
+}, retry: noAutomaticRetry);
 
 /// Where a Windows export is saved. Overridden in tests.
 final exportFileSaverProvider = Provider<ExportFileSaver>(
@@ -365,6 +370,11 @@ class ExportActionController extends Notifier<ExportActionStatus> {
     } on Object {
       // Never a half-truth: the file was not made, and the report is untouched.
       result = const ExportActionError();
+    }
+    // The fonts answer once and keep their answer. If that answer was a failure, the next
+    // press is a fresh attempt rather than the same stored error.
+    if (ref.mounted && ref.read(exportPdfFontsProvider).hasError) {
+      ref.invalidate(exportPdfFontsProvider);
     }
     if (!ref.mounted) return;
     // A different person by now: their status is not this outcome.

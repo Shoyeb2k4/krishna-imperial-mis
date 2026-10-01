@@ -502,7 +502,10 @@ class PnlDrillLevelList extends ConsumerWidget {
         PnlDrillMessageView(
           message: pnlReadErrorMessage,
           actionLabel: 'Try again',
-          onAction: () => ref.invalidate(pnlDrillLevelProvider(location)),
+          onAction: () {
+            retryFailedReportInputs(ref.exists, ref.read, ref.invalidate);
+            ref.invalidate(pnlDrillLevelProvider(location));
+          },
         ),
       ],
       _ => [
@@ -851,7 +854,10 @@ class PnlDocumentDetail extends ConsumerWidget {
           PnlDrillMessageView(
             message: pnlReadErrorMessage,
             actionLabel: 'Try again',
-            onAction: () => ref.invalidate(pnlDocumentDetailProvider(request)),
+            onAction: () {
+              retryFailedReportInputs(ref.exists, ref.read, ref.invalidate);
+              ref.invalidate(pnlDocumentDetailProvider(request));
+            },
           ),
         ],
       ),

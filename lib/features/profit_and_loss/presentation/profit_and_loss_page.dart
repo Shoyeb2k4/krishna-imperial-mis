@@ -96,7 +96,10 @@ class _ProfitAndLossPageState extends ConsumerState<ProfitAndLossPage> {
         else if (viewAsync.hasError)
           _Message(
             message: pnlReadErrorMessage,
-            onAction: () => ref.invalidate(pnlViewProvider),
+            onAction: () {
+              retryFailedReportInputs(ref.exists, ref.read, ref.invalidate);
+              ref.invalidate(pnlViewProvider);
+            },
             actionLabel: 'Try again',
           )
         else
