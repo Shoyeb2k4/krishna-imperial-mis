@@ -14,16 +14,20 @@ import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:krishna_mis/app/providers.dart';
 import 'package:krishna_mis/core/design/app_theme.dart';
 import 'package:krishna_mis/data/local/app_database.dart';
+import 'package:krishna_mis/data/repositories/revenue_repository.dart';
 import 'package:krishna_mis/data/sync/outbox_repository.dart';
 import 'package:krishna_mis/domain/auth/authority.dart';
 import 'package:krishna_mis/domain/auth/capability.dart';
 import 'package:krishna_mis/domain/value_objects/business_date.dart';
 import 'package:krishna_mis/features/expenses/presentation/expense_providers.dart';
+import 'package:krishna_mis/features/revenue/presentation/revenue_draft.dart';
 import 'package:krishna_mis/features/revenue/presentation/revenue_entry_page.dart';
+import 'package:krishna_mis/features/revenue/presentation/revenue_providers.dart';
 import 'package:krishna_mis/features/revenue/presentation/revenue_recent_page.dart';
 
 import '../support/money_layout.dart';
@@ -152,6 +156,7 @@ void main() {
     WidgetTester tester,
     Widget child, {
     Principal? principal,
+    List<Override> overrides = const [],
   }) async {
     final actor = principal ?? _principal();
     await tester.binding.setSurfaceSize(const Size(430, 932));
@@ -176,6 +181,7 @@ void main() {
           ),
           principalProvider.overrideWithValue(actor),
           currentBusinessDateProvider.overrideWithValue(_june15),
+          ...overrides,
         ],
         child: MaterialApp(theme: AppTheme.mobile, home: child),
       ),
@@ -583,19 +589,23 @@ void main() {
       expect(enabled.onPressed, isNotNull);
     });
 
-    // Until Phase 8 Slice 5 this test tapped, pumped once, and tapped again only if the
-    // button was still there — guarded by `warnIfMissed: false`. In the host harness the
-    // first save finishes inside that one pump and the form resets, so the second tap was
-    // never reached: the test asserted one sale after one press (D-325). It now presses
-    // twice before any frame, which is what a janking phone delivers, and that exposes
-    // D-326: the second press reaches `_save`, the database refuses the duplicate id, and
-    // the refusal escapes as an unhandled SqliteException. Skipped, visibly, until the
-    // project lead rules on D-326; the fix makes it pass unchanged.
-    uiTest('a double tap records one sale, not two', skip: true, (
-      tester,
-    ) async {
+    // Two presses before any frame, which is what a janking phone delivers. Until D-326
+    // the second reached `_save`, the database refused the duplicate id, and the refusal
+    // escaped as an unhandled SqliteException. The assertion that matters is the first
+    // one: the second press never reaches the controller at all, so the database is not
+    // what stops it.
+    uiTest('a double tap records one sale, not two', (tester) async {
+      final saves = <String>[];
       await baseline();
-      await pump(tester, const RevenueEntryPage());
+      await pump(
+        tester,
+        const RevenueEntryPage(),
+        overrides: [
+          revenueEntryControllerProvider.overrideWith(
+            (ref) => _CountingRevenueController(ref, saves),
+          ),
+        ],
+      );
       await choose(tester, 'revenue-unit-CCR');
       await choose(tester, 'revenue-category-RESTAURANT');
       await typeAmount(tester, '100000');
@@ -606,6 +616,19 @@ void main() {
       await tester.tap(find.byKey(const Key('revenue-save')));
       await tester.pumpAndSettle();
 
+      expect(
+        saves,
+        hasLength(1),
+        reason: 'the second press returns before it reaches the controller',
+      );
+      expect(tester.takeException(), isNull);
+      expect(find.byKey(const Key('revenue-refusal')), findsNothing);
+      expect(
+        find.byKey(const Key('revenue-saved')),
+        findsOneWidget,
+        reason: 'the first save completes normally',
+      );
+
       final entries = await db
           .customSelect('SELECT COUNT(*) AS n FROM revenue_entries')
           .getSingle();
@@ -614,6 +637,57 @@ void main() {
         1,
         reason: 'one act, one financial record — and one mutation id behind it',
       );
+      final queued = await db
+          .customSelect(
+            "SELECT COUNT(*) AS n FROM sync_outbox "
+            "WHERE entity_type = 'revenue_entry'",
+          )
+          .getSingle();
+      expect(queued.data['n'], 1, reason: 'and one queued intent');
+    });
+
+    // The guard must not become a latch: a save that fails releases it, and a later
+    // explicit press runs again (D-326).
+    uiTest('a save that fails can be retried', (tester) async {
+      final saves = <String>[];
+      await baseline();
+      await pump(
+        tester,
+        const RevenueEntryPage(),
+        overrides: [
+          revenueEntryControllerProvider.overrideWith(
+            (ref) => _CountingRevenueController(ref, saves, failFirst: true),
+          ),
+        ],
+      );
+      await choose(tester, 'revenue-unit-CCR');
+      await choose(tester, 'revenue-category-RESTAURANT');
+      await typeAmount(tester, '100000');
+
+      await tester.tap(find.byKey(const Key('revenue-save')));
+      await tester.pumpAndSettle();
+
+      expect(saves, hasLength(1));
+      expect(tester.takeException(), isNull, reason: 'shown, not thrown');
+      expect(find.byKey(const Key('revenue-refusal')), findsOneWidget);
+      expect(find.textContaining('SqliteException'), findsNothing);
+      expect(
+        tester
+            .widget<FilledButton>(find.byKey(const Key('revenue-save')))
+            .onPressed,
+        isNotNull,
+        reason: 'Save is offered again',
+      );
+
+      await tester.tap(find.byKey(const Key('revenue-save')));
+      await tester.pumpAndSettle();
+
+      expect(saves, hasLength(2), reason: 'the retry reached the controller');
+      expect(find.byKey(const Key('revenue-saved')), findsOneWidget);
+      final entries = await db
+          .customSelect('SELECT COUNT(*) AS n FROM revenue_entries')
+          .getSingle();
+      expect(entries.data['n'], 1);
     });
 
     uiTest('an expired configuration refuses the save and writes nothing', (
@@ -784,4 +858,25 @@ void main() {
       expect(find.text('Restaurant'), findsNothing);
     });
   });
+}
+
+/// The real controller, counting every save that reaches it.
+///
+/// D-326 is about what the *interface* lets through, so the count is taken at the first
+/// thing the form calls, not at the database. Optionally fails the first save, to prove
+/// the in-flight guard is released rather than latched.
+class _CountingRevenueController extends RevenueEntryController {
+  _CountingRevenueController(super.ref, this.saves, {this.failFirst = false});
+
+  final List<String> saves;
+  final bool failFirst;
+
+  @override
+  Future<(RevenueSaveOutcome?, RevenueRefusal?)> save(RevenueDraft draft) {
+    saves.add(draft.id);
+    if (failFirst && saves.length == 1) {
+      return Future.error(StateError('the local write failed'));
+    }
+    return super.save(draft);
+  }
 }

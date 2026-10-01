@@ -5,7 +5,9 @@ Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
-Last updated: **2026-10-01** — **PHASE 8 SLICE 5 — GLOBAL MISSED-TAP TEST HARDENING: COMPLETE
+Last updated: **2026-10-01** — **D-326 FIXED.** A second Save press before the button rebuilds now returns at once on Revenue and Expense entry, and a failed save releases the form for a retry. Host suite **3,068 passed, 0 skipped**. No schema or server change. **Slice 6 is next.**
+
+Previously: **2026-10-01** — **PHASE 8 SLICE 5 — GLOBAL MISSED-TAP TEST HARDENING: COMPLETE
 (D-325).** A tap that misses its target now fails the test, everywhere in the host suite, by one
 global test config that re-asserts the rule before every test and fails any test that turns it
 off. Turning it on failed nothing: the suite was already clean. The one exception the suite

@@ -9,6 +9,7 @@ import 'package:drift/drift.dart' show Value, driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:krishna_mis/app/providers.dart';
 import 'package:krishna_mis/app/routing/app_router.dart';
@@ -19,6 +20,7 @@ import 'package:krishna_mis/data/repositories/expense_repository.dart';
 import 'package:krishna_mis/data/sync/outbox_repository.dart';
 import 'package:krishna_mis/domain/auth/authority.dart';
 import 'package:krishna_mis/domain/auth/capability.dart';
+import 'package:krishna_mis/domain/masters/master_graph.dart';
 import 'package:krishna_mis/domain/value_objects/business_date.dart';
 import 'package:krishna_mis/domain/value_objects/money.dart';
 import 'package:krishna_mis/features/expenses/presentation/expense_draft.dart';
@@ -64,6 +66,7 @@ void main() {
     Widget child, {
     required Principal principal,
     Size size = const Size(430, 932),
+    List<Override> overrides = const [],
   }) async {
     await tester.binding.setSurfaceSize(size);
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -78,6 +81,7 @@ void main() {
           ),
           principalProvider.overrideWithValue(principal),
           currentBusinessDateProvider.overrideWithValue(_june15),
+          ...overrides,
         ],
         // Both shells put their branches inside a Scaffold; the harness does the same
         // rather than pretending a page can float free of one.
@@ -705,6 +709,140 @@ void main() {
       expect(tester.widget<FilledButton>(saveButton).onPressed, isNotNull);
     });
   });
+
+  // D-326. Two presses before the next frame both used to reach `_save`, because the
+  // button is disabled only once it rebuilds. The count is taken at the controller — the
+  // first thing the form calls — so the database is not what stops the second.
+  group('Save runs once per act (D-326)', () {
+    /// Opens the entry page as production does: pushed, so a save can pop back.
+    Future<Future<String?>> open(
+      WidgetTester tester,
+      List<String> saves, {
+      bool failFirst = false,
+    }) async {
+      await pump(
+        tester,
+        const SizedBox.shrink(),
+        principal: _principalFor(RoleTemplates.manager, {ccrId}),
+        overrides: [
+          expenseEntryControllerProvider.overrideWith(
+            (ref) =>
+                _CountingExpenseController(ref, saves, failFirst: failFirst),
+          ),
+        ],
+      );
+      final popped = tester
+          .state<NavigatorState>(find.byType(Navigator))
+          .push(
+            MaterialPageRoute<String>(
+              builder: (_) => const Scaffold(body: ExpenseEntryPage()),
+            ),
+          );
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byKey(const Key('expense-amount')), '500');
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('classification-summary')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('F&B / Kitchen'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Food Production'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Kirana & Pulses'));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<FilledButton>(find.byKey(const Key('save-expense')))
+            .onPressed,
+        isNotNull,
+        reason: 'the expense is complete and may be saved',
+      );
+      return popped;
+    }
+
+    Future<int> count(String table) async {
+      final row = await db
+          .customSelect('SELECT COUNT(*) AS n FROM $table')
+          .getSingle();
+      return row.data['n'] as int;
+    }
+
+    uiTest('a double tap records one expense, not two', (tester) async {
+      final saves = <String>[];
+      final popped = await open(tester, saves);
+
+      await tester.tap(find.byKey(const Key('save-expense')));
+      await tester.tap(find.byKey(const Key('save-expense')));
+      await tester.pumpAndSettle();
+
+      expect(
+        saves,
+        hasLength(1),
+        reason: 'the second press returns before it reaches the controller',
+      );
+      expect(tester.takeException(), isNull);
+      expect(find.textContaining('was not saved'), findsNothing);
+      expect(
+        await popped,
+        saves.single,
+        reason: 'the first save completes normally and returns its expense',
+      );
+      expect(await count('expenses'), 1);
+      expect(await count('sync_outbox'), 1, reason: 'and one queued intent');
+    });
+
+    // The guard must not become a latch: a failed save releases it, and a later
+    // explicit press runs again.
+    uiTest('a save that fails can be retried', (tester) async {
+      final saves = <String>[];
+      final popped = await open(tester, saves, failFirst: true);
+
+      await tester.tap(find.byKey(const Key('save-expense')));
+      await tester.pumpAndSettle();
+
+      expect(saves, hasLength(1));
+      expect(tester.takeException(), isNull, reason: 'shown, not thrown');
+      expect(find.textContaining('This expense was not saved'), findsOneWidget);
+      expect(await count('expenses'), 0);
+      expect(
+        tester
+            .widget<FilledButton>(find.byKey(const Key('save-expense')))
+            .onPressed,
+        isNotNull,
+        reason: 'Save is offered again',
+      );
+
+      await tester.tap(find.byKey(const Key('save-expense')));
+      await tester.pumpAndSettle();
+
+      expect(saves, hasLength(2), reason: 'the retry reached the controller');
+      expect(await popped, saves.last);
+      expect(await count('expenses'), 1);
+      expect(await count('sync_outbox'), 1);
+    });
+  });
+}
+
+/// The real controller, counting every save that reaches it, and optionally failing the
+/// first one to prove the in-flight guard is released rather than latched (D-326).
+class _CountingExpenseController extends ExpenseEntryController {
+  _CountingExpenseController(super.ref, this.saves, {this.failFirst = false});
+
+  final List<String> saves;
+  final bool failFirst;
+
+  @override
+  Future<SaveOutcome> save(
+    ExpenseDraft draft, {
+    required MasterGraph graph,
+    required Principal principal,
+  }) {
+    saves.add(draft.id);
+    if (failFirst && saves.length == 1) {
+      return Future.error(StateError('the local write failed'));
+    }
+    return super.save(draft, graph: graph, principal: principal);
+  }
 }
 
 /// An authority snapshot carrying exactly the grants of [principal].

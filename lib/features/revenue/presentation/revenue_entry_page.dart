@@ -19,10 +19,14 @@
 /// because they are one function called twice rather than two that happen to agree.
 library;
 
+import 'dart:developer' as developer;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:krishna_mis/app/providers.dart';
 import 'package:krishna_mis/core/design/tokens/app_tokens.dart';
+import 'package:krishna_mis/data/repositories/revenue_repository.dart'
+    show RevenueRefusal;
 import 'package:krishna_mis/domain/masters/master_graph.dart';
 import 'package:krishna_mis/domain/value_objects/business_date.dart';
 import 'package:krishna_mis/domain/masters/master_hierarchy.dart';
@@ -270,16 +274,43 @@ class _RevenueEntryPageState extends ConsumerState<RevenueEntryPage> {
   }
 
   Future<void> _save(RevenueDraft draft) async {
+    // D-326. Two presses before the next frame both reach this method, because the
+    // button is disabled only once it rebuilds. The second returns here, before anything
+    // is read or written, so the first save is the only one. `_saving` is set on the very
+    // next line, before the first await, so there is no gap a second call can slip into.
+    if (_saving) return;
     setState(() {
       _saving = true;
       _refusalMessage = null;
     });
 
     final controller = ref.read(revenueEntryControllerProvider);
-    final (outcome, refusal) = widget.isEditing
-        ? await controller.applyEdit(draft)
-        : await controller.save(draft);
+    (RevenueSaveOutcome?, RevenueRefusal?) result;
+    try {
+      result = widget.isEditing
+          ? await controller.applyEdit(draft)
+          : await controller.save(draft);
+    } on Object catch (error, stack) {
+      // A refusal is an answer and comes back as one; this is something failing. The
+      // flag is released so the person can try again — never left set for ever — and the
+      // detail goes to the developer log rather than the screen (D-323).
+      developer.log(
+        'a sale could not be saved',
+        name: 'krishna_mis.revenue',
+        error: error,
+        stackTrace: stack,
+      );
+      if (!mounted) return;
+      setState(() {
+        _saving = false;
+        _refusalMessage =
+            'This sale could not be saved. Check Recent sales before trying again.';
+        _refusalCanRefresh = false;
+      });
+      return;
+    }
     if (!mounted) return;
+    final (outcome, refusal) = result;
 
     if (refusal != null) {
       setState(() {

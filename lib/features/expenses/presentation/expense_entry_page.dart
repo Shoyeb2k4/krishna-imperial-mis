@@ -262,6 +262,11 @@ class _ExpenseEntryPageState extends ConsumerState<ExpenseEntryPage> {
   }
 
   Future<void> _save(MasterGraph graph, Principal principal) async {
+    // D-326. Two presses before the next frame both reach this method, because the
+    // button is disabled only once it rebuilds. The second returns here, before anything
+    // is read or written. `_saving` is set below before the first await, and released by
+    // the failure path, so this never latches a person out of a later retry.
+    if (_saving) return;
     final draft = _draft;
     if (draft == null || !draft.canSave(principal)) return;
 

@@ -12054,3 +12054,35 @@ Found by D-325's re-evaluation of the revenue opt-out.
 
 Not a hit-target defect, and not fixed inside a test-infrastructure slice. The test
 `a double tap records one sale, not two` stays skipped until the fix is approved.
+
+## D-326 (fixed) — Save runs once per act, on Revenue and Expense entry
+**Date:** 2026-10-01 · **Status:** Implemented / Tested (project-lead approval) — the entry
+above stands as written, because this log is append-only.
+
+**The fix.** Both `_save` methods now begin `if (_saving) return;`, and the next statement
+sets `_saving = true` synchronously, before the first await. A second press that lands
+before the button rebuilds returns there: it reads nothing, calls no controller, writes
+nothing, shows nothing, and does not touch the first save.
+
+**The flag cannot latch.**
+- Expense already released `_saving` in its failure path; unchanged.
+- Revenue released it on a refusal, but an exception from the controller escaped with
+  `_saving` still true, so Save stayed disabled for good. That path now logs the detail to
+  the developer log (`krishna_mis.revenue`, D-323) and says *"This sale could not be saved.
+  Check Recent sales before trying again."* in the existing refusal banner. The sentence does
+  not claim nothing was recorded, because evidence is attached after the sale commits.
+- Every `setState` after an await stays behind the existing `mounted` checks.
+
+**Tests.** The skipped revenue test is re-enabled and now counts saves at the controller,
+so the database is not what stops the duplicate. New: an equivalent Expense test, and a
+failure-then-retry test on each form.
+
+| Control (restored byte-identically, `cmp`) | Result |
+|---|---|
+| Revenue guard removed | double-tap **red**: 2 controller saves |
+| Revenue failure path no longer releases `_saving` | retry **red** |
+| Expense guard removed | double-tap **red**: 2 controller saves |
+| Expense failure path no longer releases `_saving` | retry **red** |
+
+Full host suite **3,068 passed, 0 skipped**. No schema, server, outbox, validation, button
+design or navigation change.
