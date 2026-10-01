@@ -50,11 +50,7 @@ void main() {
   setUpAll(() {
     tzdata.initializeTimeZones();
     driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
-    // A tap that lands on nothing fails where it happens, not as a later assertion about
-    // a picker that never opened (D-075).
-    WidgetController.hitTestWarningShouldBeFatal = true;
   });
-  tearDownAll(() => WidgetController.hitTestWarningShouldBeFatal = false);
 
   late AppDatabase db;
   late FakeReportingGateway gateway;

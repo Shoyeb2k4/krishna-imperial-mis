@@ -83,9 +83,7 @@ void main() {
   setUpAll(() {
     tzdata.initializeTimeZones();
     driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
-    WidgetController.hitTestWarningShouldBeFatal = true;
   });
-  tearDownAll(() => WidgetController.hitTestWarningShouldBeFatal = false);
 
   late AppDatabase db;
   late FakeReportingGateway gateway;

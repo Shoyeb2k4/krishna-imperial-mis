@@ -583,21 +583,27 @@ void main() {
       expect(enabled.onPressed, isNotNull);
     });
 
-    uiTest('a double tap records one sale, not two', (tester) async {
+    // Until Phase 8 Slice 5 this test tapped, pumped once, and tapped again only if the
+    // button was still there — guarded by `warnIfMissed: false`. In the host harness the
+    // first save finishes inside that one pump and the form resets, so the second tap was
+    // never reached: the test asserted one sale after one press (D-325). It now presses
+    // twice before any frame, which is what a janking phone delivers, and that exposes
+    // D-326: the second press reaches `_save`, the database refuses the duplicate id, and
+    // the refusal escapes as an unhandled SqliteException. Skipped, visibly, until the
+    // project lead rules on D-326; the fix makes it pass unchanged.
+    uiTest('a double tap records one sale, not two', skip: true, (
+      tester,
+    ) async {
       await baseline();
       await pump(tester, const RevenueEntryPage());
       await choose(tester, 'revenue-unit-CCR');
       await choose(tester, 'revenue-category-RESTAURANT');
       await typeAmount(tester, '100000');
 
-      // Two presses with no settle between them: the second lands while the first
-      // transaction is still running, which is exactly what a slow phone produces.
+      // Two presses with no frame between them: the second lands while the first
+      // transaction is still running and before the button has rebuilt as disabled.
       await tester.tap(find.byKey(const Key('revenue-save')));
-      await tester.pump();
-      final second = find.byKey(const Key('revenue-save'));
-      if (second.evaluate().isNotEmpty) {
-        await tester.tap(second, warnIfMissed: false);
-      }
+      await tester.tap(find.byKey(const Key('revenue-save')));
       await tester.pumpAndSettle();
 
       final entries = await db

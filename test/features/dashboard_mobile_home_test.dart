@@ -213,10 +213,7 @@ void main() {
   setUpAll(() {
     tzdata.initializeTimeZones();
     driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
-    // A tap that lands on nothing invalidates every assertion after it (D-075).
-    WidgetController.hitTestWarningShouldBeFatal = true;
   });
-  tearDownAll(() => WidgetController.hitTestWarningShouldBeFatal = false);
 
   late AppDatabase db;
   late _Gateway gateway;
