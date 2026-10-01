@@ -5,7 +5,19 @@ Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
-Last updated: **2026-10-01** — **PHASE 8 SLICE 3 — RETRY AND HANG HARDENING: COMPLETE
+Last updated: **2026-10-01** — **PHASE 8 SLICE 4 — EXPENSE LEDGER PROFILING, PAGINATION
+AND READ-PATH HARDENING: COMPLETE (D-323, D-324).** The Expense ledger now reaches every
+matching expense. It used to show the newest 100 and stop, and it filtered by sync state only
+inside those 100 — a device with 4,500 conflicted expenses showed one. Every filter now runs
+before the page is cut, "Load more" adds 50 at a time and says when more exist, the order is
+total, and a page costs 4 statements instead of 154. Local schema **v22** adds four indexes (no
+table or row change): on the real encrypted Windows database at five years of data a page went
+from 17.0 s to 2.3 ms. LIMIT/OFFSET is kept; keyset was not needed. The server expense-read
+residual was measured on the reads production actually issues — one document each, 0.5–4 ms —
+and **no server change** was made. Raw error text is gone from the expense entry, ledger and
+detail screens. **Slice 5 is not started.** See *Phase 8 Slice 4* at the end of this file.
+
+Previously: **2026-10-01** — **PHASE 8 SLICE 3 — RETRY AND HANG HARDENING: COMPLETE
 (D-322).** A refresh no longer looks idle or frozen while what it needs retries. Riverpod 3.4.2
 retries a failed provider for 38 s, holds an awaited `.future` pending throughout, and never
 re-runs a provider nothing watches — so a P&L or dashboard refresh whose inputs could not be read
@@ -149,9 +161,10 @@ drill-down, and the Owner Accounts ledger, settlement engine and preview surface
 
 **Phase 8 — Performance, Hardening & Recovery: IN PROGRESS (started 2026-09-29).** Slices 1 and 2
 are complete, with the approved D-318 redesign built and D-318 closed (D-320, D-321); Slice 3
-(retry and hang hardening, D-322) is complete. Slices 4–9 are not started. Its record is
-*PHASE 8* at the **end** of this file. *(This paragraph read "Slice 1 is complete; Slices 2–9 are
-not started" until Slice 2, and "Slices 3–9 are not started" until Slice 3.)*
+(retry and hang hardening, D-322) and Slice 4 (the Expense ledger, D-323, D-324) are complete.
+Slices 5–9 are not started. Its record is *PHASE 8* at the **end** of this file. *(This paragraph
+read "Slice 1 is complete; Slices 2–9 are not started" until Slice 2, "Slices 3–9 are not
+started" until Slice 3, and "Slices 4–9 are not started" until Slice 4.)*
 
 **Phase 7 — Export, PDF & Printing: COMPLETE and formally closed (2026-09-28, Slice 11,
 D-311).** Its authoritative record is *PHASE 7 — EXPORT, PDF & PRINTING: COMPLETE AND CLOSED* at
@@ -7638,3 +7651,60 @@ Not reproduced on a device in this slice. A plausible contributing cause is remo
   presentation defect outside this slice (D-322).
 * Revenue live suite: 67 passed, 1 deliberately skipped, 1 failed on the bucket sweep's own
   5-minute limit, with the bucket reconciled (carried from D-321, non-blocking, unchanged here).
+
+## Phase 8 Slice 4 — Expense ledger profiling, pagination and read-path hardening: **COMPLETE** (2026-10-01)
+
+Decisions **D-323**, **D-324**; `ARCHITECTURE.md` §52.8 and §9; `DATABASE_SCHEMA.md` *Phase 8
+Slice 4*. Local Drift schema **v22** (four indexes). **No server change**: the migration ledger
+stays **105**, the reviewed API **57**.
+
+### In plain words
+
+The Expense ledger could only ever show the newest 100 expenses, and its "sync state" filter
+looked only inside those 100. Both are fixed: every filter is applied to everything on the
+device before a page is taken, "Load more" adds 50 at a time, and the ledger says plainly
+whether more exist. It is also much faster — a page that took 3.5 s at one year of data and 17 s
+at five years now takes 2–5 ms on the real encrypted Windows database. Nothing about money,
+dates, authority or synchronisation changed.
+
+### What shipped
+
+| | |
+|---|---|
+| Repository | `query` / `watchQuery`: one statement with every filter (sync state derived in SQL from the Dart mapping), `ORDER BY business_date, captured_at, id DESC`, LIMIT/OFFSET; three batched child reads |
+| Providers | `filteredExpensesProvider` is a stream of an `ExpenseLedgerWindow` (rows + whether more exist), read as one window of `pages × 50`; `expenseLedgerPagesProvider` resets on any filter, search or authority change; `expenseLedgerShownTo` refuses a window for another person or question |
+| Surface | "Showing the newest N expenses. More match these filters." / "Showing all N matching expenses."; **Load 50 more**; distinct "No expenses match these filters" and "No expenses recorded yet" |
+| Schema v22 | `expense_id` indexes on the three child tables; `ix_expenses_ledger` partial on browsable rows |
+| Errors | entry form, ledger and detail panel: plain words + Try again; detail to the developer log |
+| Tooling | `test/support/expense_ledger_workload.dart`, host and Windows measurements, `tool/perf/d186.py --single` |
+
+### Verified
+
+| Item | Status | Evidence |
+|---|---|---|
+| `dart format --set-exit-if-changed` | **Tested** | 416 files, 0 changed |
+| `flutter analyze` | **Tested** | No issues found |
+| Repository paging tests | **Tested** | 11: >100 reachable, sync filter before the cut, hierarchy filters, ties, void while paging, never-browsable rows, SQL/Dart sync-state parity, unknown status, statements and plans, v22 fresh and upgrade |
+| Provider and UI paging tests | **Tested** | 12: load more to the end, resets, person/authority switch, stale window refused, live sync change on page 2, empty states, plain errors on ledger, detail and entry form |
+| Ledger measurement (host) | **Tested** | 2 (counts and plans asserted, timings reported) |
+| Existing expense suites | **Tested** | data 82, UI 21 |
+| Positive controls | **Tested** | 8, all red, every file restored byte-identically (`sha256sum -c`); C2 needed a stronger tie test first (D-323) |
+| Full host suite | **Tested** | **3,053 passed**, 0 failed (3,028 + 25) |
+| E-WIN measurement, encrypted DB | **Tested** | before (`41f58c5`, worktree) and after, CURRENT / SCALE / STRESS |
+| E-DEV and E-LOCALPG server reads | **Tested** | four principals, five runs, every dev batch rolled back; dev baseline unchanged afterwards |
+| Secret scan, tree and history | **Tested** | clean |
+| Live suites | **Not run** | no server SQL changed |
+| Android emulator / Galaxy A06 measurement | **Not tested** | Slice 8 |
+| Windows release build | **Not tested** | Slice 8 |
+
+### Findings recorded, not changed
+
+* Filter matching nothing at STRESS walks the whole ledger index (540 ms, E-WIN); search is a
+  full `LIKE` scan (244 ms). Both are tens of ms at SCALE.
+* The Revenue ledger filters sync state after the cut, the same defect class (D-127).
+* Raw `$error` remains on Masters, Vendors, the Revenue ledger and the start-up screen (D-316,
+  Slice 7).
+* `recentExpensesProvider` has no reader in `lib/`.
+* Two v12/v14 migration fixtures lacked `expense_attachments`; completed with a shared
+  `v10ExpenseAttachmentsDdl` (the fourth instance of the D-159 fixture family).
+* The revenue bucket-sweep live timeout (D-321) is unrelated and stays recorded.

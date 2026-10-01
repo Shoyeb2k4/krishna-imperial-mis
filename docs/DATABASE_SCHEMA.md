@@ -6,7 +6,7 @@ Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
 Status: **Part proposal, part as-built.** Corrected at Phase 4 closure, 2026-09-07.
-Last updated: 2026-09-30 — **Phase 8 — the D-318 redesign**: four server migrations, no local schema change (D-320, D-321). Previously 2026-09-28 — **Phase 7 closed with no schema change** (D-311). Previously 2026-09-25 — **Phase 7 Slice 1 (governance)**: the §2 capability catalogue
+Last updated: 2026-10-01 — **Phase 8 Slice 4**: local schema **v22**, four expense ledger indexes; no server change (D-323, D-324). Previously 2026-09-30 — **Phase 8 — the D-318 redesign**: four server migrations, no local schema change (D-320, D-321). Previously 2026-09-28 — **Phase 7 closed with no schema change** (D-311). Previously 2026-09-25 — **Phase 7 Slice 1 (governance)**: the §2 capability catalogue
 now matches the shipped codes (D-300), and Phase 7 is planned with **no schema change**
 (see *Phase 7* at the end). Previously 2026-09-25 — **Phase 6 (Dashboard & Analytics)
 closed with no schema change**:
@@ -1931,8 +1931,8 @@ use; the production P&L reads the canonical reporting cache, whose indexes lead 
 
 | Table | Indexes besides the primary key |
 |---|---|
-| `expenses` | none |
-| `expense_allocations` | none |
+| `expenses` | none *(until v22 — see Phase 8 Slice 4 below)* |
+| `expense_allocations` | none *(until v22)* |
 | `expense_period_allocations` | `ix_expense_contributions_reporting` (above) |
 
 The Windows expense ledger (`ExpenseRepository.query`) orders by `business_date` and
@@ -1971,3 +1971,24 @@ security-barrier view. No table, column, index or grant changes.
 `reporting_*_contributions` tables under the owner key `<owner>#reporting-staging`, and the
 resume state is one `app_meta` row, `reporting.sync.resume.v1:<owner>`. Both are purged with
 the reader's own reporting cache (D-070, D-074).
+
+## Phase 8 Slice 4 — local schema v22: the expense ledger's indexes (2026-10-01)
+
+**Local (Drift) v22 — four indexes, no table, column or row change** (D-323):
+
+| Index | On | Why |
+|---|---|---|
+| `ix_expense_allocations_expense` | `expense_allocations (expense_id)` | a page's lines; a document's detail; the hierarchy filters' `EXISTS`; the cascade from `expenses` |
+| `ix_expense_period_allocations_expense` | `expense_period_allocations (expense_id)` | a page's contributions; the cascade |
+| `ix_expense_attachments_expense` | `expense_attachments (expense_id)` | a page's attachments; the cascade |
+| `ix_expenses_ledger` | `expenses (business_date DESC, captured_at DESC, id DESC) WHERE scope_revoked_at IS NULL` | the ledger read in its own order, stopping after one page |
+
+The SQL lives once, in `AppDatabase.expenseLedgerIndexStatements`, used by `onCreate` and by the
+`from < 22` step. No version floor: the expense tables arrive at v7 and `scope_revoked_at` at v9,
+and both steps run first (D-144 avoided by sequence, as at v16). Measured cost at STRESS: 5% more
+write time, 19% more file (193.9 → 230.2 MB). Rollback: dropping the indexes loses no data.
+
+**Server — no change** (D-324). The migration ledger stays at **105** and the reviewed API at
+**57**. The three server child indexes the local ones mirror already exist
+(`expense_allocations_expense_idx`, `expense_period_allocations_expense_idx`,
+`expense_attachments_expense_idx`).

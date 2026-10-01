@@ -11794,3 +11794,189 @@ against the fonts' retry restored.
 when the master hierarchy cannot be read (`'Nothing has been saved. $error'`). That is a
 presentation defect outside this slice's retry scope (D-127); it belongs with the slice that
 next touches expense entry.
+
+---
+
+# Phase 8 Slice 4 — Expense ledger profiling, pagination and read-path hardening (2026-10-01)
+
+## D-323 — The Expense ledger reaches every matching document, and its read path is indexed
+**Date:** 2026-10-01 · **Status:** Implemented / Tested (Phase 8 Slice 4, under D-312 D5 and
+D-317)
+
+### What the ledger did, measured before anything changed
+
+Read from the code, then measured with `test/support/expense_ledger_workload.dart` — a
+deterministic synthetic fixture with shared bills, cross-period splits, voided rows,
+attachments, every outbox state, and documents captured in the same instant.
+
+* **The path.** Both shells read `filteredExpensesProvider`, a one-shot `FutureProvider`
+  calling `ExpenseRepository.query(filter)` with its defaults, `limit: 100, offset: 0`. That
+  default is the hidden 100-row ceiling: nothing ever asked for a second page.
+* **Filters.** Dates, payment, vendor, search, voided and the four hierarchy filters were SQL
+  predicates. **Sync state was applied in Dart after the 100 rows were cut**, so it searched the
+  newest window only.
+* **Order.** `business_date desc, captured_at desc` — no id tie-break.
+* **Hydration.** Per row: allocations, contributions, attachments and an outbox lookup — **153–155
+  statements for a 50-row page**, every child read a full `SCAN` of its table, because none of the
+  three child tables had an index on `expense_id`.
+* **Hierarchy filters.** A correlated `EXISTS` that scanned `expense_allocations` once per
+  document: quadratic.
+
+| Baseline (old code) | CURRENT (2,276 docs) | SCALE (45,000) | STRESS (225,000) |
+|---|---|---|---|
+| E-HOST, ordinary page | 22–40 ms | 443–551 ms | — |
+| E-HOST, property / category filter | 131–132 ms | **~112 s** | not run: quadratic |
+| E-HOST, conflict filter: rows found | **1 of 46** | **1 of 900** | — |
+| E-WIN encrypted, ordinary page | 40–59 ms | **3.5–3.9 s** | **17.0 s** |
+| E-WIN encrypted, conflict filter: rows found | 1 of 46 | 1 of 900 | 1 of 4,500 |
+
+### Before and after, on the real encrypted database (E-WIN)
+
+`integration_test/expense_ledger_performance_test.dart`, Windows 11, Debug build, SQLCipher
+file in the application's support directory, one discarded warm-up then five runs (two at
+SCALE/STRESS before, one for the STRESS-before retry). "Before" is commit `41f58c5` run from a
+git worktree with the same workload file.
+
+| Median ms | CURRENT before → after | SCALE before → after | STRESS before → after |
+|---|---|---|---|
+| first page | 55.2 → 4.6 | 3,479 → 3.1 | 17,034 → 2.3 |
+| second page | 58.5 → 3.6 | 3,631 → 2.5 | — → 2.5 |
+| middle page (OFFSET) | 53.5 → 3.7 | 3,584 → 27.8 | — → 123.1 |
+| deep page (OFFSET) | 46.4 → 3.7 | 3,906 → 50.3 | — → 240.7 |
+| property / category filter | 156.7 / 153.2 → 3.7 / 3.3 | not run (quadratic) → 2.7 / 2.5 | not run → 2.5 / 2.6 |
+| one-month range | 40.6 → 3.0 | 3,777 → 2.4 | — → 2.5 |
+| unmatched category (worst case) | 154.4 → 1.6 | not run → 102.1 | not run → 540.0 |
+| search | 1.4 → 2.0 | 104.4 → 51.1 | — → 244.1 |
+| conflict filter | 42.0 (1 row) → 3.0 (46) | 7,004 (1) → 2.7 (50) | 17,145 (1) → 2.8 (50) |
+| include voided | 43.1 → 2.6 | 7,827 → 2.3 | — → 2.2 |
+| statements per page | 151–156 → 4 | 153–155 → 4 | 153 → 4 |
+| file | 2.4 → 2.8 MB | 39.1 → 46.4 MB | 194.6 → 231.1 MB |
+
+The first STRESS "before" run ended after about 90 s with "did not complete" from the test
+runner and no captured cause; a reduced retry (first page and conflict filter, one run)
+completed and is what the table reports. Not called flaky (D-075): it is an unexplained
+abort of the old code's measurement, not of anything shipped.
+
+### What was decided and built
+
+1. **Every filter is decided in the statement that cuts the page.** Sync state included: the
+   user-visible state is derived in SQL by `ExpenseRepository.ledgerSyncStateSql`, **generated**
+   from `OutboxStatus.userVisibleState` — the project's one mapping (D-119) — so the SQL and the
+   Dart rule cannot drift; a host test asserts they agree for every outbox status. A status this
+   build cannot name is shown as pending, never as synced.
+2. **A total order:** `business_date desc, captured_at desc, id desc` (D-121's rule, applied to
+   expenses).
+3. **Load more, one window.** `filteredExpensesProvider` is now a stream of an
+   `ExpenseLedgerWindow`: the first `pages × 50` matching documents, read as **one** ordered
+   statement with one extra row to learn whether more exist. Appending OFFSET pages was rejected:
+   a page cut later is cut against a table that may have changed, and a document synced between
+   two presses would shift every later page by one — shown twice or never. Re-reading the window
+   cannot duplicate, skip or reorder.
+4. **Paging resets** on any change to the filter, the search or the reader's authority (the
+   person plus every grant). A session refresh that changes nothing keeps the reader's place
+   (D-245).
+5. **A window is shown only to the question it answers** — stamped with the authority key and
+   the exact filter, refused otherwise (D-074, D-231).
+6. **A stream (D-160).** The sync worker invalidates no provider; the ledger now follows the
+   outbox.
+7. **Batched hydration:** one `IN` list per child table — **4 statements a page however long it
+   is**, measured.
+8. **Local schema v22 — four indexes, no table or column change.** `expense_id` on
+   `expense_allocations`, `expense_period_allocations` and `expense_attachments` (the server has
+   had the same three since Phase 3), and `ix_expenses_ledger` on
+   `expenses (business_date desc, captured_at desc, id desc) WHERE scope_revoked_at IS NULL`. The
+   hierarchy filters are a correlated `EXISTS` answered through the allocation index. The case
+   for the migration, as D-312 requires:
+
+| | Without v22 (new code) | With v22 |
+|---|---|---|
+| Page statement plan | `SCAN e … USE TEMP B-TREE FOR ORDER BY` | `SCAN e USING INDEX ix_expenses_ledger` |
+| Child read plan | `SCAN expense_allocations` | `SEARCH … USING INDEX ix_expense_allocations_expense` |
+| E-HOST STRESS, first / middle / deep page | 429 / 606 / 548 ms | 7.5 / 39 / 68 ms |
+| E-HOST STRESS, hydration share | 68–153 ms | 3–7 ms |
+| E-HOST STRESS, property / category filter | 423 / 389 ms (uncorrelated `IN`) | 9.0 / 6.2 ms (`EXISTS`) |
+| Write cost: seeding STRESS | 15.1 s | 15.9 s (+5%) |
+| Storage: STRESS file | 193.9 MB | 230.2 MB (+19%) |
+
+   SQLite also enforces the `ON DELETE CASCADE` from `expenses` by looking each child table up
+   on `expense_id`, so the scope purge benefits too. **Rollback:** dropping the four indexes
+   loses no data; the v22 step is `CREATE INDEX IF NOT EXISTS` only. The v16 reasoning applies:
+   the tables arrive at v7 and `scope_revoked_at` at v9, so no version floor is needed (D-144).
+9. **LIMIT/OFFSET kept; keyset not needed.** On the encrypted Windows database at STRESS a page
+   ~2,000 deep costs 123 ms and ~4,000 deep 241 ms, against 2.2–2.8 ms for the pages a person
+   reaches by "Load more". The ledger itself reads offset 0; OFFSET depth is a repository-level
+   profile (D-314).
+10. **Plain errors** (D-322's recorded defect): the entry form, the ledger and the detail panel
+    say what failed in words, offer Try again, and send the exception to the developer log
+    (`dart:developer`), never to the screen.
+
+### Recorded, not changed
+
+* **Two worst cases at STRESS.** A filter matching nothing walks the whole ledger index — 540 ms
+  on E-WIN — and search is `LIKE '%…%'` over the whole table — 244 ms. Both fall to tens of
+  milliseconds at SCALE. Five years at the SCALE envelope is the stated worst case for a device
+  (D-170 bounds reporting, not the ledger), and fixing either needs a second index or a search
+  structure nobody has measured a need for on the reference device.
+* **The Revenue ledger has the same post-cut sync-state filter** (`RevenueRepository._mapLedger`).
+  Same defect class, outside this expense slice (D-127); it belongs with the slice that next
+  touches revenue.
+* **Raw `$error` text** remains on the Masters, Vendors and Revenue ledger surfaces and the
+  start-up failure screen (D-316). Outside this slice; the start-up screen is Slice 7's.
+* **`recentExpensesProvider` has no reader** in `lib/` — only invalidations. Left in place.
+
+### Positive controls, each seen red and restored byte-identically
+
+| Control | Red |
+|---|---|
+| C1 sync filter applied after the cut | the before-the-cut test |
+| C2 no id tie-break | the tie test — **only after it was strengthened**: with the v22 index present the tie order comes back as `id desc` from the index itself, so the first version passed without the tie-break. It now inserts out of id order and is asserted again with the ledger index dropped |
+| C3 pages survive a filter change | the reset test |
+| C4 a window shown to another person | the switch test |
+| C5 the raw error on the ledger | the plain-error test |
+| C6 SQL sync state disagrees with Dart | the parity test |
+| C7 hydration one document at a time | the statement-count test |
+| C8 no `expense_id` index | the plan test and both v22 schema tests |
+
+## D-324 — The server expense-read residual is not on any production path; no server change
+**Date:** 2026-10-01 · **Status:** Measured (Phase 8 Slice 4). No migration, no RLS or
+authorisation change.
+
+D-321 left a residual: the three expense RLS policies and `expense_document` still evaluate
+`may_read_expense` per row, about 500–740 ms for a month at SCALE. Slice 4 asked whether that is
+worth changing.
+
+**Every production read of those surfaces names one document.** `ExpenseGateway.fetchDocument`
+(`expense_document` by id), `fetchAllocations`, `fetchPeriodContributions` and
+`fetchAttachments` (by `expense_id`), and the attachment worker's `hashOf` (by `storage_path`).
+No client issues the month shape D-321 measured.
+
+Measured with `tool/perf/d186.py --single`, one discarded warm-up and five EXPLAIN (ANALYZE,
+BUFFERS) runs, every dev batch rolled back (the result returned by a raised exception, so nothing
+could commit):
+
+| Read (median ms · `may_read_expense` calls) | Owner | CCR Manager | Accountant | Data Entry |
+|---|---|---|---|---|
+| E-DEV CURRENT · `expense_document` by id | 2.5 · 1 | 4.0 · 1 | 3.6 · 1 | 0.8 · 1 (0 rows: refused) |
+| E-DEV · `expense_allocations` by document | 1.3 · 1 | 1.8 · 1 | 1.7 · 1 | 1.7 · 1 (0 rows) |
+| E-DEV · `expense_period_contributions` by document | 2.4 · 0 | 2.8 · 0 | 2.6 · 0 | 0.6 · 0 (0 rows) |
+| E-DEV · `expense_attachments` by document / by path | 2.4 / 2.4 · 1 | 3.8 / 3.5 · 1 | 3.3 / 3.3 · 1 | 0.6 · 0 (0 rows) |
+| E-LOCALPG STRESS · document / allocations / contributions | 1.3 / 0.7 / 0.6 | 2.1 / 1.0 / 0.9 | 2.1 / 1.0 / 0.9 | 0.5 / 1.1 / 0.9 |
+| *E-DEV · month benchmark: epa RLS / `expense_document`* | *272 · 791 / 372 · 781* | *183 · 518 / 281 · 781* | *177 · 518 / 274 · 781* | *180 · 518 / 268 · 781* |
+| *E-LOCALPG STRESS · the same month benchmarks* | *660 · 4,205 / 1,249 · 3,520* | *399 · 2,829 / 1,246 · 3,520* | *406 · 2,829 / 1,261 · 3,520* | *469 · 2,829 / 1,327 · 3,520* |
+
+Answers to the slice's questions:
+
+* **Per-row functions:** `may_read_expense`, with `has_capability`, `current_org_id` and
+  `expense_visible_units` beneath it; `may_read_expense_attachments` for attachments.
+* **Unrelated properties are not evaluated per row** by the RLS policy: its unit-set predicate
+  runs first, so a CCR-scoped reader's month makes 2,829 calls where the Owner's makes 4,205.
+* **Voided rows are evaluated** by `expense_document`, deliberately: it returns voided documents,
+  which the ledger shows with *include voided* (D-006).
+* **The D-318 set-based pattern could be reused** on these surfaces, but a single-document read
+  already makes exactly one predicate call and costs 0.5–4 ms at both CURRENT and STRESS: the
+  per-row cost scales with rows a read touches, and production reads touch one document. A
+  rewrite of reviewed RLS would carry the full D-318 equivalence burden for no measured benefit.
+  **Declined.** If a future surface lists expenses from the server, this measurement is where it
+  starts.
+* **`expense_attachments` by document** used a sequential scan on dev (46 rows); the harness at
+  STRESS has `expense_attachments_expense_idx` and uses it. No change needed.

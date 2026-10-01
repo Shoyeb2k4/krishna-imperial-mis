@@ -947,10 +947,14 @@ Decisions D-312 … D-319; measurement contract `ARCHITECTURE.md` §52.
       *Done (D-322, `ARCHITECTURE.md` §52.7): refreshes read their inputs once and are running
       before they await anything; local failures publish `failed`; derived, lock-held and font
       providers answer once; Try again reaches the failed input; one-shot-read guard added.*
-- [ ] **Slice 4** — expense ledger has a stable id tie-break; ledger plans and timings at
+- [x] **Slice 4** — expense ledger has a stable id tie-break; ledger plans and timings at
       CURRENT, SCALE and STRESS; OFFSET kept unless measurably problematic. The Expense ledger
       pages with *load more*, every filter (sync state included) applied in the database before
       the page is cut, the ledger says when more exist, and a filter change resets paging (D-317).
+      *Done (D-323, D-324, `ARCHITECTURE.md` §52.8): one-window load more, sync state derived in
+      SQL from the Dart mapping, four statements a page, local schema v22 (four indexes),
+      keyset not needed; server expense-read residual measured on production read shapes and
+      no change made.*
 - [ ] **Slice 5** — full-suite baseline, then every test failing under global fatal missed taps
       listed and classified; global setting on; each opt-out documented.
 - [ ] **Slice 6** — export stages timed separately at normal, realistic and stress sizes on

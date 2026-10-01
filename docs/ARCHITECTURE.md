@@ -9,7 +9,7 @@ Status: **Sections 1–12 proposed (Phase 0, revised); sections 13–16 and 18�
 is built and verified; section 17 is the Phase 4 *plan*, since built — read §18–§26 for what
 shipped.** Sections 6, 5.3 and 8 carry the project lead's mandated corrections.
 Implementation status is tracked in `PROJECT_STATUS.md`.
-Last updated: 2026-10-01 — **Phase 8 Slice 3**: retry and hang hardening (§52.7, D-322); 2026-09-30 — **Phase 8**: the D-318 redesign as built and measured (§52.6, D-320, D-321); 2026-09-29 — **Phase 8 Slice 2**: the D-186 harness and what the reporting predicate costs at scale (§52.5, D-318, D-319); **Phase 8 Slice 1**: the measurement contract (section 52), §9 corrected to LIMIT/OFFSET paging (D-314), §8.2 marks the recovery flow as not yet built (D-316); 2026-09-28 — **Phase 7 closed** (D-311): section 51 now describes what shipped; 2026-09-28 — **Phase 7 Slice 10**: print authority re-check (D-309) and the runner apartment (D-308), sections 51.5 and 51.7; 2026-09-25 — **Phase 7 Slices 8–9**: Android sharing and the analysis exports, as built (sections 51.2, 51.5, 51.7); **Phase 7 Slice 1**: the export, PDF and printing contract (section 51); 2026-09-25 — **Phase 6 closed**: the stable contract Phase 7 may build on (section 50), and the final D-286 real-line rule (section 49); 2026-09-24 — money at large text sizes (section 49); 2026-09-23 — dashboard drill-down integration (section 48); the Windows Analytics workspace (section 47); the Android Home dashboard (section 46); 2026-09-22 — the Windows Overview (section 45); 2026-09-17 — Phase 6 dashboard periods and comparison rules (section 41); Slice 11's corrections and the Slice 12 closure architecture (section 40); 2026-09-13 — the Android P&L surface (section 38); the Windows P&L surface (section 37); Slice 7 reporting security closure (section 36); 2026-09-11 — the Owner Settlement surface and its security boundary (section 35); the Owner Settlement Engine (section 34); the Owner Ledger (section 33), with the V1 ownership vector in §33.3; Phase 5 Slice 6 corrective (section 32); Slice 5 in section 31; Slices 1-4 in sections 27-30
+Last updated: 2026-10-01 — **Phase 8 Slice 4**: the Expense ledger read path, local schema v22, and the server expense-read residual measured and declined (§52.8, §9, D-323, D-324); 2026-10-01 — **Phase 8 Slice 3**: retry and hang hardening (§52.7, D-322); 2026-09-30 — **Phase 8**: the D-318 redesign as built and measured (§52.6, D-320, D-321); 2026-09-29 — **Phase 8 Slice 2**: the D-186 harness and what the reporting predicate costs at scale (§52.5, D-318, D-319); **Phase 8 Slice 1**: the measurement contract (section 52), §9 corrected to LIMIT/OFFSET paging (D-314), §8.2 marks the recovery flow as not yet built (D-316); 2026-09-28 — **Phase 7 closed** (D-311): section 51 now describes what shipped; 2026-09-28 — **Phase 7 Slice 10**: print authority re-check (D-309) and the runner apartment (D-308), sections 51.5 and 51.7; 2026-09-25 — **Phase 7 Slices 8–9**: Android sharing and the analysis exports, as built (sections 51.2, 51.5, 51.7); **Phase 7 Slice 1**: the export, PDF and printing contract (section 51); 2026-09-25 — **Phase 6 closed**: the stable contract Phase 7 may build on (section 50), and the final D-286 real-line rule (section 49); 2026-09-24 — money at large text sizes (section 49); 2026-09-23 — dashboard drill-down integration (section 48); the Windows Analytics workspace (section 47); the Android Home dashboard (section 46); 2026-09-22 — the Windows Overview (section 45); 2026-09-17 — Phase 6 dashboard periods and comparison rules (section 41); Slice 11's corrections and the Slice 12 closure architecture (section 40); 2026-09-13 — the Android P&L surface (section 38); the Windows P&L surface (section 37); Slice 7 reporting security closure (section 36); 2026-09-11 — the Owner Settlement surface and its security boundary (section 35); the Owner Settlement Engine (section 34); the Owner Ledger (section 33), with the V1 ownership vector in §33.3; Phase 5 Slice 6 corrective (section 32); Slice 5 in section 31; Slices 1-4 in sections 27-30
 
 ---
 
@@ -507,8 +507,11 @@ duplication is deliberate, and the RLS/RPC suite asserts allow **and** deny for 
   device holds one organisation, so no local query constrains `org_id` and an `org_id`-led
   local index cannot serve it; the local reporting cache is indexed by owner, property and
   period instead (§30).
-- Ledger screens paginate with **LIMIT/OFFSET** — the revenue ledger 50 rows a page, the
-  expense ledger one window of 100 (D-314). *Corrected 2026-09-29:* this line said "keyset
+- Ledger screens paginate with **LIMIT/OFFSET** — the revenue ledger 50 rows a page; the
+  expense ledger, since Phase 8 Slice 4, a window that grows by 50 with every "Load more", read
+  as one ordered statement (D-317, D-323, §52.8). *Corrected 2026-10-01:* this line said "one
+  window of 100" — and that window was the whole of what the expense ledger could ever show
+  (D-314). *Corrected 2026-09-29:* this line said "keyset
   pagination, never OFFSET"; no keyset paging was ever built. Keyset paging is built only if
   Phase 8 profiling shows OFFSET is materially problematic at the approved scale (D-312 D5).
 - Reports run as single aggregate queries; the UI never folds thousands of rows in Dart.
@@ -4666,3 +4669,44 @@ stored failure.
 
 **Guard.** `test/app/one_shot_read_guard_test.dart` fails if `lib/` reads any provider's
 `.future` with `ref.read` unless that provider answers once.
+
+### 52.8 The Expense ledger read path (Slice 4, D-323, D-324)
+
+```
+        ExpenseFilter ─┐
+        authority key ─┼─► expenseLedgerPagesProvider (reset on any change) ─┐
+                       │                                                     ▼
+                       └────────────► filteredExpensesProvider (stream) ── ExpenseRepository.watchQuery
+                                       limit = pages × 50 + 1, offset 0       one statement:
+                                                                               every filter in SQL,
+        ExpenseLedgerWindow ◄── rows (≤ pages × 50) + hasMore                 sync state derived in SQL,
+           stamped: authority key, filter, pages                              ORDER BY business_date,
+                                                                               captured_at, id DESC
+        expenseLedgerShownTo ── refuses a window for another person or question
+                                                                            + 3 hydration statements
+                                                                              (one IN list per child)
+```
+
+* **Every filter is a predicate of the statement that cuts the page.** Sync state is derived
+  in SQL by `ExpenseRepository.ledgerSyncStateSql`, generated from
+  `OutboxStatus.userVisibleState`, so the SQL and the Dart rule (`_syncStateFor`, still used by
+  `load`) cannot disagree; a host test holds them equal for every outbox status.
+* **One window, not appended pages.** "Load more" raises the page count and the window is read
+  again as one ordered statement; appending OFFSET pages would duplicate or skip a document
+  synced between two presses.
+* **A total order** — `business_date desc, captured_at desc, id desc`.
+* **Four statements a page**, however long: the page, then one `IN` list each for allocations,
+  contributions and attachments.
+* **Local schema v22** indexes `expense_id` on the three child tables and the ledger's order
+  (partial on browsable rows). Hierarchy filters are a correlated `EXISTS` through the
+  allocation index, so the ledger is walked in index order and stops after one page.
+* **LIMIT/OFFSET stays** (§9): measured, keyset is not needed.
+* **Freshness**: a stream, so a sync-state change reaches a loaded window without losing the
+  reader's place (D-160). **Isolation**: a window is stamped and shown only to the authority and
+  filter it was read for (D-074, D-231).
+* **Failure**: plain words and Try again; the exception goes to `dart:developer`'s log
+  (`expense_read_failure.dart`), never to the screen.
+
+**Server.** No change (D-324). Every production read of `expense_document` and the expense
+tables under RLS names one document and makes one `may_read_expense` call (0.5–4 ms at CURRENT
+and STRESS); the per-row month residual of D-321 belongs to a read shape no client issues.
