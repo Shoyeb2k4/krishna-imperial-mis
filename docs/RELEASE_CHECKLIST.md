@@ -941,9 +941,12 @@ Decisions D-312 … D-319; measurement contract `ARCHITECTURE.md` §52.
 - [ ] **Phase 9 staging replay (D-146)** — replay in **ledger** order, not filename order:
       `20260829090500_api_surface_invariant.sql` after `20260829100000_…`; bootstrap the owner
       before `20260901132225_revenue_verified_baseline_fy2627` (D-319).
-- [ ] **Slice 3** — retry behaviour read from the Riverpod source; each high-priority provider
+- [x] **Slice 3** — retry behaviour read from the Riverpod source; each high-priority provider
       reproduced, classified and regression-tested; a sync is visibly started before it awaits
       its prerequisites. D-248 diagnostic still present.
+      *Done (D-322, `ARCHITECTURE.md` §52.7): refreshes read their inputs once and are running
+      before they await anything; local failures publish `failed`; derived, lock-held and font
+      providers answer once; Try again reaches the failed input; one-shot-read guard added.*
 - [ ] **Slice 4** — expense ledger has a stable id tie-break; ledger plans and timings at
       CURRENT, SCALE and STRESS; OFFSET kept unless measurably problematic. The Expense ledger
       pages with *load more*, every filter (sync state included) applied in the database before

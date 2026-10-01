@@ -9,7 +9,7 @@ Status: **Sections 1–12 proposed (Phase 0, revised); sections 13–16 and 18�
 is built and verified; section 17 is the Phase 4 *plan*, since built — read §18–§26 for what
 shipped.** Sections 6, 5.3 and 8 carry the project lead's mandated corrections.
 Implementation status is tracked in `PROJECT_STATUS.md`.
-Last updated: 2026-09-30 — **Phase 8**: the D-318 redesign as built and measured (§52.6, D-320, D-321); 2026-09-29 — **Phase 8 Slice 2**: the D-186 harness and what the reporting predicate costs at scale (§52.5, D-318, D-319); **Phase 8 Slice 1**: the measurement contract (section 52), §9 corrected to LIMIT/OFFSET paging (D-314), §8.2 marks the recovery flow as not yet built (D-316); 2026-09-28 — **Phase 7 closed** (D-311): section 51 now describes what shipped; 2026-09-28 — **Phase 7 Slice 10**: print authority re-check (D-309) and the runner apartment (D-308), sections 51.5 and 51.7; 2026-09-25 — **Phase 7 Slices 8–9**: Android sharing and the analysis exports, as built (sections 51.2, 51.5, 51.7); **Phase 7 Slice 1**: the export, PDF and printing contract (section 51); 2026-09-25 — **Phase 6 closed**: the stable contract Phase 7 may build on (section 50), and the final D-286 real-line rule (section 49); 2026-09-24 — money at large text sizes (section 49); 2026-09-23 — dashboard drill-down integration (section 48); the Windows Analytics workspace (section 47); the Android Home dashboard (section 46); 2026-09-22 — the Windows Overview (section 45); 2026-09-17 — Phase 6 dashboard periods and comparison rules (section 41); Slice 11's corrections and the Slice 12 closure architecture (section 40); 2026-09-13 — the Android P&L surface (section 38); the Windows P&L surface (section 37); Slice 7 reporting security closure (section 36); 2026-09-11 — the Owner Settlement surface and its security boundary (section 35); the Owner Settlement Engine (section 34); the Owner Ledger (section 33), with the V1 ownership vector in §33.3; Phase 5 Slice 6 corrective (section 32); Slice 5 in section 31; Slices 1-4 in sections 27-30
+Last updated: 2026-10-01 — **Phase 8 Slice 3**: retry and hang hardening (§52.7, D-322); 2026-09-30 — **Phase 8**: the D-318 redesign as built and measured (§52.6, D-320, D-321); 2026-09-29 — **Phase 8 Slice 2**: the D-186 harness and what the reporting predicate costs at scale (§52.5, D-318, D-319); **Phase 8 Slice 1**: the measurement contract (section 52), §9 corrected to LIMIT/OFFSET paging (D-314), §8.2 marks the recovery flow as not yet built (D-316); 2026-09-28 — **Phase 7 closed** (D-311): section 51 now describes what shipped; 2026-09-28 — **Phase 7 Slice 10**: print authority re-check (D-309) and the runner apartment (D-308), sections 51.5 and 51.7; 2026-09-25 — **Phase 7 Slices 8–9**: Android sharing and the analysis exports, as built (sections 51.2, 51.5, 51.7); **Phase 7 Slice 1**: the export, PDF and printing contract (section 51); 2026-09-25 — **Phase 6 closed**: the stable contract Phase 7 may build on (section 50), and the final D-286 real-line rule (section 49); 2026-09-24 — money at large text sizes (section 49); 2026-09-23 — dashboard drill-down integration (section 48); the Windows Analytics workspace (section 47); the Android Home dashboard (section 46); 2026-09-22 — the Windows Overview (section 45); 2026-09-17 — Phase 6 dashboard periods and comparison rules (section 41); Slice 11's corrections and the Slice 12 closure architecture (section 40); 2026-09-13 — the Android P&L surface (section 38); the Windows P&L surface (section 37); Slice 7 reporting security closure (section 36); 2026-09-11 — the Owner Settlement surface and its security boundary (section 35); the Owner Settlement Engine (section 34); the Owner Ledger (section 33), with the V1 ownership vector in §33.3; Phase 5 Slice 6 corrective (section 32); Slice 5 in section 31; Slices 1-4 in sections 27-30
 
 ---
 
@@ -4618,3 +4618,51 @@ refused request reads nothing.
 * **Nothing half-run is readable.** Intermediate pages live under the staging owner key; a
   run resumes only with an identical scope and authority generation (D-240), and is
   discarded on any change of authority, session or authorised set.
+
+### 52.7 Retry and hang hardening (Slice 3, D-322)
+
+**What Riverpod 3.4.2 does, read from its source** (`ProviderContainer.defaultRetry`,
+`ProviderElement.triggerRetry`, `ElementWithFuture`, `ProviderElement.isActive`) and pinned by
+`test/features/retry_hang_test.dart`:
+
+| | |
+|---|---|
+| Default policy | up to **10** retries; delay 200 ms × 2ⁿ, capped at 6.4 s — 38.2 s in all |
+| Not retried | an `Error` (`StateError`, `ArgumentError`, `FlutterError`, …) and a `ProviderException` (a dependency's failure, rethrown) |
+| Which providers | every provider type, sync and async; a build that throws, or a future that errors |
+| While retrying | the state is `AsyncLoading` carrying the error (`hasError` true); a `.future` already handed out **stays pending** until a retry succeeds or the last one fails |
+| Who triggers it | a timer that invalidates the provider — which rebuilds it **only while somebody watches it** (`isActive`). A `.future` read once from a provider nothing watches never settles |
+| Cancellation | disposal or an invalidation cancels the pending timer; an invalidation rebuilds at once |
+| Project overrides | none on the container; `exportShareCacheRootProvider` already answered once |
+
+**Policy.** A one-shot act — a refresh, an export — never waits on a provider's retries:
+
+* **It reads its inputs once, itself.** The P&L, dashboard and owner-settlement refreshes read
+  the master hierarchy and business-day rules from the repository (`readReportSyncInputs`),
+  not through the providers' `.future`.
+* **It is visibly running before it awaits anything**, and a second tap meanwhile is ignored.
+* **Every failure lands in a status.** A failure on this device publishes `failed` with
+  `localFailure`; it is never left running and never thrown at the button. Nothing is written,
+  the figures on screen stay, and the person retries. A run whose person or authority changed
+  publishes nothing (D-074, D-231, D-240 unchanged).
+
+**Providers that answer once** (`retry: noAutomaticRetry`, `lib/app/providers.dart`):
+
+| Provider | Why |
+|---|---|
+| `pnlScopeOptionsProvider`, `localReportingEngineProvider`, `dashboardEngineProvider` | derived: their own retry only re-reads the source's failure, doubling the wait |
+| `localReportingSourceProvider`, `reportingDrilldownSourceProvider` | awaited while the canonical cache lock is held: each retry held every synchronisation waiting (76 s measured) |
+| `businessDayRulesProvider` | a local read only reporting surfaces use, each with Try again |
+| `exportPdfFontsProvider` | a bundled asset: a failure is not mended by repetition; a failed export clears it so the next press tries afresh |
+
+`masterGraphProvider` **keeps** the default retry: the entry forms and Masters screens it
+serves recover on their own, and no one-shot act awaits it any more.
+
+**Explicit retry reaches the failed input.** Try again on the P&L, dashboard, Analytics and
+drill-down surfaces, and every refresh a person starts, call `retryFailedReportInputs`
+(`retryFailedDashboardInputs` adds the dashboard engine): each input that exists and holds an
+error is invalidated, so it is read afresh now. Re-reading the report alone would meet the same
+stored failure.
+
+**Guard.** `test/app/one_shot_read_guard_test.dart` fails if `lib/` reads any provider's
+`.future` with `ref.read` unless that provider answers once.

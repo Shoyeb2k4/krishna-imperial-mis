@@ -5,7 +5,18 @@ Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
-Last updated: **2026-09-30** — **PHASE 8 — THE D-318 REDESIGN: BUILT, PROVEN AND MEASURED;
+Last updated: **2026-10-01** — **PHASE 8 SLICE 3 — RETRY AND HANG HARDENING: COMPLETE
+(D-322).** A refresh no longer looks idle or frozen while what it needs retries. Riverpod 3.4.2
+retries a failed provider for 38 s, holds an awaited `.future` pending throughout, and never
+re-runs a provider nothing watches — so a P&L or dashboard refresh whose inputs could not be read
+sat idle for 38–76 s or for ever, a local failure after it started left it "running" for good,
+and the owner-settlement refresh stayed "synchronising" permanently. Refreshes now read their
+inputs once, are running before they await anything, and publish a plain failure at once;
+derived, lock-held and font providers answer once; Try again reaches the failed input. No
+schema, server, paging, finance or authorisation change. D-248 stays unconfirmed and its
+diagnostic stays. **Slice 4 is not started.** See *Phase 8 Slice 3* at the end of this file.
+
+Previously: **2026-09-30** — **PHASE 8 — THE D-318 REDESIGN: BUILT, PROVEN AND MEASURED;
 D-318 CLOSED (D-320, D-321).** Reporting no longer evaluates a per-row authority predicate,
 a one-property report reads only its property, and synchronisation is paged with no
 historical cutoff. Row identity is proven exactly (238 of 238 checks, 1,833,274 rows, every
@@ -137,10 +148,10 @@ drill-down, and the Owner Accounts ledger, settlement engine and preview surface
 ## Current phase
 
 **Phase 8 — Performance, Hardening & Recovery: IN PROGRESS (started 2026-09-29).** Slices 1 and 2
-are complete; Slice 2 measured a D-186 breach and stopped before any authorisation change, so the
-D-318 redesign awaits the project lead. Slices 3–9 are not started. Its record is *PHASE 8* at the
-**end** of this file. *(This paragraph read "Slice 1 is complete; Slices 2–9 are not started"
-until Slice 2.)*
+are complete, with the approved D-318 redesign built and D-318 closed (D-320, D-321); Slice 3
+(retry and hang hardening, D-322) is complete. Slices 4–9 are not started. Its record is
+*PHASE 8* at the **end** of this file. *(This paragraph read "Slice 1 is complete; Slices 2–9 are
+not started" until Slice 2, and "Slices 3–9 are not started" until Slice 3.)*
 
 **Phase 7 — Export, PDF & Printing: COMPLETE and formally closed (2026-09-28, Slice 11,
 D-311).** Its authoritative record is *PHASE 7 — EXPORT, PDF & PRINTING: COMPLETE AND CLOSED* at
@@ -7303,7 +7314,7 @@ measurement against an approved threshold requires.
 |---|---|---|
 | 1 | Governance and baseline harnesses | **COMPLETE** |
 | 2 | D-186 server profiling (E-DEV current data, E-LOCALPG at SCALE and STRESS) | **COMPLETE** — breach measured (D-318); the approved redesign is built and D-318 closed (D-320, D-321) |
-| 3 | Retry and hang hardening (D7) | not started |
+| 3 | Retry and hang hardening (D7) | **COMPLETE** (D-322) |
 | 4 | Local expense-ledger profiling and deterministic ordering (D5, D-314, D-315) | not started |
 | 5 | Global missed-tap hardening (D8) | not started |
 | 6 | Export performance (D2, T2/T3) | not started |
@@ -7568,3 +7579,62 @@ scope change (D-240); the purge covers staging and resume state (D-070, D-074).
 * The revenue live suite's bucket-reconciliation test exceeds five minutes against the
   accumulated bucket (a Slice 11 characteristic, D-076 family); the bucket still reconciled
   exactly (0 stranded).
+
+## Phase 8 Slice 3 — retry and hang hardening: **COMPLETE** (2026-10-01)
+
+Decision **D-322**; `ARCHITECTURE.md` §52.7. **No schema, migration, server, D-318 SQL, paging
+contract, finance or authorisation change.** Local Drift schema stays **v21**; the migration
+ledger stays **105**; reviewed API **57**.
+
+### In plain words
+
+When something a refresh needed could not be read on this device, the refresh used to look as
+if nothing had happened — for 38 to 76 seconds, or for ever — and some failures left it saying
+"refreshing" permanently. Now a refresh says it is running the moment it is tapped, and if it
+cannot run it says so at once, in plain words, and Refresh or Try again tries again.
+
+### What Riverpod 3.4.2 actually does (read from its source)
+
+Ten retries, 200 ms doubling to 6.4 s (38.2 s); an `Error` and a `ProviderException` are not
+retried; an awaited `.future` stays pending while it retries; and the retry re-runs a provider
+**only while something watches it**, so a `.future` read once from an unwatched provider never
+settles. No container-level override existed. Pinned by tests.
+
+### Before and after (fake clock, 100 ms steps)
+
+| Act | Before | After |
+|---|---|---|
+| P&L / dashboard refresh, input unreadable, nothing watching | idle for ever; never settled | running at once; failed within 100 ms |
+| the same, screen watching | idle; threw after 37.6–75.8 s | the same |
+| Owner settlement refresh, input unreadable | "synchronising" for ever | failed within 100 ms |
+| A local failure after a refresh started | left running for ever; later taps ignored | failed; the next tap runs |
+| Report source unreadable | cache lock held 76 s | released within 100 ms |
+| Export fonts failing with an `Exception` | never settled (unwatched) | answered within 100 ms; next press tries afresh |
+
+### Verified
+
+| Item | Status | Evidence |
+|---|---|---|
+| Riverpod semantics pinned | **Tested** | 3 tests: 38.2 s / 11 builds watched, never unwatched, `Error` not retried, `noAutomaticRetry` answers once |
+| Retry and hang regression suite | **Tested** | `test/features/retry_hang_test.dart`, **26 passed** |
+| Export: a font failure reported at once, next press fresh | **Tested** | `export_centre_test.dart`, 1 new |
+| One-shot-read guard | **Tested** | 2 passed, with a planted-violation self-check |
+| Positive controls | **Tested** | 11 sabotages, **all red**, each restored byte-identically (`cmp`) |
+| Targeted suites (P&L, dashboard, analytics, owner settlement, export, session switch, revocation, stale-sync, cache coherence, reporting sync, surface guards) | **Tested** | **715 passed** |
+| Full host suite | **Tested** | **3,028 passed**, 0 failed |
+| Documentation invariants and Phase 8 guards | **Tested** | 79 passed |
+| `dart format` / `flutter analyze` | **Tested** | 410 files, 0 changed / no issues |
+| Secret scan, tree and history | **Tested** | clean |
+| Live suites, builds, device acceptance | **Not tested** | no server or contract change; a rebuilt client is Slice 8's (pre-D-320 builds cannot sync reporting) |
+
+### D-248
+
+Not reproduced on a device in this slice. A plausible contributing cause is removed; D-248
+**remains unconfirmed** and its diagnostic stays in place.
+
+### Recorded and carried
+
+* The expense entry forms show raw error text when the master hierarchy cannot be read — a
+  presentation defect outside this slice (D-322).
+* Revenue live suite: 67 passed, 1 deliberately skipped, 1 failed on the bucket sweep's own
+  5-minute limit, with the bucket reconciled (carried from D-321, non-blocking, unchanged here).

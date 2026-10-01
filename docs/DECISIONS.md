@@ -11704,3 +11704,93 @@ unbounded document, and at the approved STRESS envelope no page exceeds 3.1 s ag
 8 s timeout. Row identity is proven exactly for every principal, scope, surface and
 transition the directive named, with every control red. **D-318 is closed.** The residuals
 recorded in D-320 stand, and §6 is carried to Slice 4.
+
+---
+
+# Phase 8 Slice 3 — Retry and hang hardening (2026-10-01)
+
+## D-322 — A one-shot act never waits on a provider's retries
+**Date:** 2026-10-01 · **Status:** Implemented / Tested (Phase 8 Slice 3, under D-312 D7)
+
+**What the Riverpod 3.4.2 source says** (read, not recalled; pinned by
+`test/features/retry_hang_test.dart`): a failed provider is retried up to ten times, 200 ms
+doubling to 6.4 s — 38.2 s. An `Error` and a `ProviderException` are not retried. While it
+retries, a `.future` already handed out stays pending. The retry timer rebuilds the provider
+**only while something watches it**, so a `.future` read once from an unwatched provider never
+settles. No retry override existed on the container; one provider
+(`exportShareCacheRootProvider`) already answered once.
+
+**What that did here, reproduced before any change** (fake clock, 100 ms steps):
+
+| Act | Before | After |
+|---|---|---|
+| P&L refresh, master hierarchy unreadable, nothing watching | status never changed; `refresh()` never settled | running at once; `failed` (local) within 100 ms |
+| the same, P&L screen watching | status never changed; `refresh()` threw after 75.8 s (11 hierarchy reads) | the same as above |
+| P&L refresh, business-day rules unreadable, screen watching | status never changed; threw after 37.6 s | the same as above |
+| Dashboard refresh, hierarchy unreadable | as the P&L: never, or 75.8 s | the same as above |
+| Owner settlement refresh, hierarchy unreadable | "synchronising" **for ever** (threw at 37.6 s with a screen, never without) | `failed` (local) within 100 ms |
+| P&L refresh, a local failure after it started (coverage table missing) | threw; left **running for ever**; every later refresh ignored | `failed` (local); the next refresh runs |
+| P&L view, report source unreadable | canonical cache lock held **76 s** | released within 100 ms |
+| Export fonts failing with an `Exception` | never settled unwatched (export "making the file" for ever); 38.2 s watched | answered within 100 ms; next press tries afresh |
+
+**Decision.**
+
+1. **One-shot acts read their inputs once, themselves.** The three refreshes read the master
+   hierarchy and the business-day rules from the repository (`readReportSyncInputs`), not
+   through a provider's `.future`.
+2. **Visible first.** A refresh is running before it awaits anything; a second tap meanwhile is
+   ignored instead of starting a second run.
+3. **Every failure lands in a status.** A failure on this device is `failed` with
+   `localFailure`, worded in plain terms and offering retry; nothing is written and the figures
+   on screen stay. The person- and authority-change guards (D-074, D-231) and D-240's
+   abandonment are unchanged; a run whose person or authority changed publishes nothing.
+4. **Answer once where retry cannot help** (`noAutomaticRetry`): derived providers
+   (`pnlScopeOptionsProvider`, `localReportingEngineProvider`, `dashboardEngineProvider`),
+   providers awaited under the canonical cache lock (`localReportingSourceProvider`,
+   `reportingDrilldownSourceProvider`), `businessDayRulesProvider`, and `exportPdfFontsProvider`.
+5. **Explicit retry reaches the failed input.** Try again, and every refresh a person starts,
+   invalidate whichever report input holds an error (`retryFailedReportInputs`); inputs never
+   read are left unread.
+6. **`masterGraphProvider` keeps its retry**, deliberately: the entry forms and Masters screens
+   recover from a passing failure on their own, and nothing one-shot awaits it now.
+7. **Not disabled globally**, as D7 required.
+
+**Classification of the audited providers.** A retry appropriate · B retry wrong for a one-shot
+path · C already bounded · D needs explicit retry · E background retry acceptable.
+
+| Provider | Class | Change |
+|---|---|---|
+| `pnlScopeOptionsProvider` | B (derived) | answers once |
+| `businessDayRulesProvider` | B, D | answers once; reached by Try again |
+| `exportPdfFontsProvider` | B, D (real failures are `Error`s, so C in practice) | answers once; a failed export clears it |
+| `masterGraphProvider` | E | none; actions no longer await it |
+| `localReportingSourceProvider` | B (under the lock) | answers once |
+| `localReportingEngineProvider` | B (derived, under the lock) | answers once |
+| `reportingDrilldownSourceProvider` | B (under the lock) | answers once |
+| `dashboardEngineProvider` | B (derived) | answers once |
+| `pnlDocumentDetailProvider` | E (every open re-fetches, D-239; network failures are typed results) | none |
+| `pnlViewProvider`, `dashboardViewProvider`, presets, settlement preview, drill levels | E (top level; an error shows Try again at once) | Try again reaches failed inputs |
+| `exportShareCacheRootProvider` | C (already answered once) | none |
+| `sessionProvider`, `reportingSyncProvider`, `ownerSettlementRefresherProvider` | C (synchronous; nothing to retry) | none |
+
+**D-248, disposition.** The old symptom — a pull-to-refresh whose status never changed — was
+not reproduced on a device in this slice. A plausible contributing cause is now removed: a
+refresh awaiting a retrying, or unwatched, provider left the status untouched for 38–76 s or
+for ever, which is exactly what the diagnostic could not tell apart from "the gesture never
+arrived". D-248 itself **remains unconfirmed**, and the diagnostic stays. One change in what it
+will see: a failure while preparing now publishes `failed`, so the diagnostic's wait ends and
+its next assertion names the phase; a refresh with nothing to fetch still leaves the status
+object identical, as before.
+
+**Guards.** `test/app/one_shot_read_guard_test.dart` refuses `ref.read(p.future)` in `lib/` on
+a provider that does not answer once. Positive controls, each seen red and restored
+byte-identically (`cmp`): the fonts' retry restored; the source's retry restored; the refresh
+awaiting the providers again; the running state moved after the inputs; the failure swallowed;
+a stale failure published after a person change (P&L, owner settlement) and after a capability
+change (dashboard); a stale run reaching the server; Try again reaching nothing; the guard
+against the fonts' retry restored.
+
+**Recorded, not changed.** The Android and Windows expense entry forms show the raw error text
+when the master hierarchy cannot be read (`'Nothing has been saved. $error'`). That is a
+presentation defect outside this slice's retry scope (D-127); it belongs with the slice that
+next touches expense entry.
