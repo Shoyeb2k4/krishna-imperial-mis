@@ -5,7 +5,18 @@ Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
-Last updated: **2026-10-01** — **PHASE 8 SLICE 4 — EXPENSE LEDGER PROFILING, PAGINATION
+Last updated: **2026-10-01** — **PHASE 8 SLICE 5 — GLOBAL MISSED-TAP TEST HARDENING: COMPLETE
+(D-325).** A tap that misses its target now fails the test, everywhere in the host suite, by one
+global test config that re-asserts the rule before every test and fails any test that turns it
+off. Turning it on failed nothing: the suite was already clean. The one exception the suite
+carried was dead code — the revenue "double tap" test never pressed twice — and pressing twice
+for real exposed **D-326**: a double press before the next frame reaches the revenue save twice;
+the database still keeps one sale, but the second attempt escapes as an unhandled error. It is
+**reported, not fixed**, with a one-line fix proposed, and its test is skipped until the project
+lead rules. No product, schema or server change. **Slice 6 is not started.** See *Phase 8
+Slice 5* at the end of this file.
+
+Previously: **2026-10-01** — **PHASE 8 SLICE 4 — EXPENSE LEDGER PROFILING, PAGINATION
 AND READ-PATH HARDENING: COMPLETE (D-323, D-324).** The Expense ledger now reaches every
 matching expense. It used to show the newest 100 and stop, and it filtered by sync state only
 inside those 100 — a device with 4,500 conflicted expenses showed one. Every filter now runs
@@ -161,10 +172,11 @@ drill-down, and the Owner Accounts ledger, settlement engine and preview surface
 
 **Phase 8 — Performance, Hardening & Recovery: IN PROGRESS (started 2026-09-29).** Slices 1 and 2
 are complete, with the approved D-318 redesign built and D-318 closed (D-320, D-321); Slice 3
-(retry and hang hardening, D-322) and Slice 4 (the Expense ledger, D-323, D-324) are complete.
-Slices 5–9 are not started. Its record is *PHASE 8* at the **end** of this file. *(This paragraph
-read "Slice 1 is complete; Slices 2–9 are not started" until Slice 2, "Slices 3–9 are not
-started" until Slice 3, and "Slices 4–9 are not started" until Slice 4.)*
+(retry and hang hardening, D-322), Slice 4 (the Expense ledger, D-323, D-324) and Slice 5
+(global missed-tap hardening, D-325) are complete. Slices 6–9 are not started. Its record is
+*PHASE 8* at the **end** of this file. *(This paragraph read "Slice 1 is complete; Slices 2–9
+are not started" until Slice 2, "Slices 3–9 are not started" until Slice 3, "Slices 4–9 are not
+started" until Slice 4, and "Slices 5–9 are not started" until Slice 5.)*
 
 **Phase 7 — Export, PDF & Printing: COMPLETE and formally closed (2026-09-28, Slice 11,
 D-311).** Its authoritative record is *PHASE 7 — EXPORT, PDF & PRINTING: COMPLETE AND CLOSED* at
@@ -1411,6 +1423,8 @@ needs one.
    misses with no time to judge them, and a rushed judgement about a financial widget test
    is worse than a recorded follow-up. Worth doing at the start of Phase 4, when there is
    room to look at whatever it finds.
+   **Resolved by Phase 8 Slice 5 (2026-10-01, D-325):** missed taps are fatal across the host
+   suite through `test/flutter_test_config.dart`.
 6. **The host machine's network path to `krishna-mis-dev` drops intermittently.** Measured
    with `curl`, no application involved: seven requests at ~0.13 s, then a 15-second
    connect, then two outright failures. It caused four acceptance phases to fail during
@@ -7328,8 +7342,8 @@ measurement against an approved threshold requires.
 | 1 | Governance and baseline harnesses | **COMPLETE** |
 | 2 | D-186 server profiling (E-DEV current data, E-LOCALPG at SCALE and STRESS) | **COMPLETE** — breach measured (D-318); the approved redesign is built and D-318 closed (D-320, D-321) |
 | 3 | Retry and hang hardening (D7) | **COMPLETE** (D-322) |
-| 4 | Local expense-ledger profiling and deterministic ordering (D5, D-314, D-315) | not started |
-| 5 | Global missed-tap hardening (D8) | not started |
+| 4 | Local expense-ledger profiling and deterministic ordering (D5, D-314, D-315) | **COMPLETE** (D-323, D-324) |
+| 5 | Global missed-tap hardening (D8) | **COMPLETE** (D-325; D-326 reported) |
 | 6 | Export performance (D2, T2/T3) | not started |
 | 7 | Stress and recovery, including damaged-database recovery (D4, D-316) | not started |
 | 8 | Windows, emulator and Galaxy A06 acceptance and regression | not started |
@@ -7708,3 +7722,62 @@ dates, authority or synchronisation changed.
 * Two v12/v14 migration fixtures lacked `expense_attachments`; completed with a shared
   `v10ExpenseAttachmentsDdl` (the fourth instance of the D-159 fixture family).
 * The revenue bucket-sweep live timeout (D-321) is unrelated and stays recorded.
+
+## Phase 8 Slice 5 — global missed-tap test hardening: **COMPLETE** (2026-10-01)
+
+Decisions **D-325**, **D-326**; `ARCHITECTURE.md` §52.9. **Test infrastructure only**: no product
+code, schema, migration or server change. Local Drift schema stays **v22**; the migration ledger
+stays **105**; reviewed API **57**.
+
+### In plain words
+
+If a test taps something that a real finger could not reach — hidden behind a dialog, off the
+screen — the test now fails at that tap instead of printing a warning and carrying on. Switching
+this on everywhere found nothing broken, because the suite had already been kept clean. It did
+show that one revenue test had never really tested what its name said; testing it properly found
+a small product defect (D-326), which is reported for a decision and not fixed here.
+
+### What was done
+
+| | |
+|---|---|
+| Baseline (HEAD `0e0e30b`) | **3,053 passed, 0 failed, 0 skipped**; zero missed-tap warnings in the log (a planted miss confirmed the reporter prints them) |
+| Mechanism | `test/flutter_test_config.dart`: fatal at start, re-asserted in a root `setUp` before every test, a root `tearDown` that fails a test leaving it off |
+| First enablement | **0 newly failing tests**; classification A–G all zero |
+| Removed | five per-file `setUpAll`/`tearDownAll` toggles (`dashboard_drill`, `dashboard_mobile_home`, `pnl_capability_revocation`, `pnl_drilldown_ui`, `pnl_mobile_ui`) |
+| Opt-outs retained | **none**. The `revenue_ui_test` opt-out guarded an unreachable second tap |
+| Guard | `test/app/missed_tap_policy_test.dart`, 12 tests, structural and behavioural |
+| Product defects | **D-326**, not a hit-target defect — a double press before the next frame reaches the revenue save twice; one sale kept, unhandled exception. Proposed fix verified and reverted |
+
+### Verified
+
+| Item | Status | Evidence |
+|---|---|---|
+| Missed-tap guard | **Tested** | 12 passed |
+| Positive controls C1–C5 | **Tested** | all red as designed, each restored byte-identically (`cmp`); C1 also shown to pass with only warnings when the config is removed |
+| Proposed D-326 fix | **Tested, not committed** | the skipped test passes with it; `lib/` restored |
+| Full host suite | **Tested** | **3,064 passed, 1 skipped** (3,053 − the skipped double-tap test + 12 guard tests) |
+| Randomised order (`--test-randomize-ordering-seed=20261001`) | **Tested** | 3,064 passed, 1 skipped |
+| Three shards | **Tested** | 1,024 + 1,017 + 1,023 = 3,064, 1 skipped |
+| `dart format --set-exit-if-changed` | **Tested** | 418 files, 0 changed |
+| `flutter analyze` | **Tested** | No issues found |
+| Phase 8 and documentation guards | **Tested** | inside the full suite |
+| Secret scan, tree and history | **Tested** | clean |
+| Live suites, builds, device acceptance | **Not run** | no product or server change |
+
+### Carried forward, recorded and not changed
+
+* **D-326** — revenue Save double press (and the same `_saving` shape in `ExpenseEntryPage`, by
+  reading). Awaits the project lead.
+* **Revenue ledger sync-state filter after the page is cut** — `RevenueRepository._mapLedger`
+  filters sync state in Dart after LIMIT/OFFSET, the defect D-323 closed for expenses. **An
+  explicit Phase 8 correctness carry-forward**; not touched in Slice 5.
+* **Five-year Windows stress** (D-323): an unmatched filter ~540 ms and text search ~244 ms. Not
+  optimised; re-evaluated only if target-device measurement justifies it.
+* **Raw error text** remains on Masters, Vendors, the Revenue ledger and the start-up screen; the
+  start-up screen is Slice 7's.
+* **`integration_test/windows_shell_test.dart`** (real executable) does not set missed taps
+  fatal; it is outside the host config and outside D-075's acceptance suite. Making it fatal means
+  a real-executable run, belonging with Slice 8.
+* **The device acceptance suite** has two `warnIfMissed: false` drags (scroll steps that may start
+  outside the target); `integration_test/` is outside the guard's scope.

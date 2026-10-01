@@ -955,8 +955,11 @@ Decisions D-312 … D-319; measurement contract `ARCHITECTURE.md` §52.
       SQL from the Dart mapping, four statements a page, local schema v22 (four indexes),
       keyset not needed; server expense-read residual measured on production read shapes and
       no change made.*
-- [ ] **Slice 5** — full-suite baseline, then every test failing under global fatal missed taps
+- [x] **Slice 5** — full-suite baseline, then every test failing under global fatal missed taps
       listed and classified; global setting on; each opt-out documented.
+      *Done (D-325, `ARCHITECTURE.md` §52.9): baseline 3,053 with no missed-tap warning; first
+      enablement failed nothing; per-file toggles removed; the one opt-out was dead code and is
+      gone; guard and five positive controls; D-326 (revenue double press) reported, not fixed.*
 - [ ] **Slice 6** — export stages timed separately at normal, realistic and stress sizes on
       E-WIN and E-A06 against T2/T3.
 - [ ] **Slice 7** — damaged-database recovery built under D4: never automatic, typed

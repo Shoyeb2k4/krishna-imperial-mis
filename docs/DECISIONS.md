@@ -11980,3 +11980,77 @@ Answers to the slice's questions:
   starts.
 * **`expense_attachments` by document** used a sequential scan on dev (46 rows); the harness at
   STRESS has `expense_attachments_expense_idx` and uses it. No change needed.
+
+---
+
+# Phase 8 Slice 5 — Global missed-tap test hardening (2026-10-01)
+
+## D-325 — A missed tap fails the test, across the whole host suite
+**Date:** 2026-10-01 · **Status:** Implemented / Tested (Phase 8 Slice 5, under D-312 D8).
+Test infrastructure only; no product code changed.
+
+**Baseline, before any change** (HEAD `0e0e30b`): full host suite **3,053 passed, 0 failed,
+0 skipped**. The log held **no** missed-tap warning at all — checked by planting a miss and
+confirming the reporter does print one. Five files (`dashboard_drill`, `dashboard_mobile_home`,
+`pnl_capability_revocation`, `pnl_drilldown_ui`, `pnl_mobile_ui`) set the flag fatal in
+`setUpAll` and back to false in `tearDownAll`; seventeen other tapping files had no setting;
+`revenue_ui_test` carried the one `warnIfMissed: false`.
+
+**Mechanism.** `test/flutter_test_config.dart`, the one config `flutter test` wraps around every
+file under `test/` (the nearest config wins; there is no other). It sets
+`WidgetController.hitTestWarningShouldBeFatal = true`, sets it again in a root `setUp` before
+every test, and a root `tearDown` fails any test that leaves it false — restoring it first, so
+one leak cannot weaken the tests after it. No file assigns the flag any more. A tap that is
+meant to miss opts out **at its own call** with `warnIfMissed: false` beside a
+`// missed-tap opt-out:` comment giving the reason; there is no file- or test-wide switch.
+`integration_test/` is outside the config: the device acceptance suite keeps its own D-075
+setting.
+
+**First enablement: 0 newly failing tests** (3,053 still passed), so the classification
+A … G is zero in every category. The suite had been free of misses since D-075.
+
+**Migration.** The five per-file toggles removed (13 lines). The `revenue_ui_test` opt-out was
+re-evaluated rather than kept, and was **dead code**: the test tapped Save, pumped once, and
+tapped again only if the button was still there — but in the host harness the first save
+finishes inside that pump and the form resets, so the second tap was never reached (an
+instrumented run printed nothing). The test asserted one sale after one press. It now presses
+twice before any frame — which exposes D-326 — and is skipped, visibly, against D-326. **No
+opt-out is retained anywhere in `test/`.**
+
+**Guard** (`test/app/missed_tap_policy_test.dart`, 12 tests): the config exists, is the only
+one, and does all three things before `testMain`; nothing else under `test/` assigns the flag;
+every code-level `warnIfMissed: false` carries the reason marker (comments are prose, not
+calls); the acceptance suite keeps D-075's setting; and, behaviourally, a tap on a covered
+widget throws, and a per-call opt-out covers its own call and nothing after it.
+
+**Positive controls,** each restored byte-identically (`cmp`):
+
+| Control | Result |
+|---|---|
+| C1 a tap on the page under the open "Sign out?" dialog (`account_control_test`, never fatal before) | both shell variants **red**; with the config removed the same miss **passed** with 3 warnings |
+| C2 a planted test that leaves the flag false | that test **red** by name; the next test in the file still fatal |
+| C3 the per-test re-assert removed from the config | a file-wide `setUpAll` switch survives — **red** |
+| C4 a real planted file-wide switch | the guard **red**, naming the file |
+| C5 the leak check removed from the config | the leak passes silently, and the structural guard goes **red** |
+
+**Reliability.** Full suite **3,064 passed, 1 skipped**; with
+`--test-randomize-ordering-seed=20261001` the same; three shards **1,024 + 1,017 + 1,023 =
+3,064**, 1 skipped. Each file runs in its own isolate and the flag is re-asserted per test, so
+order, sharding and concurrency cannot change the policy.
+
+## D-326 — A double press before the next frame reaches the revenue save twice
+**Date:** 2026-10-01 · **Status:** **Open — reported, not fixed. Awaits the project lead.**
+Found by D-325's re-evaluation of the revenue opt-out.
+
+| | |
+|---|---|
+| Screen | Revenue entry (`RevenueEntryPage`), both shells |
+| Control | Save (`revenue-save`) |
+| Expected | a second press while the first save runs does nothing — the code's own comment says "a second press cannot start a second save" |
+| Actual | two presses before the next frame (what a janking phone delivers) both reach `_save`, because the button is disabled only after a rebuild and `_save` does not check `_saving` on entry. The draft carries one id, so the database refuses the second insert (`UNIQUE constraint failed: revenue_entries.id`): **still one sale**, but the refusal escapes as an unhandled `SqliteException` |
+| Platform | both; reproduced in the host harness |
+| Proposed fix | one line at the top of `_save`: `if (_saving) return;`. Verified: applied temporarily, the skipped test passes unchanged; reverted (`cmp`), not committed |
+| Same shape | `ExpenseEntryPage` disables Save through `_saving` the same way — by reading, not exercised |
+
+Not a hit-target defect, and not fixed inside a test-infrastructure slice. The test
+`a double tap records one sale, not two` stays skipped until the fix is approved.
