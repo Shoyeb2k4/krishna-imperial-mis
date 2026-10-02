@@ -4780,3 +4780,11 @@ and STRESS); the per-row month residual of D-321 belongs to a read shape no clie
   session and synchronisation then download what the person is authorised to receive.
 * **No raw technical text** reaches the screen; a guard in
   `test/app/startup_failure_app_test.dart` holds that over the three start-up files.
+
+### 52.11 The Revenue ledger's sync-state filter (D-331)
+
+The Revenue ledger follows §52.8's rule: every filter, sync state included, is decided by the
+statement that cuts the page. `RevenueRepository.ledgerSyncStateSql` is generated from
+`OutboxStatus.userVisibleState` and applied as `HAVING ledger_sync_state = ?` before
+`ORDER BY … LIMIT/OFFSET`. Nothing is narrowed in Dart after the page is cut. The pager, page
+size and ordering are unchanged.

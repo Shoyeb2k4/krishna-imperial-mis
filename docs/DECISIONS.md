@@ -12374,3 +12374,51 @@ replaces the whole screen (control C7).
   into the secure store. Confirming a reset there would *move* that file into quarantine,
   not delete it. Do not launch a normal build on this workstation until the D-247 disposal
   is decided.
+
+---
+
+# Phase 8 — Revenue ledger correctness remediation (2026-10-02)
+
+## D-331 — The Revenue ledger decides sync state before the page is cut
+**Date:** 2026-10-02 · **Status:** Implemented / Tested (pre-Slice-8 remediation). Closes the
+carry-forward D-323 and the Slice 7 record named. No schema, server or UX change.
+
+**The defect, reproduced on the Revenue code itself.** `RevenueRepository._ledgerSelect`
+applied every filter in SQL except sync state, then cut the page with `LIMIT ? OFFSET ?`;
+`_mapLedger` then dropped rows whose state did not match. A sync-state filter therefore
+searched the newest window only. With 60 synced July sales in front of 75 May conflicts:
+page one of *Conflict* returned **0 rows**, page two returned the wrong rows, and the
+next-page probe (`limit 1, offset 50`) answered **no**. Eight regressions went red on the
+unfixed code.
+
+**The fix.**
+* `RevenueRepository.ledgerSyncStateSql` states `_stateOf` as one SQL expression over the
+  ledger's own outbox join (`o.entity_id = e.id`, not `done`). It is generated from
+  `OutboxStatus.userVisibleState`, the one mapping (D-119), as the expense ledger's is. A
+  status this build cannot name becomes NULL and matches no filter.
+* The statement selects it as `ledger_sync_state` and, when a sync state is chosen, adds
+  `HAVING ledger_sync_state = ?` **before** `ORDER BY … LIMIT ? OFFSET ?`. HAVING rather than
+  WHERE, so a row is kept or dropped on exactly the value it then displays.
+* The Dart post-filter is removed. The display mapping (`_stateOf`) is unchanged, and a test
+  holds the SQL and Dart answers equal for every outbox status.
+
+**Unchanged:** page size 50, the page-at-a-time pager, the reset to page one on any filter
+change, `business_date desc, captured_at desc, id desc` ordering (already total), scope,
+voided and quarantine predicates, financial figures, outbox semantics.
+
+**Cost (E-HOST, in-memory, indicative; 5 runs after a warm-up).** Same plan shape as the
+unfiltered ledger: scan, component index, automatic partial outbox index, temp B-tree for the
+order. No index added.
+
+| Fixture | Query | Before | After |
+|---|---|---|---|
+| 2,800 entries, 83 conflicts | Conflict, page 1 | 5.3 ms, **0 rows** | 3.4 ms, 50 rows |
+| | has-more probe | 4.8 ms, **0** | 2.6 ms, 1 |
+| | no filter, page 1 | 5.6 ms | 5.4 ms |
+| 50,000 entries, 1,471 conflicts | Conflict, page 1 | 83.8 ms, **0 rows** | 48.3 ms, 50 rows |
+| | Conflict, deep page | 182.2 ms, **0** | 84.5 ms, 50 |
+| | Synced, page 1 | 147.1 ms, 49 rows | 160.4 ms, 50 rows |
+| | no filter, page 1 | 82.0 ms | 83.6 ms |
+
+**Positive control.** The pre-fix repository restored: 8 of 12 regressions red. The fixed
+file restored byte-identically (`cmp`): 12 of 12 green.

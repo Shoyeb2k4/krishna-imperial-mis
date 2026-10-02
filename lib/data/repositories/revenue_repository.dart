@@ -1319,7 +1319,6 @@ class RevenueRepository {
     int offset = 0,
   }) async => _mapLedger(
     await _ledgerSelect(filter, limit: limit, offset: offset).get(),
-    filter,
   );
 
   /// The same page, delivered as a stream.
@@ -1341,7 +1340,7 @@ class RevenueRepository {
     filter,
     limit: limit,
     offset: offset,
-  ).watch().map((rows) => _mapLedger(rows, filter));
+  ).watch().map(_mapLedger);
 
   Selectable<QueryRow> _ledgerSelect(
     RevenueQuery filter, {
@@ -1403,6 +1402,19 @@ class RevenueRepository {
       variables.addAll(scope.map(Variable<String>.new));
     }
 
+    // Sync state is decided **before** the page is cut, as a predicate of the same
+    // statement. Applied to the page afterwards, as it was until Phase 8, it searched the
+    // newest window only: page one of "Conflict" read empty while older conflicts
+    // existed, and the next-page probe answered no (D-331, the defect D-323 closed for
+    // expenses). HAVING rather than WHERE, so the row is kept or dropped on exactly the
+    // value the row then displays.
+    var having = '';
+    final havingVariables = <Variable<Object>>[];
+    if (filter.syncState case final state?) {
+      having = ' HAVING ledger_sync_state = ? ';
+      havingVariables.add(Variable<String>(state.name));
+    }
+
     return _db.customSelect(
       'SELECT e.id, e.txn_number, e.business_unit_id, e.revenue_category_id, '
       '       e.business_date, e.entry_kind, e.source_reference, e.notes, '
@@ -1411,7 +1423,8 @@ class RevenueRepository {
       '       COALESCE(SUM(c.gross_amount_minor), 0) AS gross, '
       '       COALESCE(SUM(c.tax_amount_minor), 0) AS tax, '
       '       COALESCE(SUM(c.net_amount_minor), 0) AS net, '
-      '       o.status AS outbox_status '
+      '       o.status AS outbox_status, '
+      '       ($ledgerSyncStateSql) AS ledger_sync_state '
       '  FROM revenue_entries e '
       '  LEFT JOIN revenue_components c ON c.revenue_entry_id = e.id '
       '  LEFT JOIN sync_outbox o ON o.entity_id = e.id '
@@ -1419,15 +1432,21 @@ class RevenueRepository {
       "                        AND o.status <> 'done' "
       ' WHERE ${where.join(' AND ')} '
       ' GROUP BY e.id '
+      '$having'
       ' ORDER BY e.business_date DESC, e.captured_at DESC, e.id DESC '
       ' LIMIT ? OFFSET ?',
-      variables: [...variables, Variable<int>(limit), Variable<int>(offset)],
+      variables: [
+        ...variables,
+        ...havingVariables,
+        Variable<int>(limit),
+        Variable<int>(offset),
+      ],
       // What the statement reads, so Drift knows when to re-run it.
       readsFrom: {_db.revenueEntries, _db.revenueComponents, _db.syncOutbox},
     );
   }
 
-  List<RevenueLedgerRow> _mapLedger(List<QueryRow> rows, RevenueQuery filter) {
+  List<RevenueLedgerRow> _mapLedger(List<QueryRow> rows) {
     final loaded = <RevenueLedgerRow>[];
     for (final row in rows) {
       final entry = RevenueLedgerRow(
@@ -1454,14 +1473,8 @@ class RevenueRepository {
           row.data['txn_number'] as String?,
         ),
       );
-
-      // Sync state is derived from the outbox, so it cannot be a SQL predicate without
-      // duplicating it into a column that could then disagree. The window is already
-      // bounded above, so filtering it here costs nothing meaningful - the same trade
-      // the expense ledger makes, for the same reason.
-      if (filter.syncState != null && entry.syncState != filter.syncState) {
-        continue;
-      }
+      // No sync-state filtering here: the statement has already applied it, before the
+      // page was cut (D-331). Filtering a page after it is cut is the defect.
       loaded.add(entry);
     }
     return loaded;
@@ -1743,6 +1756,25 @@ class RevenueRepository {
   /// A row with no queued intent and a server-issued number is synced. One whose intent
   /// has vanished without being reconciled is reported as pending rather than quietly
   /// called synced, because something went wrong and saying "sent" would be a guess.
+  /// [_stateOf], as one SQL expression over `revenue_entries e` left-joined to the
+  /// not-done `sync_outbox o` row on the document's id — the ledger's own join.
+  ///
+  /// Generated from [OutboxStatus.userVisibleState], the project's one mapping, so the
+  /// SQL and the Dart rule cannot drift (D-119); a host test asserts they agree for every
+  /// status. A status this build cannot name becomes NULL and matches no filter.
+  static final String ledgerSyncStateSql = () {
+    final arms = [
+      for (final status in OutboxStatus.values)
+        "WHEN '${status.name}' THEN '${status.userVisibleState.name}'",
+    ].join(' ');
+    return 'CASE '
+        'WHEN o.status IS NULL THEN '
+        "CASE WHEN e.txn_number IS NULL THEN '${SyncState.pendingSync.name}' "
+        "ELSE '${SyncState.synced.name}' END "
+        'ELSE CASE o.status $arms END '
+        'END';
+  }();
+
   static SyncState _stateOf(String? outboxStatus, String? txnNumber) {
     if (outboxStatus == null) {
       return txnNumber == null ? SyncState.pendingSync : SyncState.synced;

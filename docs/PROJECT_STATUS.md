@@ -5,7 +5,9 @@ Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
-Last updated: **2026-10-02** — **PHASE 8 SLICE 7 — STRESS, FAILURE & RECOVERY: COMPLETE (D-328 … D-330).** If the app cannot open its data it now says why in plain words and offers *Try again*; only for data that truly cannot be opened or upgraded does it offer *Reset local data and download again*, after stating what would be lost and a typed RESET. The data is moved aside, never deleted. An interrupted upgrade now changes nothing instead of leaving the data unopenable for ever; a missing key no longer writes a new one; a lock is no longer reported as damage. Host suite **3,134 passed**; Windows restart smoke PASS. No schema or server change. **Slice 8 is not started.**
+Last updated: **2026-10-02** — **REVENUE LEDGER SYNC-STATE REMEDIATION: DONE (D-331).** A sync-state filter on the Revenue ledger now finds every matching sale, not just those among the newest 50; it is decided in SQL before the page is cut. No schema, server or UX change.
+
+Previously: **2026-10-02** — **PHASE 8 SLICE 7 — STRESS, FAILURE & RECOVERY: COMPLETE (D-328 … D-330).** If the app cannot open its data it now says why in plain words and offers *Try again*; only for data that truly cannot be opened or upgraded does it offer *Reset local data and download again*, after stating what would be lost and a typed RESET. The data is moved aside, never deleted. An interrupted upgrade now changes nothing instead of leaving the data unopenable for ever; a missing key no longer writes a new one; a lock is no longer reported as damage. Host suite **3,134 passed**; Windows restart smoke PASS. No schema or server change. **Slice 8 is not started.**
 
 Previously: **2026-10-01** — **PHASE 8 SLICE 6 — CLOSED on the Galaxy A06 (D-327 A06).** On the reference phone, the first realistic P&L PDF of a session takes about 0.56 s, including the font load, and later ones about 0.06 s. Both are far inside the 2-second limit, and on a debug build. The shared PDF opens the Android share sheet; Back cancels it; sign-out removes the file. The Dashboard smoke passes. The clean dev APK is installed with a matching hash. Not exercised on the device: the accountant capability-loss step and the user-switch half of D-310, because the capability change was refused by this session's permissions (host tests cover both). **Slice 7 is not started.**
 
@@ -7880,3 +7882,20 @@ the D-247 disposal is decided.
 * **Revenue ledger:** the sync-state filter still runs after the page is cut
   (`RevenueRepository._mapLedger`). Untouched by this slice; **must be dispositioned before
   Phase 8 closes.**
+  *(Closed 2026-10-02 by D-331: the filter now runs in SQL before the page is cut.)*
+
+## Revenue ledger sync-state remediation (D-331): **DONE** (2026-10-02)
+
+Pre-Slice-8 correctness remediation. The Revenue ledger's sync-state filter ran in Dart after
+`LIMIT/OFFSET`, so *Conflict* could read empty while older conflicts existed. It now runs in
+SQL before the page is cut, from the one canonical status mapping. Page size (50), the pager,
+ordering, scope and every financial figure are unchanged. Drift stays **v22**; no server
+change. Evidence: D-331.
+
+| Item | Status | Evidence |
+|---|---|---|
+| Defect reproduced | **Tested** | 8 of 12 new regressions red on the unfixed code |
+| Regressions | **Tested** | `test/features/revenue_ledger_sync_state_paging_test.dart`, 12 |
+| Positive control | **Tested** | pre-fix repository restored → 8 red; fix restored byte-identically (`cmp`) → green |
+| Existing revenue ledger and Windows UI suites | **Tested** | 65 passed alongside the new 12 |
+| Index or schema change | **None** | plan shape unchanged; no index needed |
