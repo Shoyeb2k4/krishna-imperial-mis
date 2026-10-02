@@ -228,7 +228,14 @@ void main() {
 
     test('main() starts the application with no arguments at all', () {
       final main = File('lib/main.dart').readAsStringSync();
-      expect(main, contains('await bootstrap()'));
+      // Since Slice 7 `main()` hands the call to the start-up runner (D-329); every call
+      // it makes still takes no arguments.
+      expect(main, contains('bootstrap()'));
+      expect(
+        RegExp(r'bootstrap\(\s*[^)\s]').hasMatch(main),
+        isFalse,
+        reason: 'main() passes bootstrap an argument',
+      );
       expect(main, isNot(contains('transport')));
       // The acceptance data folder is the same kind of parameter (D-246).
       expect(main, isNot(contains('appDataDirectory')));

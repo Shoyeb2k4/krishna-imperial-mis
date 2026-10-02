@@ -33,11 +33,37 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 /// user plainly and offers to reset the local store and re-download from the server.
 /// Any mutation that had not yet synced is lost, and we say so rather than reassure.
 class DatabaseKeyUnavailable implements Exception {
-  const DatabaseKeyUnavailable(this.reason);
+  const DatabaseKeyUnavailable(
+    this.reason, {
+    this.problem = DatabaseKeyProblem.storeUnreadable,
+  });
   final String reason;
 
+  /// Which of the distinct key failures this is. Start-up reads it to decide whether a
+  /// reset can help at all (Phase 8 Slice 7, D-329): a store that cannot be *read* right
+  /// now may answer in a moment, and a store that cannot be *written* would refuse the new
+  /// key a reset needs, so neither is offered one.
+  final DatabaseKeyProblem problem;
+
   @override
-  String toString() => 'DatabaseKeyUnavailable: $reason';
+  String toString() => 'DatabaseKeyUnavailable(${problem.name}): $reason';
+}
+
+/// Why the local database key could not be obtained.
+enum DatabaseKeyProblem {
+  /// The platform secure store threw on read. On Android this is ordinary before the
+  /// first unlock after a reboot, so it is treated as worth trying again.
+  storeUnreadable,
+
+  /// The platform secure store threw on write, or did not keep what it was given.
+  storeUnwritable,
+
+  /// A value is stored under the key's name and is not a key.
+  malformed,
+
+  /// No key is stored, but a database file exists that only a key could open. Creating a
+  /// new key would not open it, so none is created (D-329).
+  missingForExistingDatabase,
 }
 
 /// Which stored key an installation opens its database with.
@@ -98,15 +124,28 @@ class DatabaseKeyManager {
   ///
   /// The returned value is lowercase hex with no `0x` prefix. It is passed straight to
   /// the SQLite `PRAGMA key` and is never logged, echoed, or returned to the UI.
-  Future<String> obtainKey() async {
+  ///
+  /// [databaseExists] says whether a database file is already on disk. When it is and no
+  /// key is stored, no key is created: the file was written with a key this installation
+  /// no longer holds, a new one cannot open it, and writing one would only turn "the key is
+  /// missing" into "the key is wrong" on the next launch (Phase 8 Slice 7, D-329 — before
+  /// this, a missing key was replaced silently and then reported as an unreadable file).
+  Future<String> obtainKey({bool databaseExists = false}) async {
     final existing = await _read();
     if (existing != null) {
       if (!_isWellFormed(existing)) {
         throw const DatabaseKeyUnavailable(
           'stored key is malformed; the local database cannot be opened',
+          problem: DatabaseKeyProblem.malformed,
         );
       }
       return existing;
+    }
+    if (databaseExists) {
+      throw const DatabaseKeyUnavailable(
+        'no key is stored for the existing local database',
+        problem: DatabaseKeyProblem.missingForExistingDatabase,
+      );
     }
 
     final created = _generateHexKey();
@@ -118,6 +157,7 @@ class DatabaseKeyManager {
     if (confirmed != created) {
       throw const DatabaseKeyUnavailable(
         'secure storage did not retain the generated key',
+        problem: DatabaseKeyProblem.storeUnwritable,
       );
     }
     return created;
@@ -125,6 +165,36 @@ class DatabaseKeyManager {
 
   /// Whether a key has already been established on this installation.
   Future<bool> hasKey() async => (await _read()) != null;
+
+  /// The stored value, unchecked, or null. Only the recovery service reads it, to set a
+  /// key aside beside the database it belongs to (D-329); it is never logged or shown.
+  Future<String?> readStoredKey() => _read();
+
+  /// Copies [value] to [entryName] and reads it back. Used only to set a key aside under
+  /// a name no ordinary start-up reads (D-329). Throws [DatabaseKeyUnavailable] when the
+  /// store does not keep it, so a reset never proceeds believing a key was kept.
+  Future<void> storeAside(String entryName, String value) async {
+    if (entryName == keyName) {
+      throw ArgumentError('a key cannot be set aside under its own name');
+    }
+    try {
+      await _storage.write(key: entryName, value: value);
+      final kept = await _storage.read(key: entryName);
+      if (kept != value) {
+        throw const DatabaseKeyUnavailable(
+          'secure storage did not retain the key set aside',
+          problem: DatabaseKeyProblem.storeUnwritable,
+        );
+      }
+    } on DatabaseKeyUnavailable {
+      rethrow;
+    } on Exception catch (error) {
+      throw DatabaseKeyUnavailable(
+        'secure storage write failed (${error.runtimeType})',
+        problem: DatabaseKeyProblem.storeUnwritable,
+      );
+    }
+  }
 
   /// Removes the key. Only ever called by the explicit "sign out and erase local data"
   /// action, which refuses while the outbox holds unsynced entries. Deleting the key
@@ -149,6 +219,7 @@ class DatabaseKeyManager {
     } on Exception catch (error) {
       throw DatabaseKeyUnavailable(
         'secure storage write failed (${error.runtimeType})',
+        problem: DatabaseKeyProblem.storeUnwritable,
       );
     }
   }

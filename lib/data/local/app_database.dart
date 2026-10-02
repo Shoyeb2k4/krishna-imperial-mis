@@ -5,6 +5,7 @@
 library;
 
 import 'package:drift/drift.dart';
+import 'package:meta/meta.dart';
 import 'package:krishna_mis/data/local/expense_tables.dart';
 import 'package:krishna_mis/data/local/reporting_tables.dart';
 import 'package:krishna_mis/data/local/revenue_tables.dart';
@@ -54,6 +55,27 @@ part 'app_database.g.dart';
     OwnerLedgerEntries,
   ],
 )
+/// A schema step — creating a fresh database, or upgrading one — that did not complete.
+///
+/// Since Slice 7 the step ran in one transaction, so nothing it did was kept: the
+/// database is exactly as it was before the attempt, at [from] (null for a fresh one).
+/// [cause] is what actually failed, and decides how start-up describes it (D-329).
+class LocalSchemaMigrationFailed implements Exception {
+  const LocalSchemaMigrationFailed({
+    required this.from,
+    required this.to,
+    required this.cause,
+  });
+
+  final int? from;
+  final int to;
+  final Object cause;
+
+  @override
+  String toString() =>
+      'LocalSchemaMigrationFailed(${from ?? 'new'} -> $to): $cause';
+}
+
 class AppDatabase extends _$AppDatabase {
   AppDatabase(super.executor);
 
@@ -134,332 +156,22 @@ class AppDatabase extends _$AppDatabase {
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
-    onCreate: (m) async {
-      await m.createAll();
-      await _createPeriodLockUniqueIndex();
-      // Deliberately **not** `_createTaxRateUniqueIndex()`. From v11 the conditional
-      // model makes that index wrong — Room's two value bands are two live rules for one
-      // category from the same date — so a fresh database must not be born with it. The
-      // helper survives only for the historical upgrade paths below, which run against
-      // schemas that predate conditional rules and then drop it at v11.
-      await _createRevenueEntryTotalsView();
-      await _createRevenuePeriodContributionsView();
-      await _createExpensePeriodContributionsView();
-      await _createRevenueIndexes();
-      await _createExpenseReportingIndex();
-      await _createExpenseLedgerIndexes();
-      await _createReportingCacheIndexes();
-      await _createImmutableBandTrigger();
-      await _createOwnerLedgerIndexes();
-      await _createOwnerSettlementIndexes();
-    },
-    onUpgrade: (m, from, to) async {
-      if (from < 2) {
-        await m.createTable(businessUnits);
-        await m.createTable(departments);
-        await m.createTable(sections);
-        await m.createTable(expenseCategories);
-        await m.createTable(revenueCategories);
-        await m.createTable(vendors);
-        await m.createTable(paymentMethods);
-        await m.createTable(periodLocks);
-        await m.createTable(periodLockEvents);
-        await _createPeriodLockUniqueIndex();
-      }
-      if (from < 3) {
-        await m.createTable(revenueTaxRates);
-        await m.addColumn(vendors, vendors.defaultBusinessUnitId);
-        await _createTaxRateUniqueIndex();
-      }
-      if (from < 4) {
-        // Foreign keys are still off at this point — `PRAGMA foreign_keys = ON` is set in
-        // `beforeOpen`, which runs after migrations — so parent ids and the columns that
-        // reference them can be rewritten without SQLite rejecting the intermediate
-        // state. `_masterIdColumns` lists every such column explicitly for that reason.
-        await remapSeedIds(this);
-      }
-      if (from < 5) {
-        // Recreating the table is the only way SQLite drops a foreign key. No data is
-        // transformed: the same values are carried across, they simply stop being
-        // structurally enforced.
-        await m.alterTable(TableMigration(vendors));
-      }
-      if (from < 6) {
-        await m.addColumn(syncOutbox, syncOutbox.actorUserId);
-      }
-      if (from < 7) {
-        await m.createTable(expenses);
-        await m.createTable(expenseAllocations);
-        await m.createTable(expensePeriodAllocations);
-        await m.createTable(expenseAttachments);
-      }
-      if (from < 8) {
-        // `expense_allocations.business_unit_id` stops being a foreign key, for the
-        // reason given on the column: the scope purge legitimately removes a business
-        // unit while synced expense history stays, and `ON DELETE RESTRICT` made
-        // sign-out throw on any device that had synced an expense. Recreating the table
-        // is the only way SQLite drops a foreign key; no value is transformed.
-        await m.alterTable(TableMigration(expenseAllocations));
-      }
-      if (from < 10) {
-        // D-073 — the attachment lifecycle becomes one durable state model. The old four
-        // values could not say "waiting for its expense" or tell a transient failure from
-        // a terminal refusal, and the upload worker needs both.
-        //
-        // Existing rows are mapped conservatively: a `pending` attachment becomes
-        // `waitingForExpense`, because this migration cannot know whether its expense has
-        // been accepted and the worker will promote it as soon as one is. A `failed` row
-        // splits on the one piece of evidence it carries — a retry time means it was
-        // transient, its absence means it was refused.
-        // The values are rewritten **during** the copy, not after it.
-        //
-        // Recreating the table first and updating afterwards cannot work, and the
-        // Windows acceptance proved it on a device that actually had old rows: the new
-        // table carries the new CHECK, so copying `pending` into it fails — while
-        // rewriting beforehand would violate the *old* CHECK, which does not know the
-        // new names. A column transformer is the only point at which neither constraint
-        // is in the way.
-        await m.alterTable(
-          TableMigration(
-            expenseAttachments,
-            columnTransformer: {
-              expenseAttachments.uploadState: const CustomExpression<String>(
-                "CASE upload_state "
-                "WHEN 'pending' THEN 'waitingForExpense' "
-                "WHEN 'failed' THEN "
-                '  (CASE WHEN next_attempt_at IS NOT NULL '
-                "        THEN 'retryNeeded' ELSE 'rejected' END) "
-                'ELSE upload_state END',
-              ),
-            },
-          ),
-        );
-      }
-      if (from < 11) {
-        // Phase 4 Slice 3. New tables, and four nullable columns on the rule cache.
-        //
-        // Nothing is backfilled, and that is the whole of the migration's opinion: a rule
-        // cached before v11 predates the concepts of an input basis and of conditional
-        // discriminators, so it carries no authoritative answer for them. Writing
-        // `inclusive_total` — even though every verified V1 category happens to use it —
-        // would be inventing a business fact about whether a recorded figure includes
-        // tax, which is the D-043 line the whole tax model is built behind. A rule with
-        // no basis is visibly incomplete and the resolver refuses it, which is correct.
-        await m.createTable(revenueEntries);
-        await m.createTable(revenueComponents);
-        await m.createTable(revenueValueBands);
-        await m.createTable(revenueSupplySubtypes);
-        await m.createTable(businessUnitTaxStatuses);
-        await _createRevenueEntryTotalsView();
-        await _createImmutableBandTrigger();
-        await _replaceTaxRateUniqueIndex();
-        await m.addColumn(revenueTaxRates, revenueTaxRates.inputBasis);
-        await m.addColumn(revenueTaxRates, revenueTaxRates.valueBandId);
-        await m.addColumn(revenueTaxRates, revenueTaxRates.supplySubtypeId);
-        await m.addColumn(revenueTaxRates, revenueTaxRates.premisesStatusCode);
-        await _createRevenueIndexes();
-      }
-      if (from < 12) {
-        // Per-scope revenue configuration completeness (D-108).
-        //
-        // Replaces the single global `app_meta` key Slice 5 shipped. Nothing is
-        // backfilled and the old key is removed rather than translated: it claimed
-        // completeness for the whole organisation, and there is no honest way to decide
-        // which user held which scope when it was written. A device that upgrades simply
-        // has no proven snapshot and re-synchronises, which is the correct fail-closed
-        // answer and costs one pull.
-        await m.createTable(revenueConfigSnapshots);
-        await customStatement(
-          "DELETE FROM app_meta WHERE key = 'revenue.configuration.synced_at'",
-        );
-      }
-      if (from >= 11 && from < 13) {
-        // Revenue records how its current business date was established (spec §9, D-019).
-        //
-        // The column defaults to `derived`, so every row an upgrading device already
-        // holds gets that — which is the honest answer and the only one available.
-        // Nothing infers a past correction from `updated_at`, a row version, notes or a
-        // date comparison: none of those is evidence, and inventing provenance is worse
-        // than not having it. Where a row really was corrected, the server says so and
-        // the next pull overwrites this value with the canonical one.
-        //
-        // **`from >= 11` is load-bearing, not defensive.** `revenue_entries` is created
-        // at v11 from the *current* table definition, which now includes this column — so
-        // a device coming from v10 or earlier already has it by the time this step is
-        // reached, and adding it again fails with `duplicate column name`. Caught by the
-        // v9 attachment-migration test, on the one fixture old enough to take that path.
-        // Every column added to a table that is itself created by a later-than-v1 step
-        // needs this guard, and the guard is a range rather than a floor so the intent
-        // reads as "the versions that actually lack it".
-        await m.addColumn(revenueEntries, revenueEntries.businessDateSource);
-      }
-      if (from < 14) {
-        // Phase 4 Slice 11 — supporting evidence for a revenue entry.
-        //
-        // A new table, so no guard beyond the plain floor is needed: unlike the v13
-        // column, this is not added to a table that a later-than-v1 step creates from
-        // the current definition, so there is nothing for an upgrading device to
-        // already have (D-144).
-        //
-        // Nothing is backfilled and nothing could be: no revenue attachment has ever
-        // existed on any device.
-        await m.createTable(revenueAttachments);
-        await customStatement(
-          'CREATE INDEX IF NOT EXISTS ix_revenue_attachments_entry '
-          'ON revenue_attachments (revenue_entry_id)',
-        );
-        await customStatement(
-          'CREATE INDEX IF NOT EXISTS ix_revenue_attachments_due '
-          'ON revenue_attachments (upload_state, next_attempt_at)',
-        );
-      }
-      if (from >= 11 && from < 15) {
-        // Phase 4 Slice 12 — the revenue reporting interface (D-087, D-157).
-        //
-        // A view and an index, and deliberately nothing else. Everything a contribution
-        // reports is already stored: its money on the component, its period on the entry
-        // as `pnl_period_key`, under a server CHECK that ties that key to the business
-        // date. A table here would be a second copy of those facts, and the only thing it
-        // could add is the obligation to keep them in step through a correction, an edit,
-        // a void and a replay.
-        //
-        // **`from >= 11` is the D-144 guard.** `revenue_entries` and `revenue_components`
-        // are created at v11, so a device coming from v10 or earlier has neither when this
-        // step is reached and the view would reference tables that do not exist yet. A
-        // fresh database gets the view from `onCreate` instead.
-        await _createRevenuePeriodContributionsView();
-        await customStatement(
-          'CREATE INDEX IF NOT EXISTS ix_revenue_entries_reporting '
-          'ON revenue_entries (org_id, pnl_period_key, business_unit_id, '
-          'revenue_category_id) WHERE voided_at IS NULL',
-        );
-      }
-      if (from < 9) {
-        // `expenses.scope_revoked_at` (D-068). Nothing is back-filled: every row that
-        // exists at upgrade time is one this user could browse, and the column means
-        // "kept through a revocation", which has not happened to any of them.
-        await m.addColumn(expenses, expenses.scopeRevokedAt);
-      }
-      if (from < 17) {
-        // Phase 5 Slice 4 — the canonical reporting cache (D-171).
-        //
-        // Three new tables and nothing else touched. They start **empty**: a migration
-        // synchronises nothing, and a device that upgrades has no reporting coverage until
-        // it asks the server for some. Certifying a year complete because a schema step
-        // ran would be the exact false claim the marker exists to prevent (D-108).
-        await m.createTable(reportingRevenueContributions);
-        await m.createTable(reportingExpenseContributions);
-        await m.createTable(reportingCoverageMarkers);
-        await _createReportingCacheIndexes();
-      }
-      if (from < 16) {
-        // Phase 5 Slice 1 — the expense reporting projection and the index a period
-        // report reads (D-060, D-168).
-        //
-        // No version floor is needed and none is written. The three expense tables arrive
-        // at v7 and `expenses.scope_revoked_at` at v9, and the `from < 9` step above runs
-        // *before* this one, so by the time the view is created every column it names
-        // exists on every upgrade path. That ordering is load-bearing rather than
-        // incidental — this is the D-144 trap, and it is avoided here by sequence rather
-        // than by a guard.
-        await _createExpensePeriodContributionsView();
-        await _createExpenseReportingIndex();
-      }
-      if (from >= 17 && from < 18) {
-        // Phase 5 Slice 6 — the coherent-snapshot corrective (D-188).
-        //
-        // Coverage markers gain the identity of the authoritative snapshot they were
-        // certified from, so a report can prove its revenue and expense sides came from
-        // one moment instead of two independent queries.
-        //
-        // **`from >= 17` is the D-144 guard, not defensiveness.** The markers table is
-        // created by the `from < 17` step from the *current* definition, which already
-        // carries this column — so a device arriving from v16 or earlier has it before
-        // this step is reached, and adding it again would fail with `duplicate column`.
-        //
-        // Existing markers keep a null snapshot id. That is the honest value: they were
-        // certified by two separate queries and cannot be shown to represent one
-        // snapshot, so a report over them declines the stronger freshness claim until the
-        // device synchronises again. A migration certifies nothing (D-108).
-        await m.addColumn(
-          reportingCoverageMarkers,
-          reportingCoverageMarkers.snapshotId,
-        );
-      }
-      if (from < 19) {
-        // Phase 5 OA-1 — the Owner Accounts foundation.
-        //
-        // Four new tables and nothing else touched: the revenue, expense and reporting
-        // caches an upgrading device already holds are not read, not rewritten and not
-        // invalidated by this step.
-        //
-        // **No version floor, and that is a claim rather than an oversight.** All four
-        // are created whole from the current definition, so unlike the v13 and v18
-        // columns there is nothing an upgrading device could already have (D-144). They
-        // reference no table created by a later step, and their pointers to masters are
-        // deliberately soft, so no ordering against v2 is required either.
-        //
-        // They arrive **empty**, and stay empty until somebody configures an owner. A
-        // migration seeds no owner, no family member, no share and no opening balance:
-        // every one of those is a business fact, and inventing a `0 bp` share or a `Rs 0`
-        // opening balance would be a financial claim nobody made (OA-D3, D-043's rule
-        // applied to ownership).
-        await m.createTable(owners);
-        await m.createTable(ownershipShares);
-        await m.createTable(ownerFamilyMembers);
-        await m.createTable(ownerLedgerEntries);
-        await _createOwnerLedgerIndexes();
-      }
-      if (from < 20) {
-        // Phase 5 OA-2 — the canonical owner-account cache a settlement reads.
-        //
-        // Two new tables, and nothing that exists is read or rewritten. They are a
-        // **different authority class** from the OA-1 ledger beside them: server-owned
-        // canonical facts that may belong to another actor, rather than this actor's own
-        // attempt state (D-171, OA-2 section 19).
-        //
-        // No version floor is required: both are created whole from the current
-        // definition, so there is nothing an upgrading device could already have (D-144),
-        // and neither references a table a later step creates.
-        //
-        // They arrive **empty and uncertified**. A migration synchronises nothing, and a
-        // device that upgrades holds no coverage row until it has actually asked the
-        // server — so a settlement refuses rather than computing over partial history,
-        // which is the whole point of the OA-2 completeness audit (D-108's discipline).
-        await m.createTable(canonicalOwnerMovements);
-        await m.createTable(canonicalOwnershipShares);
-        await m.createTable(canonicalOwners);
-        await m.createTable(ownerSettlementCoverage);
-        await _createOwnerSettlementIndexes();
-      }
-      if (from >= 20 && from < 21) {
-        // Phase 5 OA-3 — the settlement start date, on the coverage row that certified it.
-        //
-        // **`from >= 20` is the D-144 guard.** The coverage table is created by the
-        // `from < 20` step from the *current* definition, which already carries this
-        // column, so a device arriving from v19 or earlier has it before this step is
-        // reached and adding it again would fail with `duplicate column`.
-        //
-        // Existing coverage rows get a null start date, which reads as "not configured"
-        // and makes a settlement refuse. That is the honest value: they were certified by
-        // a transport that did not carry the date, and a migration certifies nothing. The
-        // next synchronisation states it (D-108).
-        await m.addColumn(
-          ownerSettlementCoverage,
-          ownerSettlementCoverage.ownershipStartDate,
-        );
-      }
-      if (from < 22) {
-        // Phase 8 Slice 4 — the expense ledger's read path (D-323).
-        //
-        // Indexes only. No version floor is needed: the three expense child tables and
-        // `expenses` arrive at v7 and `scope_revoked_at` — which the ledger index is
-        // partial on — at v9, and both steps run before this one in source order, so
-        // every column named here exists on every upgrade path (D-144 avoided by
-        // sequence, as at v16).
-        await _createExpenseLedgerIndexes();
-      }
-    },
+    // **Both steps run inside one transaction (Phase 8 Slice 7, D-329).** Drift runs
+    // `onCreate` and `onUpgrade` statement by statement and writes `user_version` only
+    // after they return, so a failure part-way — a full disk, a killed process, a defect
+    // in one step — used to leave the earlier steps committed under the *old* version.
+    // The next launch then ran them again and failed for ever on `duplicate column`:
+    // proven on a v20 database interrupted at the v22 step. SQLite DDL is transactional,
+    // so the remedy is to make the whole upgrade one unit: it applies completely, or the
+    // database is left exactly as it was and the next attempt starts from the same place.
+    onCreate: (m) => _atomicSchemaStep(from: null, to: schemaVersion, () async {
+      await runCreateSteps(m);
+    }),
+    onUpgrade: (m, from, to) => _atomicSchemaStep(
+      from: from,
+      to: to,
+      () => runUpgradeSteps(m, from, to),
+    ),
     beforeOpen: (details) async {
       // Referential integrity is not optional in a financial database. Without this,
       // SQLite silently ignores every foreign key declared above.
@@ -479,6 +191,366 @@ class AppDatabase extends _$AppDatabase {
       await customStatement('PRAGMA secure_delete = ON');
     },
   );
+
+  /// Runs one schema step atomically and names it if it fails.
+  ///
+  /// The failure keeps its cause, so a full disk during an upgrade is still reported as a
+  /// storage problem and a lock as a lock — only what is neither is a migration defect
+  /// (Slice 7's classification reads the cause first).
+  Future<void> _atomicSchemaStep(
+    Future<void> Function() step, {
+    required int? from,
+    required int to,
+  }) async {
+    try {
+      await transaction(step);
+    } on Object catch (error, stackTrace) {
+      Error.throwWithStackTrace(
+        LocalSchemaMigrationFailed(from: from, to: to, cause: error),
+        stackTrace,
+      );
+    }
+  }
+
+  /// The tables, views, indexes and triggers a fresh database is born with.
+  ///
+  /// Protected so a test can interrupt it; production calls it only through the atomic
+  /// wrapper above.
+  @protected
+  @visibleForTesting
+  Future<void> runCreateSteps(Migrator m) async {
+    await m.createAll();
+    await _createPeriodLockUniqueIndex();
+    // Deliberately **not** `_createTaxRateUniqueIndex()`. From v11 the conditional
+    // model makes that index wrong — Room's two value bands are two live rules for one
+    // category from the same date — so a fresh database must not be born with it. The
+    // helper survives only for the historical upgrade paths below, which run against
+    // schemas that predate conditional rules and then drop it at v11.
+    await _createRevenueEntryTotalsView();
+    await _createRevenuePeriodContributionsView();
+    await _createExpensePeriodContributionsView();
+    await _createRevenueIndexes();
+    await _createExpenseReportingIndex();
+    await _createExpenseLedgerIndexes();
+    await _createReportingCacheIndexes();
+    await _createImmutableBandTrigger();
+    await _createOwnerLedgerIndexes();
+    await _createOwnerSettlementIndexes();
+  }
+
+  /// Every upgrade step from [from] to [to], in source order.
+  ///
+  /// Protected so a test can interrupt it; production calls it only through the atomic
+  /// wrapper in [migration].
+  @protected
+  @visibleForTesting
+  Future<void> runUpgradeSteps(Migrator m, int from, int to) async {
+    if (from < 2) {
+      await m.createTable(businessUnits);
+      await m.createTable(departments);
+      await m.createTable(sections);
+      await m.createTable(expenseCategories);
+      await m.createTable(revenueCategories);
+      await m.createTable(vendors);
+      await m.createTable(paymentMethods);
+      await m.createTable(periodLocks);
+      await m.createTable(periodLockEvents);
+      await _createPeriodLockUniqueIndex();
+    }
+    if (from < 3) {
+      await m.createTable(revenueTaxRates);
+      await m.addColumn(vendors, vendors.defaultBusinessUnitId);
+      await _createTaxRateUniqueIndex();
+    }
+    if (from < 4) {
+      // Foreign keys are still off at this point — `PRAGMA foreign_keys = ON` is set in
+      // `beforeOpen`, which runs after migrations — so parent ids and the columns that
+      // reference them can be rewritten without SQLite rejecting the intermediate
+      // state. `_masterIdColumns` lists every such column explicitly for that reason.
+      await remapSeedIds(this);
+    }
+    if (from < 5) {
+      // Recreating the table is the only way SQLite drops a foreign key. No data is
+      // transformed: the same values are carried across, they simply stop being
+      // structurally enforced.
+      await m.alterTable(TableMigration(vendors));
+    }
+    if (from < 6) {
+      await m.addColumn(syncOutbox, syncOutbox.actorUserId);
+    }
+    if (from < 7) {
+      await m.createTable(expenses);
+      await m.createTable(expenseAllocations);
+      await m.createTable(expensePeriodAllocations);
+      await m.createTable(expenseAttachments);
+    }
+    if (from < 8) {
+      // `expense_allocations.business_unit_id` stops being a foreign key, for the
+      // reason given on the column: the scope purge legitimately removes a business
+      // unit while synced expense history stays, and `ON DELETE RESTRICT` made
+      // sign-out throw on any device that had synced an expense. Recreating the table
+      // is the only way SQLite drops a foreign key; no value is transformed.
+      await m.alterTable(TableMigration(expenseAllocations));
+    }
+    if (from < 10) {
+      // D-073 — the attachment lifecycle becomes one durable state model. The old four
+      // values could not say "waiting for its expense" or tell a transient failure from
+      // a terminal refusal, and the upload worker needs both.
+      //
+      // Existing rows are mapped conservatively: a `pending` attachment becomes
+      // `waitingForExpense`, because this migration cannot know whether its expense has
+      // been accepted and the worker will promote it as soon as one is. A `failed` row
+      // splits on the one piece of evidence it carries — a retry time means it was
+      // transient, its absence means it was refused.
+      // The values are rewritten **during** the copy, not after it.
+      //
+      // Recreating the table first and updating afterwards cannot work, and the
+      // Windows acceptance proved it on a device that actually had old rows: the new
+      // table carries the new CHECK, so copying `pending` into it fails — while
+      // rewriting beforehand would violate the *old* CHECK, which does not know the
+      // new names. A column transformer is the only point at which neither constraint
+      // is in the way.
+      await m.alterTable(
+        TableMigration(
+          expenseAttachments,
+          columnTransformer: {
+            expenseAttachments.uploadState: const CustomExpression<String>(
+              "CASE upload_state "
+              "WHEN 'pending' THEN 'waitingForExpense' "
+              "WHEN 'failed' THEN "
+              '  (CASE WHEN next_attempt_at IS NOT NULL '
+              "        THEN 'retryNeeded' ELSE 'rejected' END) "
+              'ELSE upload_state END',
+            ),
+          },
+        ),
+      );
+    }
+    if (from < 11) {
+      // Phase 4 Slice 3. New tables, and four nullable columns on the rule cache.
+      //
+      // Nothing is backfilled, and that is the whole of the migration's opinion: a rule
+      // cached before v11 predates the concepts of an input basis and of conditional
+      // discriminators, so it carries no authoritative answer for them. Writing
+      // `inclusive_total` — even though every verified V1 category happens to use it —
+      // would be inventing a business fact about whether a recorded figure includes
+      // tax, which is the D-043 line the whole tax model is built behind. A rule with
+      // no basis is visibly incomplete and the resolver refuses it, which is correct.
+      await m.createTable(revenueEntries);
+      await m.createTable(revenueComponents);
+      await m.createTable(revenueValueBands);
+      await m.createTable(revenueSupplySubtypes);
+      await m.createTable(businessUnitTaxStatuses);
+      await _createRevenueEntryTotalsView();
+      await _createImmutableBandTrigger();
+      await _replaceTaxRateUniqueIndex();
+      await m.addColumn(revenueTaxRates, revenueTaxRates.inputBasis);
+      await m.addColumn(revenueTaxRates, revenueTaxRates.valueBandId);
+      await m.addColumn(revenueTaxRates, revenueTaxRates.supplySubtypeId);
+      await m.addColumn(revenueTaxRates, revenueTaxRates.premisesStatusCode);
+      await _createRevenueIndexes();
+    }
+    if (from < 12) {
+      // Per-scope revenue configuration completeness (D-108).
+      //
+      // Replaces the single global `app_meta` key Slice 5 shipped. Nothing is
+      // backfilled and the old key is removed rather than translated: it claimed
+      // completeness for the whole organisation, and there is no honest way to decide
+      // which user held which scope when it was written. A device that upgrades simply
+      // has no proven snapshot and re-synchronises, which is the correct fail-closed
+      // answer and costs one pull.
+      await m.createTable(revenueConfigSnapshots);
+      await customStatement(
+        "DELETE FROM app_meta WHERE key = 'revenue.configuration.synced_at'",
+      );
+    }
+    if (from >= 11 && from < 13) {
+      // Revenue records how its current business date was established (spec §9, D-019).
+      //
+      // The column defaults to `derived`, so every row an upgrading device already
+      // holds gets that — which is the honest answer and the only one available.
+      // Nothing infers a past correction from `updated_at`, a row version, notes or a
+      // date comparison: none of those is evidence, and inventing provenance is worse
+      // than not having it. Where a row really was corrected, the server says so and
+      // the next pull overwrites this value with the canonical one.
+      //
+      // **`from >= 11` is load-bearing, not defensive.** `revenue_entries` is created
+      // at v11 from the *current* table definition, which now includes this column — so
+      // a device coming from v10 or earlier already has it by the time this step is
+      // reached, and adding it again fails with `duplicate column name`. Caught by the
+      // v9 attachment-migration test, on the one fixture old enough to take that path.
+      // Every column added to a table that is itself created by a later-than-v1 step
+      // needs this guard, and the guard is a range rather than a floor so the intent
+      // reads as "the versions that actually lack it".
+      await m.addColumn(revenueEntries, revenueEntries.businessDateSource);
+    }
+    if (from < 14) {
+      // Phase 4 Slice 11 — supporting evidence for a revenue entry.
+      //
+      // A new table, so no guard beyond the plain floor is needed: unlike the v13
+      // column, this is not added to a table that a later-than-v1 step creates from
+      // the current definition, so there is nothing for an upgrading device to
+      // already have (D-144).
+      //
+      // Nothing is backfilled and nothing could be: no revenue attachment has ever
+      // existed on any device.
+      await m.createTable(revenueAttachments);
+      await customStatement(
+        'CREATE INDEX IF NOT EXISTS ix_revenue_attachments_entry '
+        'ON revenue_attachments (revenue_entry_id)',
+      );
+      await customStatement(
+        'CREATE INDEX IF NOT EXISTS ix_revenue_attachments_due '
+        'ON revenue_attachments (upload_state, next_attempt_at)',
+      );
+    }
+    if (from >= 11 && from < 15) {
+      // Phase 4 Slice 12 — the revenue reporting interface (D-087, D-157).
+      //
+      // A view and an index, and deliberately nothing else. Everything a contribution
+      // reports is already stored: its money on the component, its period on the entry
+      // as `pnl_period_key`, under a server CHECK that ties that key to the business
+      // date. A table here would be a second copy of those facts, and the only thing it
+      // could add is the obligation to keep them in step through a correction, an edit,
+      // a void and a replay.
+      //
+      // **`from >= 11` is the D-144 guard.** `revenue_entries` and `revenue_components`
+      // are created at v11, so a device coming from v10 or earlier has neither when this
+      // step is reached and the view would reference tables that do not exist yet. A
+      // fresh database gets the view from `onCreate` instead.
+      await _createRevenuePeriodContributionsView();
+      await customStatement(
+        'CREATE INDEX IF NOT EXISTS ix_revenue_entries_reporting '
+        'ON revenue_entries (org_id, pnl_period_key, business_unit_id, '
+        'revenue_category_id) WHERE voided_at IS NULL',
+      );
+    }
+    if (from < 9) {
+      // `expenses.scope_revoked_at` (D-068). Nothing is back-filled: every row that
+      // exists at upgrade time is one this user could browse, and the column means
+      // "kept through a revocation", which has not happened to any of them.
+      await m.addColumn(expenses, expenses.scopeRevokedAt);
+    }
+    if (from < 17) {
+      // Phase 5 Slice 4 — the canonical reporting cache (D-171).
+      //
+      // Three new tables and nothing else touched. They start **empty**: a migration
+      // synchronises nothing, and a device that upgrades has no reporting coverage until
+      // it asks the server for some. Certifying a year complete because a schema step
+      // ran would be the exact false claim the marker exists to prevent (D-108).
+      await m.createTable(reportingRevenueContributions);
+      await m.createTable(reportingExpenseContributions);
+      await m.createTable(reportingCoverageMarkers);
+      await _createReportingCacheIndexes();
+    }
+    if (from < 16) {
+      // Phase 5 Slice 1 — the expense reporting projection and the index a period
+      // report reads (D-060, D-168).
+      //
+      // No version floor is needed and none is written. The three expense tables arrive
+      // at v7 and `expenses.scope_revoked_at` at v9, and the `from < 9` step above runs
+      // *before* this one, so by the time the view is created every column it names
+      // exists on every upgrade path. That ordering is load-bearing rather than
+      // incidental — this is the D-144 trap, and it is avoided here by sequence rather
+      // than by a guard.
+      await _createExpensePeriodContributionsView();
+      await _createExpenseReportingIndex();
+    }
+    if (from >= 17 && from < 18) {
+      // Phase 5 Slice 6 — the coherent-snapshot corrective (D-188).
+      //
+      // Coverage markers gain the identity of the authoritative snapshot they were
+      // certified from, so a report can prove its revenue and expense sides came from
+      // one moment instead of two independent queries.
+      //
+      // **`from >= 17` is the D-144 guard, not defensiveness.** The markers table is
+      // created by the `from < 17` step from the *current* definition, which already
+      // carries this column — so a device arriving from v16 or earlier has it before
+      // this step is reached, and adding it again would fail with `duplicate column`.
+      //
+      // Existing markers keep a null snapshot id. That is the honest value: they were
+      // certified by two separate queries and cannot be shown to represent one
+      // snapshot, so a report over them declines the stronger freshness claim until the
+      // device synchronises again. A migration certifies nothing (D-108).
+      await m.addColumn(
+        reportingCoverageMarkers,
+        reportingCoverageMarkers.snapshotId,
+      );
+    }
+    if (from < 19) {
+      // Phase 5 OA-1 — the Owner Accounts foundation.
+      //
+      // Four new tables and nothing else touched: the revenue, expense and reporting
+      // caches an upgrading device already holds are not read, not rewritten and not
+      // invalidated by this step.
+      //
+      // **No version floor, and that is a claim rather than an oversight.** All four
+      // are created whole from the current definition, so unlike the v13 and v18
+      // columns there is nothing an upgrading device could already have (D-144). They
+      // reference no table created by a later step, and their pointers to masters are
+      // deliberately soft, so no ordering against v2 is required either.
+      //
+      // They arrive **empty**, and stay empty until somebody configures an owner. A
+      // migration seeds no owner, no family member, no share and no opening balance:
+      // every one of those is a business fact, and inventing a `0 bp` share or a `Rs 0`
+      // opening balance would be a financial claim nobody made (OA-D3, D-043's rule
+      // applied to ownership).
+      await m.createTable(owners);
+      await m.createTable(ownershipShares);
+      await m.createTable(ownerFamilyMembers);
+      await m.createTable(ownerLedgerEntries);
+      await _createOwnerLedgerIndexes();
+    }
+    if (from < 20) {
+      // Phase 5 OA-2 — the canonical owner-account cache a settlement reads.
+      //
+      // Two new tables, and nothing that exists is read or rewritten. They are a
+      // **different authority class** from the OA-1 ledger beside them: server-owned
+      // canonical facts that may belong to another actor, rather than this actor's own
+      // attempt state (D-171, OA-2 section 19).
+      //
+      // No version floor is required: both are created whole from the current
+      // definition, so there is nothing an upgrading device could already have (D-144),
+      // and neither references a table a later step creates.
+      //
+      // They arrive **empty and uncertified**. A migration synchronises nothing, and a
+      // device that upgrades holds no coverage row until it has actually asked the
+      // server — so a settlement refuses rather than computing over partial history,
+      // which is the whole point of the OA-2 completeness audit (D-108's discipline).
+      await m.createTable(canonicalOwnerMovements);
+      await m.createTable(canonicalOwnershipShares);
+      await m.createTable(canonicalOwners);
+      await m.createTable(ownerSettlementCoverage);
+      await _createOwnerSettlementIndexes();
+    }
+    if (from >= 20 && from < 21) {
+      // Phase 5 OA-3 — the settlement start date, on the coverage row that certified it.
+      //
+      // **`from >= 20` is the D-144 guard.** The coverage table is created by the
+      // `from < 20` step from the *current* definition, which already carries this
+      // column, so a device arriving from v19 or earlier has it before this step is
+      // reached and adding it again would fail with `duplicate column`.
+      //
+      // Existing coverage rows get a null start date, which reads as "not configured"
+      // and makes a settlement refuse. That is the honest value: they were certified by
+      // a transport that did not carry the date, and a migration certifies nothing. The
+      // next synchronisation states it (D-108).
+      await m.addColumn(
+        ownerSettlementCoverage,
+        ownerSettlementCoverage.ownershipStartDate,
+      );
+    }
+    if (from < 22) {
+      // Phase 8 Slice 4 — the expense ledger's read path (D-323).
+      //
+      // Indexes only. No version floor is needed: the three expense child tables and
+      // `expenses` arrive at v7 and `scope_revoked_at` — which the ledger index is
+      // partial on — at v9, and both steps run before this one in source order, so
+      // every column named here exists on every upgrade path (D-144 avoided by
+      // sequence, as at v16).
+      await _createExpenseLedgerIndexes();
+    }
+  }
 
   /// SQLite treats NULLs as distinct in a unique index, so `(org, business_unit, period)`
   /// alone would permit two org-wide locks on the same period — and then a reopen of one

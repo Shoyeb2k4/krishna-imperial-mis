@@ -177,11 +177,39 @@ Future<BootstrapResult> bootstrap({
   // The acceptance folder decides which stored key this installation opens its database
   // with, so a run can neither create nor delete the key of an installation somebody uses
   // by hand. `main()` passes no folder and therefore cannot reach the acceptance entry.
-  final database = await openEncryptedDatabase(
+  //
+  // Opened **and proven** here: the key check, every pending upgrade and `beforeOpen` run
+  // now rather than at whichever query happens first, and a failure closes the file
+  // before it reaches `main()`, which classifies it (Phase 8 Slice 7, D-329).
+  final database = await openLocalStore(
     directory: appDataDirectory,
     databaseKeyName: databaseKeyNameFor(appDataDirectory: appDataDirectory),
   );
+  try {
+    return await _startOn(
+      database,
+      config: config,
+      transport: transport,
+      appDataDirectory: appDataDirectory,
+    );
+  } on Object {
+    // Whatever failed after the database opened, the file is released so "Try again"
+    // and recovery find it free (on Windows an open handle refuses a rename).
+    try {
+      await database.close();
+    } on Object {
+      // The original failure is the one worth reporting.
+    }
+    rethrow;
+  }
+}
 
+Future<BootstrapResult> _startOn(
+  AppDatabase database, {
+  required AppConfig config,
+  required http.Client? transport,
+  required Directory? appDataDirectory,
+}) async {
   // The shipped seed exists so the application is usable with no backend at all — the
   // state Phase 1 shipped in. **It must not run once a backend is configured.** The seed
   // contains both properties, and writing it locally would hand every installation a
