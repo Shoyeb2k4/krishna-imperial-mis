@@ -12241,3 +12241,136 @@ the end of a run, so no earlier database survived. Host migration tests cover it
 
 **The 20-page PDF limit.** It stays as ruled: non-blocking for V1, already handled safely,
 and not changed.
+
+---
+
+# Phase 8 Slice 7 — Stress, failure and recovery hardening (2026-10-02)
+
+## D-328 — What start-up did when local storage failed, measured before anything changed
+**Date:** 2026-10-02 · **Status:** Recorded (Phase 8 Slice 7, Steps 1–2)
+
+**Recovery-state inventory, read from the code.**
+
+| Step | Where | Failure it can raise |
+|---|---|---|
+| configuration check | `bootstrap()` | build problem (`ConfigurationRefused`) |
+| folder and file path | `resolveDatabaseFile` | `FileSystemException` (storage) |
+| key lookup | `DatabaseKeyManager.obtainKey` | store read or write failure, malformed key, missing key |
+| open and key check | `applyEncryptionKey` | wrong key or damaged file (`SQLITE_NOTADB`), lock, I/O |
+| upgrade | `AppDatabase.migration` | any SQL failure, full disk, lock |
+| first write | `OutboxRepository.recoverStaleInFlight` | lock, full disk |
+| session, cache, generations | after start-up, inside the app | not start-up failures: fail closed (D-051), coverage markers (D-108), D-240 |
+
+Before Slice 7 the connection was lazy, so the open, key and upgrade failures all surfaced
+at the outbox recovery query, and every failure reached one screen showing
+`SelectableText('$error')`.
+
+**Baseline, from a temporary probe on real files in temporary folders** (removed after
+recording):
+
+| Case | What happened |
+|---|---|
+| damaged file | `EncryptedDatabaseUnreadable (sqlite 26)` |
+| **missing key, file present** | **a new key was written to the secure store**, then `EncryptedDatabaseUnreadable (sqlite 26)`: "missing" was reported as "unreadable", and the next launch would have seen a *wrong* key |
+| wrong key | `EncryptedDatabaseUnreadable (sqlite 26)` |
+| malformed key | `DatabaseKeyUnavailable` |
+| **another connection holding `BEGIN EXCLUSIVE`** | **`EncryptedDatabaseUnreadable (sqlite 5)`**: a lock reported as an unreadable file |
+| another connection holding `BEGIN IMMEDIATE` | raw `SqliteException(5) database is locked` |
+| busy timeout | **0**, on the raw `sqlite3` connection and on drift's `NativeDatabase` |
+| folder cannot be created | `PathExistsException`, with the **full path** in its message |
+| key store throws on read | `DatabaseKeyUnavailable` |
+
+**An upgrade was not atomic.** Drift runs `onUpgrade` statement by statement and writes
+`user_version` only after it returns. A v20 database whose v22 step failed kept the v21
+column, stayed at version 20, and the next start failed **for ever** with
+`duplicate column name: ownership_start_date`. One interrupted upgrade (a full disk, a
+killed process) would have made the local data unopenable by every later build.
+
+## D-329 — Start-up classifies its failures; schema steps are atomic; a lock is not damage
+**Date:** 2026-10-02 · **Status:** Implemented / Tested
+
+1. **Schema steps run in one transaction.** `onCreate` and `onUpgrade` are wrapped by
+   `AppDatabase._atomicSchemaStep`. A failure is raised as
+   `LocalSchemaMigrationFailed(from, to, cause)`, and nothing of the attempt is kept. The
+   existing upgrade suites (v9 → v22, including drift `alterTable` with a column
+   transformer) pass inside the transaction.
+   - An upgrade interrupted after its last step leaves version 20 and no new column. A
+     retry succeeds, `integrity_check` is `ok`, `foreign_key_check` is empty.
+   - An interrupted fresh creation leaves version 0, and the next start creates cleanly.
+2. **No key is created for an existing file.** `obtainKey(databaseExists:)` raises
+   `DatabaseKeyProblem.missingForExistingDatabase` and writes nothing.
+3. **Only `SQLITE_NOTADB` and `SQLITE_CORRUPT` count as "unreadable".** Any other code at
+   the key check is rethrown as itself.
+4. **The open is forced, and the file is released on failure** (`openLocalStore`). The key
+   check, the upgrade and `beforeOpen` run in one place. A failure anywhere in start-up
+   closes the database, so *Try again* and recovery find the file free.
+5. **Classification** (`StartupFailure.classify`): seven kinds, tabled in
+   `ARCHITECTURE.md` §52.10. The cause is read through `LocalSchemaMigrationFailed` and
+   through drift's `CouldNotRollBackException`. The second is what a full disk
+   mid-transaction actually raises: SQLite rolls back by itself on `SQLITE_FULL`, and
+   drift's own `ROLLBACK` then fails. This was found by the disk-full test, not assumed.
+6. **The busy timeout is not changed.** It is measured at 0: a lock fails at once and is
+   shown as *in use*, with "close any other copy, then try again". Within one process
+   drift serialises every statement, so a lock can only come from a second process. A
+   short timeout (for example 2 s) would let a start wait out a momentary lock. It is
+   **proposed, not made**: nothing measured needs it, and any wait added at start-up is a
+   wait a person sees.
+7. **No raw technical text on screen.** Each kind has its own words and a reference code
+   (`START-<KIND>`); the detail goes to `dart:developer`'s log only. A configuration failure
+   still shows the build's curated `ConfigurationProblem` sentence, which was written to be
+   shown.
+
+**A defect the UI tests found in this slice's first version.** After a reset, a start that
+failed again updated a root the person could no longer see: the reset page stayed on top,
+reading "Setting aside…". Each failure screen now has a new identity, so a later failure
+replaces the whole screen (control C7).
+
+## D-330 — Reset local data and download again: assessed, confirmed, set aside
+**Date:** 2026-10-02 · **Status:** Implemented / Tested (D-312 D4; closes D-316)
+
+* **When it is offered.** Only for `localDataUnreadable` and `upgradeFailed`, and always
+  after *Try again*. Never for a lock, a storage problem, an unavailable key store (a
+  reset needs a writable store), a build problem or an unknown failure.
+* **What would be lost is stated first.** `assess()` opens the file read-only with the
+  stored key and counts:
+  - entries waiting to be sent: pending, in flight, failed, blocked, and any status this
+    build cannot name;
+  - entries needing attention: conflict, rejected;
+  - bills not yet uploaded.
+
+  It never throws. With no key, or a file that will not read, it says the work **cannot
+  be checked and may be lost**; it never says "nothing to lose". "No entries waiting to be
+  sent were found" appears only when the outbox was read and holds none. The counts cover
+  every person's queued work on the device (D-074).
+* **Typed confirmation.** The button is enabled only for exactly `RESET`; surrounding
+  spaces are ignored and any other case is refused.
+* **Set aside, never deleted**, in an order that is safe to stop at any point:
+  1. the key is copied to `<keyName>.quarantine.<id>` and read back;
+  2. `recovery.json` is written: reason, time, whether a key was kept, no key material;
+  3. the sidecars, then the database, then `attachments/` are **moved** into
+     `<support>/recovery/quarantine-<id>/` (a failed move is put back, and the active key
+     is kept);
+  4. the active key is deleted.
+
+  A key store that will not keep the copy stops the reset before anything moves.
+* **Forensic honesty.** With a key, the quarantined copy still opens with the key set aside
+  (asserted). Without one, the record says the bytes are kept for forensics only and this
+  app cannot open them. The quarantine sits in the app-private support folder, and nothing
+  in the app reads it.
+* **Starting again.** A completed reset simply starts the application again: a new key, an
+  empty database at v22, and none of the previous person's data, staging, cache, authority
+  or outbox (every table asserted empty).
+  - The session is kept (the D-246 file on Windows). The restored person stays fail-closed
+    until a confirmed authority refresh (D-051), and only their authorised data is
+    downloaded. D-070, D-074, D-240 and D-318 are unchanged.
+  - A download that fails leaves the ordinary *Unable to verify your access … try again*
+    state.
+  - A start that fails after a reset shows that failure. A reset never claims success on
+    its own.
+* **D-247.** Nothing in this slice reads, opens or moves the forensic database. **But the
+  shipped build would now offer a reset for it.** Any normal (non-acceptance) build launched
+  on this workstation finds that file with no key and shows *Local data cannot be opened*,
+  with the reset option. Before Slice 7 the same launch would have **written a new key**
+  into the secure store. Confirming a reset there would *move* that file into quarantine,
+  not delete it. Do not launch a normal build on this workstation until the D-247 disposal
+  is decided.

@@ -9,7 +9,7 @@ Status: **Sections 1–12 proposed (Phase 0, revised); sections 13–16 and 18�
 is built and verified; section 17 is the Phase 4 *plan*, since built — read §18–§26 for what
 shipped.** Sections 6, 5.3 and 8 carry the project lead's mandated corrections.
 Implementation status is tracked in `PROJECT_STATUS.md`.
-Last updated: 2026-10-01 — **Phase 8 Slice 5**: missed taps are fatal across the host suite (§52.9, D-325); 2026-10-01 — **Phase 8 Slice 4**: the Expense ledger read path, local schema v22, and the server expense-read residual measured and declined (§52.8, §9, D-323, D-324); 2026-10-01 — **Phase 8 Slice 3**: retry and hang hardening (§52.7, D-322); 2026-09-30 — **Phase 8**: the D-318 redesign as built and measured (§52.6, D-320, D-321); 2026-09-29 — **Phase 8 Slice 2**: the D-186 harness and what the reporting predicate costs at scale (§52.5, D-318, D-319); **Phase 8 Slice 1**: the measurement contract (section 52), §9 corrected to LIMIT/OFFSET paging (D-314), §8.2 marks the recovery flow as not yet built (D-316); 2026-09-28 — **Phase 7 closed** (D-311): section 51 now describes what shipped; 2026-09-28 — **Phase 7 Slice 10**: print authority re-check (D-309) and the runner apartment (D-308), sections 51.5 and 51.7; 2026-09-25 — **Phase 7 Slices 8–9**: Android sharing and the analysis exports, as built (sections 51.2, 51.5, 51.7); **Phase 7 Slice 1**: the export, PDF and printing contract (section 51); 2026-09-25 — **Phase 6 closed**: the stable contract Phase 7 may build on (section 50), and the final D-286 real-line rule (section 49); 2026-09-24 — money at large text sizes (section 49); 2026-09-23 — dashboard drill-down integration (section 48); the Windows Analytics workspace (section 47); the Android Home dashboard (section 46); 2026-09-22 — the Windows Overview (section 45); 2026-09-17 — Phase 6 dashboard periods and comparison rules (section 41); Slice 11's corrections and the Slice 12 closure architecture (section 40); 2026-09-13 — the Android P&L surface (section 38); the Windows P&L surface (section 37); Slice 7 reporting security closure (section 36); 2026-09-11 — the Owner Settlement surface and its security boundary (section 35); the Owner Settlement Engine (section 34); the Owner Ledger (section 33), with the V1 ownership vector in §33.3; Phase 5 Slice 6 corrective (section 32); Slice 5 in section 31; Slices 1-4 in sections 27-30
+Last updated: 2026-10-02 — **Phase 8 Slice 7**: start-up failure classification, atomic schema steps and the damaged-database recovery flow (§8.2, §52.10, D-328 … D-330); 2026-10-01 — **Phase 8 Slice 5**: missed taps are fatal across the host suite (§52.9, D-325); 2026-10-01 — **Phase 8 Slice 4**: the Expense ledger read path, local schema v22, and the server expense-read residual measured and declined (§52.8, §9, D-323, D-324); 2026-10-01 — **Phase 8 Slice 3**: retry and hang hardening (§52.7, D-322); 2026-09-30 — **Phase 8**: the D-318 redesign as built and measured (§52.6, D-320, D-321); 2026-09-29 — **Phase 8 Slice 2**: the D-186 harness and what the reporting predicate costs at scale (§52.5, D-318, D-319); **Phase 8 Slice 1**: the measurement contract (section 52), §9 corrected to LIMIT/OFFSET paging (D-314), §8.2 marks the recovery flow as not yet built (D-316); 2026-09-28 — **Phase 7 closed** (D-311): section 51 now describes what shipped; 2026-09-28 — **Phase 7 Slice 10**: print authority re-check (D-309) and the runner apartment (D-308), sections 51.5 and 51.7; 2026-09-25 — **Phase 7 Slices 8–9**: Android sharing and the analysis exports, as built (sections 51.2, 51.5, 51.7); **Phase 7 Slice 1**: the export, PDF and printing contract (section 51); 2026-09-25 — **Phase 6 closed**: the stable contract Phase 7 may build on (section 50), and the final D-286 real-line rule (section 49); 2026-09-24 — money at large text sizes (section 49); 2026-09-23 — dashboard drill-down integration (section 48); the Windows Analytics workspace (section 47); the Android Home dashboard (section 46); 2026-09-22 — the Windows Overview (section 45); 2026-09-17 — Phase 6 dashboard periods and comparison rules (section 41); Slice 11's corrections and the Slice 12 closure architecture (section 40); 2026-09-13 — the Android P&L surface (section 38); the Windows P&L surface (section 37); Slice 7 reporting security closure (section 36); 2026-09-11 — the Owner Settlement surface and its security boundary (section 35); the Owner Settlement Engine (section 34); the Owner Ledger (section 33), with the V1 ownership vector in §33.3; Phase 5 Slice 6 corrective (section 32); Slice 5 in section 31; Slices 1-4 in sections 27-30
 
 ---
 
@@ -475,6 +475,10 @@ known risk, not a surprise.
   **Not yet built (D-316, 2026-09-29):** the shipped application stops on a start-up failure
   screen that shows the raw exception, with no *Try again* and no reset. Phase 8 Slice 7
   builds the flow under the project lead's rules in D-312 (D4).
+  **Built (Phase 8 Slice 7, 2026-10-02, D-328 … D-330):** start-up classifies the failure,
+  shows plain words and *Try again*, and offers *Reset local data and download again* only
+  for data that cannot be opened or upgraded — behind a statement of what would be lost and
+  a typed confirmation. The data is **set aside, not deleted**. See §52.10.
 - Changing the encryption key (rotation) is not a V1 feature.
 
 ### 8.3 Phase 1 obligation — discharged
@@ -4728,3 +4732,51 @@ and STRESS); the per-row month residual of D-321 belongs to a read shape no clie
   sharding and concurrency cannot alter the policy, and a test that leaks the flag fails by name.
 * **An opt-out is one call.** `warnIfMissed: false` with a `// missed-tap opt-out:` reason in the
   three lines above; none exists today.
+
+### 52.10 Start-up failure and recovery (Slice 7, D-328 … D-330)
+
+```
+        bootstrap()
+          openLocalStore()          key → file → key check → upgrade (one transaction) → beforeOpen
+            fails ─────────────────► closes the file, rethrows
+          the rest of start-up       fails → closes the file, rethrows
+        StartupRunner.start()       catches, logs the detail (developer log only), classifies
+          StartupFailureApp         plain words · reference code · Try again
+            permitsReset?  ───────► ResetLocalDataScreen
+                                       assess()   read-only: unsent entries, bills, or "cannot check"
+                                       typed RESET
+                                       setAsideAndReset()
+                                       Try again → the next start decides what is shown
+```
+
+* **Classification decides, and the cause decides first.** `StartupFailure.classify`
+  (`lib/app/startup/startup_failure.dart`):
+
+  | Kind | Comes from | Reset offered |
+  |---|---|---|
+  | configuration | `ConfigurationRefused` | no |
+  | keyStoreUnavailable | key store read or write failed | no |
+  | localDataUnreadable | key missing for an existing file, key malformed, `SQLITE_NOTADB`/`CORRUPT` | **yes** |
+  | upgradeFailed | an upgrade step failed, cause not storage, lock or damage | **yes** |
+  | inUse | `SQLITE_BUSY`/`LOCKED` | no |
+  | storage | `SQLITE_FULL`/`IOERR`/`CANTOPEN`/`READONLY`, `FileSystemException` | no |
+  | unexpected | anything else, including a fresh database that could not be created | no |
+
+  A schema failure and drift's `CouldNotRollBackException` are classified by their cause,
+  so a full disk during an upgrade or a save is *storage*, never *damage*.
+* **Schema steps are atomic.** `onCreate` and `onUpgrade` run inside one transaction
+  (`AppDatabase._atomicSchemaStep`); a failure leaves the file at its old version with
+  nothing of the attempt kept, and is raised as `LocalSchemaMigrationFailed(from, to, cause)`.
+* **No key is created for an existing file** (`obtainKey(databaseExists:)`), so a missing
+  key is reported as missing and the secure store is not written.
+* **A lock is not damage.** `applyEncryptionKey` reports only `SQLITE_NOTADB`/`CORRUPT` as
+  unreadable. The busy timeout is 0 (measured); a lock fails at once and is *in use*.
+* **Set aside, in an order that is safe to stop** (`LocalStoreRecovery`,
+  `lib/data/local/local_store_recovery.dart`): copy the key to
+  `<keyName>.quarantine.<id>` and read it back → write `recovery.json` (no key material) →
+  move sidecars, then the database, then `attachments/` into
+  `<support>/recovery/quarantine-<id>/` (a failed move is put back) → delete the active key.
+  The next start creates a new key and an empty database at the current schema; the normal
+  session and synchronisation then download what the person is authorised to receive.
+* **No raw technical text** reaches the screen; a guard in
+  `test/app/startup_failure_app_test.dart` holds that over the three start-up files.

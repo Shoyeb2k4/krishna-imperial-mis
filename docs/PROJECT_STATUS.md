@@ -5,7 +5,9 @@ Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
-Last updated: **2026-10-01** — **PHASE 8 SLICE 6 — CLOSED on the Galaxy A06 (D-327 A06).** On the reference phone, the first realistic P&L PDF of a session takes about 0.56 s, including the font load, and later ones about 0.06 s. Both are far inside the 2-second limit, and on a debug build. The shared PDF opens the Android share sheet; Back cancels it; sign-out removes the file. The Dashboard smoke passes. The clean dev APK is installed with a matching hash. Not exercised on the device: the accountant capability-loss step and the user-switch half of D-310, because the capability change was refused by this session's permissions (host tests cover both). **Slice 7 is not started.**
+Last updated: **2026-10-02** — **PHASE 8 SLICE 7 — STRESS, FAILURE & RECOVERY: COMPLETE (D-328 … D-330).** If the app cannot open its data it now says why in plain words and offers *Try again*; only for data that truly cannot be opened or upgraded does it offer *Reset local data and download again*, after stating what would be lost and a typed RESET. The data is moved aside, never deleted. An interrupted upgrade now changes nothing instead of leaving the data unopenable for ever; a missing key no longer writes a new one; a lock is no longer reported as damage. Host suite **3,134 passed**; Windows restart smoke PASS. No schema or server change. **Slice 8 is not started.**
+
+Previously: **2026-10-01** — **PHASE 8 SLICE 6 — CLOSED on the Galaxy A06 (D-327 A06).** On the reference phone, the first realistic P&L PDF of a session takes about 0.56 s, including the font load, and later ones about 0.06 s. Both are far inside the 2-second limit, and on a debug build. The shared PDF opens the Android share sheet; Back cancels it; sign-out removes the file. The Dashboard smoke passes. The clean dev APK is installed with a matching hash. Not exercised on the device: the accountant capability-loss step and the user-switch half of D-310, because the capability change was refused by this session's permissions (host tests cover both). **Slice 7 is not started.**
 
 Previously: **2026-10-01** — **PHASE 8 SLICE 6 — EXPORT PERFORMANCE: MEASURED, NO CHANGE (D-327).** On the real Windows executable (debug build) every normal export, PDF or Excel, finishes in under 160 ms including the one-off font load. That is far inside T2's 1 s, so nothing was optimised. A deliberately huge P&L (640 lines, 17 pages) takes 205 ms. The Galaxy A06 half of T2 is **not tested**: no device was attached, and the same harness runs there in Slice 8. One finding is recorded and not fixed: a P&L PDF with more than about 840 category lines hits the `pdf` package's 20-page limit and is reported as "could not be made". **Slice 7 is not started.** See *Phase 8 Slice 6* at the end of this file.
 
@@ -179,7 +181,7 @@ drill-down, and the Owner Accounts ledger, settlement engine and preview surface
 **Phase 8 — Performance, Hardening & Recovery: IN PROGRESS (started 2026-09-29).** Slices 1 and 2
 are complete, with the approved D-318 redesign built and D-318 closed (D-320, D-321); Slice 3
 (retry and hang hardening, D-322), Slice 4 (the Expense ledger, D-323, D-324) and Slice 5
-(global missed-tap hardening, D-325) are complete; D-326 is fixed; Slice 6 (export performance, D-327) is closed on Windows and the Galaxy A06. Slices 7–9 are not started. Its record is
+(global missed-tap hardening, D-325) are complete; D-326 is fixed; Slice 6 (export performance, D-327) is closed on Windows and the Galaxy A06; Slice 7 (stress, failure and recovery, D-328 … D-330) is complete. Slices 8–9 are not started. Its record is
 *PHASE 8* at the **end** of this file. *(This paragraph read "Slice 1 is complete; Slices 2–9
 are not started" until Slice 2, "Slices 3–9 are not started" until Slice 3, "Slices 4–9 are not
 started" until Slice 4, and "Slices 5–9 are not started" until Slice 5.)*
@@ -7351,7 +7353,7 @@ measurement against an approved threshold requires.
 | 4 | Local expense-ledger profiling and deterministic ordering (D5, D-314, D-315) | **COMPLETE** (D-323, D-324) |
 | 5 | Global missed-tap hardening (D8) | **COMPLETE** (D-325; D-326 reported) |
 | 6 | Export performance (D2, T2/T3) | **CLOSED** — inside T2 on Windows and on the Galaxy A06 (D-327) |
-| 7 | Stress and recovery, including damaged-database recovery (D4, D-316) | not started |
+| 7 | Stress and recovery, including damaged-database recovery (D4, D-316) | **COMPLETE** (D-328 … D-330) |
 | 8 | Windows, emulator and Galaxy A06 acceptance and regression | not started |
 | 9 | Closure | not started |
 
@@ -7820,3 +7822,61 @@ has not been measured yet, because it was not plugged in.
 | E-A06 | **Tested** | first realistic P&L PDF about 560 ms including fonts; warm 60.5 ms (49.1–94.9); output verified on the device (D-327 A06) |
 | PDF page ceiling | **Recorded** | about 840 lines / 21 pages; beyond that the export fails safely (`ExportActionError`); fix proposed, not applied |
 
+## Phase 8 Slice 7 — Stress, failure and recovery hardening: **COMPLETE** (2026-10-02)
+
+Decisions **D-328** (inventory and baseline), **D-329** (classification, atomic schema steps, a
+lock is not damage), **D-330** (the reset flow); `ARCHITECTURE.md` §8.2 and §52.10. **No Drift
+schema change** (v22) and **no server change** (ledger 105, reviewed API 57).
+
+### In plain words
+
+If the app cannot open its data on this device it now says why, in plain words, and offers *Try
+again*. Only when the data truly cannot be opened (or updated for this version) does it also
+offer *Reset local data and download again*. That option first says how many unsent entries and
+bills would be lost — or that this cannot be checked — and needs RESET typed. The data is moved
+aside, never deleted. Separately, an app update interrupted part-way can no longer leave the
+data permanently unopenable: it now either completes or changes nothing.
+
+### What was wrong before (reproduced first, D-328)
+
+* A missing key with the data file present **wrote a new key**, then reported "unreadable".
+* Another program holding the file was reported as **"unreadable"**.
+* An interrupted upgrade kept half its steps, and every later start failed for ever.
+* Every failure showed its raw exception text, including file paths.
+
+### Verified
+
+| Item | Status | Evidence |
+|---|---|---|
+| Start-up classification on real failing databases | **Tested** | `local_store_startup_failure_test.dart`, 22: damaged, key missing (no key written), wrong key, malformed key, key store unreadable/unwritable, folder blocked, lock (exclusive, released, busy timeout measured 0), interrupted upgrade (version not advanced, retry succeeds, integrity and FK checks), interrupted creation, cause-first rules, rollback wrapper |
+| Recovery and quarantine | **Tested** | `local_store_recovery_test.dart`, 14: read-only assessment (file unchanged by hash), unknown never zero, moves not deletes, key kept aside and still opens the copy, record holds no key, failed move put back, key store refusal stops first, interrupted reset still safe, every table empty after reset |
+| Start-up and reset screens | **Tested** | `startup_failure_app_test.dart`, 21: every kind worded, no technical text, reset only where permitted, exact RESET, failed reset says so, failed restart after reset shown |
+| Full disk during a save | **Tested** | `storage_full_write_test.dart`, 1: `SQLITE_FULL` via `max_page_count`; no document without its queue entry or the reverse; retry saves once |
+| Positive controls | **Tested** | 12 sabotages, **all RED**, each restored byte-identically |
+| Existing upgrade, schema and encryption suites inside the new transaction | **Tested** | 187 passed |
+| Interrupted writes, response loss, staged reporting, D-070/D-074/D-240 | **Tested (existing)** | already covered; listed in D-329's report; run in the full suite |
+| `dart format` / `flutter analyze` | **Tested** | clean / no issues |
+| Full host suite | **Tested** | **3,134 passed, 0 failed, 0 skipped** (3,068 + 66) |
+| Windows smoke, real `krishna_mis.exe`, isolated acceptance folder | **Tested** | `slice11-restart-a` and `slice11-restart-b` PASS (real DPAPI key, forced open, session restored without sign-in) |
+| Recovery screens in the real executable | **Not tested** | host-tested only; device acceptance is Slice 8 |
+| Secret scan, tree, history, artefacts | **Tested** | clean, after removing the acceptance Debug bundle and `build/flutter_assets` |
+| Genuine low disk on a device | **Not tested** | engine-level `SQLITE_FULL` proven on host; a real full disk is a Phase 9 operational check |
+
+### D-247
+
+Nothing in this slice read, opened, moved or modified the forensic database; every test used its
+own temporary folder and in-memory key store, and the Windows smoke used the acceptance folder.
+**A normal build launched on this workstation would now offer to reset it** (it has no key);
+confirming would move it into quarantine, not delete it. Do not launch a normal build here until
+the D-247 disposal is decided.
+
+### Carried forward
+
+* **To Slice 8:** the recovery screens on Windows and the Galaxy A06; the device capability-loss
+  export check; the D-310 user-switch check on the device; the Windows integration-test
+  missed-tap policy; the two device scroll-drag opt-outs; a v21 → v22 real-device upgrade if a
+  safe path exists.
+* **Proposed, not made:** a short SQLite busy timeout (D-329 §6).
+* **Revenue ledger:** the sync-state filter still runs after the page is cut
+  (`RevenueRepository._mapLedger`). Untouched by this slice; **must be dispositioned before
+  Phase 8 closes.**
