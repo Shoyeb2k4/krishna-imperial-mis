@@ -158,6 +158,14 @@ import 'package:krishna_mis/features/export/export_share.dart';
 import 'package:path_provider/path_provider.dart'
     show getApplicationSupportDirectory;
 import '../test/support/pdf_text.dart';
+import '../test/support/in_memory_secret_storage.dart';
+import '../test/support/expense_ledger_workload.dart' as wl;
+import 'package:krishna_mis/app/startup/startup_failure_app.dart';
+import 'package:krishna_mis/app/startup/startup_runner.dart';
+import 'package:krishna_mis/data/local/database_key_manager.dart';
+import 'package:krishna_mis/data/local/encrypted_database.dart';
+import 'package:krishna_mis/data/local/local_store_recovery.dart';
+import 'package:sqlite3/sqlite3.dart' as sq;
 import '../test/support/xlsx_reader.dart';
 import 'support/pdf_inflate.dart';
 
@@ -577,6 +585,19 @@ void main() {
   }
 
   bool visible(String text) => find.text(text).evaluate().isNotEmpty;
+
+  /// A money figure as a person reads it. `MoneyText` places invisible break marks after
+  /// digit-group commas (D-286), so a literal `textContaining('58,000')` can no longer
+  /// match the paragraph that shows ₹58,000.00.
+  Finder moneyShown(String figure) => find.byWidgetPredicate((widget) {
+    final text = switch (widget) {
+      Text(:final data, :final textSpan) => data ?? textSpan?.toPlainText(),
+      RichText(:final text) => text.toPlainText(),
+      _ => null,
+    };
+    return text != null &&
+        text.replaceAll('​', '').replaceAll('⁠', '').contains(figure);
+  });
 
   /// Named so it cannot be confused with the `contains` *matcher*: shadowing that was
   /// how an assertion about an outbox payload silently became an assertion about the
@@ -2661,7 +2682,10 @@ void main() {
       // "Restart": the database is closed and reopened, which is what an app kill
       // looks like from the data's point of view.
       await boot.database.close();
-      final reopened = await bootstrap(transport: _transport);
+      final reopened = await bootstrap(
+        transport: _transport,
+        appDataDirectory: _acceptanceDataDirectory(),
+      );
       final afterRestart = ExpenseRepository(reopened.database);
       saved = await afterRestart.load(id);
       expect(saved, isNotNull, reason: 'the expense survives being killed');
@@ -3410,7 +3434,10 @@ void main() {
 
       // 5 · And it survives a restart of the application, because staging is a file
       //     and a row, not a field on a widget.
-      final reopened = await bootstrap(transport: _transport);
+      final reopened = await bootstrap(
+        transport: _transport,
+        appDataDirectory: _acceptanceDataDirectory(),
+      );
       addTearDown(() => reopened.database.close());
       final afterRestart = await ExpenseRepository(reopened.database).load(id);
       expect(afterRestart!.attachments, hasLength(1));
@@ -4343,7 +4370,7 @@ void main() {
         find
             .descendant(
               of: find.byType(ExpenseDetailPanel),
-              matching: find.textContaining('58,000'),
+              matching: moneyShown('58,000'),
             )
             .evaluate(),
         isNotEmpty,
@@ -4375,7 +4402,7 @@ void main() {
         find
             .descendant(
               of: find.byType(ExpenseDetailPanel),
-              matching: find.textContaining('58,000'),
+              matching: moneyShown('58,000'),
             )
             .evaluate(),
         isEmpty,
@@ -4384,7 +4411,7 @@ void main() {
         find
             .descendant(
               of: find.byType(ExpenseDetailPanel),
-              matching: find.textContaining('25,000'),
+              matching: moneyShown('25,000'),
             )
             .evaluate(),
         isNotEmpty,
@@ -4458,7 +4485,10 @@ void main() {
 
       // 2 · It survives a restart of the application — the queue is durable, not a
       //     field on a widget.
-      final reopened = await bootstrap(transport: _transport);
+      final reopened = await bootstrap(
+        transport: _transport,
+        appDataDirectory: _acceptanceDataDirectory(),
+      );
       addTearDown(() => reopened.database.close());
       final afterRestart = ExpenseRepository(reopened.database);
       expect(
@@ -5938,7 +5968,7 @@ void main() {
       // The live preview is the record: both come from TaxRule.compute, so a figure the
       // operator approves cannot differ from the one that is stored (D-118).
       expect(
-        visible('₹10,000.00'),
+        moneyShown('₹10,000.00').evaluate().isNotEmpty,
         isTrue,
         reason: '5% of 2,10,000 extracted, not added',
       );
@@ -6337,7 +6367,7 @@ void main() {
         // The draft is gone with the screen; nothing persisted it.
         expect(visible('Correct this sale'), isFalse);
         expect(
-          visible('₹1,50,000.00'),
+          moneyShown('₹1,50,000.00').evaluate().isNotEmpty,
           isFalse,
           reason: 'the next person inherits no unsaved figure',
         );
@@ -7436,7 +7466,10 @@ void main() {
       // that has just been closed. Everything from here is driven through the reopened
       // bootstrap's own components, which is the shipped code either way.
       await boot.database.close();
-      final reopened = await bootstrap(transport: _transport);
+      final reopened = await bootstrap(
+        transport: _transport,
+        appDataDirectory: _acceptanceDataDirectory(),
+      );
       final afterRestart = RevenueRepository(reopened.database);
 
       expect(
@@ -8165,6 +8198,18 @@ void main() {
     'December',
   ];
 
+  /// Moves [scrollable] as a drag of [step] would, without a pointer: a positive dy
+  /// shows content further up, exactly like dragging the page down.
+  void p8ScrollBy(WidgetTester tester, Finder scrollable, Offset step) {
+    final position = tester.state<ScrollableState>(scrollable).position;
+    position.jumpTo(
+      (position.pixels - step.dy).clamp(
+        position.minScrollExtent,
+        position.maxScrollExtent,
+      ),
+    );
+  }
+
   Finder phonePnlScrollable() => find
       .descendant(
         of: find.byKey(const Key('pnl-page')),
@@ -8185,7 +8230,11 @@ void main() {
         i < 60 && finder.evaluate().isEmpty && page.evaluate().isNotEmpty;
         i++
       ) {
-        await tester.drag(phonePnlScrollable(), step, warnIfMissed: false);
+        // Moves the list rather than dragging it: the point is only to make the lazy
+        // list build, and a drag from the list's centre can land on an overlay such as
+        // the docked [ + ] action. No gesture is under test here, so none is made
+        // (Phase 8 Slice 8 removed the tolerated miss this used to carry).
+        p8ScrollBy(tester, phonePnlScrollable(), step);
         await tester.pump(const Duration(milliseconds: 120));
       }
     }
@@ -11366,7 +11415,8 @@ void main() {
         i < 60 && finder.evaluate().isEmpty && page.evaluate().isNotEmpty;
         i++
       ) {
-        await tester.drag(scrollable, step, warnIfMissed: false);
+        // Moved, not dragged: see [p8ScrollBy].
+        p8ScrollBy(tester, scrollable, step);
         await tester.pump(const Duration(milliseconds: 120));
       }
     }
@@ -14255,7 +14305,7 @@ void main() {
         'reports.export, and offers no Excel, print or Export Centre', (tester) async {
       expect(s11Phone(), isTrue, reason: 'run on the Galaxy A06');
       final hostFile =
-          '${(await getApplicationSupportDirectory()).path}/p7host.json';
+          '${(Platform.isWindows ? Directory.systemTemp : await getApplicationSupportDirectory()).path}/p7host.json';
       final cache = await exportShareCacheRoot();
       debugPrint('P7PHONE PATHS host=$hostFile cache=${cache.path}');
       await launch(tester);
@@ -14455,6 +14505,1026 @@ void main() {
         await p6SweepAfter(client);
       }
     });
+  });
+
+  // ── Phase 8 Slice 8: integrated acceptance ─────────────────────────────────────
+  //
+  // Five phases for what no earlier phase covers. None touches the machine's ordinary
+  // application data folder (D-247): the recovery and migration phases work in their own
+  // disposable folders with an in-memory key store, and every other phase uses the
+  // harness's isolated installation.
+
+  /// Every piece of text on screen, for the "no technical text" assertions.
+  List<String> p8Texts(WidgetTester tester) => [
+    for (final t in tester.widgetList<Text>(find.byType(Text)))
+      t.data ?? t.textSpan?.toPlainText() ?? '',
+    for (final t in tester.widgetList<EditableText>(find.byType(EditableText)))
+      t.controller.text,
+  ];
+
+  /// Raw technical detail a person must never be shown (D-329).
+  void p8ExpectPlainWords(WidgetTester tester, List<String> forbidden) {
+    final shown = p8Texts(tester).join('\n');
+    for (final f in [
+      'Sqlite',
+      'SQLITE',
+      'sqlite',
+      'drift',
+      'Drift',
+      'Exception',
+      'database is locked',
+      'not a database',
+      'StackTrace',
+      ...forbidden,
+    ]) {
+      expect(shown, isNot(contains(f)), reason: 'raw text on screen: $f');
+    }
+  }
+
+  Directory p8Disposable(String name) => Directory(
+    '${Directory.systemTemp.path}${Platform.pathSeparator}'
+    'krishna_mis_p8_${name}_${DateTime.now().millisecondsSinceEpoch}',
+  )..createSync(recursive: true);
+
+  String p8Digest(File file) {
+    final bytes = file.readAsBytesSync();
+    var h = 0;
+    for (final b in bytes) {
+      h = (h * 31 + b) & 0x3fffffff;
+    }
+    return '${bytes.length}:$h';
+  }
+
+  // ── p8-revenue-ledger: D-331 in the running application ───────────────────────
+
+  group('p8-revenue-ledger', skip: _phase != 'p8-revenue-ledger', () {
+    testWidgets('a sync-state filter reaches every matching sale, page by page, in the '
+        'real application', (tester) async {
+      await launch(tester);
+      final container = await p6SignIn(tester, 'giridhar@hki.com');
+      final ownerId = container.read(principalProvider).userId;
+      final db = boot.database;
+
+      // A local fixture: 60 synced sales in front of 75 conflicts, so the conflicts
+      // start beyond the first page and run past the second. Local only, keyed
+      // `p8fix-`, and removed in `finally`; nothing here reaches the server.
+      final org =
+          (await db
+                      .customSelect(
+                        'SELECT org_id FROM business_units WHERE id = ?',
+                        variables: [Variable<String>(_ccr)],
+                      )
+                      .getSingle())
+                  .data['org_id']!
+              as String;
+      Future<String> category(String unit) async =>
+          (await db
+                      .customSelect(
+                        'SELECT id FROM revenue_categories WHERE business_unit_id = ? '
+                        'AND archived_at IS NULL ORDER BY code LIMIT 1',
+                        variables: [Variable<String>(unit)],
+                      )
+                      .getSingle())
+                  .data['id']!
+              as String;
+      final ccrCategory = await category(_ccr);
+      final hkiCategory = await category(_hki);
+
+      Future<void> clean() async {
+        await db.customStatement(
+          "DELETE FROM sync_outbox WHERE mutation_id LIKE 'p8fix-%'",
+        );
+        await db.customStatement(
+          "DELETE FROM revenue_components WHERE revenue_entry_id LIKE 'p8fix-%'",
+        );
+        await db.customStatement(
+          "DELETE FROM revenue_entries WHERE id LIKE 'p8fix-%'",
+        );
+      }
+
+      await clean();
+      final fixtureConflicts = <String>{};
+      try {
+        await db.transaction(() async {
+          for (var i = 0; i < 135; i++) {
+            final conflict = i < 75;
+            final id = 'p8fix-${i.toString().padLeft(4, '0')}';
+            final date = conflict
+                ? '2027-02-${(1 + i % 28).toString().padLeft(2, '0')}'
+                : '2027-03-${(1 + i % 28).toString().padLeft(2, '0')}';
+            final hki = i % 3 == 0;
+            await db.customStatement(
+              'INSERT INTO revenue_entries (id, org_id, business_unit_id, '
+              'revenue_category_id, business_date, pnl_period_key, captured_at, '
+              'entry_kind, created_by, txn_number, financial_year, '
+              'pending_mutation_id, row_version, updated_at) '
+              "VALUES (?, ?, ?, ?, ?, ?, ?, 'daily_summary', ?, ?, '2026-27', ?, 1, ?)",
+              [
+                id,
+                org,
+                hki ? _hki : _ccr,
+                hki ? hkiCategory : ccrCategory,
+                date,
+                date.substring(0, 7),
+                '${date}T10:00:00.000Z',
+                ownerId,
+                'KI-REV-P8-${i.toString().padLeft(6, '0')}',
+                conflict ? id : null,
+                '2026-10-02T00:00:00.000Z',
+              ],
+            );
+            await db.customStatement(
+              'INSERT INTO revenue_components (id, org_id, revenue_entry_id, '
+              'entered_amount_minor, entered_basis, gross_amount_minor, '
+              'tax_amount_minor, net_amount_minor, tax_rule_id, '
+              'tax_rate_basis_points, tax_treatment) '
+              "VALUES (?, ?, ?, 105000, 'inclusive_total', 105000, 5000, 100000, "
+              "'p8-rule', 500, 'inclusive')",
+              ['$id-c0', org, id],
+            );
+            if (conflict) {
+              fixtureConflicts.add(id);
+              await db.customStatement(
+                'INSERT INTO sync_outbox (mutation_id, actor_user_id, entity_type, '
+                'entity_id, op, payload, next_attempt_at, status, created_at, '
+                'attempt_count) '
+                "VALUES (?, ?, ?, ?, 'update', '{}', ?, 'conflict', ?, 0)",
+                [
+                  id,
+                  ownerId,
+                  revenueEntityType,
+                  id,
+                  '2026-10-02T00:00:00.000Z',
+                  '2026-10-02T00:00:00.000Z',
+                ],
+              );
+            }
+          }
+        });
+
+        final repository = RevenueRepository(db);
+        final scope = container.read(revenueFilterProvider).businessUnitIds;
+        final conflictFilter = RevenueFilter(
+          businessUnitIds: scope,
+          syncState: SyncState.conflict,
+        );
+        final expectedAll = <String>[];
+        for (var page = 0; ; page++) {
+          final rows = await repository.query(
+            conflictFilter,
+            limit: revenuePageSize,
+            offset: page * revenuePageSize,
+          );
+          expectedAll.addAll(rows.map((r) => r.id));
+          if (rows.length < revenuePageSize) break;
+        }
+        debugPrint(
+          'P8 LEDGER conflicts in scope: ${expectedAll.length} '
+          '(fixture ${fixtureConflicts.length})',
+        );
+        expect(expectedAll.toSet().containsAll(fixtureConflicts), isTrue);
+
+        List<String> shown() => [
+          for (final r in container.read(filteredRevenueProvider).value ?? [])
+            r.id,
+        ];
+
+        final seen = <String>[];
+        if (p6Phone()) {
+          // The phone has no Sales ledger page; the same providers run in this process.
+          container
+              .read(revenueFilterProvider.notifier)
+              .update(
+                container
+                    .read(revenueFilterProvider)
+                    .copyWith(syncState: SyncState.conflict),
+              );
+          final keepAlive = [
+            container.listen(filteredRevenueProvider, (_, _) {}),
+            container.listen(revenueHasMoreProvider, (_, _) {}),
+          ];
+          for (var page = 0; ; page++) {
+            await pumpUntil(
+              tester,
+              'conflict page ${page + 1}',
+              () =>
+                  container.read(revenuePageProvider) == page &&
+                  container.read(filteredRevenueProvider).hasValue &&
+                  !container.read(filteredRevenueProvider).isLoading &&
+                  container.read(revenueHasMoreProvider).hasValue &&
+                  !container.read(revenueHasMoreProvider).isLoading,
+            );
+            expect(
+              shown(),
+              expectedAll.skip(page * revenuePageSize).take(revenuePageSize),
+            );
+            seen.addAll(shown());
+            if (!container.read(revenueHasMoreProvider).value!) break;
+            container.read(revenuePageProvider.notifier).next();
+          }
+          for (final s in keepAlive) {
+            s.close();
+          }
+        } else {
+          await openRevenueLedger(tester);
+          final status = find.byKey(const Key('revenue-filter-status'));
+          await tester.ensureVisible(status);
+          await tapWhenHittable(tester, status);
+          await tester.pump(const Duration(milliseconds: 600));
+          await tapWhenHittable(
+            tester,
+            find.text(SyncState.conflict.label).last,
+          );
+          for (var page = 0; ; page++) {
+            await pumpUntil(
+              tester,
+              'conflict page ${page + 1} on screen',
+              () =>
+                  container.read(revenueFilterProvider).syncState ==
+                      SyncState.conflict &&
+                  showsText('Page ${page + 1}') &&
+                  container.read(filteredRevenueProvider).hasValue &&
+                  !container.read(filteredRevenueProvider).isLoading &&
+                  container.read(revenueHasMoreProvider).hasValue &&
+                  !container.read(revenueHasMoreProvider).isLoading,
+            );
+            final ids = shown();
+            expect(
+              ids,
+              expectedAll.skip(page * revenuePageSize).take(revenuePageSize),
+              reason: 'page ${page + 1} is the canonical continuation',
+            );
+            expect(
+              find.byKey(Key('revenue-ledger-row-${ids.first}')),
+              findsOneWidget,
+              reason: 'the page is on screen',
+            );
+            seen.addAll(ids);
+            final next = tester.widget<IconButton>(
+              find.byKey(const Key('revenue-page-next')),
+            );
+            if (next.onPressed == null) break;
+            await tapWhenHittable(
+              tester,
+              find.byKey(const Key('revenue-page-next')),
+            );
+          }
+          // Clearing the filters returns to the whole ledger, from page one.
+          await tapWhenHittable(
+            tester,
+            find.byKey(const Key('revenue-filter-reset')),
+          );
+          await pumpUntil(
+            tester,
+            'the whole ledger again',
+            () =>
+                container.read(revenueFilterProvider).syncState == null &&
+                showsText('Page 1') &&
+                container.read(filteredRevenueProvider).hasValue &&
+                !container.read(filteredRevenueProvider).isLoading,
+          );
+          final whole = await repository.query(
+            RevenueFilter(businessUnitIds: scope),
+            limit: revenuePageSize,
+          );
+          expect(shown(), whole.map((r) => r.id).toList());
+        }
+
+        expect(seen, expectedAll, reason: 'every conflict, in order');
+        expect(seen.toSet(), hasLength(seen.length), reason: 'no duplicate');
+        expect(seen.length, greaterThan(revenuePageSize));
+        debugPrint('P8 LEDGER walked ${seen.length} conflicts across pages');
+      } finally {
+        await clean();
+      }
+    });
+  });
+
+  // ── p8-double-submit: D-326 in the running application ────────────────────────
+
+  group('p8-double-submit', skip: _phase != 'p8-double-submit', () {
+    testWidgets('a second Save press before the next frame records nothing more, for a '
+        'sale and for an expense', (tester) async {
+      await launch(tester);
+      await p6SignIn(tester, 'giridhar@hki.com');
+      final client = Supabase.instance.client;
+      final stamp = DateTime.now().millisecondsSinceEpoch;
+
+      // ── A sale ─────────────────────────────────────────────────────────────
+      final saleMarker = '$_acceptanceMarker p8 double sale $stamp';
+      if (p6Phone()) {
+        await openRevenueEntry(tester);
+      } else {
+        await openRevenueLedger(tester);
+        await revealAndTap(tester, const Key('add-revenue'));
+        await tester.pump(const Duration(milliseconds: 900));
+        await pumpUntil(
+          tester,
+          'the sales entry screen',
+          () => visible('Sales category') || visible('Property'),
+        );
+      }
+      final unitChip = find.byKey(const Key('revenue-unit-CCR'));
+      if (unitChip.evaluate().isNotEmpty) {
+        await tester.tap(unitChip);
+        await tester.pump(const Duration(milliseconds: 600));
+      }
+      await pumpUntil(
+        tester,
+        'the Restaurant category',
+        () => find
+            .byKey(const Key('revenue-category-RESTAURANT'))
+            .evaluate()
+            .isNotEmpty,
+      );
+      await tester.tap(find.byKey(const Key('revenue-category-RESTAURANT')));
+      await tester.pump(const Duration(milliseconds: 800));
+      await tester.enterText(find.byType(TextField).first, '1234');
+      await tester.pump(const Duration(milliseconds: 400));
+      await openRevenueMoreDetails(tester);
+      await tester.enterText(
+        find.byKey(const Key('revenue-notes')),
+        saleMarker,
+      );
+      await tester.pump(const Duration(milliseconds: 400));
+
+      final salesBefore = await RevenueRepository(boot.database).list();
+      final saveSale = find.byKey(const Key('revenue-save'));
+      if (saveSale.evaluate().isEmpty) {
+        await tester.scrollUntilVisible(
+          saveSale,
+          200,
+          scrollable: find.byType(Scrollable).first,
+          maxScrolls: 40,
+        );
+      }
+      await tester.ensureVisible(saveSale);
+      await pumpUntil(
+        tester,
+        'Save to be hittable',
+        () => saveSale.hitTestable().evaluate().isNotEmpty,
+      );
+      // Two presses with no frame between them: what a janking device delivers.
+      await tester.tap(saveSale.hitTestable());
+      await tester.tap(saveSale.hitTestable());
+      await tester.pump(const Duration(seconds: 3));
+      expect(tester.takeException(), isNull, reason: 'nothing escaped');
+      final salesAfter = await RevenueRepository(boot.database).list();
+      final newSales = salesAfter
+          .where((r) => !salesBefore.any((b) => b.id == r.id))
+          .toList();
+      expect(newSales, hasLength(1), reason: 'two presses, one sale');
+      if (p6Phone()) {
+        await syncRevenueUntilNumbered(tester, newSales.single.id);
+      } else {
+        await syncRevenueOnWindows(tester, newSales.single.id);
+      }
+      final serverSales = await client
+          .from('revenue_document')
+          .select('id')
+          .like('notes', saleMarker);
+      expect(serverSales, hasLength(1), reason: 'one sale on the server');
+      debugPrint('P8 DOUBLE SALE: 1 local, 1 server');
+
+      // ── An expense ─────────────────────────────────────────────────────────
+      for (var i = 0; i < 4; i++) {
+        final nav = tester.state<NavigatorState>(find.byType(Navigator).first);
+        if (!nav.canPop()) break;
+        nav.pop();
+        await tester.pump(const Duration(milliseconds: 700));
+      }
+      final expenseNote = 'p8 double expense $stamp';
+      if (!p6Phone()) {
+        // The sale left Transactions on its Sales tab; the expense action is on the
+        // Expenses tab.
+        await tester.tap(find.text('Transactions').last);
+        await tester.pump(const Duration(milliseconds: 600));
+        await pumpUntil(
+          tester,
+          'the Expenses / Sales tabs',
+          () =>
+              find.byKey(const Key('transactions-tabs')).evaluate().isNotEmpty,
+        );
+        await tester.tap(find.text('Expenses').last);
+        await tester.pump(const Duration(milliseconds: 800));
+      }
+      await openExpenseEntry(tester);
+      await tester.enterText(find.byKey(const Key('expense-amount')), '777');
+      await tester.pump(const Duration(milliseconds: 300));
+      await openMoreDetails(tester);
+      await tester.pump(const Duration(milliseconds: 600));
+      await pumpUntil(
+        tester,
+        'the notes field',
+        () => find.byKey(const Key('expense-notes')).evaluate().isNotEmpty,
+      );
+      await tester.enterText(
+        find.byKey(const Key('expense-notes')),
+        '$_acceptanceMarker: $expenseNote',
+      );
+      await tester.pump(const Duration(milliseconds: 300));
+      await openMoreDetails(tester);
+      await tester.pump(const Duration(milliseconds: 500));
+      await classify(tester, const [
+        'Crystal Canopy Rooftop',
+        'F&B / Kitchen',
+        'Food Production',
+        'Vegetables & Fruits',
+      ]);
+      await pumpUntil(tester, 'Save to be enabled', () => saveEnabled(tester));
+
+      final expensesBefore =
+          (await boot.database.select(boot.database.expenses).get())
+              .map((e) => e.id)
+              .toSet();
+      Future<List<String>> createdExpenses() async =>
+          (await boot.database.select(boot.database.expenses).get())
+              .map((e) => e.id)
+              .where((id) => !expensesBefore.contains(id))
+              .toList();
+      final saveExpense = find.byKey(const Key('save-expense'));
+      await pumpUntil(
+        tester,
+        'Save to be hittable',
+        () => saveExpense.hitTestable().evaluate().isNotEmpty,
+      );
+      await tester.tap(saveExpense.hitTestable());
+      await tester.tap(saveExpense.hitTestable());
+      var created = <String>[];
+      final deadline = DateTime.now().add(const Duration(seconds: 30));
+      while (DateTime.now().isBefore(deadline) && created.isEmpty) {
+        await tester.pump(const Duration(milliseconds: 250));
+        created = await createdExpenses();
+      }
+      await tester.pump(const Duration(seconds: 3));
+      expect(tester.takeException(), isNull, reason: 'nothing escaped');
+      created = await createdExpenses();
+      expect(created, hasLength(1), reason: 'two presses, one expense');
+      await syncAndAwaitNumber(tester, created.single);
+      final serverExpenses = await client
+          .from('expense_document')
+          .select('id')
+          .like('notes', '%$expenseNote%');
+      expect(serverExpenses, hasLength(1), reason: 'one expense on the server');
+      debugPrint('P8 DOUBLE EXPENSE: 1 local, 1 server');
+    });
+  });
+
+  // ── p8-recovery: the start-up failure and reset screens, for real ─────────────
+
+  group('p8-recovery', skip: _phase != 'p8-recovery', () {
+    testWidgets(
+      'a lock offers Try again only; damaged data offers a reset behind typed '
+      'RESET; cancel changes nothing; the data is set aside, not erased; a failed '
+      'restart stays recoverable',
+      (tester) async {
+        final dir = p8Disposable('recovery');
+        final dbFile = File(
+          '${dir.path}${Platform.pathSeparator}krishna_mis.db',
+        );
+        final storage = InMemorySecretStorage();
+        const keyName = 'krishna_mis.p8-recovery.db_key.v1';
+        DatabaseKeyManager keys() =>
+            DatabaseKeyManager(storage: storage, keyName: keyName);
+
+        final current = ValueNotifier<Widget>(const SizedBox());
+        sq.Database? lockHolder;
+        Object? failNextBoot;
+        AppDatabase? started;
+        final runner = StartupRunner(
+          boot: () async {
+            final failure = failNextBoot;
+            failNextBoot = null;
+            if (failure != null) throw failure;
+            started = await openLocalStore(keyManager: keys(), directory: dir);
+            return boot;
+          },
+          run: (widget) => current.value = widget,
+          appFor: (_) => const MaterialApp(
+            home: Scaffold(
+              body: Center(child: Text('P8 started', key: Key('p8-started'))),
+            ),
+          ),
+          recoveryFor: (failure) async => LocalStoreRecoveryActions(
+            LocalStoreRecovery(directory: dir, keyManager: keys()),
+            reason: failure.kind,
+          ),
+        );
+        await tester.pumpWidget(
+          ValueListenableBuilder<Widget>(
+            valueListenable: current,
+            builder: (_, widget, _) => widget,
+          ),
+        );
+        bool has(String key) => find.byKey(Key(key)).evaluate().isNotEmpty;
+        Future<void> settleOn(String key) =>
+            pumpUntil(tester, 'the $key screen', () => has(key));
+        Future<void> closeStarted() async {
+          await started?.close();
+          started = null;
+        }
+
+        String title() => tester
+            .widget<Text>(find.byKey(const Key('startup-failure-title')))
+            .data!;
+        String reference() => tester
+            .widget<Text>(find.byKey(const Key('startup-failure-reference')))
+            .data!;
+
+        try {
+          // ── A healthy start, to have a real encrypted file ─────────────────────
+          await runner.start();
+          await settleOn('p8-started');
+          await closeStarted();
+
+          // ── Another holder of the file: in use, retry only ─────────────────────
+          final holder = sq.sqlite3.open(dbFile.path);
+          applyEncryptionKey(holder, (await storage.read(key: keyName))!);
+          holder.execute('BEGIN EXCLUSIVE');
+          lockHolder = holder;
+          await runner.start();
+          await tester.pump(const Duration(milliseconds: 500));
+          debugPrint(
+            'P8 RECOVERY under lock: opened=${started != null} '
+            'screen=${p8Texts(tester).take(6).join(' | ')}',
+          );
+          await settleOn('startup-failure-title');
+          expect(has('startup-try-again'), isTrue);
+          expect(
+            has('startup-open-reset'),
+            isFalse,
+            reason: 'a lock is not damage',
+          );
+          p8ExpectPlainWords(tester, [dir.path]);
+          debugPrint('P8 RECOVERY in use: ${title()} | ${reference()}');
+          holder.execute('ROLLBACK');
+          holder.close();
+          lockHolder = null;
+          await tapWhenHittable(
+            tester,
+            find.byKey(const Key('startup-try-again')),
+          );
+          await settleOn('p8-started');
+          await closeStarted();
+
+          // ── Damaged bytes: reset offered, behind typed RESET ──────────────────
+          for (final suffix in ['-wal', '-shm']) {
+            final side = File('${dbFile.path}$suffix');
+            if (side.existsSync()) side.deleteSync();
+          }
+          dbFile.writeAsBytesSync(
+            List<int>.generate(65536, (i) => (i * 7919 + 13) & 0xff),
+          );
+          final damaged = p8Digest(dbFile);
+          await runner.start();
+          await settleOn('startup-open-reset');
+          expect(has('startup-try-again'), isTrue);
+          p8ExpectPlainWords(tester, [dir.path]);
+          debugPrint('P8 RECOVERY damaged: ${title()} | ${reference()}');
+
+          await tapWhenHittable(
+            tester,
+            find.byKey(const Key('startup-open-reset')),
+          );
+          await settleOn('reset-confirmation-field');
+          String statement() => tester
+              .widget<Text>(find.byKey(const Key('reset-unsynced-statement')))
+              .data!;
+          await pumpUntil(
+            tester,
+            'the unsent-work statement',
+            () => !statement().startsWith('Checking'),
+          );
+          expect(
+            statement(),
+            contains('may be lost'),
+            reason: 'unreadable data is never "nothing to lose"',
+          );
+          FilledButton confirm() => tester.widget<FilledButton>(
+            find.byKey(const Key('reset-confirm')),
+          );
+          expect(confirm().onPressed, isNull, reason: 'nothing typed');
+          await tester.enterText(
+            find.byKey(const Key('reset-confirmation-field')),
+            'reset',
+          );
+          await tester.pump();
+          expect(confirm().onPressed, isNull, reason: 'lower case is refused');
+          await tester.enterText(
+            find.byKey(const Key('reset-confirmation-field')),
+            'RESET ',
+          );
+          await tester.pump();
+          expect(
+            confirm().onPressed,
+            isNotNull,
+            reason: 'RESET, spaces ignored',
+          );
+
+          // Cancel: nothing moves.
+          await tapWhenHittable(tester, find.byKey(const Key('reset-cancel')));
+          await settleOn('startup-open-reset');
+          await tester.pump(const Duration(milliseconds: 500));
+          expect(p8Digest(dbFile), damaged, reason: 'cancel changed nothing');
+          final recoveryDir = Directory(
+            '${dir.path}${Platform.pathSeparator}recovery',
+          );
+          expect(
+            recoveryDir.existsSync() && recoveryDir.listSync().isNotEmpty,
+            isFalse,
+            reason: 'nothing set aside on cancel',
+          );
+
+          // Confirm, and make the restart after it fail too.
+          await tapWhenHittable(
+            tester,
+            find.byKey(const Key('startup-open-reset')),
+          );
+          await settleOn('reset-confirmation-field');
+          await tester.enterText(
+            find.byKey(const Key('reset-confirmation-field')),
+            'RESET',
+          );
+          await tester.pump();
+          failNextBoot = FileSystemException('p8 simulated failure', dir.path);
+          await tapWhenHittable(tester, find.byKey(const Key('reset-confirm')));
+          await pumpUntil(
+            tester,
+            'the failed restart to be shown',
+            () =>
+                has('startup-failure-title') &&
+                !has('reset-confirmation-field'),
+          );
+          expect(has('startup-try-again'), isTrue);
+          expect(
+            has('startup-open-reset'),
+            isFalse,
+            reason: 'a storage failure is not damage',
+          );
+          p8ExpectPlainWords(tester, [dir.path, 'p8 simulated']);
+          debugPrint('P8 RECOVERY failed restart: ${title()} | ${reference()}');
+
+          final quarantine = recoveryDir
+              .listSync()
+              .whereType<Directory>()
+              .single;
+          final setAside = File(
+            '${quarantine.path}${Platform.pathSeparator}krishna_mis.db',
+          );
+          expect(setAside.existsSync(), isTrue, reason: 'set aside');
+          expect(p8Digest(setAside), damaged, reason: 'the same bytes, moved');
+          expect(
+            dbFile.existsSync(),
+            isFalse,
+            reason: 'no active database yet',
+          );
+          final record = File(
+            '${quarantine.path}${Platform.pathSeparator}recovery.json',
+          ).readAsStringSync();
+          // The key is kept aside under its own entry, named for the folder (D-330).
+          final id = quarantine.path
+              .split(Platform.pathSeparator)
+              .last
+              .substring('quarantine-'.length);
+          final keptKey = await storage.read(key: '$keyName.quarantine.$id');
+          expect(keptKey, isNotNull, reason: 'the key is set aside too');
+          expect(record, isNot(contains(keptKey!)), reason: 'no key in it');
+          expect(
+            await storage.read(key: keyName),
+            isNull,
+            reason: 'key set aside',
+          );
+
+          // Try again: a fresh, empty database at the current schema.
+          await tapWhenHittable(
+            tester,
+            find.byKey(const Key('startup-try-again')),
+          );
+          await settleOn('p8-started');
+          final version = await started!
+              .customSelect('PRAGMA user_version')
+              .getSingle();
+          expect(version.data.values.single, started!.schemaVersion);
+          final outbox = await started!
+              .customSelect('SELECT COUNT(*) AS n FROM sync_outbox')
+              .getSingle();
+          expect(outbox.data['n'], 0, reason: 'nothing of the old data');
+          debugPrint(
+            'P8 RECOVERY reset: set aside to ${quarantine.path.split(Platform.pathSeparator).last} '
+            '(its key kept aside); fresh v${version.data.values.single}',
+          );
+          await closeStarted();
+        } finally {
+          try {
+            lockHolder?.execute('ROLLBACK');
+          } on Object {
+            // nothing open
+          }
+          lockHolder?.close();
+          await closeStarted();
+          try {
+            dir.deleteSync(recursive: true);
+          } on Object {
+            debugPrint('P8 RECOVERY could not remove ${dir.path}');
+          }
+        }
+      },
+    );
+  });
+
+  // ── p8-migration: v21 → v22 on a production-shaped copy ───────────────────────
+
+  group('p8-migration', skip: _phase != 'p8-migration', () {
+    testWidgets(
+      "a copy of this installation's synced database, taken back to v21, "
+      'upgrades to v22 in the running application and keeps every row',
+      (tester) async {
+        await launch(tester);
+        final container = await p6SignIn(tester, 'giridhar@hki.com');
+        // The reporting cache too, so the copy is what a working device holds.
+        await openPnl(tester, container);
+        await refreshPnl(tester, container);
+
+        final dir = p8Disposable('migration');
+        final storage = InMemorySecretStorage();
+        DatabaseKeyManager keys() => DatabaseKeyManager(
+          storage: storage,
+          keyName: 'krishna_mis.p8-mig.v1',
+        );
+        const v22Indexes = [
+          'ix_expense_allocations_expense',
+          'ix_expense_period_allocations_expense',
+          'ix_expense_attachments_expense',
+          'ix_expenses_ledger',
+        ];
+        try {
+          final target = await openLocalStore(
+            keyManager: keys(),
+            directory: dir,
+          );
+          final tables = [
+            for (final r
+                in await target
+                    .customSelect(
+                      "SELECT name FROM sqlite_master WHERE type = 'table' "
+                      "AND name NOT LIKE 'sqlite_%' ORDER BY name",
+                    )
+                    .get())
+              r.data['name']! as String,
+          ];
+          final counts = <String, int>{};
+          await target.customStatement('PRAGMA foreign_keys = OFF');
+          await target.transaction(() async {
+            for (final t in tables) {
+              await target.customStatement('DELETE FROM "$t"');
+              final rows = await boot.database
+                  .customSelect('SELECT * FROM "$t"')
+                  .get();
+              for (final r in rows) {
+                final cols = r.data.keys.toList();
+                await target.customStatement(
+                  'INSERT INTO "$t" (${cols.map((c) => '"$c"').join(', ')}) '
+                  'VALUES (${List.filled(cols.length, '?').join(', ')})',
+                  [for (final c in cols) r.data[c]],
+                );
+              }
+              counts[t] = rows.length;
+            }
+          });
+          await target.customStatement('PRAGMA foreign_keys = ON');
+          // Sign-out purges financial documents from this installation, so add the
+          // CURRENT-shaped expense ledger (2,276 documents with lines, period rows,
+          // attachments and queued work) the v22 indexes exist to serve (D-323).
+          final orgId =
+              (await target
+                          .customSelect(
+                            'SELECT org_id FROM business_units LIMIT 1',
+                          )
+                          .getSingle())
+                      .data['org_id']!
+                  as String;
+          final seeded = await wl.seedExpenseLedgerFixture(
+            target,
+            documents: wl.LedgerDatasetClass.current.documents,
+            years: 1,
+            orgId: orgId,
+          );
+          debugPrint('P8 MIGRATION added the CURRENT expense ledger: $seeded');
+          for (final t in const [
+            'expenses',
+            'expense_allocations',
+            'expense_period_allocations',
+            'expense_attachments',
+            'sync_outbox',
+          ]) {
+            counts[t] =
+                (await target
+                            .customSelect('SELECT COUNT(*) AS n FROM "$t"')
+                            .getSingle())
+                        .data['n']!
+                    as int;
+          }
+          final firstPageBeforeUpgrade = await ExpenseRepository(
+            target,
+          ).query(const ExpenseFilter(), limit: 50);
+          expect(firstPageBeforeUpgrade, hasLength(50));
+          final total = counts.values.fold<int>(0, (a, b) => a + b);
+          debugPrint(
+            'P8 MIGRATION copied $total rows over ${tables.length} tables: '
+            'expenses ${counts['expenses']}, revenue ${counts['revenue_entries']}, '
+            'reporting ${(counts['reporting_revenue_contributions'] ?? 0) + (counts['reporting_expense_contributions'] ?? 0)}',
+          );
+          expect(total, greaterThan(0));
+
+          // Back to v21: v22 added exactly these four indexes (D-323).
+          for (final index in v22Indexes) {
+            await target.customStatement('DROP INDEX IF EXISTS $index');
+          }
+          await target.customStatement('PRAGMA user_version = 21');
+          await target.close();
+
+          final watch = Stopwatch()..start();
+          final upgraded = await openLocalStore(
+            keyManager: keys(),
+            directory: dir,
+          );
+          watch.stop();
+          try {
+            final version = await upgraded
+                .customSelect('PRAGMA user_version')
+                .getSingle();
+            expect(version.data.values.single, 22);
+            final indexes = {
+              for (final r
+                  in await upgraded
+                      .customSelect(
+                        "SELECT name FROM sqlite_master WHERE type = 'index'",
+                      )
+                      .get())
+                r.data['name']! as String,
+            };
+            expect(indexes.containsAll(v22Indexes), isTrue);
+            for (final t in tables) {
+              final n = await upgraded
+                  .customSelect('SELECT COUNT(*) AS n FROM "$t"')
+                  .getSingle();
+              expect(n.data['n'], counts[t], reason: '$t keeps every row');
+            }
+            final integrity = await upgraded
+                .customSelect('PRAGMA integrity_check')
+                .get();
+            expect(integrity.single.data.values.single, 'ok');
+            expect(
+              await upgraded.customSelect('PRAGMA foreign_key_check').get(),
+              isEmpty,
+            );
+            final before = firstPageBeforeUpgrade;
+            final after = await ExpenseRepository(
+              upgraded,
+            ).query(const ExpenseFilter(), limit: 50);
+            expect(
+              after.map((e) => e.row.id).toList(),
+              before.map((e) => e.row.id).toList(),
+              reason: 'the upgraded ledger reads the same first page',
+            );
+            debugPrint(
+              'P8 MIGRATION v21->v22 in ${watch.elapsedMilliseconds} ms; '
+              '$total rows kept; integrity ok; first ledger page equal',
+            );
+          } finally {
+            await upgraded.close();
+          }
+        } finally {
+          try {
+            dir.deleteSync(recursive: true);
+          } on Object {
+            debugPrint('P8 MIGRATION could not remove ${dir.path}');
+          }
+        }
+      },
+    );
+  });
+
+  // ── p8-windows-export: the native dialogs, driven by a host script ────────────
+
+  group('p8-windows-export', skip: _phase != 'p8-windows-export', () {
+    testWidgets(
+      'Save As and Print through the real native dialogs, online and offline, '
+      'and the files equal the screen to the paisa',
+      (tester) async {
+        expect(p6Phone(), isFalse, reason: 'run on Windows');
+        expect(p7Out, isNotEmpty, reason: 'P7_OUT names a folder');
+        expect(p7StatusFile, isNotEmpty, reason: 'P7_STATUS names a file');
+        final out = Directory(p7Out)..createSync(recursive: true);
+        expect(out.listSync(), isEmpty, reason: 'P7_OUT starts empty');
+
+        await launch(tester, recorders: p7Recorders());
+        final container = await p6SignIn(tester, 'giridhar@hki.com');
+        final client = Supabase.instance.client;
+        await sweepPnlFixtures(client, marker: p6Marker);
+        try {
+          final ids = await p6Fixtures(client);
+          await openPnl(tester, container);
+          await chooseCustom(tester, container, p6From.iso, p6To.iso);
+          await refreshPnl(tester, container);
+          expectPnlMatchesServer(
+            tester,
+            container,
+            await serverPnl(client, [_ccr, _hki], p6From.iso, p6To.iso),
+          );
+          final pnl = computedPnl(container);
+          await p6OpenOverview(tester, container);
+          await p6Custom(tester, container, p6From, p6To);
+          await p6Refresh(tester, container);
+          final dash = p6Ready(container).view.resultOrNull!;
+
+          await p7OpenExportCentre(tester);
+          Future<Uint8List> save(String key, String file) async => p7Saved(
+            await p7Act(
+              tester,
+              container,
+              key,
+              'save $file',
+              'SAVE|${p7Path(file)}',
+            ),
+          );
+
+          final pdf = await save('export-profitAndLoss-pdf', 'p8-pnl.pdf');
+          final xlsx = await save('export-profitAndLoss-xlsx', 'p8-pnl.xlsx');
+          final forbidden = [_ccr, _hki, ids.sale, p6Marker, 'reports.export'];
+          p7ExpectFigures('P&L', pdf, xlsx, [
+            pnl.grossSales,
+            pnl.gst,
+            pnl.netSales,
+            pnl.expenses,
+            pnl.operatingProfit,
+          ], forbidden: forbidden);
+          final revPdf = await save(
+            'export-revenueAnalysis-pdf',
+            'p8-revenue.pdf',
+          );
+          final revXlsx = await save(
+            'export-revenueAnalysis-xlsx',
+            'p8-revenue.xlsx',
+          );
+          p7ExpectFigures('Revenue Analysis', revPdf, revXlsx, [
+            dash.grossSales,
+            dash.gst,
+            dash.netSales,
+          ], forbidden: forbidden);
+
+          final listing = p7Listing();
+          final cancelled = await p7Act(
+            tester,
+            container,
+            'export-profitAndLoss-pdf',
+            'cancel',
+            'CANCEL',
+          );
+          expect(cancelled, isA<ExportActionCancelled>());
+          expect(p7Listing(), listing, reason: 'a cancel writes nothing');
+
+          final printed = await p7Act(
+            tester,
+            container,
+            'export-profitAndLoss-print',
+            'print pnl',
+            'PRINT|${p7Path('p8-printed-pnl.pdf')}',
+          );
+          expect(printed, isA<ExportActionHandedOver>());
+          expect(
+            p7WithoutGenerated(p7Printed.last),
+            p7WithoutGenerated(pdf),
+            reason: 'print receives the Save PDF document',
+          );
+          await pumpUntil(tester, 'the printed file', () {
+            final f = File(p7Path('p8-printed-pnl.pdf'));
+            return f.existsSync() && f.lengthSync() > 0;
+          }, timeout: const Duration(seconds: 60));
+
+          // After a print, Save As still opens (D-308); and offline too (D-299).
+          _transport.online = false;
+          final offline = await save(
+            'export-profitAndLoss-xlsx',
+            'p8-offline-pnl.xlsx',
+          );
+          p7ExpectFigures('offline P&L', pdf, offline, [
+            pnl.netSales,
+            pnl.operatingProfit,
+          ]);
+          _transport.online = true;
+          expect(
+            p7Listing().where((n) => n.contains('.part')),
+            isEmpty,
+            reason: 'no temporary file left',
+          );
+          p7Say('done', 'phase finished; ${p7Listing().length} files');
+        } finally {
+          _transport.online = true;
+          await p6SweepAfter(client);
+        }
+      },
+    );
   });
 }
 

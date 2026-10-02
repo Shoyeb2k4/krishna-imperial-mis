@@ -147,14 +147,30 @@ void main() {
     });
   });
 
-  test('the device acceptance suite keeps its own fatal setting (D-075)', () {
-    final acceptance = File(
+  test('every real-application suite that taps keeps its own fatal setting', () {
+    // Outside this config's reach, so each sets it itself: the device acceptance suite
+    // since D-075, the Windows shell test since Phase 8 Slice 8.
+    for (final path in const [
       'integration_test/device_acceptance_test.dart',
-    ).readAsStringSync();
-    expect(
-      acceptance,
-      contains('WidgetController.hitTestWarningShouldBeFatal = true;'),
-    );
+      'integration_test/windows_shell_test.dart',
+    ]) {
+      expect(
+        File(path).readAsStringSync(),
+        contains('WidgetController.hitTestWarningShouldBeFatal = true;'),
+        reason: path,
+      );
+    }
+    // And no real-application suite tolerates a miss without a stated reason.
+    for (final file in Directory(
+      'integration_test',
+    ).listSync().whereType<File>()) {
+      if (!file.path.endsWith('.dart')) continue;
+      expect(
+        file.readAsStringSync(),
+        isNot(contains('warnIfMissed: false')),
+        reason: file.path,
+      );
+    }
   });
 
   group('behaviour in a real test', () {

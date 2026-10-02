@@ -30,6 +30,18 @@ import 'package:krishna_mis/domain/sync/sync_state.dart';
 String mid(String name) =>
     const Uuid().v5('c0ffee00-0000-4000-8000-000000000000', name);
 
+/// This suite creates and deletes its key and its database, so it has its own of both
+/// and never the installation's (D-246, D-249, D-247). On Windows the folder is a
+/// temporary one; Android reinstalls the application for every run anyway.
+const _keyName = 'krishna_mis.encrypted-storage-test.db_key.v1';
+DatabaseKeyManager _keys() => DatabaseKeyManager(keyName: _keyName);
+final Directory? _directory = Platform.isWindows
+    ? Directory(
+        '${Directory.systemTemp.path}${Platform.pathSeparator}'
+        'krishna_mis_encrypted_storage_test',
+      )
+    : null;
+
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
@@ -37,14 +49,14 @@ void main() {
 
   setUp(() async {
     // Each run starts from a known state: no key, no database file.
-    await DatabaseKeyManager().deleteKey();
-    final file = await resolveDatabaseFile();
+    await _keys().deleteKey();
+    final file = await resolveDatabaseFile(directory: _directory);
     if (file.existsSync()) file.deleteSync();
   });
 
   group('platform-secure key storage on $platform', () {
     test('generates a 256-bit key on first run and persists it', () async {
-      final manager = DatabaseKeyManager();
+      final manager = _keys();
       expect(await manager.hasKey(), isFalse);
 
       final key = await manager.obtainKey();
@@ -54,26 +66,29 @@ void main() {
 
       // A separate manager instance — as after an app restart — reads the same key
       // back out of the OS keystore.
-      expect(await DatabaseKeyManager().obtainKey(), key);
+      expect(await _keys().obtainKey(), key);
     });
 
     test('two installations would not share a key', () async {
-      final first = await DatabaseKeyManager().obtainKey();
-      await DatabaseKeyManager().deleteKey();
-      final second = await DatabaseKeyManager().obtainKey();
+      final first = await _keys().obtainKey();
+      await _keys().deleteKey();
+      final second = await _keys().obtainKey();
       expect(second, isNot(first));
     });
 
     test('deleting the key removes it from secure storage', () async {
-      await DatabaseKeyManager().obtainKey();
-      await DatabaseKeyManager().deleteKey();
-      expect(await DatabaseKeyManager().hasKey(), isFalse);
+      await _keys().obtainKey();
+      await _keys().deleteKey();
+      expect(await _keys().hasKey(), isFalse);
     });
   });
 
   group('encrypted database on $platform', () {
     test('opens, writes, and survives a close and reopen', () async {
-      final db = await openEncryptedDatabase();
+      final db = await openEncryptedDatabase(
+        directory: _directory,
+        keyManager: _keys(),
+      );
       final outbox = OutboxRepository(db);
 
       await outbox.enqueue(
@@ -95,7 +110,10 @@ void main() {
       await db.close();
 
       // Reopen exactly as the app would on next launch: key from the OS keystore.
-      final reopened = await openEncryptedDatabase();
+      final reopened = await openEncryptedDatabase(
+        directory: _directory,
+        keyManager: _keys(),
+      );
       final recovered = OutboxRepository(reopened);
       expect(await recovered.unsyncedCount(), 1);
       expect(
@@ -107,7 +125,10 @@ void main() {
     });
 
     test('the file on disk is genuinely encrypted', () async {
-      final db = await openEncryptedDatabase();
+      final db = await openEncryptedDatabase(
+        directory: _directory,
+        keyManager: _keys(),
+      );
       await db
           .into(db.appMeta)
           .insert(
@@ -119,7 +140,7 @@ void main() {
           );
       await db.close();
 
-      final file = await resolveDatabaseFile();
+      final file = await resolveDatabaseFile(directory: _directory);
       expect(file.existsSync(), isTrue);
       expect(
         isFileEncrypted(file),
@@ -136,7 +157,10 @@ void main() {
       // A concrete, searchable marker rather than a generic string, so this fails loudly
       // if encryption is ever silently turned off on this platform.
       const marker = 'KRISHNA-PLAINTEXT-MARKER-18400';
-      final db = await openEncryptedDatabase();
+      final db = await openEncryptedDatabase(
+        directory: _directory,
+        keyManager: _keys(),
+      );
       await db
           .into(db.appMeta)
           .insert(
@@ -149,7 +173,7 @@ void main() {
       await db.close();
 
       final asText = String.fromCharCodes(
-        (await resolveDatabaseFile()).readAsBytesSync(),
+        (await resolveDatabaseFile(directory: _directory)).readAsBytesSync(),
       );
       expect(
         asText,
@@ -161,11 +185,15 @@ void main() {
     test(
       'logging out keeps queued work; erasing refuses while it is pending',
       () async {
-        final db = await openEncryptedDatabase();
+        final db = await openEncryptedDatabase(
+          directory: _directory,
+          keyManager: _keys(),
+        );
         final outbox = OutboxRepository(db);
         final lifecycle = LocalDataLifecycle(
           outbox: outbox,
-          keyManager: DatabaseKeyManager(),
+          keyManager: _keys(),
+          resolveFile: () => resolveDatabaseFile(directory: _directory),
         );
         var sessionsCleared = 0;
         Future<void> clearSession() async => sessionsCleared++;
@@ -187,7 +215,10 @@ void main() {
         expect(sessionsCleared, 1);
         expect(outcome.localDataRetained, isTrue);
         expect(outcome.pendingCount, 1);
-        expect((await resolveDatabaseFile()).existsSync(), isTrue);
+        expect(
+          (await resolveDatabaseFile(directory: _directory)).existsSync(),
+          isTrue,
+        );
         expect(await lifecycle.hasUsableKey(), isTrue);
 
         // Erase refuses, and refuses totally.
@@ -195,7 +226,10 @@ void main() {
           lifecycle.eraseLocalData(database: db, clearSession: clearSession),
           throwsA(isA<UnsyncedDataPending>()),
         );
-        expect((await resolveDatabaseFile()).existsSync(), isTrue);
+        expect(
+          (await resolveDatabaseFile(directory: _directory)).existsSync(),
+          isTrue,
+        );
         expect(await lifecycle.hasUsableKey(), isTrue);
         expect(await outbox.unsyncedCount(), 1);
 
@@ -211,7 +245,10 @@ void main() {
           database: db,
           clearSession: clearSession,
         );
-        expect((await resolveDatabaseFile()).existsSync(), isFalse);
+        expect(
+          (await resolveDatabaseFile(directory: _directory)).existsSync(),
+          isFalse,
+        );
         expect(await lifecycle.hasUsableKey(), isFalse);
       },
     );
@@ -219,7 +256,10 @@ void main() {
     test(
       'losing the key makes the database unreadable, as encryption implies',
       () async {
-        final db = await openEncryptedDatabase();
+        final db = await openEncryptedDatabase(
+          directory: _directory,
+          keyManager: _keys(),
+        );
         await db
             .into(db.appMeta)
             .insert(
@@ -232,8 +272,11 @@ void main() {
         await db.close();
 
         // Simulates a reset keystore or a recreated Windows profile.
-        await DatabaseKeyManager().deleteKey();
-        final withNewKey = await openEncryptedDatabase();
+        await _keys().deleteKey();
+        final withNewKey = await openEncryptedDatabase(
+          directory: _directory,
+          keyManager: _keys(),
+        );
         await expectLater(
           withNewKey.select(withNewKey.appMeta).get(),
           throwsA(anything),

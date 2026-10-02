@@ -36,6 +36,9 @@ const List<Size> _windowSizes = [
 ];
 
 void main() {
+  // A tap that lands on nothing fails here, where it happens, exactly as in the host
+  // suite (D-325) and the device acceptance suite (D-075). Phase 8 Slice 8.
+  WidgetController.hitTestWarningShouldBeFatal = true;
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
   driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
 
@@ -162,7 +165,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Overview').first);
       await tester.pumpAndSettle();
-      expect(find.textContaining('Business-unit comparison'), findsOneWidget);
+      expect(find.byKey(const Key('dashboard-page')), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
 
@@ -291,7 +294,7 @@ void main() {
       }
       expect(tester.takeException(), isNull);
       // Still on the default destination; nothing was dismissed or navigated away.
-      expect(find.textContaining('Business-unit comparison'), findsOneWidget);
+      expect(find.byKey(const Key('dashboard-page')), findsOneWidget);
     });
   });
 }

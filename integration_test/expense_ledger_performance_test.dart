@@ -59,7 +59,12 @@ void main() {
     test(
       'expense ledger, ${dataset.name}, on ${Platform.operatingSystem}',
       () async {
-        final directory = await getApplicationSupportDirectory();
+        // Never the installation's folder on Windows (D-247): a temporary one.
+        final directory = Platform.isWindows
+            ? Directory(
+                '${Directory.systemTemp.path}${Platform.pathSeparator}krishna_mis_perf',
+              )
+            : await getApplicationSupportDirectory();
         await directory.create(recursive: true);
         final file = File(
           '${directory.path}/krishna_mis.ledger_perf.${dataset.name}.db',

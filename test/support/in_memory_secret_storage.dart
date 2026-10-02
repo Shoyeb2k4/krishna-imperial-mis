@@ -70,4 +70,29 @@ class InMemorySecretStorage extends FlutterSecureStorage {
     MacOsOptions? mOptions,
     WindowsOptions? wOptions,
   }) async => _values.containsKey(key);
+
+  // Overridden so that no call on this fake can fall through to the platform's real
+  // secure store. Without these, `readAll` and `deleteAll` reached the plugin (found by
+  // the Phase 8 Slice 8 recovery acceptance).
+  @override
+  Future<Map<String, String>> readAll({
+    IOSOptions? iOptions,
+    AndroidOptions? aOptions,
+    LinuxOptions? lOptions,
+    WebOptions? webOptions,
+    MacOsOptions? mOptions,
+    WindowsOptions? wOptions,
+  }) async => Map.of(_values);
+
+  @override
+  Future<void> deleteAll({
+    IOSOptions? iOptions,
+    AndroidOptions? aOptions,
+    LinuxOptions? lOptions,
+    WebOptions? webOptions,
+    MacOsOptions? mOptions,
+    WindowsOptions? wOptions,
+  }) async {
+    if (!swallowWrites) _values.clear();
+  }
 }
