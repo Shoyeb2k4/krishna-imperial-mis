@@ -12882,3 +12882,128 @@ operational test is possible, the result is **NOT EXECUTED / accepted limitation
 * `test/docs/phase9_governance_guard_test.dart` holds the parts of this record that a later
   change could silently break: the runbook's sections, the corrected §K.2, the replay
   anomaly files and the committed migration count.
+
+---
+
+# Phase 9 Slice 2 — Release-build hardening (2026-10-03)
+
+## D-346 — The six release blockers are fixed, and production local data has its own identity
+**Date:** 2026-10-03 · **Status:** Implemented / Tested (Phase 9 Slice 2). Closes D-335.
+Input register #3 approved by the project lead.
+
+**A · INTERNET in every build.** `android/app/src/main/AndroidManifest.xml` now declares
+`android.permission.INTERNET`. Merged manifests read after the builds: prodRelease,
+stagingRelease, prodDebug, devDebug and stagingDebug each carry `INTERNET` and androidx's
+app-private `<applicationId>.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` (a signature-level
+permission androidx.core declares for itself), and nothing else. The prod release APK reads
+the same through `aapt2 dump badging`. A guard requires the main manifest to declare it and
+nothing more.
+
+**B · Release signing, with no debug fallback.** `build.gradle.kts` reads a git-ignored
+`android/key.properties` (`storeFile`, `storePassword`, `keyAlias`, `keyPassword`). With all
+four present and the keystore on disk, the `release` build type is signed with that upload
+key. Otherwise `signingConfig` is null and `verifyReleaseSigning`, wired to every
+`pre…ReleaseBuild`, stops the build before anything is compiled:
+
+> Release signing is not configured: android/key.properties is missing. A release build is
+> never signed with the debug key.
+
+Every Android release build needs it — dev and staging too — because a release artefact
+signed with the debug key is never wanted. Debug and profile builds never read the file;
+`flutter build apk --debug --flavor dev` was rebuilt without one. No value from the file is
+printed; `.gitignore` already covered `key.properties`, `*.jks`, `*.keystore`, `*.p12`, and a
+guard asks `git check-ignore` each time. **No real keystore was created.** Verification used a
+throwaway JKS in the session scratchpad (`CN=Throwaway Slice2 Test, O=NOT FOR RELEASE`, valid
+two days), and the `key.properties` pointing at it was deleted after the builds.
+
+**C · R8.** `android/app/proguard-rules.pro` exists and holds no rules: the prod release
+APK, the staging release APK and the prod AAB all built with R8 on and nothing extra needed
+(the Flutter plugin supplies the engine's rules, plugins ship consumer rules, and the Dart
+code is AOT-compiled outside R8). The file says to add nothing without a build finding.
+Shrinking was not disabled.
+
+**D · Production fails closed.** `AppConfig.problem` now refuses, before any storage is
+opened:
+
+| Build | Result |
+|---|---|
+| prod with no URL, no key, or either missing | *This production build has no backend configuration.* |
+| prod pointed at `krishna-mis-dev` | *This production build is configured with a development backend.* |
+| `APP_FLAVOR` naming an unknown environment | refused — no longer silently development |
+| Android flavour and `APP_FLAVOR` disagreeing (e.g. `--flavor prod` with `config/dev.json`) | refused |
+| a release build that declares no `APP_FLAVOR` | refused |
+
+`permitsOfflineSeed` (no backend **and** not production) now guards the demonstration seed;
+development and staging keep their offline mode. No message repeats a value. On the Galaxy
+A06 the prod-flavour release built against the dev backend showed exactly the second
+message under *This build is not configured safely* (`START-CONFIGURATION`), and was
+uninstalled.
+
+**E · Windows production data identity.** Approved values:
+
+| | Production | Non-production (dev, staging) | Acceptance |
+|---|---|---|---|
+| Windows folder | `%APPDATA%\Krishna Imperial\Krishna Imperial MIS Production` | `%APPDATA%\Krishna Imperial\Krishna Imperial MIS` (D-247's folder) | the harness's folder |
+| Android folder | the production app's private storage | each flavour's own | — |
+| Key name | `krishna_mis.db_key.prod.v1` | `krishna_mis.db_key.v1` | `krishna_mis.acceptance.db_key.v1` |
+| Windows key store | its own DPAPI file in the production folder | the plugin store (unchanged) | the plugin store (D-249) |
+
+The environment comes from the compiled build (`APP_FLAVOR`, cross-checked against the
+Android flavour), never from text a person can change. One module,
+`lib/data/local/local_storage_location.dart`, resolves the folder and the key; bootstrap,
+`main()`'s recovery, the session store and staged bills all use it, and it is the only file
+in `lib/` that asks `path_provider` for the application support folder.
+
+**Found while building it — the reason production cannot use the plugin store on Windows.**
+`flutter_secure_storage_windows` 3.1.2 writes its whole blob to
+`getApplicationSupportDirectory()\flutter_secure_storage.dat`, and on Windows that folder is
+named by `Runner.rc` (`Krishna Imperial` / `Krishna Imperial MIS`) for every build. A
+production key kept there would have been written into the D-247 folder. Production on
+Windows therefore keeps its key in `krishna_mis.db_key.prod.v1.dpapi` inside its own folder —
+`ProtectedFileSecretStorage`: DPAPI, current user, no entropy (D-036's protection); one file
+per entry, atomic replace, serialised, never deleted on a failed read; an unreadable file is
+reported as an unreadable store, never as "no key" (D-329). The production folder is built
+from `FOLDERID_RoamingAppData` and two fixed names, never from the version resource; on
+Windows production never calls `getApplicationSupportDirectory()` (which also creates the
+folder it names), never reads the plugin, and its session file is in its own folder with the
+D-246 one-time move disabled.
+
+**No migration.** Production starts empty and downloads what its signed-in person may
+receive. Nothing copies, renames, opens or re-keys the legacy folder; D-247 is untouched.
+Existing development data stays where it is, under its existing key, and is not moved.
+
+**Evidence.** 62 new host tests (`production_config_test`, `local_storage_location_test`,
+`release_build_guard_test`) including the real DPAPI round trip and the real roaming folder
+computed on this Windows host without touching it; the D-247 guards 1–8; nine positive
+controls, each RED and restored byte-identically (SHA-256): C1 the production path computing
+the legacy folder (7 red), C1b the resolver using the legacy folder with its defence removed
+(3), C2 the production key equal to the legacy key (4), C3 the prod no-backend refusal
+removed (5), C4 a debug-key fallback (1), C5 INTERNET removed (2), C6 the seed guarded by
+`hasBackend` alone (2), C7 a second application-support caller (1), C8 an unknown flavour
+read as development (1).
+
+**Recorded, not changed.**
+
+1. **Windows staging shares the development identity** — the legacy folder and key. Staging
+   is non-production and the brief named no staging values; a staging build on a machine
+   holding development data would open it. It needs a decision before any staging client
+   build is run on Windows (Slice 4 rehearsal) — added to the input register as #21.
+2. The acceptance suite's key still lives in the shared plugin store (D-249, unchanged).
+3. Release-mode sign-in was **not** exercised: it needs credentials, which this session does
+   not type. The staging release started on the A06 to the sign-in screen — encrypted
+   store opened, Keystore key created, Supabase initialised, no crash in logcat. Signed-in
+   release acceptance is Slice 6.
+
+## D-347 — Version convention
+**Date:** 2026-10-03 · **Status:** Accepted (project-lead direction for Slice 2)
+
+* `versionName` is the user-visible semantic version, `MAJOR.MINOR.PATCH`, changed by the
+  ordinary rules (fix → patch, feature → minor, breaking → major).
+* `versionCode` is a positive integer that increases with **every** Play upload — never
+  reused, never decreased, independent of `versionName`.
+* Both come from `pubspec.yaml` (`version: 1.0.0+1`) through `flutter.versionName` /
+  `flutter.versionCode`; Gradle holds no hand-typed number, and a guard keeps it so.
+* The version stays **1.0.0+1** until a real upload needs a new code. Local test builds do not
+  bump it. A replacement Internal Testing AAB raises `versionCode` when, and only when, it is
+  actually uploaded (Slice 6).
+* Dev and staging keep their `-dev` / `-staging` name suffixes and their own application ids.

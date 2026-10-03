@@ -5,7 +5,9 @@ Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
-Last updated: **2026-10-03** — **PHASE 9 — PRODUCTION RELEASE, DEPLOYMENT & GO-LIVE: STARTED. Slice 1 (governance and production inputs) is complete** (D-334 … D-345): the release contract, six verified release blockers for Slice 2, the authoritative replay contract (98 committed migration files), the read-only production smoke policy, the product-lead input register, the secrets register and the runbook skeleton (`docs/PRODUCTION_RUNBOOK.md`). Documentation only: no code, schema, server, signing or build change. **Slice 2 is not started.** See *PHASE 9* at the end of this file.
+Last updated: **2026-10-03** — **PHASE 9 SLICE 2 — RELEASE-BUILD HARDENING: COMPLETE** (D-346, D-347): all six D-335 blockers fixed. `INTERNET` is in the production manifest; Android release builds are signed only with the upload key from a git-ignored `android/key.properties` and stop without it (no debug fallback); R8 runs with an existing, empty rules file; a production build with no backend, with the dev backend, or with a mismatched flavour refuses to start; and production keeps its local data in `%APPDATA%\Krishna Imperial\Krishna Imperial MIS Production` with key `krishna_mis.db_key.prod.v1` (its own DPAPI key file on Windows), never the D-247 folder. Host suite **3,223 passed**. No schema, migration, server or Supabase change. **Slice 3 is not started.** See *Phase 9 Slice 2* at the end of this file.
+
+Previously: **2026-10-03** — **PHASE 9 — PRODUCTION RELEASE, DEPLOYMENT & GO-LIVE: STARTED. Slice 1 (governance and production inputs) is complete** (D-334 … D-345): the release contract, six verified release blockers for Slice 2, the authoritative replay contract (98 committed migration files), the read-only production smoke policy, the product-lead input register, the secrets register and the runbook skeleton (`docs/PRODUCTION_RUNBOOK.md`). Documentation only: no code, schema, server, signing or build change. **Slice 2 is not started.** See *PHASE 9* at the end of this file.
 
 Previously: **2026-10-03** — **PHASE 8 — PERFORMANCE, HARDENING & RECOVERY: COMPLETE AND FORMALLY CLOSED at Slice 9 (D-333).** Slices 1–9 are closed. The Revenue ledger sync-state defect was fixed before Slice 8 (D-331) and accepted in it; no known V1 correctness defect is carried out of Phase 8. Windows and the Galaxy A06 PASS; the Android emulator was NOT EXECUTED and is waived for closure by the project lead. D-248 stays unconfirmed with its diagnostic; D-247 stays preserved and unresolved. Host suite **3,154 passed** at `1a4dd12`. Local schema v22; ledger 105; API 57. The production 50:50 ownership effective-from date is still unknown. The closure record is *PHASE 8 — PERFORMANCE, HARDENING & RECOVERY: COMPLETE AND CLOSED* at the end of this file. **Phase 9 — Distribution: not started.**
 
@@ -186,9 +188,10 @@ drill-down, and the Owner Accounts ledger, settlement engine and preview surface
 
 ## Current phase
 
-**Phase 9 — Production Release, Deployment & Go-Live: IN PROGRESS (started 2026-10-03).** Slice 1
-(governance and production inputs) is complete; Slices 2–9 are not started. Its record is
-*PHASE 9* at the **end** of this file.
+**Phase 9 — Production Release, Deployment & Go-Live: IN PROGRESS (started 2026-10-03).** Slices 1
+(governance and production inputs) and 2 (release-build hardening, D-346, D-347) are complete;
+Slices 3–9 are not started. Its record is *PHASE 9* at the **end** of this file. *(This read
+"Slice 1 is complete; Slices 2–9 are not started" until Slice 2.)*
 
 **Phase 8 — Performance, Hardening & Recovery: COMPLETE and formally closed (2026-10-03, Slice 9,
 D-333).** Its authoritative record is *PHASE 8 — PERFORMANCE, HARDENING & RECOVERY: COMPLETE AND
@@ -8114,7 +8117,7 @@ closed V1 to a production backend, signed releases on both platforms, and a go-l
 | # | Slice | State |
 |---|---|---|
 | 1 | Governance and production inputs | **COMPLETE** |
-| 2 | Release-build hardening | not started |
+| 2 | Release-build hardening | **COMPLETE** (D-346, D-347) |
 | 3 | Pre-release UX wording | not started |
 | 4 | Authoritative migration replay and rehearsal | not started |
 | 5 | Production Supabase | not started |
@@ -8170,12 +8173,12 @@ project lead's own answer, recorded in a decision.
 |---|---|---|---|
 | 1 | Supabase production plan tier (decides PITR and leaked-password protection) | REQUIRED BEFORE PRODUCTION DEPLOYMENT (Slice 5) | PENDING |
 | 2 | Rehearsal target: separate staging project or Supabase branch (audit: staging project) | REQUIRED BEFORE SLICE 4 | PENDING |
-| 3 | Windows production data identity (folder name and key name) | REQUIRED BEFORE SLICE 2 | PENDING |
+| 3 | Windows production data identity (folder name and key name) | REQUIRED BEFORE SLICE 2 | **APPROVED** — `Krishna Imperial MIS Production`, `krishna_mis.db_key.prod.v1`; implemented (D-346) |
 | 4 | Installer choice (audit: Inno Setup, per-user, no admin rights) | REQUIRED BEFORE SLICE 7 | PENDING |
 | 5 | Windows code-signing certificate, yes or no | REQUIRED BEFORE SLICE 7 | PENDING |
 | 6 | Play developer account: personal or organisation | REQUIRED BEFORE PLAY (Slice 6) | PENDING |
 | 7 | Privacy-policy URL | REQUIRED BEFORE PLAY (Slice 6) | PENDING |
-| 8 | App versioning scheme (current `1.0.0+1`) | REQUIRED BEFORE SLICE 6 | PENDING |
+| 8 | App versioning scheme (current `1.0.0+1`) | REQUIRED BEFORE SLICE 6 | **SET** — semantic `versionName`, `versionCode` +1 per Play upload, stays `1.0.0+1` until an upload (D-347) |
 | 9 | Production administration path, A (SQL procedure) or B (Owner-authenticated CLI; audit recommends B) | REQUIRED BEFORE SLICE 4 (so it is rehearsed) | PENDING |
 | 10 | Real staff names, emails, roles and properties — supplied privately, never into git | REQUIRED BEFORE PRODUCTION DEPLOYMENT | PENDING |
 | 11 | Auth Site URL | REQUIRED BEFORE PRODUCTION DEPLOYMENT | PENDING |
@@ -8188,6 +8191,7 @@ project lead's own answer, recorded in a decision.
 | 18 | Go-live date | REQUIRED BEFORE SLICE 8 | PENDING |
 | 19 | 50:50 ownership effective-from date | OPTIONAL / NON-BLOCKING for Phase 9 — blocks production Owner Settlement only | UNKNOWN |
 | 20 | D-247 disposition | REQUIRED BEFORE any normal build runs on this workstation; NON-BLOCKING for release work done in isolation | PENDING |
+| 21 | Windows staging data identity — today staging shares the development folder and key (D-346) | REQUIRED BEFORE a staging client runs on Windows (Slice 4 rehearsal) | PENDING |
 
 ### Unresolved product-lead decisions
 
@@ -8209,3 +8213,71 @@ D-247 (#20). **Slice 2 needs only #3**; everything else is needed later.
 | Documentation invariants and existing release/config guards | **Tested** | **132 passed** with the guard: migration audit, backend schema parity, chart guard, acceptance isolation, app config, no hard-coded authority, missed-tap policy, Windows runner apartment, document-generation and `change_seq` invariants |
 | Secret scan, tree and history | **Tested** | clean, after the guard's planted values were assembled at run time — the scanner first refused a planted connection-string literal, as it should |
 | Builds, device acceptance, live suites | **Not run** | Slice 1 changes no executable code |
+
+## Phase 9 Slice 2 — Release-build hardening: **COMPLETE** (2026-10-03)
+
+Decisions **D-346**, **D-347**. Closes D-335. No schema, migration, server or Supabase change:
+local Drift schema **v22**; `krishna-mis-dev` ledger **105**, reviewed API **57**; no production
+or staging project created. Starting point `1da9cf9`, pushed and verified equal to
+`origin/main` before any change.
+
+### In plain words
+
+A release build of the app can now reach the internet, is signed only with the project
+lead's upload key (and refuses to build without it), shrinks its code safely, refuses to
+start if production is configured wrongly, and keeps production's data on Windows in its own
+folder with its own key — never the old folder that holds the D-247 database.
+
+### What changed
+
+| Area | Change |
+|---|---|
+| A | `INTERNET` in `android/app/src/main/AndroidManifest.xml` |
+| B | `build.gradle.kts`: upload-key signing from `android/key.properties`; `verifyReleaseSigning` stops every release build without it; no debug fallback |
+| C | `android/app/proguard-rules.pro` created (no rules needed by the measured builds) |
+| D | `AppConfig`: production refuses no backend and the dev backend; unknown `APP_FLAVOR`, flavour mismatch and an undeclared release refused; `permitsOfflineSeed` guards the seed |
+| E | `local_storage_location.dart` + `protected_file_secret_storage.dart`: per-environment folder and key; Windows production key in its own DPAPI file; bootstrap, recovery, session and staged bills routed through it |
+| F | version convention recorded (D-347); `1.0.0+1` unchanged |
+
+### Verified
+
+| Item | Status | Evidence |
+|---|---|---|
+| Missing signing config | **Tested** | `flutter build apk --release --flavor dev` → `:app:verifyReleaseSigning` fails with the plain message, no file |
+| Prod release APK, throwaway key, R8 | **Tested** | built; `in.krishnaimperial.mis`, versionCode 1, versionName 1.0.0; signer `CN=Throwaway Slice2 Test, O=NOT FOR RELEASE`; SHA-256 `6e50fc7c…5212` |
+| Prod release AAB | **Tested** | built; SHA-256 `e58898f7…bc9` |
+| Staging release APK | **Tested** | built; SHA-256 `2e23f232…8fc9` |
+| Merged manifests | **Tested** | INTERNET + androidx's app-private DYNAMIC_RECEIVER permission only, every current variant |
+| Release startup on the Galaxy A06 (USB `R9ZY50M3GVX`) | **Tested** | staging release: sign-in screen, no crash, no class-missing error in logcat. Uninstalled |
+| Prod fail-closed on the Galaxy A06 | **Tested** | prod release on the dev backend: *This production build is configured with a development backend.* Uninstalled; the phone's dev install untouched |
+| Release-mode sign-in and sync | **Not tested** | needs credentials this session does not type; Slice 6 |
+| Debug build without signing material | **Tested** | `flutter build apk --debug --flavor dev` builds |
+| Windows release, prod config on dev backend | **Tested** | built; production folder and key names present in `app.so`; **not launched** |
+| Windows release, `config/dev.json` | **Tested** | built; `krishna_mis.exe` `775dabbe…0fa7`, `app.so` `0e7277c1…a30`, `pdfium.dll` `0c88ebac…abd`, `sqlite3mc.dll` `fd50815d…6ae3`; **not launched** |
+| Windows production path, real host | **Tested** | computed from the real roaming folder: `…\Roaming\Krishna Imperial\Krishna Imperial MIS Production`, not the legacy path; nothing created |
+| D-247 guards 1–8 | **Tested** | `test/data/local_storage_location_test.dart` |
+| Positive controls | **Tested** | 9 sabotages, all RED, each restored byte-identically (D-346) |
+| New tests | **Tested** | production config 19, storage location 20, release guard 23 |
+| `dart format --set-exit-if-changed` | **Tested** | 437 files, 0 changed |
+| `flutter analyze` | **Tested** | No issues found |
+| Full host suite | **Tested** | **3,223 passed**, 0 failed |
+| Secret scan — tree, history, artefacts | **Tested** | clean; plus 0 of 6 development passwords in 1,198 artefact entries |
+| Final production APK / AAB | **Not built** | needs the real upload keystore — Slice 6 |
+
+The artefacts above are **verification builds**, not releases: throwaway-signed, against the
+development backend, deleted from the phone, and never uploaded.
+
+### D-247
+
+Not opened, migrated, renamed, re-keyed or copied. No build was launched on this workstation.
+The production code path cannot resolve the legacy folder or key, and never calls the
+platform folder lookup on Windows (D-346).
+
+### Unresolved release inputs
+
+#1 plan tier, #2 rehearsal target, #4 installer, #5 Windows code signing, #6 Play account
+type, #7 privacy-policy URL, #9 administration path, #10 staff list, #11 Site URL, #12 SMTP,
+#14 target PC, #15 printer, #16 master structure, #17 tax rules, #18 go-live date, #19 the
+50:50 date, #20 D-247, and new **#21 Windows staging data identity**. Signing: the real upload
+keystore and `android/key.properties` exist only on the project lead's release machine, created
+by the project lead (runbook §7).

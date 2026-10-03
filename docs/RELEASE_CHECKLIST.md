@@ -126,6 +126,8 @@ Every box must be genuinely verified, not assumed. Anything unverified is report
 - [ ] Release keystore generated and stored **only** by the project lead, backed up offline
       (losing it means no future update can be installed over the existing app)
 - [ ] Signing configured via a git-ignored properties file — never committed
+      (`android/key.properties`: storeFile, storePassword, keyAlias, keyPassword; a release
+      build stops without it — D-346)
 - [ ] `flutter build apk --release --flavor prod` succeeds
 - [ ] `flutter build appbundle --release --flavor prod` succeeds (AAB readiness)
 - [ ] Installed on a clean device from the signed APK and smoke-tested
@@ -1013,11 +1015,13 @@ reports it tested. A step that cannot be performed is recorded **NOT EXECUTED**,
 
 ### W.2 Slice 2 — release-build hardening (D-335)
 
-- [ ] `INTERNET` in the production Android manifest; merged release manifest inspected
-- [ ] Release signing from a local-only `android/key.properties`; no debug fallback
-- [ ] `proguard-rules.pro` present; minified release build verified
-- [ ] A prod build without backend configuration refuses to start — no seeded masters
-- [ ] Windows production data identity distinct from development and from D-247
+- [x] `INTERNET` in the production Android manifest; merged release manifest inspected
+- [x] Release signing from a local-only `android/key.properties`; no debug fallback
+      (verified with a throwaway key; the real upload key is Slice 6)
+- [x] `proguard-rules.pro` present; minified release build verified (APK, AAB; starts on the A06)
+- [x] A prod build without backend configuration refuses to start — no seeded masters
+- [x] Windows production data identity distinct from development and from D-247
+- [ ] Release-mode sign-in and sync on a device — **NOT EXECUTED** in Slice 2; Slice 6
 
 ### W.3 Slice 3 — pre-release wording (D-343)
 

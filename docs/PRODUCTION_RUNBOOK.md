@@ -44,7 +44,8 @@ What exists **outside git**, who holds it, and where. Values are never recorded 
 | Staff credentials | each person | their own | sign-in |
 | Android upload keystore | project lead | offline, backed up (losing it blocks updates) | signing releases |
 | Keystore and key passwords | project lead | password manager | signing releases |
-| `android/key.properties` | release machine only | local, git-ignored | Gradle release signing |
+| `android/key.properties` | release machine only | local, git-ignored | Gradle release signing; every Android release build stops without it (D-346) |
+| Windows production local data and key | each production Windows user | `%APPDATA%\Krishna Imperial\Krishna Imperial MIS Production` (database, `krishna_mis.db_key.prod.v1.dpapi`, session) | the production install; never the legacy `Krishna Imperial MIS` folder (D-346) |
 | Google Play developer account | project lead | Play Console | Internal Testing, release |
 | Windows code-signing certificate (optional) | PENDING (input register #5) | | signing the installer |
 | SMTP credentials (optional) | PENDING (input register #12) | Supabase Auth settings | password-reset email |
@@ -74,10 +75,32 @@ APK, AAB, installer, `krishna_mis.exe`, `pdfium.dll` and `sqlite3mc.dll` (D-341,
 
 *Filled in Slice 6.* Play App Signing; Internal Testing first (D-341).
 
+Release signing, as built in Slice 2 (D-346). On the release machine only, the project lead
+creates the upload keystore and `android/key.properties` beside `android/app/`:
+
+```
+storeFile=<path to the upload keystore, absolute or relative to android/>
+storePassword=<from the password manager>
+keyAlias=<the upload key alias>
+keyPassword=<from the password manager>
+```
+
+Both are git-ignored and are never pasted into chat, a document or a log. Without the file,
+`flutter build apk|appbundle --release` stops at `verifyReleaseSigning`. Build with the
+matching flavour and configuration — `--flavor prod --dart-define-from-file=config/prod.json`;
+a mismatch, a missing backend or the development backend makes the app refuse to start.
+Version: `pubspec.yaml`, `versionCode` +1 for every upload (D-347).
+
 ## 8. Windows deployment
 
 *Filled in Slice 7.* Isolated data identity; never launched against the D-247 AppData
 (D-336, D-342).
+
+A production build (`config/prod.json`) keeps its data in
+`%APPDATA%\Krishna Imperial\Krishna Imperial MIS Production` and its key in
+`krishna_mis.db_key.prod.v1.dpapi` there — never in the legacy `Krishna Imperial MIS` folder
+that development builds use (D-346). Nothing is migrated: a first launch starts empty and
+downloads what the signed-in person may receive.
 
 ## 9. Backup
 
