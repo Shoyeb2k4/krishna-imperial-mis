@@ -5,7 +5,9 @@ Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
-Last updated: **2026-10-03** — **PHASE 8 SLICE 8 — WINDOWS AND GALAXY A06 ACCEPTANCE: COMPLETE (D-332).** Every Slice 8 phase passes in the real Windows executable and on the Galaxy A06: the recovery screens, the v21 → v22 upgrade on a production-shaped copy, the Revenue ledger's sync-state paging (D-331), the double Save press (D-326), Save As and Print through the native dialogs, and the phone share with a live capability loss and a user switch (D-310). Three acceptance-harness defects were found and fixed; no product code changed. Host suite **3,154 passed**. `krishna-mis-dev` ends exactly at its pre-Slice-8 baseline. **Slice 9 (closure) is not started.**
+Last updated: **2026-10-03** — **PHASE 8 — PERFORMANCE, HARDENING & RECOVERY: COMPLETE AND FORMALLY CLOSED at Slice 9 (D-333).** Slices 1–9 are closed. The Revenue ledger sync-state defect was fixed before Slice 8 (D-331) and accepted in it; no known V1 correctness defect is carried out of Phase 8. Windows and the Galaxy A06 PASS; the Android emulator was NOT EXECUTED and is waived for closure by the project lead. D-248 stays unconfirmed with its diagnostic; D-247 stays preserved and unresolved. Host suite **3,154 passed** at `1a4dd12`. Local schema v22; ledger 105; API 57. The production 50:50 ownership effective-from date is still unknown. The closure record is *PHASE 8 — PERFORMANCE, HARDENING & RECOVERY: COMPLETE AND CLOSED* at the end of this file. **Phase 9 — Distribution: not started.**
+
+Previously: **2026-10-03** — **PHASE 8 SLICE 8 — WINDOWS AND GALAXY A06 ACCEPTANCE: COMPLETE (D-332).** Every Slice 8 phase passes in the real Windows executable and on the Galaxy A06: the recovery screens, the v21 → v22 upgrade on a production-shaped copy, the Revenue ledger's sync-state paging (D-331), the double Save press (D-326), Save As and Print through the native dialogs, and the phone share with a live capability loss and a user switch (D-310). Three acceptance-harness defects were found and fixed; no product code changed. Host suite **3,154 passed**. `krishna-mis-dev` ends exactly at its pre-Slice-8 baseline. **Slice 9 (closure) is not started.**
 
 Previously: **2026-10-02** — **REVENUE LEDGER SYNC-STATE REMEDIATION: DONE (D-331).** A sync-state filter on the Revenue ledger now finds every matching sale, not just those among the newest 50; it is decided in SQL before the page is cut. No schema, server or UX change.
 
@@ -182,7 +184,10 @@ drill-down, and the Owner Accounts ledger, settlement engine and preview surface
 
 ## Current phase
 
-**Phase 8 — Performance, Hardening & Recovery: IN PROGRESS (started 2026-09-29).** Slices 1 and 2
+**Phase 8 — Performance, Hardening & Recovery: COMPLETE and formally closed (2026-10-03, Slice 9,
+D-333).** Its authoritative record is *PHASE 8 — PERFORMANCE, HARDENING & RECOVERY: COMPLETE AND
+CLOSED* at the **end** of this file. **Phase 9 — Distribution: not started.** *(Superseded wording,
+kept:)* Phase 8 — Performance, Hardening & Recovery: IN PROGRESS (started 2026-09-29). Slices 1 and 2
 are complete, with the approved D-318 redesign built and D-318 closed (D-320, D-321); Slice 3
 (retry and hang hardening, D-322), Slice 4 (the Expense ledger, D-323, D-324) and Slice 5
 (global missed-tap hardening, D-325) are complete; D-326 is fixed; Slice 6 (export performance, D-327) is closed on Windows and the Galaxy A06; Slice 7 (stress, failure and recovery, D-328 … D-330) is complete; Slice 8 (Windows and Galaxy A06 acceptance, D-332) is complete. Slice 9 is not started. Its record is
@@ -7971,3 +7976,118 @@ was **not** launched on this workstation.
 
 * The 20-page PDF limit (D-327) stays as ruled.
 * The Phase 9 items recorded in D-311 and D-319 are unchanged.
+
+---
+
+# PHASE 8 — PERFORMANCE, HARDENING & RECOVERY: COMPLETE AND CLOSED
+
+Closed on 2026-10-03 at Slice 9 (D-333). Master Spec **v1.2**, unchanged: Phase 8 changed no
+financial semantic, authority rule or V1 feature. Local Drift schema **v22**; migration ledger
+**105**; reviewed API **57**. Decisions **D-312 … D-333**.
+
+Slice 9 is documentation and closure gates only: no product code, test code, schema, migration
+or server change. **Phase 9 — Distribution: not started.**
+
+## 1 · Slices
+
+| # | Slice | Commit(s) | State |
+|---|---|---|---|
+| 1 | Governance and baseline harnesses | `7972edb` | CLOSED |
+| 2 | D-186 profiling, and the approved D-318 redesign | `47b13bd`; `cb43a31`, `2a75ec2`, `1bdced7`, `48c2445` | CLOSED (D-318 closed by D-320, D-321) |
+| 3 | Retry and hang hardening | `6856ceb`, `41f58c5` | CLOSED |
+| 4 | Expense ledger profiling, pagination, v22 indexes | `491ca4f`, `0e0e30b` | CLOSED |
+| 5 | Global missed-tap hardening | `b4f2ee4`, `da77e52` | CLOSED |
+| — | D-326 remediation | `69693cd` | CLOSED |
+| 6 | Export performance | `71118c1`, `112b725` | CLOSED |
+| 7 | Stress, failure and recovery | `5f6827b`, `6143399` | CLOSED |
+| — | Revenue ledger sync-state remediation (D-331) | `34a2834` | CLOSED |
+| 8 | Windows and Galaxy A06 acceptance | `f807631`, `1a4dd12` | ACCEPTED / CLOSED |
+| 9 | Closure | this record | CLOSED |
+
+## 2 · Final technical state
+
+| Area | State |
+|---|---|
+| **Local database** | Drift **v22**: four Expense ledger indexes (`ix_expense_allocations_expense`, `ix_expense_period_allocations_expense`, `ix_expense_attachments_expense`, `ix_expenses_ledger`). Upgrade covered by host migration tests (v9 → v22, inside one transaction) and proven on the real phone: v21 → v22, 8,334 rows over 34 tables kept, integrity ok |
+| **Server** | ledger **105**, latest `20260930132722`; reviewed API **57**; `anon` executes nothing; every public table has RLS; `reporting_snapshot` dropped, `reporting_snapshot_page` the only reporting transport; no second reporting cache; `expense_sees_whole_org` absent (read live 2026-10-03) |
+| **Reporting** | Expense and revenue reporting authority evaluated once per statement (no per-row predicate); a one-property report reads only its property; bounded paged first sync and bounded paged delta; complete authorised history, **no historical cutoff**; row identity proven 238/238 (D-320, D-321) |
+| **Retry / hang** | One-shot refreshes read their inputs once, are visibly running before they await anything, publish a plain failure at once, and Try again reaches the failed input (D-322) |
+| **Expense ledger** | Every filter, sync state included, decided before the page is cut; Load more; total order `business_date, captured_at, id`; four statements a page; the hidden 100-row ceiling gone (D-323) |
+| **Revenue ledger** | Sync state decided before the page is cut (D-331) |
+| **Test infrastructure** | Missed taps fatal across the host suite, re-asserted per test, leak-checked; the Windows shell test fatal; no opt-out anywhere (D-325) |
+| **Export** | Inside T2 on Windows and the Galaxy A06; the 20-page PDF boundary accepted (D-327) |
+| **Recovery** | Start-up failures classified; atomic schema steps; *Try again* always; *Reset local data and download again* only for unreadable or un-upgradable data, after a stated loss and a typed RESET; data and key set aside, never deleted; a failed restart stays recoverable; no raw technical text at start-up (D-328 … D-330) |
+| **D-326** | A second Save press before the button rebuilds returns at once on Revenue and Expense entry; a failed save releases the form for a retry |
+
+## 3 · Performance, before and after
+
+Each row compares like with like: the same environment, dataset and principal. Figures are
+medians unless stated.
+
+| Path | Environment · dataset | Before | After |
+|---|---|---|---|
+| FY P&L primitives, Owner | E-DEV · CURRENT | 769.7 ms | 9.4 ms |
+| FY P&L primitives, Owner / CCR Manager | E-LOCALPG · SCALE | 8,127 / 7,608 ms (cancelled under the 8 s timeout cold) | 240.1 / 227.1 ms |
+| first reporting sync, Owner | E-DEV · CURRENT | 1,044.1 ms (one call) | 418.6 ms whole (3 pages) |
+| first reporting sync, Owner | E-LOCALPG · STRESS, 5 years | **fails** (jsonb > 256 MB) | 30.8 s over 250 pages; largest page 3.1 s |
+| delta reporting sync, Owner | E-DEV · CURRENT | 895.2 ms | 23.0 ms |
+| delta reporting sync, Owner | E-LOCALPG · SCALE / STRESS | 7,459 ms / 85,755 ms | 16.5 / 21.6 ms |
+| `may_read_expense` calls, FY report | E-DEV | 2,247 | 0 |
+| Expense ledger first page | E-WIN encrypted · CURRENT | 55.2 ms | 4.6 ms |
+| Expense ledger first / second / deep page | E-WIN encrypted · SCALE (1 year) | 3,479 / 3,631 / 3,906 ms | 3.1 / 2.5 / 50.3 ms |
+| Expense ledger first page | E-WIN encrypted · STRESS (5 years) | 17,034 ms | 2.3 ms |
+| Expense ledger statements a page | E-WIN | 151–156 | 4 |
+| Expense ledger conflict filter, rows found | E-WIN · SCALE | 1 of 900 | 50 a page, all reachable |
+| normal export, worst (session's first P&L PDF incl. fonts) | E-WIN debug | not measured before | ~157 ms (T2 < 1 s) |
+| normal P&L PDF, first incl. fonts / warm | E-A06 debug | not measured before | ~560 ms / 60.5 ms (T2 < 2 s) |
+
+## 4 · Tests and acceptance
+
+| Gate | Result |
+|---|---|
+| Host suite at `1a4dd12` (re-run for closure) | **3,154 passed, 0 failed** |
+| Positive controls | every Phase 8 fix carries at least one control seen red and restored byte-identically: D-320 (3), D-322 (11), D-323 (8), D-325 (5), D-326 (4), D-327 (2), Slice 7 (12), D-331 (1 control, 8 red) |
+| Windows real executable (Slice 8) | **PASS** — isolated acceptance data folder; shell 15 tests, missed taps fatal; recovery and start-up; v21 → v22; Revenue ledger paging; double Save; Save As ×4, cancel, Print to PDF, offline save; restart; dashboard, P&L, ledgers, offline revenue |
+| Galaxy A06 (Slice 8) | **PASS** — v21 → v22 upgrade (8,334 rows, integrity ok); Dashboard; paged reporting; P&L; Expense and Revenue ledgers; share online/offline; capability loss and restoration live; D-310 cleanup; clean APK `ee942fb6…66b4` installed with equal hash |
+| Android emulator | **NOT EXECUTED** — ADB unauthorised; **waived for Phase 8 closure** by the project lead |
+| Migration acceptance | host v9 → v22 suites inside one transaction; real-device v21 → v22 on Windows and the A06 |
+| Recovery acceptance | 22 + 14 + 21 + 1 host tests (Slice 7); `p8-recovery` on Windows and the A06 |
+| Secret scan | tree and history clean at closure; artefacts clean at Slice 8 |
+| Backend baseline | read live at closure: ledger 105, API 57, anon 0, tables without RLS 0, role capabilities 80, grants 7 (5 active), open revenue 3 and open expenses 61 (all pre-existing), owner movements 0, settings 0, closed periods 0 |
+
+## 5 · Dispositions
+
+* **Revenue ledger correctness:** fixed before Slice 8 (D-331, `34a2834`) and accepted in it.
+* **D-248:** UNCONFIRMED, diagnostic retained. The production refresh passed independently; the
+  pull-gesture timing is a plausible harness explanation, not proof.
+* **D-247:** preserved and unresolved. **No normal build may be launched against this
+  workstation's normal AppData until D-247 is dispositioned.** Phase 9 operational.
+* **Accepted non-blocking limitations, classified future enhancements and Phase 9 operational
+  items:** D-333.
+
+## 6 · Product-lead inputs
+
+1. **The production 50:50 ownership effective-from date — UNKNOWN.** Production Owner
+   Settlement is blocked on it. Not guessed.
+2. D-247 disposition before a normal build is installed or launched on this workstation.
+3. Whether to make a small presentation pass on the remaining raw-error surfaces before go-live.
+4. Carried from D-311: the Administration placeholder copy; transaction-list export (D-296);
+   optionally the Print-to-PDF residue (D-309).
+
+## 7 · Phase 9 handoff
+
+Phase 9 — Distribution owns, in this order where order matters:
+
+1. a production Supabase project, configuration and secrets (never in the repository or chat);
+2. the D-146 fresh migration replay in **ledger** order, with the owner bootstrapped before
+   `revenue_verified_baseline_fy2627` (D-319), then reason-constraint validation;
+3. production security and RLS verification (API surface, anon, RLS, Storage policies);
+4. Android release signing with the project lead's keystore, the AAB, Play Internal Testing;
+5. the Windows production build, a reproducible PDFium source (D-298), the installer, and a
+   launch of the release executable — **on a workstation where D-247 is dispositioned**;
+6. a physical printer check; a genuine low-disk check where practical;
+7. rebuilding every installed client (pre-D-320 builds cannot synchronise reporting);
+8. production smoke tests, backup and recovery verification, the go-live runbook and final
+   release acceptance.
+
+**Phase 9 is safe to scope from this foundation. It is not started.**

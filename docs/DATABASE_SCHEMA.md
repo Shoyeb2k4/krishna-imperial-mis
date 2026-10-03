@@ -6,7 +6,7 @@ Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
 Status: **Part proposal, part as-built.** Corrected at Phase 4 closure, 2026-09-07.
-Last updated: 2026-10-01 — **Phase 8 Slice 4**: local schema **v22**, four expense ledger indexes; no server change (D-323, D-324). Previously 2026-09-30 — **Phase 8 — the D-318 redesign**: four server migrations, no local schema change (D-320, D-321). Previously 2026-09-28 — **Phase 7 closed with no schema change** (D-311). Previously 2026-09-25 — **Phase 7 Slice 1 (governance)**: the §2 capability catalogue
+Last updated: 2026-10-03 — **Phase 8 closed with no further schema change** (D-333): local v22, ledger 105, API 57. Previously 2026-10-01 — **Phase 8 Slice 4**: local schema **v22**, four expense ledger indexes; no server change (D-323, D-324). Previously 2026-09-30 — **Phase 8 — the D-318 redesign**: four server migrations, no local schema change (D-320, D-321). Previously 2026-09-28 — **Phase 7 closed with no schema change** (D-311). Previously 2026-09-25 — **Phase 7 Slice 1 (governance)**: the §2 capability catalogue
 now matches the shipped codes (D-300), and Phase 7 is planned with **no schema change**
 (see *Phase 7* at the end). Previously 2026-09-25 — **Phase 6 (Dashboard & Analytics)
 closed with no schema change**:
@@ -1992,3 +1992,13 @@ write time, 19% more file (193.9 → 230.2 MB). Rollback: dropping the indexes l
 **57**. The three server child indexes the local ones mirror already exist
 (`expense_allocations_expense_idx`, `expense_period_allocations_expense_idx`,
 `expense_attachments_expense_idx`).
+
+## Phase 8 closure — no schema change in Slices 5–9 (2026-10-03)
+
+Phase 8 ends at local Drift **v22** (D-323) and the server migration ledger at **105**, latest
+`20260930132722` (D-320, D-321), with the reviewed API at **57** — read live on
+`krishna-mis-dev` at closure. Slices 5–9 changed no table, column, index, migration or RPC: the
+Slice 7 recovery work made the existing schema steps atomic without changing what they create,
+and D-331 changed a query, not the schema. The v21 → v22 upgrade is proven on the Galaxy A06
+(8,334 rows kept, integrity ok) and on Windows. Phase 9's fresh replay must follow the ledger
+order (D-319).

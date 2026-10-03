@@ -12466,3 +12466,127 @@ D-310's user-switch cleanup on the device.
 **Backend.** The suite's fixtures were reversed by `expense-cleanup` and `revenue-cleanup`; the
 open-document id sets, grants, roles, settings, closed periods and ledger are identical to the
 pre-Slice-8 capture.
+
+---
+
+# Phase 8 — Performance, Hardening & Recovery: closure (2026-10-03)
+
+## D-333 — Phase 8 is closed, and this is what each of its decisions finally says
+**Date:** 2026-10-03 · **Status:** Accepted (project-lead approval: Slice 8 accepted at
+`1a4dd12`; the emulator waiver and the D-248 disposition ruled by the project lead)
+
+Phase 8 closes at Slice 9. **Slice 9 is documentation and closure gates only**: no product
+code, no test code, no schema, no migration and no server change. This entry gives the final
+disposition of every Phase 8 decision and classifies every open observation. **No earlier
+entry is rewritten or renumbered.**
+
+### Final dispositions
+
+| Decision | Final state |
+|---|---|
+| D-312, D-313 | Final. The rulings and the measurement contract (`ARCHITECTURE.md` §52.1–§52.4) |
+| D-314 | Final. Every ledger pages with LIMIT/OFFSET; keyset was measured as unnecessary (D-323) |
+| D-315 | Final. D-223's `org_id`-led local index stays, unused by production reporting; no schema change |
+| D-316 | Closed by D-328 … D-330 |
+| D-317 | Closed by D-323 |
+| D-318 | Closed by D-320 and D-321 |
+| D-319 | Final. The harness stays in `tool/perf/`; its replay-order finding is carried to Phase 9 (D-146) |
+| D-320, D-321 | Final. Set-based reporting authority, scoped scans, the paged transport with no historical cutoff; row identity proven 238 of 238 |
+| D-322 | Final. One-shot acts never wait on a provider's retries |
+| D-323, D-324 | Final. The Expense ledger reaches every match; local schema v22; no server change |
+| D-325 | Final. Missed taps are fatal across the host suite and in the Windows shell test; no opt-out remains in `test/` or `integration_test/` |
+| D-326 | Closed by **D-326 (fixed)** |
+| D-327, D-327 (A06) | Final. Inside T2 on Windows and the Galaxy A06; the 20-page PDF boundary is accepted for V1 |
+| D-328 … D-330 | Final. Start-up classification, atomic schema steps, set-aside recovery |
+| D-331 | Final. **The Revenue ledger sync-state defect is fixed** (below) |
+| D-332 | Final. Slice 8 accepted; three harness defects fixed, none in the product |
+
+### The Revenue ledger correctness carry-forward — FIXED, before Slice 8
+
+Fixed at `34a2834` (D-331), committed before the Slice 8 acceptance and exercised by it.
+
+| Requirement | Evidence |
+|---|---|
+| sync state decided before the page is cut | `RevenueRepository._ledgerSelect`: `HAVING ledger_sync_state = ?` precedes `ORDER BY … LIMIT ? OFFSET ?` |
+| more than one page of matches reachable | `revenue_ledger_sync_state_paging_test.dart`: *every conflict is reachable, beyond the first page*; *both conflict pages are reachable, and say so*. Real app: `p8-revenue-ledger`, 75 conflicts walked page by page on Windows and the A06 |
+| no duplicate, no omission | *nothing is duplicated and nothing is skipped*; *the second page continues exactly where the first ended* |
+| changing the sync state resets paging | *changing the sync state returns to the first page* |
+| deterministic order | `business_date desc, captured_at desc, id desc`, unchanged |
+| SQL and Dart agree | *the SQL state is the Dart state, for every outbox status* |
+| positive control | the pre-fix repository restored: 8 of 12 red; the fix restored byte-identically: 12 of 12 green |
+
+**No known V1 correctness defect is carried out of Phase 8.**
+
+### Slice 8 acceptance, as accepted
+
+* **Windows: PASS.** Real `krishna_mis.exe` on the isolated acceptance data folder
+  (`%TEMP%\krishna_mis_acceptance`, D-246, D-249), held by `acceptance_isolation_guard_test.dart`.
+  Windows shell (15 tests) with missed taps fatal; recovery and start-up screens (`p8-recovery`);
+  the v21 → v22 upgrade (`p8-migration`); Revenue ledger paging; the double Save press; native
+  Save As and Print; offline save; restart; dashboard, P&L, both ledgers and offline revenue.
+* **Galaxy A06: PASS.** SM-A066B, Android 16, USB serial `R9ZY50M3GVX`, USB only (D-288).
+  The real-device v21 → v22 upgrade kept **8,334 rows over 34 tables**, `integrity_check` ok,
+  first ledger page equal, 30 ms. Dashboard; paged reporting sync; P&L; Expense ledger; Revenue
+  ledger; share online and offline; `reports.export` removed from the accountant role live and
+  the share disappearing, then restored and reappearing (role capabilities read back 80,
+  `c1b4870f…`); D-310 sign-out and user-switch cleanup; clean dev APK 247,462,769 bytes,
+  SHA-256 `ee942fb6…66b4`, installed hash equal, `INTERNET` only.
+* **Android emulator: NOT EXECUTED.** ADB stayed unauthorised. **Explicitly waived for Phase 8
+  closure by the project lead**, because the Galaxy A06 — the reference device (D-313) —
+  completed the stronger physical-device acceptance. This is not an emulator pass, and it is
+  not a Phase 9 release blocker. Emulator runs continue only where useful.
+
+### D-248 — UNCONFIRMED, diagnostic retained
+
+The 2 October recurrence showed the run had work to do: the header control ran the same
+refresh and it completed, so **the production refresh itself passed independently**. What did
+not start a refresh was the test's pull. The probable cause is the pull landing while Flutter's
+previous refresh indicator was still dismissing; the helper now waits for it to go. That is a
+plausible harness timing explanation, **not proof of the original cause**. D-248 is not fixed;
+its diagnostic stays, and now records whether an indicator was showing.
+
+### D-247 — preserved, deliberately unresolved
+
+The real Windows installation's `krishna_mis.db` was **not opened, migrated, reset,
+quarantined or replaced** in Phase 8, and still has no secure-storage key. **Operational rule:
+no normal (non-acceptance) build may be launched against this workstation's normal AppData
+until D-247 is separately dispositioned** — such a build would now offer a reset and, if
+confirmed, set the file aside (D-330). Phase 8's closure does not depend on recovering it. It
+is carried to Phase 9 operational planning.
+
+### Open observations, classified
+
+| Observation | Class |
+|---|---|
+| Revenue ledger sync state after the cut | **CLOSED** (D-331) |
+| integration-test drag opt-outs; the Windows shell missed-tap policy | **CLOSED** — no opt-out remains; the shell test is fatal |
+| D-326 double Save | **CLOSED** |
+| emulator acceptance | **Waived** for Phase 8 (above) |
+| D-248 | **Accepted non-blocking**: unconfirmed, diagnostic retained |
+| P&L PDF beyond ~840 lines / 20 pages fails safely (D-327) | **Accepted non-blocking limitation** |
+| five-year unmatched Expense filter 540 ms and text search 244 ms on E-WIN (D-323) | **Accepted non-blocking limitation** — STRESS worst case; tens of ms at SCALE |
+| raw `$error` text on the Masters (both shells), Vendors and Revenue ledger error states; the exception *type name* in the Expense save-failure sentence | **Accepted non-blocking limitation** — presentation, not correctness. A small pass before go-live is recommended; the project lead decides |
+| PDF rendering on the UI isolate (~200 ms at stress size, Windows) | **Accepted non-blocking limitation** |
+| a short SQLite busy timeout (D-329 §6); `recentExpensesProvider` with no reader | **Future enhancement** |
+| D-223 unused local index | **Accepted non-blocking** (D-315) |
+| Print-to-PDF empty-file residue (D-309) | **Accepted non-blocking** (unchanged from D-311) |
+| D-247 | **Phase 9 operational** |
+| D-146 fresh-branch replay in ledger order, owner bootstrapped first (D-319) | **Phase 9 operational** |
+| production Supabase, secrets, signing, AAB, Play Internal Testing, Windows installer, reproducible PDFium build (D-298), release executable launch | **Phase 9 operational** |
+| physical printer acceptance | **Phase 9 operational** |
+| genuine low-disk device check (engine `SQLITE_FULL` proven on host) | **Phase 9 operational** |
+| rebuild every installed client (pre-D-320 builds cannot sync reporting) | **Phase 9 operational** |
+
+### Product-lead inputs still outstanding
+
+1. **The production 50:50 ownership effective-from date — UNKNOWN.** Not guessed. Production
+   Owner Settlement stays unconfigured and **blocked** until it is supplied.
+2. **D-247 disposition**, needed before any normal build is installed or launched on this
+   workstation.
+3. Whether to make the recommended presentation pass on the remaining raw-error surfaces before
+   go-live.
+4. Carried unchanged from D-311: the Administration placeholder copy; whether a
+   transaction-list export is wanted (D-296); optionally the Print-to-PDF residue (D-309).
+
+The closure evidence is recorded in `PROJECT_STATUS.md`, *PHASE 8 — PERFORMANCE, HARDENING &
+RECOVERY: COMPLETE AND CLOSED*. **Phase 9 — Distribution: not started.**

@@ -934,10 +934,11 @@ Decisions D-312 … D-319; measurement contract `ARCHITECTURE.md` §52.
       five warm runs; E-LOCALPG at SCALE and STRESS; change only on a measured breach.
       *Measured (D-318): a breach at SCALE and STRESS; the redesign awaits the project lead and
       nothing was changed. Harness `tool/perf/` (D-319).*
-- [ ] **Slice 2 follow-up (only if approved)** — the D-318 redesign, proven by the harness's
+- [x] **Slice 2 follow-up (only if approved)** — the D-318 redesign, proven by the harness's
       differential equivalence over SCALE for every principal and surface, the rolled-back
       positive control, the full allow/deny matrix and the live suites, then re-measured on the
       same matrix.
+      *Done (D-320, D-321): 238 of 238 identity checks, three controls red, re-measured.*
 - [ ] **Phase 9 staging replay (D-146)** — replay in **ledger** order, not filename order:
       `20260829090500_api_surface_invariant.sql` after `20260829100000_…`; bootstrap the owner
       before `20260901132225_revenue_verified_baseline_fy2627` (D-319).
@@ -977,4 +978,17 @@ Decisions D-312 … D-319; measurement contract `ARCHITECTURE.md` §52.
 - [ ] **Phase 9 / D-146** — the fresh-branch replay must follow the ledger order, not
       filename order, and bootstrap the owner before `revenue_verified_baseline_fy2627`
       (D-319 finding 1); the D-320 migrations then apply in their own order.
-- [ ] **Slice 9** — closure record, carry-forwards classified, clean artefacts scanned.
+- [x] **Slice 9** — closure record, carry-forwards classified, clean artefacts scanned.
+      *Done (D-333): see V.3.*
+
+### V.3 Phase 8 closure gates (Slice 9, 2026-10-03)
+
+- [x] Every accepted Phase 8 commit on `origin/main` (pushed `ba1aed7..1a4dd12`).
+- [x] Revenue ledger sync-state carry-forward fixed and evidenced (D-331).
+- [x] Full host suite at `1a4dd12`: **3,154 passed, 0 failed**.
+- [x] `dart format --set-exit-if-changed`, `flutter analyze`, documentation invariants, Phase 8
+      guards, secret scan over tree and history.
+- [x] Backend read live: ledger 105, API 57, anon 0, RLS on every table, development baseline.
+- [x] Every open observation classified; product-lead inputs listed (D-333).
+- [ ] **Phase 9:** the D-146 ledger-order replay; production signing, AAB, Play; the Windows
+      installer and release launch (after D-247); physical printer; low-disk check.
