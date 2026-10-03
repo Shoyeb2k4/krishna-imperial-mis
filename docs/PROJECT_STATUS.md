@@ -5,7 +5,9 @@ Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
-Last updated: **2026-10-02** — **REVENUE LEDGER SYNC-STATE REMEDIATION: DONE (D-331).** A sync-state filter on the Revenue ledger now finds every matching sale, not just those among the newest 50; it is decided in SQL before the page is cut. No schema, server or UX change.
+Last updated: **2026-10-03** — **PHASE 8 SLICE 8 — WINDOWS AND GALAXY A06 ACCEPTANCE: COMPLETE (D-332).** Every Slice 8 phase passes in the real Windows executable and on the Galaxy A06: the recovery screens, the v21 → v22 upgrade on a production-shaped copy, the Revenue ledger's sync-state paging (D-331), the double Save press (D-326), Save As and Print through the native dialogs, and the phone share with a live capability loss and a user switch (D-310). Three acceptance-harness defects were found and fixed; no product code changed. Host suite **3,154 passed**. `krishna-mis-dev` ends exactly at its pre-Slice-8 baseline. **Slice 9 (closure) is not started.**
+
+Previously: **2026-10-02** — **REVENUE LEDGER SYNC-STATE REMEDIATION: DONE (D-331).** A sync-state filter on the Revenue ledger now finds every matching sale, not just those among the newest 50; it is decided in SQL before the page is cut. No schema, server or UX change.
 
 Previously: **2026-10-02** — **PHASE 8 SLICE 7 — STRESS, FAILURE & RECOVERY: COMPLETE (D-328 … D-330).** If the app cannot open its data it now says why in plain words and offers *Try again*; only for data that truly cannot be opened or upgraded does it offer *Reset local data and download again*, after stating what would be lost and a typed RESET. The data is moved aside, never deleted. An interrupted upgrade now changes nothing instead of leaving the data unopenable for ever; a missing key no longer writes a new one; a lock is no longer reported as damage. Host suite **3,134 passed**; Windows restart smoke PASS. No schema or server change. **Slice 8 is not started.**
 
@@ -183,7 +185,7 @@ drill-down, and the Owner Accounts ledger, settlement engine and preview surface
 **Phase 8 — Performance, Hardening & Recovery: IN PROGRESS (started 2026-09-29).** Slices 1 and 2
 are complete, with the approved D-318 redesign built and D-318 closed (D-320, D-321); Slice 3
 (retry and hang hardening, D-322), Slice 4 (the Expense ledger, D-323, D-324) and Slice 5
-(global missed-tap hardening, D-325) are complete; D-326 is fixed; Slice 6 (export performance, D-327) is closed on Windows and the Galaxy A06; Slice 7 (stress, failure and recovery, D-328 … D-330) is complete. Slices 8–9 are not started. Its record is
+(global missed-tap hardening, D-325) are complete; D-326 is fixed; Slice 6 (export performance, D-327) is closed on Windows and the Galaxy A06; Slice 7 (stress, failure and recovery, D-328 … D-330) is complete; Slice 8 (Windows and Galaxy A06 acceptance, D-332) is complete. Slice 9 is not started. Its record is
 *PHASE 8* at the **end** of this file. *(This paragraph read "Slice 1 is complete; Slices 2–9
 are not started" until Slice 2, "Slices 3–9 are not started" until Slice 3, "Slices 4–9 are not
 started" until Slice 4, and "Slices 5–9 are not started" until Slice 5.)*
@@ -7356,7 +7358,7 @@ measurement against an approved threshold requires.
 | 5 | Global missed-tap hardening (D8) | **COMPLETE** (D-325; D-326 reported) |
 | 6 | Export performance (D2, T2/T3) | **CLOSED** — inside T2 on Windows and on the Galaxy A06 (D-327) |
 | 7 | Stress and recovery, including damaged-database recovery (D4, D-316) | **COMPLETE** (D-328 … D-330) |
-| 8 | Windows, emulator and Galaxy A06 acceptance and regression | not started |
+| 8 | Windows, emulator and Galaxy A06 acceptance and regression | **COMPLETE** (D-332; emulator not run, the A06 is the reference) |
 | 9 | Closure | not started |
 
 **Gates every slice closes on:** `dart format --set-exit-if-changed`, `flutter analyze`, the
@@ -7899,3 +7901,73 @@ change. Evidence: D-331.
 | Positive control | **Tested** | pre-fix repository restored → 8 red; fix restored byte-identically (`cmp`) → green |
 | Existing revenue ledger and Windows UI suites | **Tested** | 65 passed alongside the new 12 |
 | Index or schema change | **None** | plan shape unchanged; no index needed |
+
+## Phase 8 Slice 8 — Windows and Galaxy A06 acceptance and regression: **COMPLETE** (2026-10-03)
+
+Decision **D-332**. **No product code, schema, migration or server change.** Local Drift schema
+stays **v22**; the ledger stays **105**; reviewed API **57**. Every change is in the acceptance
+harness (`integration_test/`) or the host guards.
+
+### In plain words
+
+Everything Phase 8 changed was run in the real applications: the Windows program and the
+reference phone. Recovery screens, the database upgrade, the fixed Revenue ledger filter, the
+double-press fix, saving and printing through the real Windows dialogs, and sharing from the
+phone all work. Running them found three faults in the test harness, all fixed; none in the
+product. The development backend was put back exactly as it was.
+
+### Phases, final code
+
+| Phase | Windows (real `krishna_mis.exe`) | Galaxy A06 (SM-A066B, Android 16, USB `R9ZY50M3GVX`) |
+|---|---|---|
+| `p8-recovery` — lock → Try again only; damaged → typed RESET; cancel changes nothing; set aside, not erased; a failed restart stays recoverable | **PASS** | **PASS** |
+| `p8-migration` — a copy of the synced database taken back to v21 upgrades to v22 in the running app | **PASS** | **PASS** — 8,334 rows over 34 tables kept, integrity ok, first ledger page equal, 30 ms |
+| `p8-revenue-ledger` — 75 conflicts walked page by page (D-331) | **PASS** | **PASS** |
+| `p8-double-submit` — two presses before a frame: 1 local, 1 server, for a sale and an expense (D-326) | **PASS** | **PASS** |
+| `p8-windows-export` — Save As ×4, cancel, Print to PDF, offline save; files equal the screen | **PASS** (2 Oct) | — |
+| `p7-android-share` — share sheet online and offline; `reports.export` removed from the accountant role and restored live; a user switch cleans the shared PDF (D-310) | — | **PASS** |
+| `slice11-restart-a` / `-b` | **PASS** | — |
+| `expense-simple` | **PASS** | **PASS** |
+| `android-pnl`, `p6-android-dashboard`, `revenue-offline` | — | **PASS** |
+| `p6-windows-dashboard`, `windows-pnl`, `windows-ledger`, `windows-revenue`, `windows-revenue-offline`, `expense-offline` | **PASS** (2 Oct) | — |
+| `windows_shell_test.dart` (15 tests, missed taps now fatal) | **PASS** | — |
+| performance harnesses (dashboard, expense ledger, export) | **PASS** (2 Oct) | — |
+| Emulator | **Not run** — its ADB session stayed unauthorised; the A06 is the reference device (D-313) | |
+
+"2 Oct" phases ran on the code committed at `f807631` and were not re-run; nothing they exercise
+changed afterwards.
+
+### Defects found, all in the harness
+
+| | Defect | Fix |
+|---|---|---|
+| 1 | `classify` tapped the expense form's "Charged to" row after the notes were typed; on a phone the lazy list had scrolled it out and disposed it (`expense-simple` and `p8-double-submit` red on the A06) | scroll back up until it is built, then tap when hittable |
+| 2 | `p8-migration` opened the P&L through the Windows Analytics route, which a phone does not have | the phone opens Reports, the desktop opens Analytics |
+| 3 | D-248 recurred once (`android-pnl`, 2 Oct): the diagnostic showed the run had work (the header control ran it) but the pull did not start it | wait for the previous refresh indicator to dismiss before pulling; the diagnostic stays and now records whether one was showing (D-332) |
+
+### Verified
+
+| Item | Status | Evidence |
+|---|---|---|
+| `dart format --set-exit-if-changed` | **Tested** | 431 files, 0 changed |
+| `flutter analyze` | **Tested** | No issues found |
+| Host suite | **Tested** | **3,154 passed**, 0 failed |
+| Windows phases, final code | **Tested** | table above |
+| Galaxy A06 phases, final code | **Tested** | table above; USB identity unchanged before and after |
+| Live capability round trip | **Tested** | `reports.export` removed from and restored to the accountant role; role capabilities read back 80, `c1b4870f…` |
+| Fixture reversal | **Tested** | `expense-cleanup` + `revenue-cleanup`, through the real API |
+| Backend after | **Tested** | role capabilities 80 `c1b4870f…`; grants 7 (5 active); roles 4; open revenue 3 (ids `2b0d6f6f…`), open expenses 61 (ids `15906076…`); owner movements 0; settings 0; closed periods 0; live tax rules 4; ledger 105 — identical to the pre-Slice-8 capture |
+| Clean Android dev APK | **Tested** | `config/dev.json` only; 247,462,769 bytes; SHA-256 `ee942fb6…66b4`; installed on the A06, installed hash equal; `INTERNET` only |
+| Windows release build | **Tested** | `config/dev.json` only |
+| Secret scan — tree, history, artefacts | **Tested** | clean, after removing the acceptance Debug bundle and `build/flutter_assets` |
+
+### D-247
+
+No phase opened the forensic database: since `f807631` every real-app restart passes the
+acceptance folder, and a host guard refuses any that does not. A normal (non-acceptance) build
+was **not** launched on this workstation.
+
+### Carried to Slice 9
+
+* The 20-page PDF limit (D-327) stays as ruled.
+* The Phase 9 items recorded in D-311 and D-319 are unchanged.

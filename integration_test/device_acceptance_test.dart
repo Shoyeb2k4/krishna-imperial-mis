@@ -1934,7 +1934,22 @@ void main() {
 
   /// Walks the classification picker down the hierarchy, one rung at a time.
   Future<void> classify(WidgetTester tester, List<String> rungs) async {
-    await tester.tap(find.byKey(const Key('classification-summary')));
+    // The entry form is a lazy list. On a phone, typing the notes inside More details
+    // scrolls the form down far enough that the "Charged to" row above is no longer built,
+    // so it cannot be found until the form is scrolled back up (Galaxy A06, Slice 8).
+    const summary = Key('classification-summary');
+    if (find.byKey(summary).evaluate().isEmpty) {
+      await tester.scrollUntilVisible(
+        find.byKey(summary),
+        -200,
+        scrollable: find.byType(Scrollable).first,
+        maxScrolls: 40,
+      );
+      await tester.pump(const Duration(milliseconds: 400));
+    }
+    await tester.ensureVisible(find.byKey(summary));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tapWhenHittable(tester, find.byKey(summary));
     await tester.pump(const Duration(milliseconds: 600));
     for (final rung in rungs) {
       await pumpUntil(tester, 'the option "$rung"', () => visible(rung));
@@ -8287,6 +8302,20 @@ void main() {
     await tester.drag(phonePnlScrollable(), const Offset(0, 4000));
     await tester.pump(const Duration(milliseconds: 600));
     await settlePnl(tester, container);
+    // D-248: a RefreshIndicator ignores a new pull until the previous refresh's indicator
+    // has finished dismissing. The run settling is not enough - the indicator animates out
+    // afterwards, and on a slow phone the fling can land inside that animation and do
+    // nothing. Wait until no indicator is on screen, and record whether one was.
+    final indicatorWasShowing = find
+        .byType(RefreshProgressIndicator)
+        .evaluate()
+        .isNotEmpty;
+    await pumpUntil(
+      tester,
+      'the previous refresh indicator to dismiss',
+      () => find.byType(RefreshProgressIndicator).evaluate().isEmpty,
+    );
+    await tester.pump(const Duration(milliseconds: 400));
     final before = container.read(pnlSyncProvider);
     await tester.fling(phonePnlScrollable(), const Offset(0, 500), 1500);
     try {
@@ -8308,7 +8337,8 @@ void main() {
       final rules = container.read(businessDayRulesProvider);
       final view = container.read(pnlViewProvider);
       debugPrint(
-        'DIAG pull-to-refresh: phase=${status.phase} running=${status.isRunning} '
+        'DIAG pull-to-refresh: indicatorBeforeWait=$indicatorWasShowing '
+        'phase=${status.phase} running=${status.isRunning} '
         'identical=${identical(status, before)} '
         'period=${container.read(pnlSelectionProvider).period} '
         'scopeOptions=${scopes.hasValue
@@ -15241,9 +15271,15 @@ void main() {
       (tester) async {
         await launch(tester);
         final container = await p6SignIn(tester, 'giridhar@hki.com');
-        // The reporting cache too, so the copy is what a working device holds.
-        await openPnl(tester, container);
-        await refreshPnl(tester, container);
+        // The reporting cache too, so the copy is what a working device holds. A phone
+        // reaches the P&L through Reports, the desktop through Analytics.
+        if (s11Phone()) {
+          await openPhonePnl(tester, container);
+          await refreshPhonePnl(tester, container);
+        } else {
+          await openPnl(tester, container);
+          await refreshPnl(tester, container);
+        }
 
         final dir = p8Disposable('migration');
         final storage = InMemorySecretStorage();

@@ -12422,3 +12422,47 @@ order. No index added.
 
 **Positive control.** The pre-fix repository restored: 8 of 12 regressions red. The fixed
 file restored byte-identically (`cmp`): 12 of 12 green.
+
+---
+
+# Phase 8 Slice 8 — Windows and Galaxy A06 acceptance (2026-10-03)
+
+## D-332 — Phase 8 is accepted in the real applications; three harness defects, D-248 narrowed
+**Date:** 2026-10-03 · **Status:** Implemented / Tested (Phase 8 Slice 8). No product code,
+schema or server change.
+
+**What ran.** Five new phases (`p8-recovery`, `p8-migration`, `p8-revenue-ledger`,
+`p8-double-submit`, `p8-windows-export`, added at `f807631`) and the existing phases each Phase 8
+slice touched, in the real Windows executable and on the Galaxy A06 over USB (D-288). Every one
+passes on the final code. The emulator was not used: its ADB session stayed unauthorised, and
+the A06 is the reference device (D-313). Results: `PROJECT_STATUS.md`, *Phase 8 Slice 8*.
+
+**Isolation, carried from `f807631`.** Four acceptance "restart" steps had called `bootstrap()`
+without the acceptance folder, so on Windows they opened the D-247 database (wrong key, closed,
+not modified). They now pass the folder, and `acceptance_isolation_guard_test.dart` refuses the
+shape across `integration_test/`.
+
+**Three defects, all in the harness, each found on the phone.**
+1. `classify` tapped the expense form's "Charged to" row after the notes were typed. The form is
+   a lazy list; on a phone that row had been scrolled out and disposed. It now scrolls back until
+   the row is built.
+2. `p8-migration` opened the P&L through the Windows Analytics route. It now uses the phone's
+   Reports tab on Android.
+3. **D-248 recurred once** (`android-pnl`, 2 Oct). Its diagnostic answered the question D-248
+   left open: the run had work to do (the header control ran it), so it was the **pull that did
+   not start a refresh**, not a run that returned early. A `RefreshIndicator` ignores a new pull
+   while the previous one is still dismissing, and the run settling does not mean the indicator
+   has gone. The helper now waits for no indicator before pulling. Whether the indicator was
+   showing at the failed pull was not recorded, so the cause is **probable, not proven**; the
+   diagnostic stays and now records it. This is ordinary Flutter behaviour, not a product
+   defect: a person whose pull lands in that animation pulls again.
+
+**Live capability round trip (the D-243 pattern, approved by the project lead for this run).**
+During `p7-android-share`, `reports.export` was removed from the accountant role on
+`krishna-mis-dev` and then restored; the phone withdrew and restored the share. The role
+capabilities read back 80 rows, hash `c1b4870f…`, identical to the baseline. The same run proved
+D-310's user-switch cleanup on the device.
+
+**Backend.** The suite's fixtures were reversed by `expense-cleanup` and `revenue-cleanup`; the
+open-document id sets, grants, roles, settings, closed periods and ledger are identical to the
+pre-Slice-8 capture.

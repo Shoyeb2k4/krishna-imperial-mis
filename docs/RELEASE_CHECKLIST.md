@@ -960,13 +960,18 @@ Decisions D-312 … D-319; measurement contract `ARCHITECTURE.md` §52.
       *Done (D-325, `ARCHITECTURE.md` §52.9): baseline 3,053 with no missed-tap warning; first
       enablement failed nothing; per-file toggles removed; the one opt-out was dead code and is
       gone; guard and five positive controls; D-326 (revenue double press) reported, not fixed.*
-- [ ] **Slice 6** — export stages timed separately at normal, realistic and stress sizes on
+- [x] **Slice 6** — export stages timed separately at normal, realistic and stress sizes on
       E-WIN and E-A06 against T2/T3.
-- [ ] **Slice 7** — damaged-database recovery built under D4: never automatic, typed
+      *Done (D-327): inside T2 on Windows and the Galaxy A06; nothing changed.*
+- [x] **Slice 7** — damaged-database recovery built under D4: never automatic, typed
       confirmation, quarantine before delete, re-download scoped to the current principal,
       retryable; lock contention, interrupted migration and file-write failure covered.
-- [ ] **Slice 8** — Windows, emulator and Galaxy A06 (USB only, D-288) regression and
+      *Done (D-328 … D-330).*
+- [x] **Slice 8** — Windows, emulator and Galaxy A06 (USB only, D-288) regression and
       acceptance.
+      *Done (D-332): every Slice 8 phase passes on Windows and the A06; the emulator was not
+      run (the A06 is the reference); clean APK installed with a matching hash; backend at
+      baseline.*
       **Rebuild every installed client first:** builds made before D-320 call the dropped
       `reporting_snapshot` and cannot synchronise reporting against `krishna-mis-dev`.
 - [ ] **Phase 9 / D-146** — the fresh-branch replay must follow the ledger order, not
