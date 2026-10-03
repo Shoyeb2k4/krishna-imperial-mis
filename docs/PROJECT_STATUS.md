@@ -5,7 +5,9 @@ Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
-Last updated: **2026-10-03** — **PHASE 8 — PERFORMANCE, HARDENING & RECOVERY: COMPLETE AND FORMALLY CLOSED at Slice 9 (D-333).** Slices 1–9 are closed. The Revenue ledger sync-state defect was fixed before Slice 8 (D-331) and accepted in it; no known V1 correctness defect is carried out of Phase 8. Windows and the Galaxy A06 PASS; the Android emulator was NOT EXECUTED and is waived for closure by the project lead. D-248 stays unconfirmed with its diagnostic; D-247 stays preserved and unresolved. Host suite **3,154 passed** at `1a4dd12`. Local schema v22; ledger 105; API 57. The production 50:50 ownership effective-from date is still unknown. The closure record is *PHASE 8 — PERFORMANCE, HARDENING & RECOVERY: COMPLETE AND CLOSED* at the end of this file. **Phase 9 — Distribution: not started.**
+Last updated: **2026-10-03** — **PHASE 9 — PRODUCTION RELEASE, DEPLOYMENT & GO-LIVE: STARTED. Slice 1 (governance and production inputs) is complete** (D-334 … D-345): the release contract, six verified release blockers for Slice 2, the authoritative replay contract (98 committed migration files), the read-only production smoke policy, the product-lead input register, the secrets register and the runbook skeleton (`docs/PRODUCTION_RUNBOOK.md`). Documentation only: no code, schema, server, signing or build change. **Slice 2 is not started.** See *PHASE 9* at the end of this file.
+
+Previously: **2026-10-03** — **PHASE 8 — PERFORMANCE, HARDENING & RECOVERY: COMPLETE AND FORMALLY CLOSED at Slice 9 (D-333).** Slices 1–9 are closed. The Revenue ledger sync-state defect was fixed before Slice 8 (D-331) and accepted in it; no known V1 correctness defect is carried out of Phase 8. Windows and the Galaxy A06 PASS; the Android emulator was NOT EXECUTED and is waived for closure by the project lead. D-248 stays unconfirmed with its diagnostic; D-247 stays preserved and unresolved. Host suite **3,154 passed** at `1a4dd12`. Local schema v22; ledger 105; API 57. The production 50:50 ownership effective-from date is still unknown. The closure record is *PHASE 8 — PERFORMANCE, HARDENING & RECOVERY: COMPLETE AND CLOSED* at the end of this file. **Phase 9 — Distribution: not started.**
 
 Previously: **2026-10-03** — **PHASE 8 SLICE 8 — WINDOWS AND GALAXY A06 ACCEPTANCE: COMPLETE (D-332).** Every Slice 8 phase passes in the real Windows executable and on the Galaxy A06: the recovery screens, the v21 → v22 upgrade on a production-shaped copy, the Revenue ledger's sync-state paging (D-331), the double Save press (D-326), Save As and Print through the native dialogs, and the phone share with a live capability loss and a user switch (D-310). Three acceptance-harness defects were found and fixed; no product code changed. Host suite **3,154 passed**. `krishna-mis-dev` ends exactly at its pre-Slice-8 baseline. **Slice 9 (closure) is not started.**
 
@@ -183,6 +185,10 @@ drill-down, and the Owner Accounts ledger, settlement engine and preview surface
 ---
 
 ## Current phase
+
+**Phase 9 — Production Release, Deployment & Go-Live: IN PROGRESS (started 2026-10-03).** Slice 1
+(governance and production inputs) is complete; Slices 2–9 are not started. Its record is
+*PHASE 9* at the **end** of this file.
 
 **Phase 8 — Performance, Hardening & Recovery: COMPLETE and formally closed (2026-10-03, Slice 9,
 D-333).** Its authoritative record is *PHASE 8 — PERFORMANCE, HARDENING & RECOVERY: COMPLETE AND
@@ -8091,3 +8097,115 @@ Phase 9 — Distribution owns, in this order where order matters:
    release acceptance.
 
 **Phase 9 is safe to scope from this foundation. It is not started.**
+
+---
+
+# PHASE 9 — PRODUCTION RELEASE, DEPLOYMENT & GO-LIVE: STARTED (2026-10-03)
+
+Phase 8 closed at `d7c7e22`. The Phase 9 audit was accepted with its nine-slice plan.
+Decisions **D-334 … D-345**; `ARCHITECTURE.md` §53; `DATABASE_SCHEMA.md` *Phase 9*;
+`RELEASE_CHECKLIST.md` §W; `docs/PRODUCTION_RUNBOOK.md` (skeleton).
+
+**The principle:** Phase 9 adds no V1 feature and changes no financial semantic. It takes the
+closed V1 to a production backend, signed releases on both platforms, and a go-live.
+
+## The approved slice plan
+
+| # | Slice | State |
+|---|---|---|
+| 1 | Governance and production inputs | **COMPLETE** |
+| 2 | Release-build hardening | not started |
+| 3 | Pre-release UX wording | not started |
+| 4 | Authoritative migration replay and rehearsal | not started |
+| 5 | Production Supabase | not started |
+| 6 | Android release, AAB, Play Internal Testing | not started |
+| 7 | Windows release, installer, clean-machine acceptance | not started |
+| 8 | Production smoke, backup, recovery, go-live readiness | not started |
+| 9 | Final V1 release closure | not started |
+
+## Phase 9 Slice 1 — governance and production inputs: **COMPLETE**
+
+Documentation only. **No product code, schema, migration, manifest, signing material,
+dependency or server change.** Local Drift schema stays **v22**; the migration ledger on
+`krishna-mis-dev` stays **105**; reviewed API **57**. No Supabase project was created, no key
+generated, nothing built or signed, and D-247 was not touched.
+
+### Release blockers recorded (D-335), all owned by Slice 2
+
+| # | Blocker |
+|---|---|
+| 1 | Production Android manifest lacks `INTERNET` (only debug/profile declare it) |
+| 2 | Release signing falls back to the debug key (`TODO(Phase 9)` in `build.gradle.kts`) |
+| 3 | `proguard-rules.pro`, named by the minified release build, does not exist |
+| 4 | A prod build without a backend seeds demo masters instead of refusing to start |
+| 5 | Development and production share one Windows data identity (folder, file, key name) |
+| 6 | That identity is the D-247 folder on this workstation |
+
+### The contracts recorded
+
+| Contract | Where |
+|---|---|
+| Phase 9 definition and plan | D-334 |
+| Binding rulings: D-247, 50:50 date, transaction-list export, Print-to-PDF residue, error wording, Administration placeholder | D-336 |
+| Production Supabase environment | D-337 |
+| D-146 authoritative replay: committed ordered manifest with SHA-256, the `20260829090500` anomaly, the stop point before `20260901132225`, Owner bootstrap, fail on first error, **98** files against dev's 105 ledger rows | D-338 |
+| Rehearsal mandatory; production security acceptance; **production smoke read-only** | D-339 |
+| Production bootstrap sequence; administration gap (path A or B) | D-340 |
+| Android release | D-341 |
+| Windows release | D-342 |
+| Pre-release UX scope (six files) and the proposed Administration wording | D-343 |
+| Backup and recovery; physical printer; low disk | D-344 |
+| Input, secrets and runbook registers; the §K.2 correction | D-345 |
+
+**One figure corrected against the repository.** The Slice 1 direction said 99 committed
+migration files; `supabase/migrations/` holds **98** `.sql` files at `d7c7e22`. The replay
+contract records 98 and Slice 4's manifest is generated from the repository.
+
+### Product-lead input register
+
+Classified by when each is needed. **No answer is invented**; an item is closed only by the
+project lead's own answer, recorded in a decision.
+
+| # | Input | Needed | State |
+|---|---|---|---|
+| 1 | Supabase production plan tier (decides PITR and leaked-password protection) | REQUIRED BEFORE PRODUCTION DEPLOYMENT (Slice 5) | PENDING |
+| 2 | Rehearsal target: separate staging project or Supabase branch (audit: staging project) | REQUIRED BEFORE SLICE 4 | PENDING |
+| 3 | Windows production data identity (folder name and key name) | REQUIRED BEFORE SLICE 2 | PENDING |
+| 4 | Installer choice (audit: Inno Setup, per-user, no admin rights) | REQUIRED BEFORE SLICE 7 | PENDING |
+| 5 | Windows code-signing certificate, yes or no | REQUIRED BEFORE SLICE 7 | PENDING |
+| 6 | Play developer account: personal or organisation | REQUIRED BEFORE PLAY (Slice 6) | PENDING |
+| 7 | Privacy-policy URL | REQUIRED BEFORE PLAY (Slice 6) | PENDING |
+| 8 | App versioning scheme (current `1.0.0+1`) | REQUIRED BEFORE SLICE 6 | PENDING |
+| 9 | Production administration path, A (SQL procedure) or B (Owner-authenticated CLI; audit recommends B) | REQUIRED BEFORE SLICE 4 (so it is rehearsed) | PENDING |
+| 10 | Real staff names, emails, roles and properties — supplied privately, never into git | REQUIRED BEFORE PRODUCTION DEPLOYMENT | PENDING |
+| 11 | Auth Site URL | REQUIRED BEFORE PRODUCTION DEPLOYMENT | PENDING |
+| 12 | SMTP, yes or no (password-reset email) | REQUIRED BEFORE PRODUCTION DEPLOYMENT | PENDING |
+| 13 | Production smoke write policy | OPTIONAL / NON-BLOCKING — the read-only default (D-339) applies unless changed | DEFAULT IN FORCE |
+| 14 | Target finance PC for Windows acceptance | REQUIRED BEFORE SLICE 7 | PENDING |
+| 15 | Physical printer model | OPTIONAL / NON-BLOCKING — NOT EXECUTED if unavailable | PENDING |
+| 16 | Confirmation of the production master structure (seeded by `20260827091200_seed.sql`) | REQUIRED BEFORE PRODUCTION DEPLOYMENT | PENDING |
+| 17 | Confirmation that the four verified tax rules still hold (D-091, D-096) | REQUIRED BEFORE PRODUCTION DEPLOYMENT | PENDING |
+| 18 | Go-live date | REQUIRED BEFORE SLICE 8 | PENDING |
+| 19 | 50:50 ownership effective-from date | OPTIONAL / NON-BLOCKING for Phase 9 — blocks production Owner Settlement only | UNKNOWN |
+| 20 | D-247 disposition | REQUIRED BEFORE any normal build runs on this workstation; NON-BLOCKING for release work done in isolation | PENDING |
+
+### Unresolved product-lead decisions
+
+Rehearsal target (#2); Windows production data identity (#3); installer (#4); code signing
+(#5); Play account type (#6); privacy-policy URL (#7); versioning (#8); administration path
+(#9); plan tier (#1); Site URL (#11); SMTP (#12); target PC (#14); printer (#15); master
+structure and tax-rule confirmations (#16, #17); go-live date (#18); the 50:50 date (#19);
+D-247 (#20). **Slice 2 needs only #3**; everything else is needed later.
+
+### Gates
+
+| Item | Status | Evidence |
+|---|---|---|
+| Repository at `d7c7e22`, `origin/main` equal, tree clean, before editing | **Tested** | checked first |
+| Release blockers re-read in the code | **Tested** | each cited in D-335 |
+| `dart format --set-exit-if-changed` | **Tested** | clean, 432 files (the one new test file formatted before the check) |
+| `flutter analyze` | **Tested** | No issues found |
+| Phase 9 governance guard | **Tested** | `test/docs/phase9_governance_guard_test.dart`, **7 passed**; three planted violations (a missing runbook section, a planted secret, the stale §K.2 line) turned **3 red**, both files restored byte-identically (`cmp`) |
+| Documentation invariants and existing release/config guards | **Tested** | **132 passed** with the guard: migration audit, backend schema parity, chart guard, acceptance isolation, app config, no hard-coded authority, missed-tap policy, Windows runner apartment, document-generation and `change_seq` invariants |
+| Secret scan, tree and history | **Tested** | clean, after the guard's planted values were assembled at run time — the scanner first refused a planted connection-string literal, as it should |
+| Builds, device acceptance, live suites | **Not run** | Slice 1 changes no executable code |

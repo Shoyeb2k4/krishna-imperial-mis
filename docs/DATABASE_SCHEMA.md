@@ -6,7 +6,7 @@ Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
 Status: **Part proposal, part as-built.** Corrected at Phase 4 closure, 2026-09-07.
-Last updated: 2026-10-03 — **Phase 8 closed with no further schema change** (D-333): local v22, ledger 105, API 57. Previously 2026-10-01 — **Phase 8 Slice 4**: local schema **v22**, four expense ledger indexes; no server change (D-323, D-324). Previously 2026-09-30 — **Phase 8 — the D-318 redesign**: four server migrations, no local schema change (D-320, D-321). Previously 2026-09-28 — **Phase 7 closed with no schema change** (D-311). Previously 2026-09-25 — **Phase 7 Slice 1 (governance)**: the §2 capability catalogue
+Last updated: 2026-10-03 — **Phase 9 Slice 1**: the authoritative replay contract recorded, no schema change (D-338). Previously 2026-10-03 — **Phase 8 closed with no further schema change** (D-333): local v22, ledger 105, API 57. Previously 2026-10-01 — **Phase 8 Slice 4**: local schema **v22**, four expense ledger indexes; no server change (D-323, D-324). Previously 2026-09-30 — **Phase 8 — the D-318 redesign**: four server migrations, no local schema change (D-320, D-321). Previously 2026-09-28 — **Phase 7 closed with no schema change** (D-311). Previously 2026-09-25 — **Phase 7 Slice 1 (governance)**: the §2 capability catalogue
 now matches the shipped codes (D-300), and Phase 7 is planned with **no schema change**
 (see *Phase 7* at the end). Previously 2026-09-25 — **Phase 6 (Dashboard & Analytics)
 closed with no schema change**:
@@ -2002,3 +2002,20 @@ Slice 7 recovery work made the existing schema steps atomic without changing wha
 and D-331 changed a query, not the schema. The v21 → v22 upgrade is proven on the Galaxy A06
 (8,334 rows kept, integrity ok) and on Windows. Phase 9's fresh replay must follow the ledger
 order (D-319).
+
+## Phase 9 — the authoritative replay contract (Slice 1, 2026-10-03)
+
+**No schema change.** Local Drift stays **v22**; the server ledger on `krishna-mis-dev` stays
+**105**; reviewed API **57**. This section records how the schema is *installed* on a clean
+database (D-338), which Slice 4 implements and rehearses.
+
+| | |
+|---|---|
+| Committed migration files at `d7c7e22` | **98** `.sql` files in `supabase/migrations/` |
+| Order | a committed manifest with SHA-256 per file; filename order except `20260829090500_api_surface_invariant.sql`, which runs after `20260829100000_usage_and_attachment_storage.sql` |
+| Stop point | before `20260901132225_revenue_verified_baseline_fy2627.sql`; create the Owner's auth user, call `app.bootstrap_owner`, continue |
+| Failure | first SQL error stops the replay; nothing after it is applied |
+| History | one row per applied file; development's 105 server-assigned versions are expected to differ and are never rewritten |
+| Masters | seeded by `20260827091200_seed.sql` — the production structure needs the project lead's confirmation (input register #16) |
+| Tax configuration | the four verified rules, seeded by `20260901132225_revenue_verified_baseline_fy2627.sql` (D-096) — confirmation input #17 |
+| Owner Accounts | ownership shares and the settlement start date stay **unconfigured** in production until the 50:50 date is supplied (D-336) |

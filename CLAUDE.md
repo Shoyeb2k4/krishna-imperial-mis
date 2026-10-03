@@ -50,6 +50,8 @@ Also available, read on demand (not auto-imported):
 
 - `docs/DATABASE_SCHEMA.md` — entities, relationships, constraints, RLS
 - `docs/RELEASE_CHECKLIST.md` — build, sign, verify, distribute
+- `docs/PRODUCTION_RUNBOOK.md` — production operations and the secrets register (Phase 9;
+  where secrets live, never their values)
 
 ## Governance rules
 

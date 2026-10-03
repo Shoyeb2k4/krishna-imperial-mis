@@ -12590,3 +12590,295 @@ is carried to Phase 9 operational planning.
 
 The closure evidence is recorded in `PROJECT_STATUS.md`, *PHASE 8 — PERFORMANCE, HARDENING &
 RECOVERY: COMPLETE AND CLOSED*. **Phase 9 — Distribution: not started.**
+
+---
+
+# Phase 9 — Production Release, Deployment & Go-Live (2026-10-03)
+
+Phase 8 closed at `d7c7e22`. Phase 9 was scoped by a read-only audit; the project lead
+accepted it, accepted the nine-slice plan below, and directed Slice 1 as governance and
+documentation only. D-334 … D-345 record that contract. **Slice 1 changes no executable
+behaviour, schema, migration, manifest, signing material or server.** Every finding below
+that needs code is recorded here and fixed in the slice that owns it.
+
+## D-334 — What Phase 9 is, and its plan
+**Date:** 2026-10-03 · **Status:** Accepted (project-lead direction)
+
+**Definition.** Phase 9 is **Production Release, Deployment & Go-Live**. It takes the closed
+V1 and produces:
+
+* a production Supabase backend, reached by a deterministic fresh migration replay (D-338);
+* production security verification (D-339);
+* a signed Android release, an AAB, and a Play Internal Testing build (D-341);
+* a Windows production release, an installer, and clean-machine acceptance (D-342);
+* operational proof of backup and recovery (D-344);
+* a production smoke test, a go-live runbook, and final release closure.
+
+**Phase 9 adds no V1 business feature and changes no financial semantic.** Spec §34 names
+the phase "Distribution"; this entry is its detailed definition and **the spec is not
+amended** — the version stays **1.2**, as for every earlier phase.
+
+**The plan.**
+
+| # | Slice |
+|---|---|
+| 1 | Governance and production inputs — **this record** |
+| 2 | Release-build hardening (D-335) |
+| 3 | Pre-release UX wording (D-343) |
+| 4 | Authoritative migration replay and rehearsal (D-338, D-339) |
+| 5 | Production Supabase (D-337, D-340) |
+| 6 | Android release, AAB, Play Internal Testing (D-341) |
+| 7 | Windows release, installer, clean-machine acceptance (D-342) |
+| 8 | Production smoke, backup, recovery, go-live readiness (D-339, D-344) |
+| 9 | Final V1 release closure |
+
+One slice at a time; **no slice starts automatically**. Product-lead inputs a slice needs
+are listed in the Phase 9 input register (`PROJECT_STATUS.md`) and are never guessed.
+
+## D-335 — Six release blockers, verified in the code at `d7c7e22`, owned by Slice 2
+**Date:** 2026-10-03 · **Status:** Recorded — **not fixed in Slice 1**
+
+Each was read in the code before it was written down (governance rule 1).
+
+| # | Blocker | Evidence |
+|---|---|---|
+| 1 | The production Android manifest has no `INTERNET` permission | only `android/app/src/debug/` and `src/profile/AndroidManifest.xml` declare it; `src/main/AndroidManifest.xml` does not, and a release build merges main alone |
+| 2 | Release signing is not wired | `android/app/build.gradle.kts`: `release { … // TODO(Phase 9) … signingConfig = signingConfigs.getByName("debug") }` |
+| 3 | The R8 rules file the release build names does not exist | `proguardFiles(…, "proguard-rules.pro")` with `isMinifyEnabled = true`; `android/app/proguard-rules.pro` is absent |
+| 4 | A prod build with no backend falls into seeded/demo masters | `config/prod.example.json` carries empty values; `AppConfig.hasBackend` is then false and `bootstrap()` runs `seedMasterData` (D-052). Production must refuse to start without its backend instead |
+| 5 | Development and production share one Windows data identity | `windows/runner/Runner.rc` fixes `CompanyName` "Krishna Imperial" and `ProductName` "Krishna Imperial MIS" for every build; `resolveDatabaseFile` uses `getApplicationSupportDirectory()` + `krishna_mis.db`; `DatabaseKeyManager.storageKey` is `krishna_mis.db_key.v1` for every non-acceptance build |
+| 6 | That shared identity is the D-247 folder on this workstation | a prod build launched here would open `%APPDATA%\Krishna Imperial\Krishna Imperial MIS\krishna_mis.db`, find no key, and offer the D-330 reset |
+
+Slice 2 fixes all six. Blocker 6 is closed by blocker 5's fix plus the D-247 rule (D-336);
+it is never closed by touching the D-247 file.
+
+## D-336 — Rulings that bind Phase 9
+**Date:** 2026-10-03 · **Status:** Accepted (project-lead rulings; restated so no slice re-asks)
+
+1. **D-247 is untouched.** The legacy Windows database is never opened, migrated, reset,
+   quarantined, deleted, renamed or re-keyed, and no normal development or production build
+   is launched against that AppData. Windows release work uses isolated AppData or a separate
+   clean Windows user or machine.
+2. **The 50:50 ownership effective-from date is UNKNOWN** and is not guessed. Owner
+   Settlement functionality that depends on it stays blocked; production ownership-share
+   configuration stays untouched until the date is supplied. This blocks no other Phase 9
+   work.
+3. **Transaction-list export stays deferred** (D-296). Not added in Phase 9 without a
+   separate approval.
+4. **The Print-to-PDF empty file** after authority loss mid-dialog stays accepted (D-309).
+   The `printing` plugin is not forked to remove it.
+5. **Raw technical error wording is cleaned before go-live** on the Windows and Android
+   Masters views, Tax Rates, Vendors, the Revenue ledger and the Expense save failure —
+   Slice 3 (D-343).
+6. **The Administration placeholder** (desktop router, "arrives in Phase 2") is replaced in
+   Slice 3 with neutral V1 wording. Administration functionality is not redesigned.
+
+## D-337 — The production environment contract
+**Date:** 2026-10-03 · **Status:** Accepted — **nothing is provisioned in Slice 1**
+
+**Supabase production** must be:
+
+* a separate project from `krishna-mis-dev` and from the rehearsal target (D-339);
+* in `ap-south-1` (Mumbai) unless later evidence requires otherwise (D-013);
+* email and password authentication, **public sign-up disabled**, users created and
+  confirmed by an administrator;
+* leaked-password protection enabled **where the selected plan supports it**;
+* reached by the client with **only** the project URL and the publishable key, compiled in
+  from a git-ignored `config/prod.json` (`.gitignore` already excludes `config/*.json` and
+  keeps the `*.example.json` files);
+* **no service-role secret in any client binary** (spec §24);
+* the private Storage bucket created by the migration chain, never by hand;
+* RLS on every public and financial table, **anonymous callable API = 0**.
+
+## D-338 — D-146 made concrete: the authoritative migration replay
+**Date:** 2026-10-03 · **Status:** Accepted — the contract Slice 4 builds and rehearses
+
+**Filename order is not authoritative.** A fresh replay in lexical order fails (D-319).
+The production and rehearsal replay therefore:
+
+1. reads an **explicit, committed, ordered manifest** of every migration file, each with its
+   **SHA-256**, and refuses to run if any file is missing, extra or changed;
+2. applies **every committed migration file** in manifest order;
+3. **stops** before `20260901132225_revenue_verified_baseline_fy2627.sql`, which refuses to
+   install without an owner profile to attribute the baseline to;
+4. **bootstraps the Owner** at that point (D-340), then continues;
+5. **fails on the first SQL error** and applies nothing further;
+6. records migration history deterministically, one row per applied file;
+7. never edits a historical applied migration to make the replay simpler (A0, D-056).
+
+**The known ordering anomaly.** `20260829090500_api_surface_invariant.sql` (ledger
+`api_surface_invariant_v5`, 20260829133240) must run **after**
+`20260829100000_usage_and_attachment_storage.sql`, because it names two functions that file
+creates. Every other file runs in filename order. Proven by the D-319 harness
+(`tool/perf/localpg.sh schema`), which is the precedent the manifest formalises.
+
+**The file count, verified rather than repeated.** At `d7c7e22` there are **98** committed
+`.sql` files in `supabase/migrations/` (the D-319 replay applied 94; D-320 and D-321 added
+four). The Slice 1 direction said 99; the count in the repository is 98, and the manifest
+will be generated from the repository, not from a number in a brief.
+
+**History will differ from development, and that is correct.** A clean replay ends with one
+history row per file. `krishna-mis-dev` holds **105** ledger versions, because Supabase
+recorded server-assigned versions for steps that were later committed as grouped files
+(`supabase/migrations/LEDGER.md`). The difference is expected and is **never "fixed" by
+falsifying history** on either side.
+
+## D-339 — Rehearsal first, production security proven, production smoke read-only
+**Date:** 2026-10-03 · **Status:** Accepted
+
+**Rehearsal is mandatory.** Production must not be the first clean Supabase replay. A
+non-production rehearsal target receives the D-338 replay first. **Which target — a
+separate staging project, or a supported Supabase branch — is PENDING PRODUCT LEAD.** The
+audit recommends a separate staging project: it is the same kind of object production is,
+and it can be kept.
+
+**Production security acceptance**, before any distribution, must prove:
+
+* RLS on every public and financial table; anonymous callable API = 0;
+* the authenticated API surface equals the reviewed inventory (57 at `d7c7e22`);
+* Owner, Manager (scoped), Accountant and Data Entry authority;
+* one-property and consolidated scopes (D-164, D-187); own-expense semantics (D-169);
+* revoked capability, revoked property, user switch, and stale or in-flight publication
+  (D-070, D-074, D-240); the paged reporting transport and its authority (D-318, D-320).
+
+**Where each kind of test may run.** Full live and destructive suites run on **rehearsal**.
+They must **not** run on production: they create test identities and financial history that
+can only ever be voided (D-006). Production security verification is **read-only** wherever
+possible — catalogue queries, grants, policies, the API inventory.
+
+**Production smoke is read-only (binding unless the project lead changes it).** Any
+production financial write creates permanent, audited history and consumes a `KI-REV` or
+`KI-EXP` number. So write-path testing belongs on rehearsal; production avoids test
+financial entries; and if a production write is ever needed, it is **one deliberate real
+business entry, approved to remain**.
+
+## D-340 — Production bootstrap, and the administration gap
+**Date:** 2026-10-03 · **Status:** Bootstrap sequence accepted; **administration path
+PENDING PRODUCT LEAD**
+
+**Bootstrap sequence.**
+
+1. Create the Owner's authentication user (Supabase Auth; credentials never in a document).
+2. At the D-338 stop point, call `app.bootstrap_owner(p_email, p_full_name, …)` — internal,
+   revoked from every client role.
+3. Continue the replay.
+4. Provision real staff through the approved administration path (below).
+5. Grant roles and business-unit scopes (D-025).
+6. **Leave Owner Accounts and ownership-share configuration untouched** until the real 50:50
+   effective-from date is supplied (D-336 §2).
+
+No real email address or password appears in any document, log or chat.
+
+**The gap.** V1 has no complete Administration screen for user provisioning, role grants or
+period close and reopen. The reviewed RPCs exist (`user_provision`, `user_role_grant`,
+`user_deactivate`, `user_reactivate`, `period_close`, `period_reopen`); the development admin
+tooling is development-specific. Two production paths:
+
+| | Path |
+|---|---|
+| **A** | a documented SQL-editor procedure in the runbook |
+| **B** | a small production administration CLI that authenticates **as the Owner**, asks for credentials at run time, stores no password, and calls only the existing reviewed RPCs |
+
+The audit recommends **B**: it uses the same authority path production enforces, and leaves
+no service-role session in anyone's hands. **PENDING PRODUCT LEAD DECISION.** Not
+implemented in Slice 1.
+
+## D-341 — The Android release contract
+**Date:** 2026-10-03 · **Status:** Accepted — gates for Slices 2 and 6
+
+* application id **`in.krishnaimperial.mis`** (D-029), prod flavour;
+* `INTERNET` in the production manifest (D-335 §1), and the merged release manifest
+  inspected — no permission beyond what is justified;
+* production configuration mandatory; a release refuses to start without its backend
+  configuration (D-335 §4);
+* production **upload** signing from a local-only `android/key.properties`; **no debug
+  signing fallback**; the keystore is never committed (already git-ignored);
+* R8 and its rules file present and verified — obfuscation must not break Drift, JSON
+  serialisation, `printing` or the plugins;
+* release APK and AAB pass the secret scan; exact SHA-256 of each artefact recorded;
+* **Play App Signing**; first distribution to **Internal Testing**.
+
+Current version `1.0.0+1`. **The versioning scheme is PENDING PRODUCT LEAD DECISION.**
+
+## D-342 — The Windows release contract
+**Date:** 2026-10-03 · **Status:** Accepted — gates for Slices 2 and 7
+
+* production gets its **own environment-specific data identity** — a support folder that is
+  not the development one and not the D-247 one, and a distinct database-key name where the
+  store is shared (D-335 §5–6); the mechanism is Slice 2's, the choice of name an input;
+* production **never reuses** the legacy development or D-247 AppData;
+* the installer **preserves AppData on uninstall** (local data, including unsent work and
+  the D-330 quarantine, is never removed by an uninstall);
+* the release executable is launched only on a clean or isolated environment; install,
+  upgrade and uninstall are tested there;
+* Visual C++ runtime dependencies are proven on clean Windows;
+* SHA-256 of `pdfium.dll` and `sqlite3mc.dll` recorded with each release (D-298);
+* **no release launch against D-247.**
+
+The audit recommends **Inno Setup, per-user, no administrator rights**. **Installer choice
+and Windows code-signing certificate: PENDING PRODUCT LEAD DECISION.**
+
+## D-343 — Pre-release UX wording (Slice 3)
+**Date:** 2026-10-03 · **Status:** Accepted — scope fixed, not implemented
+
+Presentation only. Exactly these surfaces:
+
+| File | What |
+|---|---|
+| `lib/features/masters/presentation/windows_masters_view.dart` | raw error text |
+| `lib/features/masters/presentation/android_masters_view.dart` | raw error text |
+| `lib/features/tax/presentation/tax_rates_view.dart` | raw error text |
+| `lib/features/vendors/presentation/vendors_view.dart` | raw error text |
+| `lib/features/revenue/presentation/revenue_ledger_page.dart` | raw error text |
+| `lib/features/expenses/presentation/expense_entry_page.dart` | the exception type name in the save-failure sentence |
+
+Technical detail goes to developer diagnostics (`dart:developer`, as D-323 and D-326 did),
+never to user-visible text. The Administration placeholder is replaced with this proposed
+wording, to be confirmed in Slice 3:
+
+> Users, roles, period close and audit review are handled by the project administrator in
+> this version.
+
+## D-344 — Backup and recovery, physical printer, low disk
+**Date:** 2026-10-03 · **Status:** Accepted — proved in Slices 7 and 8
+
+**Server.** The selected Supabase backup or PITR posture is recorded, and **at least one
+real restore** into a scratch, non-production target is performed.
+
+**Storage.** Database backups are **not assumed** to include Storage object bytes. If they
+do not, an explicit Storage backup or export procedure is established.
+
+**Device.** D-330's reset and re-download stays the canonical device recovery; the
+quarantine stays preserved; nothing depends on an OS or device backup.
+
+**Runbook** (skeleton in `docs/PRODUCTION_RUNBOOK.md`) covers at least: password reset,
+user deactivation, role and scope change, period close and reopen, lost phone, damaged local
+database, restore, production outage, and contact and escalation ownership. No secrets.
+
+**Physical printer**, if hardware is available: A4 prints of a one-property P&L, a
+consolidated P&L and one detailed analysis report, checked for ₹, negative values, margins,
+repeated headers, page numbers, page breaks, no clipping, and screen/PDF/print amount
+parity; then one print cancelled and Save As confirmed working (D-308). Without hardware the
+result is **NOT EXECUTED**, never PASS.
+
+**Low disk.** No real device is dangerously filled; **the Galaxy A06 is never intentionally
+filled.** Safe evidence may use an isolated small Windows virtual disk, a controlled emulator
+data partition, or the existing host `SQLITE_FULL` injection (Slice 7). If no safe
+operational test is possible, the result is **NOT EXECUTED / accepted limitation**.
+
+## D-345 — Inputs, secrets and the runbook live in the repository as registers, never as values
+**Date:** 2026-10-03 · **Status:** Accepted
+
+* The **Phase 9 product-lead input register** (twenty items, each classified by when it is
+  needed) is in `PROJECT_STATUS.md`. No answer is invented.
+* The **secrets register** in `docs/PRODUCTION_RUNBOOK.md` lists what exists outside git and
+  who holds it. **Secret values are never written into documentation, git, test logs or
+  chat.**
+* `docs/PRODUCTION_RUNBOOK.md` is a **skeleton** in Slice 1; later slices fill it.
+* **A stale checklist line is corrected.** `RELEASE_CHECKLIST.md` §K.2 said "No tax rule is
+  seeded (D-043)". That was true until D-096: the four verified rules are seeded by
+  `20260901132225_revenue_verified_baseline_fy2627.sql`. The checklist now states the current
+  state. D-043 and D-096 are not rewritten.
+* `test/docs/phase9_governance_guard_test.dart` holds the parts of this record that a later
+  change could silently break: the runbook's sections, the corrected §K.2, the replay
+  anomaly files and the committed migration count.

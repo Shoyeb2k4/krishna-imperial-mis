@@ -5,8 +5,8 @@ Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
-Status: **Prepared in Phase 0; section H added at the end of Phase 2.** No release has
-been produced.
+Status: **Prepared in Phase 0; section H added at the end of Phase 2; section W (Phase 9)
+added 2026-10-03.** No release has been produced.
 
 Every box must be genuinely verified, not assumed. Anything unverified is reported as
 *Not tested* — never as done.
@@ -195,8 +195,11 @@ development. A staging or production release repeats every line.
 - [ ] The API surface invariant passes: nothing callable by `anon`, exactly the reviewed
       list callable by `authenticated`, and every reviewed function still callable
 - [ ] No RLS policy references the `app` schema (D-045)
-- [ ] No tax rule is seeded (D-043) — the project lead supplies the first rule per revenue
-      category, with its rate, treatment and effective date
+- [ ] Exactly the four verified revenue tax rules are present — Restaurant 5%, Nandbhog 5%,
+      Room 5% (generic, no band) and Banquet `none`, all `inclusive_total`, effective
+      2026-04-01 — seeded by `20260901132225_revenue_verified_baseline_fy2627.sql` (D-096);
+      0 value bands, supply subtypes and premises statuses. *(Corrected 2026-10-03, D-345:
+      this line said "No tax rule is seeded (D-043)", which stopped being true at D-096.)*
 
 ### K.3 Identity
 
@@ -992,3 +995,69 @@ Decisions D-312 … D-319; measurement contract `ARCHITECTURE.md` §52.
 - [x] Every open observation classified; product-lead inputs listed (D-333).
 - [ ] **Phase 9:** the D-146 ledger-order replay; production signing, AAB, Play; the Windows
       installer and release launch (after D-247); physical printer; low-disk check.
+
+---
+
+## W. Phase 9 — Production Release, Deployment & Go-Live
+
+Decisions D-334 … D-345. Nothing in this section is checked until the slice that owns it
+reports it tested. A step that cannot be performed is recorded **NOT EXECUTED**, never PASS.
+
+### W.1 Every slice
+
+- [ ] `dart format --set-exit-if-changed`, `flutter analyze`, the tests the slice touches,
+      documentation invariants, `test/docs/phase9_governance_guard_test.dart`, secret scan
+      over tree and history; clean tree; a commit hash
+- [ ] No secret value in any document, log, test output or chat (D-345)
+- [ ] D-247 untouched; no normal build launched against the legacy Windows AppData (D-336)
+
+### W.2 Slice 2 — release-build hardening (D-335)
+
+- [ ] `INTERNET` in the production Android manifest; merged release manifest inspected
+- [ ] Release signing from a local-only `android/key.properties`; no debug fallback
+- [ ] `proguard-rules.pro` present; minified release build verified
+- [ ] A prod build without backend configuration refuses to start — no seeded masters
+- [ ] Windows production data identity distinct from development and from D-247
+
+### W.3 Slice 3 — pre-release wording (D-343)
+
+- [ ] No raw technical text in the six named surfaces; detail in developer diagnostics
+- [ ] Administration placeholder replaced with neutral V1 wording
+
+### W.4 Slice 4 — replay and rehearsal (D-338, D-339)
+
+- [ ] Committed manifest with SHA-256 for all 98 files; refuses missing, extra or changed
+- [ ] Ordering anomaly honoured; Owner bootstrapped at the stop point; fail on first error
+- [ ] Full replay on the rehearsal target; live and security suites green there
+
+### W.5 Slice 5 — production Supabase (D-337, D-340)
+
+- [ ] Separate project, `ap-south-1`, sign-up disabled, leaked-password protection where
+      the plan allows
+- [ ] Replay from the manifest; RLS everywhere; anonymous API 0; authenticated API equal to
+      the reviewed inventory — verified **read-only**
+- [ ] Owner bootstrapped; staff provisioned through the approved path; Owner Accounts left
+      unconfigured until the 50:50 date
+
+### W.6 Slice 6 — Android (D-341)
+
+- [ ] Upload-signed AAB and APK; secret scan; SHA-256 recorded; Play App Signing
+- [ ] Internal Testing install on a clean device against production, read-only smoke
+
+### W.7 Slice 7 — Windows (D-342)
+
+- [ ] Installer per the decided tool; install, upgrade, uninstall (AppData preserved) on a
+      clean machine; VC++ runtime proven; DLL hashes recorded
+- [ ] Physical printer A4 checks, or NOT EXECUTED (D-344)
+
+### W.8 Slice 8 — go-live readiness (D-339, D-344)
+
+- [ ] Read-only production smoke
+- [ ] One real restore into a non-production target; Storage backup procedure explicit
+- [ ] Low-disk evidence by a safe method, or NOT EXECUTED; the Galaxy A06 never filled
+- [ ] `docs/PRODUCTION_RUNBOOK.md` complete, with no secret value
+
+### W.9 Slice 1 — governance (2026-10-03)
+
+- [x] Phase 9 definition, plan, blockers, contracts and registers recorded (D-334 … D-345)
+- [x] §K.2's stale "no tax rule is seeded" corrected to the current state (D-345)
