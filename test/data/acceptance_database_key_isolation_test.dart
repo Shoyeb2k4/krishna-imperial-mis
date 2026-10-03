@@ -147,18 +147,34 @@ void main() {
     });
 
     test('bootstrap derives the identifier from the acceptance folder', () {
-      final source = File('lib/app/bootstrap.dart').readAsStringSync();
+      // Since D-346 the boundary is the storage resolver: bootstrap hands it the
+      // acceptance folder and the build's environment, and the resolver alone asks
+      // `databaseKeyNameFor`. Comment lines are stripped, so prose naming the function
+      // cannot satisfy the check.
+      String code(String path) => [
+        for (final line in File(path).readAsStringSync().split('\n'))
+          if (!line.trimLeft().startsWith('//')) line,
+      ].join('\n');
+      final bootstrap = code('lib/app/bootstrap.dart');
+      final resolver = code('lib/data/local/local_storage_location.dart');
       expect(
-        source.contains('databaseKeyNameFor'),
+        bootstrap.contains('acceptanceDirectory: appDataDirectory'),
+        isTrue,
+        reason: 'bootstrap passes the acceptance folder to the resolver',
+      );
+      expect(
+        resolver.contains('databaseKeyNameFor('),
         isTrue,
         reason:
             'the boundary selects the identifier; no caller passes a string',
       );
-      expect(
-        source.contains("'krishna_mis."),
-        isFalse,
-        reason: 'no identifier literal lives at the call site',
-      );
+      for (final source in [bootstrap, resolver]) {
+        expect(
+          source.contains("'krishna_mis."),
+          isFalse,
+          reason: 'no identifier literal lives at the call site',
+        );
+      }
     });
   });
 }

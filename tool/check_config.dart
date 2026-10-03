@@ -21,10 +21,15 @@ Future<int> main(List<String> args) async {
   }
 
   final json = jsonDecode(await file.readAsString()) as Map<String, dynamic>;
+  final declared = json['APP_FLAVOR'] as String?;
+  // Checked as a release build would be: a file that names no environment, or one this
+  // code does not know, is refused here rather than at somebody's first launch (D-346).
   final config = AppConfig(
-    flavor: AppFlavor.fromName((json['APP_FLAVOR'] as String?) ?? 'dev'),
+    flavor: AppFlavor.fromName(declared ?? ''),
     supabaseUrl: (json['SUPABASE_URL'] as String?) ?? '',
     supabaseAnonKey: (json['SUPABASE_ANON_KEY'] as String?) ?? '',
+    declaredFlavor: declared,
+    releaseBuild: true,
   );
 
   stdout.writeln('file      : $path');

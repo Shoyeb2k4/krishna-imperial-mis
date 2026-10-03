@@ -177,7 +177,13 @@ void main() {
       );
 
       final call = bootstrap.indexOf('await seedMasterData(');
-      final guard = bootstrap.lastIndexOf('if (!config.hasBackend)', call);
+      // Since D-346 the guard is `permitsOfflineSeed`: no backend **and** not production.
+      // `test/app/production_config_test.dart` holds that it is false whenever a backend
+      // is configured, so D-052's rule is unchanged and production's is added.
+      final guard = bootstrap.lastIndexOf(
+        'if (config.permitsOfflineSeed)',
+        call,
+      );
       expect(
         guard,
         greaterThan(-1),

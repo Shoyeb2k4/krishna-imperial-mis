@@ -11,8 +11,8 @@ import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:krishna_mis/data/local/app_database.dart';
 import 'package:krishna_mis/data/local/database_key_manager.dart';
+import 'package:krishna_mis/data/local/local_storage_location.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import 'package:sqlite3/common.dart' show CommonDatabase;
 import 'package:sqlite3/sqlite3.dart';
 
@@ -76,10 +76,11 @@ void applyEncryptionKey(CommonDatabase db, String hexKey) {
 
 /// Resolves the on-disk location of the database.
 ///
-/// App-private storage on both platforms: `getApplicationSupportDirectory()` maps to
-/// the app sandbox on Android and to `%APPDATA%\<company>\<product>` on Windows.
+/// [directory] is the installation's resolved folder (`LocalStorageLocation`). Without one
+/// it is the platform default — the non-production folder: the app sandbox on Android and
+/// `%APPDATA%\<company>\<product>` on Windows. Production always passes its own (D-346).
 Future<File> resolveDatabaseFile({Directory? directory}) async {
-  directory ??= await getApplicationSupportDirectory();
+  directory ??= await platformApplicationSupportDirectory();
   await directory.create(recursive: true);
   return File(p.join(directory.path, _databaseFileName));
 }
@@ -171,9 +172,12 @@ bool isFileEncrypted(File file) {
 /// App-private by construction. A gallery path or a Downloads folder is not a place a
 /// financial document can be kept — the OS may move, rename or revoke it between the
 /// moment a bill is attached and the moment it uploads, which can be days later.
+///
+/// This is the non-production default; an installation that resolved its own location
+/// uses `LocalStorageLocation.attachmentStagingDirectory` (D-346).
 Future<Directory> resolveAttachmentStagingDirectory() async {
   final directory = Directory(
-    p.join((await getApplicationSupportDirectory()).path, 'attachments'),
+    p.join((await platformApplicationSupportDirectory()).path, 'attachments'),
   );
   await directory.create(recursive: true);
   return directory;

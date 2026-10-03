@@ -17,8 +17,8 @@ import 'package:krishna_mis/app/env/app_environment.dart';
 import 'package:krishna_mis/app/routing/app_router.dart';
 import 'package:krishna_mis/data/attachments/attachment_staging.dart';
 import 'package:krishna_mis/data/local/app_database.dart';
-import 'package:krishna_mis/data/local/database_key_manager.dart';
 import 'package:krishna_mis/data/local/encrypted_database.dart';
+import 'package:krishna_mis/data/local/local_storage_location.dart';
 import 'package:krishna_mis/data/local/seed/master_seed.dart';
 import 'package:krishna_mis/data/local/authority_store.dart';
 import 'package:krishna_mis/data/remote/auth_gateway.dart';
@@ -77,6 +77,7 @@ class BootstrapResult {
     required this.reportingGateway,
     required this.ownerLedgerGateway,
     required this.attachmentUploads,
+    required this.storage,
   });
 
   final AppConfig config;
@@ -133,6 +134,10 @@ class BootstrapResult {
   /// Null with no backend configured, like every other remote capability: an offline-only
   /// build stages attachments and has nowhere to send them.
   final AttachmentUploadWorker? attachmentUploads;
+
+  /// Where this installation's local data lives, chosen by the build (D-346). Everything
+  /// that keeps a file — the database, its key, the session, staged bills — uses it.
+  final LocalStorageLocation storage;
 }
 
 /// Starts the application.
@@ -181,16 +186,24 @@ Future<BootstrapResult> bootstrap({
   // Opened **and proven** here: the key check, every pending upgrade and `beforeOpen` run
   // now rather than at whichever query happens first, and a failure closes the file
   // before it reaches `main()`, which classifies it (Phase 8 Slice 7, D-329).
+  //
+  // Production has its own folder and its own key, and on Windows never touches the
+  // folder every other build uses (Phase 9 Slice 2, D-346); the key name is chosen by
+  // `databaseKeyNameFor` inside the resolver, never by a string here.
+  final storage = await resolveLocalStorage(
+    production: config.isProduction,
+    acceptanceDirectory: appDataDirectory,
+  );
   final database = await openLocalStore(
-    directory: appDataDirectory,
-    databaseKeyName: databaseKeyNameFor(appDataDirectory: appDataDirectory),
+    directory: storage.directory,
+    keyManager: storage.keyManager(),
   );
   try {
     return await _startOn(
       database,
       config: config,
       transport: transport,
-      appDataDirectory: appDataDirectory,
+      storage: storage,
     );
   } on Object {
     // Whatever failed after the database opened, the file is released so "Try again"
@@ -208,7 +221,7 @@ Future<BootstrapResult> _startOn(
   AppDatabase database, {
   required AppConfig config,
   required http.Client? transport,
-  required Directory? appDataDirectory,
+  required LocalStorageLocation storage,
 }) async {
   // The shipped seed exists so the application is usable with no backend at all — the
   // state Phase 1 shipped in. **It must not run once a backend is configured.** The seed
@@ -220,8 +233,9 @@ Future<BootstrapResult> _startOn(
   //
   // With a backend, the server is the source of master data and RLS decides what this
   // user may cache. With no backend, nothing can authenticate anyway, so seeded masters
-  // are development scaffolding rather than somebody else's property (D-027).
-  if (!config.hasBackend) {
+  // are development scaffolding rather than somebody else's property (D-027). Never in
+  // production, which refuses to start without its backend (D-346).
+  if (config.permitsOfflineSeed) {
     await seedMasterData(database, now: DateTime.now().toUtc());
   }
 
@@ -247,7 +261,7 @@ Future<BootstrapResult> _startOn(
       httpClient: transport,
       authOptions: FlutterAuthClientOptions(
         localStorage: SecureSessionStorage.forPlatform(
-          directory: appDataDirectory,
+          directory: storage.directory,
         ),
         authFlowType: AuthFlowType.pkce,
       ),
@@ -294,7 +308,7 @@ Future<BootstrapResult> _startOn(
     final purge = ScopeCachePurge(
       database,
       reclaimStaging: (documentId) => AttachmentStagingService(
-        resolveStagingDirectory: resolveAttachmentStagingDirectory,
+        resolveStagingDirectory: storage.attachmentStagingDirectory,
       ).discardDocument(documentId),
     );
     session = SessionDependencies(
@@ -326,6 +340,7 @@ Future<BootstrapResult> _startOn(
     attachmentUploads: attachmentUploads,
     recoveredInFlightEntries: recovered,
     session: session,
+    storage: storage,
   );
 }
 

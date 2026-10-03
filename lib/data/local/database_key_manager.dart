@@ -78,10 +78,17 @@ enum DatabaseKeyProblem {
 ///
 /// Android is untouched — the harness passes a folder on Windows only, so an Android
 /// acceptance run keeps the production identifier and its Keystore-backed store (D-022).
-String databaseKeyNameFor({Directory? appDataDirectory}) =>
-    appDataDirectory == null
-    ? DatabaseKeyManager.storageKey
-    : DatabaseKeyManager.acceptanceStorageKey;
+///
+/// [production] selects production's own entry (Phase 9 Slice 2, D-346). An acceptance
+/// folder still wins, so a test run can never reach production's key either.
+String databaseKeyNameFor({
+  Directory? appDataDirectory,
+  bool production = false,
+}) => appDataDirectory != null
+    ? DatabaseKeyManager.acceptanceStorageKey
+    : production
+    ? DatabaseKeyManager.productionStorageKey
+    : DatabaseKeyManager.storageKey;
 
 class DatabaseKeyManager {
   DatabaseKeyManager({
@@ -110,6 +117,11 @@ class DatabaseKeyManager {
   /// key of the installation a person uses by hand. Selected by the data folder, never by a
   /// caller naming it (see [databaseKeyNameFor]).
   static const String acceptanceStorageKey = 'krishna_mis.acceptance.db_key.v1';
+
+  /// Production's own entry, approved by the project lead (Phase 9 Slice 2, D-346). No
+  /// development, staging or acceptance build can name it, and a production build cannot
+  /// name either of the others — so switching environment can never reuse a key.
+  static const String productionStorageKey = 'krishna_mis.db_key.prod.v1';
 
   static const int keyLengthBytes = 32; // 256-bit
 

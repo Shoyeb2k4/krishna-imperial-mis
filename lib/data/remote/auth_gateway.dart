@@ -190,6 +190,11 @@ class SecureSessionStorage extends LocalStorage {
   final SessionSecretStore _store;
   final SessionSecretStore? _legacy;
 
+  /// Whether a session left in the shared plugin store by an earlier build may be moved
+  /// here. Only a non-production Windows build with no folder of its own does it (D-246);
+  /// production and acceptance never take anything from that store (D-346).
+  bool get migratesLegacySession => _legacy != null;
+
   @override
   Future<void> initialize() async {}
 

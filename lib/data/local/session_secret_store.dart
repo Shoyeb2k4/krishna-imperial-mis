@@ -29,7 +29,7 @@ import 'dart:typed_data';
 import 'package:ffi/ffi.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
+import 'package:krishna_mis/data/local/local_storage_location.dart';
 import 'package:win32/win32.dart';
 
 /// One secret string, read, written and removed.
@@ -229,7 +229,7 @@ SessionSecretStore sessionSecretStoreFor(
 }) => operatingSystem == 'windows'
     ? ProtectedFileSessionStore(
         directory: () async =>
-            directory ?? await getApplicationSupportDirectory(),
+            directory ?? await platformApplicationSupportDirectory(),
         protector: protector,
       )
     : PluginSessionSecretStore(pluginStorage);

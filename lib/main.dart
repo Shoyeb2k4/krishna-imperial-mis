@@ -9,9 +9,9 @@ import 'package:krishna_mis/app/app.dart';
 import 'package:krishna_mis/app/bootstrap.dart';
 import 'package:krishna_mis/app/startup/startup_failure_app.dart';
 import 'package:krishna_mis/app/startup/startup_runner.dart';
-import 'package:krishna_mis/data/local/database_key_manager.dart';
+import 'package:krishna_mis/app/env/app_environment.dart';
+import 'package:krishna_mis/data/local/local_storage_location.dart';
 import 'package:krishna_mis/data/local/local_store_recovery.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:krishna_mis/app/providers.dart';
 import 'package:krishna_mis/app/session/session_controller.dart';
 
@@ -35,19 +35,26 @@ Future<void> main() async {
         attachmentUploadWorkerProvider.overrideWithValue(
           boot.attachmentUploads,
         ),
+        localStorageLocationProvider.overrideWithValue(boot.storage),
         if (boot.session case final session?)
           sessionProvider.overrideWith(() => SessionController(session)),
       ],
       child: KrishnaMisApp(shellKind: boot.shellKind),
     ),
-    // The same installation `bootstrap()` opened: the application support folder and the
-    // production key entry, selected exactly as bootstrap selects it (D-249).
-    recoveryFor: (failure) async => LocalStoreRecoveryActions(
-      LocalStoreRecovery(
-        directory: await getApplicationSupportDirectory(),
-        keyManager: DatabaseKeyManager(keyName: databaseKeyNameFor()),
-      ),
-      reason: failure.kind,
-    ),
+    // The same installation `bootstrap()` opened: its folder and its key, resolved from the
+    // build exactly as bootstrap resolves them (D-249, D-346). A production build recovers
+    // production's data and nothing else.
+    recoveryFor: (failure) async {
+      final storage = await resolveLocalStorage(
+        production: AppConfig.fromEnvironment().isProduction,
+      );
+      return LocalStoreRecoveryActions(
+        LocalStoreRecovery(
+          directory: await storage.root(),
+          keyManager: storage.keyManager(),
+        ),
+        reason: failure.kind,
+      );
+    },
   ).start();
 }

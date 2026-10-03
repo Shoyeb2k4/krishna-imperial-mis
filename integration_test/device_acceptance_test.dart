@@ -543,6 +543,9 @@ void main() {
           attachmentUploadWorkerProvider.overrideWithValue(
             boot.attachmentUploads,
           ),
+          // D-346: staged bills live in the installation's own folder — here the
+          // acceptance folder, as in `main()` it is the build's resolved one.
+          localStorageLocationProvider.overrideWithValue(boot.storage),
           sessionProvider.overrideWith(() => SessionController(boot.session!)),
         ],
         child: KrishnaMisApp(shellKind: boot.shellKind),

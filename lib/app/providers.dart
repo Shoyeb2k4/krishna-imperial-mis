@@ -15,6 +15,7 @@ import 'package:krishna_mis/data/attachments/attachment_source.dart';
 import 'package:krishna_mis/data/attachments/platform_attachment_source.dart';
 import 'package:krishna_mis/data/attachments/attachment_staging.dart';
 import 'package:krishna_mis/data/local/encrypted_database.dart';
+import 'package:krishna_mis/data/local/local_storage_location.dart';
 import 'package:krishna_mis/data/remote/expense_gateway.dart';
 import 'package:krishna_mis/data/remote/report_document_reader.dart';
 import 'package:krishna_mis/data/remote/revenue_gateway.dart';
@@ -103,8 +104,16 @@ final expenseRepositoryProvider = Provider<ExpenseRepository>(
 /// expense never waits for an attachment, and an attachment never waits for a network.
 final attachmentStagingProvider = Provider<AttachmentStagingService>(
   (ref) => AttachmentStagingService(
-    resolveStagingDirectory: resolveAttachmentStagingDirectory,
+    resolveStagingDirectory:
+        ref.watch(localStorageLocationProvider)?.attachmentStagingDirectory ??
+        resolveAttachmentStagingDirectory,
   ),
+);
+
+/// Where this installation keeps its files, as `bootstrap` resolved it (D-346). Null only
+/// in host tests that build no installation, which then keep the platform default.
+final localStorageLocationProvider = Provider<LocalStorageLocation?>(
+  (ref) => null,
 );
 
 /// The platform's way of producing a file.
