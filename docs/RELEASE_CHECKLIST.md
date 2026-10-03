@@ -1025,8 +1025,12 @@ reports it tested. A step that cannot be performed is recorded **NOT EXECUTED**,
 
 ### W.3 Slice 3 — pre-release wording (D-343)
 
-- [ ] No raw technical text in the six named surfaces; detail in developer diagnostics
-- [ ] Administration placeholder replaced with neutral V1 wording
+- [x] No raw technical text in the six named surfaces; detail in developer diagnostics
+      (D-348; `pre_release_wording_test.dart`, `error_presentation_guard_test.dart`)
+- [x] Every Try again on those surfaces re-reads the failed input (no-op controls go red)
+- [x] Administration placeholder replaced with neutral V1 wording
+- [ ] Windows staging data identity (D-349) built and guarded — when a staging Windows client
+      is first run (Slice 4)
 
 ### W.4 Slice 4 — replay and rehearsal (D-338, D-339)
 

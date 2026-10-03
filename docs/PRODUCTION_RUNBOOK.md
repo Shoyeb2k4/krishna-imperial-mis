@@ -59,6 +59,10 @@ APK, AAB, installer, `krishna_mis.exe`, `pdfium.dll` and `sqlite3mc.dll` (D-341,
 
 *Filled in Slice 5, once the administration path is decided (D-340, input register #9).*
 
+In the app, the Windows **Administration** destination tells a holder of `users.manage`:
+*"Users, roles, period close and audit review are handled by the project administrator in
+this version."* (D-348). Sections 3, 4 and 6 are that administrator's procedure.
+
 ## 4. Role and scope administration
 
 *Filled in Slice 5.* Non-Owner grants always name a business unit (D-025).
@@ -102,6 +106,10 @@ A production build (`config/prod.json`) keeps its data in
 that development builds use (D-346). Nothing is migrated: a first launch starts empty and
 downloads what the signed-in person may receive.
 
+A staging build will use `%APPDATA%\Krishna Imperial\Krishna Imperial MIS Staging` and
+`krishna_mis.db_key.staging.v1` (D-349, approved, built in Slice 4). Until it is built, do
+not run a staging client on a Windows machine that holds development data.
+
 ## 9. Backup
 
 *Filled in Slice 8.* Database posture, and Storage objects handled explicitly (D-344).
@@ -116,6 +124,11 @@ downloads what the signed-in person may receive.
 (D-037).
 
 ## 12. Local recovery and reset
+
+**Reading a screen that says something "could not be read on this device".** The person
+presses Try again; if it keeps happening, restart the app. The cause is in the developer
+log under `krishna_mis.masters`, `krishna_mis.revenue` or `krishna_mis.expenses`
+(D-348) — never on screen, and never containing a secret.
 
 *Filled in Slice 8.* The D-330 flow: Try again; reset only for unreadable or un-upgradable
 data, after the stated loss and a typed RESET; data set aside, never deleted.

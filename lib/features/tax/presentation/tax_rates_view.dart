@@ -34,11 +34,22 @@ class TaxRatesView extends ConsumerWidget {
     if (graphAsync.isLoading || rulesAsync.isLoading) {
       return const QuietLoading(label: 'Loading tax rules…');
     }
-    if (graphAsync.hasError) {
-      return MasterErrorState('${graphAsync.error}');
-    }
-    if (rulesAsync.hasError) {
-      return MasterErrorState('${rulesAsync.error}');
+    if (graphAsync.hasError || rulesAsync.hasError) {
+      final failed = graphAsync.hasError ? graphAsync : rulesAsync;
+      logMasterReadFailure(
+        'the tax configuration',
+        failed.error!,
+        failed.stackTrace,
+      );
+      return MasterErrorState(
+        taxConfigurationUnreadable,
+        // Reads again only what failed: a healthy read is not repeated for nothing, and
+        // an explicit Try again reaches the failed input at once (D-322).
+        onRetry: () {
+          if (graphAsync.hasError) ref.invalidate(masterGraphProvider);
+          if (rulesAsync.hasError) ref.invalidate(taxRulesProvider);
+        },
+      );
     }
 
     final graph = graphAsync.requireValue;

@@ -23,10 +23,13 @@ class WindowsMastersView extends ConsumerWidget {
 
     return graphAsync.when(
       loading: () => const QuietLoading(),
-      error: (error, _) => MasterErrorState(
-        '$error',
-        onRetry: () => ref.invalidate(masterGraphProvider),
-      ),
+      error: (error, stack) {
+        logMasterReadFailure('the property structure', error, stack);
+        return MasterErrorState(
+          masterStructureUnreadable,
+          onRetry: () => ref.invalidate(masterGraphProvider),
+        );
+      },
       data: (graph) {
         final tree = MasterTree.from(
           graph,

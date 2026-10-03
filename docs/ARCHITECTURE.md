@@ -9,7 +9,7 @@ Status: **Sections 1–12 proposed (Phase 0, revised); sections 13–16 and 18�
 is built and verified; section 17 is the Phase 4 *plan*, since built — read §18–§26 for what
 shipped.** Sections 6, 5.3 and 8 carry the project lead's mandated corrections.
 Implementation status is tracked in `PROJECT_STATUS.md`.
-Last updated: 2026-10-03 — **Phase 9 Slice 2**: release-build hardening and the per-environment local data identity (§53.5, §8.1, D-346, D-347); 2026-10-03 — **Phase 9 Slice 1**: the release and deployment contract (section 53, D-334 … D-345), nothing built; 2026-10-03 — **Phase 8 closed** (D-333): §52.12 states what Phase 9 may treat as stable; 2026-10-02 — **Phase 8 Slice 7**: start-up failure classification, atomic schema steps and the damaged-database recovery flow (§8.2, §52.10, D-328 … D-330); 2026-10-01 — **Phase 8 Slice 5**: missed taps are fatal across the host suite (§52.9, D-325); 2026-10-01 — **Phase 8 Slice 4**: the Expense ledger read path, local schema v22, and the server expense-read residual measured and declined (§52.8, §9, D-323, D-324); 2026-10-01 — **Phase 8 Slice 3**: retry and hang hardening (§52.7, D-322); 2026-09-30 — **Phase 8**: the D-318 redesign as built and measured (§52.6, D-320, D-321); 2026-09-29 — **Phase 8 Slice 2**: the D-186 harness and what the reporting predicate costs at scale (§52.5, D-318, D-319); **Phase 8 Slice 1**: the measurement contract (section 52), §9 corrected to LIMIT/OFFSET paging (D-314), §8.2 marks the recovery flow as not yet built (D-316); 2026-09-28 — **Phase 7 closed** (D-311): section 51 now describes what shipped; 2026-09-28 — **Phase 7 Slice 10**: print authority re-check (D-309) and the runner apartment (D-308), sections 51.5 and 51.7; 2026-09-25 — **Phase 7 Slices 8–9**: Android sharing and the analysis exports, as built (sections 51.2, 51.5, 51.7); **Phase 7 Slice 1**: the export, PDF and printing contract (section 51); 2026-09-25 — **Phase 6 closed**: the stable contract Phase 7 may build on (section 50), and the final D-286 real-line rule (section 49); 2026-09-24 — money at large text sizes (section 49); 2026-09-23 — dashboard drill-down integration (section 48); the Windows Analytics workspace (section 47); the Android Home dashboard (section 46); 2026-09-22 — the Windows Overview (section 45); 2026-09-17 — Phase 6 dashboard periods and comparison rules (section 41); Slice 11's corrections and the Slice 12 closure architecture (section 40); 2026-09-13 — the Android P&L surface (section 38); the Windows P&L surface (section 37); Slice 7 reporting security closure (section 36); 2026-09-11 — the Owner Settlement surface and its security boundary (section 35); the Owner Settlement Engine (section 34); the Owner Ledger (section 33), with the V1 ownership vector in §33.3; Phase 5 Slice 6 corrective (section 32); Slice 5 in section 31; Slices 1-4 in sections 27-30
+Last updated: 2026-10-03 — **Phase 9 Slice 3**: the production error-presentation rule (§53.6, D-348) and the Windows staging data identity (D-349, not yet built); 2026-10-03 — **Phase 9 Slice 2**: release-build hardening and the per-environment local data identity (§53.5, §8.1, D-346, D-347); 2026-10-03 — **Phase 9 Slice 1**: the release and deployment contract (section 53, D-334 … D-345), nothing built; 2026-10-03 — **Phase 8 closed** (D-333): §52.12 states what Phase 9 may treat as stable; 2026-10-02 — **Phase 8 Slice 7**: start-up failure classification, atomic schema steps and the damaged-database recovery flow (§8.2, §52.10, D-328 … D-330); 2026-10-01 — **Phase 8 Slice 5**: missed taps are fatal across the host suite (§52.9, D-325); 2026-10-01 — **Phase 8 Slice 4**: the Expense ledger read path, local schema v22, and the server expense-read residual measured and declined (§52.8, §9, D-323, D-324); 2026-10-01 — **Phase 8 Slice 3**: retry and hang hardening (§52.7, D-322); 2026-09-30 — **Phase 8**: the D-318 redesign as built and measured (§52.6, D-320, D-321); 2026-09-29 — **Phase 8 Slice 2**: the D-186 harness and what the reporting predicate costs at scale (§52.5, D-318, D-319); **Phase 8 Slice 1**: the measurement contract (section 52), §9 corrected to LIMIT/OFFSET paging (D-314), §8.2 marks the recovery flow as not yet built (D-316); 2026-09-28 — **Phase 7 closed** (D-311): section 51 now describes what shipped; 2026-09-28 — **Phase 7 Slice 10**: print authority re-check (D-309) and the runner apartment (D-308), sections 51.5 and 51.7; 2026-09-25 — **Phase 7 Slices 8–9**: Android sharing and the analysis exports, as built (sections 51.2, 51.5, 51.7); **Phase 7 Slice 1**: the export, PDF and printing contract (section 51); 2026-09-25 — **Phase 6 closed**: the stable contract Phase 7 may build on (section 50), and the final D-286 real-line rule (section 49); 2026-09-24 — money at large text sizes (section 49); 2026-09-23 — dashboard drill-down integration (section 48); the Windows Analytics workspace (section 47); the Android Home dashboard (section 46); 2026-09-22 — the Windows Overview (section 45); 2026-09-17 — Phase 6 dashboard periods and comparison rules (section 41); Slice 11's corrections and the Slice 12 closure architecture (section 40); 2026-09-13 — the Android P&L surface (section 38); the Windows P&L surface (section 37); Slice 7 reporting security closure (section 36); 2026-09-11 — the Owner Settlement surface and its security boundary (section 35); the Owner Settlement Engine (section 34); the Owner Ledger (section 33), with the V1 ownership vector in §33.3; Phase 5 Slice 6 corrective (section 32); Slice 5 in section 31; Slices 1-4 in sections 27-30
 
 ---
 
@@ -4893,3 +4893,31 @@ file (98 at `d7c7e22`); development's 105 is expected and is not altered.
   from `android/key.properties`, stopped by `verifyReleaseSigning` otherwise; R8 on with
   `proguard-rules.pro`; version from `pubspec.yaml` (D-347).
 * Nothing migrates or copies data between environments.
+
+### 53.6 Production error presentation (Slice 3, D-348)
+
+A user-facing surface shows **one written sentence** and, where reading again can change
+the answer, a **Try again that invalidates the failed input** — never the exception.
+
+```
+        read fails ──► developer.log(where, error, stack)   names: krishna_mis.masters ·
+                │                                                   .revenue · .expenses
+                └────► MasterErrorState(<approved constant>, onRetry: invalidate(<failed provider>))
+                       _Empty(title, revenueLedgerUnreadable, onRetry: …)    (sales ledger)
+                       ExpenseReadFailure(…)                                 (D-323)
+```
+
+* Sentences are constants beside the widget that shows them (`master_chrome.dart`,
+  `revenue_ledger_page.dart`, `expense_entry_page.dart`, `placeholder_page.dart`), so a test
+  and a guard can name them.
+* A curated refusal written for a person (`ServerRefusal.message`, D-113) is screen text; an
+  exception's `toString()`, `runtimeType` or interpolation is not.
+* A retry preserves authority and data semantics: it re-reads the same provider, with the
+  same principal and filter, and nothing else.
+* `test/app/error_presentation_guard_test.dart` enforces the shapes over the corrected files.
+
+**Staging on Windows (D-349)** will resolve its own folder,
+`Krishna Imperial MIS Staging`, and key, `krishna_mis.db_key.staging.v1`, through
+`local_storage_location.dart`, kept outside the plugin store as production is (§53.5).
+Until then staging still resolves the development identity and must not be run on a
+Windows machine holding development data.

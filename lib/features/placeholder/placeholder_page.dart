@@ -1,18 +1,23 @@
-/// Phase 1 placeholder destination.
+/// A destination that holds no working module in this version.
 ///
-/// The objective of Phase 1 is to prove the navigation architecture on both platforms,
-/// not to fake finished features. Each destination states plainly which phase will
-/// build it, so nobody — owner or engineer — mistakes scaffolding for a working module.
+/// Phase 1 used it for every destination, to prove the navigation architecture without
+/// faking finished features. In V1 only Administration remains, and it states plainly
+/// who handles those acts rather than promising a future phase (D-343, D-348).
 library;
 
 import 'package:flutter/material.dart';
 import 'package:krishna_mis/core/design/components/section_header.dart';
 import 'package:krishna_mis/core/design/tokens/app_tokens.dart';
 
+/// The approved V1 wording for the Administration destination (D-343, D-348).
+const administrationNotice =
+    'Users, roles, period close and audit review are handled by the project '
+    'administrator in this version.';
+
 class PlaceholderPage extends StatelessWidget {
   const PlaceholderPage({
     required this.title,
-    required this.arrivesIn,
+    required this.notice,
     super.key,
     this.eyebrow,
     this.summary,
@@ -20,8 +25,8 @@ class PlaceholderPage extends StatelessWidget {
 
   final String title;
 
-  /// e.g. `Phase 3 — Expense Engine`.
-  final String arrivesIn;
+  /// One plain sentence saying what this destination offers in this version.
+  final String notice;
   final String? eyebrow;
   final String? summary;
 
@@ -51,24 +56,16 @@ class PlaceholderPage extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Icon(
-                    Icons.construction,
+                    Icons.info_outline,
                     size: 18,
                     color: AppColors.brass,
                   ),
                   const SizedBox(width: AppSpacing.md),
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Not built yet', style: AppTypography.subheading),
-                        const SizedBox(height: AppSpacing.xs),
-                        Text(
-                          'This destination exists so the navigation architecture can '
-                          'be verified on both Android and Windows. It will be built '
-                          'in $arrivesIn.',
-                          style: AppTypography.bodyMuted,
-                        ),
-                      ],
+                    child: Text(
+                      notice,
+                      key: const Key('placeholder-notice'),
+                      style: AppTypography.bodyMuted,
                     ),
                   ),
                 ],

@@ -13007,3 +13007,80 @@ read as development (1).
   bump it. A replacement Internal Testing AAB raises `versionCode` when, and only when, it is
   actually uploaded (Slice 6).
 * Dev and staging keep their `-dev` / `-staging` name suffixes and their own application ids.
+
+---
+
+# Phase 9 Slice 3 — Pre-release UX wording (2026-10-03)
+
+## D-348 — A production surface shows plain words; the exception goes to the developer log
+**Date:** 2026-10-03 · **Status:** Implemented / Tested (Phase 9 Slice 3, under D-336 §5–6
+and D-343). Presentation only: no business logic, schema, server, authority, paging, sync,
+recovery, signing, manifest, storage identity or export change.
+
+**The rule.** A user-facing surface never shows an exception — not its class name, its text,
+a SQLite, Drift, Supabase or PostgREST message, a provider name, a path or a stack. It shows
+one sentence a person can act on and, where reading again can change the answer, a
+**Try again that genuinely reads again**. The exception, its stack and the surface go to the
+developer log (`dart:developer`, names `krishna_mis.masters`, `krishna_mis.revenue`,
+`krishna_mis.expenses`), never with a password, token, key or financial payload. Curated
+refusal sentences written for a person (`ServerRefusal.message`, D-113) remain screen text.
+D-322, D-323, D-326 and D-328 applied the rule to the surfaces they touched; this entry makes
+it the standard and closes the last six surfaces.
+
+**What each surface now says.**
+
+| Surface | Sentence | Try again |
+|---|---|---|
+| Masters, Windows and Android | *The property structure could not be read on this device. Try again.* | invalidates `masterGraphProvider` |
+| Masters → Tax rates | *Tax configuration could not be read on this device. Try again.* | invalidates whichever of the hierarchy or the rules failed (new — the screen had no retry) |
+| Vendors | *Suppliers could not be read on this device. Try again.* | invalidates `vendorListProvider` for the archived filter on screen (new) |
+| Revenue ledger | title *The sales ledger could not be read*; *Try again. If this keeps happening, restart the app.* | invalidates `filteredRevenueProvider` and `revenueHasMoreProvider` (new) |
+| Expense save failure | *This expense could not be saved. Check Transactions before trying again.* · edit: *This edit could not be saved. Check the expense in Transactions before trying again.* | Save stays available (D-326) |
+
+**The expense sentence stops promising that nothing was recorded.** The old text said
+*"Nothing has been recorded"* and appended `(${error.runtimeType})`. Reading the controller,
+the document's transaction commits **before** its bills are moved on
+(`_attachmentsAwaitExpense`), so a failure there leaves a saved expense — the same reason
+D-326 made Revenue say *"Check Recent sales before trying again"*. The new sentence says what
+to check instead, consistent with Revenue.
+
+**Administration.** The desktop destination (offered to holders of `users.manage`) no longer
+says *"Not built yet … will be built in Phase 2 — Masters & Permissions"*. It says the
+approved V1 sentence: *"Users, roles, period close and audit review are handled by the
+project administrator in this version."* Same page layout; the notice replaced the
+"Not built yet" heading and the construction icon became an information icon, because a
+"construction" mark contradicted the sentence. No administration feature was added.
+
+**Guards.** `test/app/error_presentation_guard_test.dart` reads the corrected files and
+refuses an exception interpolated into a string, `.runtimeType`, an exception's
+`toString()`, a bare exception handed to `Text`/`SelectableText`, and an interpolated
+`AsyncValue.error`. Comments and `developer.log(...)` calls are stripped first, so prose and
+logging cannot trip it; planted controls prove each detector fires and that a comment, a log
+call or `Text(error.message)` does not. It also requires every `MasterErrorState` to pass an
+approved constant and an `onRetry`, the ledger retry to re-read the ledger, and no reachable
+code to say *Not built yet*, *will be built* or name a phase.
+
+**Recorded, not changed.** Other surfaces outside D-343's list (the attachment strip, start-up
+screens, export) already used written sentences; a lib-wide scan found no remaining
+exception rendered on screen. The vendor list is sorted **in place** by `VendorsView`
+(a cascade on the provider's list) — harmless with the repository's growable list, found
+because a test fixture's `const []` refused it; left for a slice that touches vendors.
+
+## D-349 — Windows staging has its own data identity (input register #21)
+**Date:** 2026-10-03 · **Status:** Accepted (project-lead decision). **Not implemented in
+Slice 3**, which is presentation only; built when a staging Windows client is first
+exercised (Slice 4 rehearsal).
+
+| Environment | Windows folder | Database-key name |
+|---|---|---|
+| development | `%APPDATA%\Krishna Imperial\Krishna Imperial MIS` (unchanged, the D-247 folder) | `krishna_mis.db_key.v1` |
+| **staging** | `%APPDATA%\Krishna Imperial\Krishna Imperial MIS Staging` | `krishna_mis.db_key.staging.v1` |
+| production | `%APPDATA%\Krishna Imperial\Krishna Imperial MIS Production` | `krishna_mis.db_key.prod.v1` |
+
+**Binding.** No two environments share an AppData folder, an encrypted database, a key
+namespace, the reporting or staging cache, or a recovery/quarantine directory. D-247 stays
+untouched. Nothing from development is migrated or copied into staging. When the staging
+path is first exercised, the D-346 storage-location guards are extended so staging ≠
+development, staging ≠ production and staging ≠ the D-247 legacy identity, each with a
+positive control. Like production (D-346), staging on Windows must keep its key outside the
+plugin store, whose blob lives in the legacy folder named by `Runner.rc`.

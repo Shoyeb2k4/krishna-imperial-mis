@@ -781,7 +781,7 @@ void main() {
         reason: 'the second press returns before it reaches the controller',
       );
       expect(tester.takeException(), isNull);
-      expect(find.textContaining('was not saved'), findsNothing);
+      expect(find.textContaining('could not be saved'), findsNothing);
       expect(
         await popped,
         saves.single,
@@ -802,7 +802,12 @@ void main() {
 
       expect(saves, hasLength(1));
       expect(tester.takeException(), isNull, reason: 'shown, not thrown');
-      expect(find.textContaining('This expense was not saved'), findsOneWidget);
+      expect(find.text(expenseSaveFailed), findsOneWidget);
+      // The cause stays in the developer log; the screen names neither the exception
+      // type nor its text (D-348).
+      for (final raw in ['StateError', 'Bad state', 'the local write failed']) {
+        expect(find.textContaining(raw), findsNothing, reason: raw);
+      }
       expect(await count('expenses'), 0);
       expect(
         tester

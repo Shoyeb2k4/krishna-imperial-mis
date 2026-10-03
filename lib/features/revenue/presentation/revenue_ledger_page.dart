@@ -15,6 +15,8 @@
 /// devices before anybody noticed.
 library;
 
+import 'dart:developer' as developer;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:krishna_mis/app/providers.dart';
@@ -51,13 +53,31 @@ class _RevenueLedgerPageState extends ConsumerState<RevenueLedgerPage> {
 
     return switch (rows) {
       AsyncLoading() => const Center(child: CircularProgressIndicator()),
-      AsyncError(:final error) => _Empty(
-        key: const Key('revenue-ledger-error'),
-        title: 'The sales ledger could not be read',
-        body: '$error',
+      AsyncError(:final error, :final stackTrace) => _readFailure(
+        error,
+        stackTrace,
       ),
       AsyncData(:final value) => desktop ? _desktop(value) : _mobile(value),
     };
+  }
+
+  /// Plain words and a real retry, never the exception (D-348). The detail goes to the
+  /// developer log, where whoever diagnoses the device can read it.
+  Widget _readFailure(Object error, StackTrace stack) {
+    developer.log(
+      'the sales ledger could not be read',
+      name: 'krishna_mis.revenue',
+      error: error,
+      stackTrace: stack,
+    );
+    return _Empty(
+      key: const Key('revenue-ledger-error'),
+      title: 'The sales ledger could not be read',
+      body: revenueLedgerUnreadable,
+      onRetry: () => ref
+        ..invalidate(filteredRevenueProvider)
+        ..invalidate(revenueHasMoreProvider),
+    );
   }
 
   /// Whether the empty result is "nothing recorded" or "nothing matches".
@@ -533,11 +553,23 @@ class _VoidedChip extends StatelessWidget {
   );
 }
 
+/// What the sales ledger says when this device could not read it (D-348).
+const revenueLedgerUnreadable =
+    'Try again. If this keeps happening, restart the app.';
+
 class _Empty extends StatelessWidget {
-  const _Empty({required this.title, required this.body, super.key});
+  const _Empty({
+    required this.title,
+    required this.body,
+    super.key,
+    this.onRetry,
+  });
 
   final String title;
   final String body;
+
+  /// Present only where reading again can change the answer.
+  final VoidCallback? onRetry;
 
   @override
   Widget build(BuildContext context) => Center(
@@ -557,6 +589,14 @@ class _Empty extends StatelessWidget {
             style: AppTypography.body.copyWith(color: AppColors.inkMuted),
             textAlign: TextAlign.center,
           ),
+          if (onRetry != null) ...[
+            const SizedBox(height: AppSpacing.md),
+            OutlinedButton(
+              key: const Key('revenue-ledger-retry'),
+              onPressed: onRetry,
+              child: const Text('Try again'),
+            ),
+          ],
         ],
       ),
     ),

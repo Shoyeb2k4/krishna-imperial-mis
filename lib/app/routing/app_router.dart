@@ -124,12 +124,11 @@ abstract final class AppRouter {
           ),
           _branch(
             AppRoutes.administration,
+            // V1 builds no administration screens; the destination says who handles
+            // these acts instead of promising a phase (D-343, D-348).
             const PlaceholderPage(
               title: 'Administration',
-              arrivesIn: 'Phase 2 — Masters & Permissions',
-              summary:
-                  'Users, roles and capabilities, period close, audit log, settings '
-                  'and sync health.',
+              notice: administrationNotice,
             ),
           ),
         ],

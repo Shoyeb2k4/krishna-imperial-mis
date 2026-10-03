@@ -4,6 +4,8 @@
 /// whether the manager is at the workstation or on their phone.
 library;
 
+import 'dart:developer' as developer;
+
 import 'package:flutter/material.dart';
 import 'package:krishna_mis/core/design/tokens/app_tokens.dart';
 import 'package:krishna_mis/domain/masters/master_usage.dart';
@@ -201,7 +203,31 @@ class MasterEmptyState extends StatelessWidget {
   }
 }
 
+/// What the master, tax and vendor surfaces say when this device could not read them.
+///
+/// Plain words a manager can act on (D-348). The exception never reaches the screen: a
+/// raw SQLite or Drift message, a provider name or a stack trace tells nobody what to do,
+/// and can carry a local file path.
+const masterStructureUnreadable =
+    'The property structure could not be read on this device. Try again.';
+const taxConfigurationUnreadable =
+    'Tax configuration could not be read on this device. Try again.';
+const suppliersUnreadable =
+    'Suppliers could not be read on this device. Try again.';
+
+/// Records a read failure for diagnosis, off screen (D-348, as D-323 does for expenses).
+void logMasterReadFailure(String where, Object error, StackTrace? stack) =>
+    developer.log(
+      '$where could not be read',
+      name: 'krishna_mis.masters',
+      error: error,
+      stackTrace: stack,
+    );
+
 /// A quiet inline error. Financial software should explain, not shout.
+///
+/// [message] is a sentence written for a person — one of the constants above — never an
+/// exception's text.
 class MasterErrorState extends StatelessWidget {
   const MasterErrorState(this.message, {super.key, this.onRetry});
 
@@ -230,7 +256,11 @@ class MasterErrorState extends StatelessWidget {
               SelectableText(message, style: AppTypography.bodyMuted),
               if (onRetry != null) ...[
                 const SizedBox(height: AppSpacing.lg),
-                TextButton(onPressed: onRetry, child: const Text('Try again')),
+                TextButton(
+                  key: const Key('master-read-retry'),
+                  onPressed: onRetry,
+                  child: const Text('Try again'),
+                ),
               ],
             ],
           ),

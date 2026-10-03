@@ -12,6 +12,8 @@
 /// says offline is "Saved · Pending sync", not an error.
 library;
 
+import 'dart:developer' as developer;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:krishna_mis/app/providers.dart';
@@ -26,6 +28,12 @@ import 'package:krishna_mis/features/expenses/presentation/widgets/amount_field.
 import 'package:krishna_mis/features/expenses/presentation/widgets/classification_picker.dart';
 import 'package:krishna_mis/features/expenses/presentation/widgets/expense_optional_details.dart';
 import 'package:krishna_mis/features/expenses/presentation/widgets/expense_read_failure.dart';
+
+/// What the form says when a save fails for a reason other than a refusal (D-348).
+const expenseSaveFailed =
+    'This expense could not be saved. Check Transactions before trying again.';
+const expenseEditSaveFailed =
+    'This edit could not be saved. Check the expense in Transactions before trying again.';
 
 class ExpenseEntryPage extends ConsumerStatefulWidget {
   const ExpenseEntryPage({super.key}) : editing = null, capturedAt = null;
@@ -302,18 +310,23 @@ class _ExpenseEntryPageState extends ConsumerState<ExpenseEntryPage> {
         ),
       );
       Navigator.of(context).pop(outcome.expenseId);
-    } on Object catch (error) {
+    } on Object catch (error, stack) {
+      // The detail goes to the developer log, never to the screen (D-348). The sentence
+      // does not promise that nothing was recorded: the document's transaction commits
+      // before its bills are moved on, so a failure after it can leave a saved expense.
+      // It says what to check instead, as Revenue entry does (D-326).
+      developer.log(
+        _isEdit
+            ? 'an expense edit could not be saved'
+            : 'an expense could not be saved',
+        name: 'krishna_mis.expenses',
+        error: error,
+        stackTrace: stack,
+      );
       if (!mounted) return;
       setState(() {
         _saving = false;
-        // Nothing was written: the local save is one transaction, and it either
-        // committed or it did not. Saying so plainly matters more here than in a
-        // create — the document the user was correcting is still exactly as it was.
-        _failure = _isEdit
-            ? 'This edit was not saved. The expense is unchanged. '
-                  '(${error.runtimeType})'
-            : 'This expense was not saved. Nothing has been recorded. '
-                  '(${error.runtimeType})';
+        _failure = _isEdit ? expenseEditSaveFailed : expenseSaveFailed;
       });
     }
   }

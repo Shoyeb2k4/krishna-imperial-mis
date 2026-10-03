@@ -1980,7 +1980,7 @@ void main() {
 
       // If the screen is saying why it could not save, that is the useful failure —
       // "no row appeared" is not.
-      final notice = find.textContaining('was not saved');
+      final notice = find.textContaining('could not be saved');
       if (notice.evaluate().isNotEmpty) {
         fail(
           'the save was refused on screen: '
@@ -2458,7 +2458,7 @@ void main() {
     while (DateTime.now().isBefore(deadline)) {
       await tester.pump(const Duration(milliseconds: 250));
 
-      final refusal = find.textContaining('was not saved');
+      final refusal = find.textContaining('could not be saved');
       if (refusal.evaluate().isNotEmpty) {
         fail(
           'the edit was refused on screen: '

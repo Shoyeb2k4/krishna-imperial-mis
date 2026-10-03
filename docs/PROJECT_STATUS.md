@@ -5,7 +5,9 @@ Business: Hotel Krishna Imperial · Project: Krishna Imperial MIS ·
 Domain: hotelkrishnaimperial.in
 Project Lead / Product Decision-Maker: Shoyeb Akhtar (not the proprietor of the business;
 the application role named **Owner** is a separate concept — D-057)
-Last updated: **2026-10-03** — **PHASE 9 SLICE 2 — RELEASE-BUILD HARDENING: COMPLETE** (D-346, D-347): all six D-335 blockers fixed. `INTERNET` is in the production manifest; Android release builds are signed only with the upload key from a git-ignored `android/key.properties` and stop without it (no debug fallback); R8 runs with an existing, empty rules file; a production build with no backend, with the dev backend, or with a mismatched flavour refuses to start; and production keeps its local data in `%APPDATA%\Krishna Imperial\Krishna Imperial MIS Production` with key `krishna_mis.db_key.prod.v1` (its own DPAPI key file on Windows), never the D-247 folder. Host suite **3,223 passed**. No schema, migration, server or Supabase change. **Slice 3 is not started.** See *Phase 9 Slice 2* at the end of this file.
+Last updated: **2026-10-03** — **PHASE 9 SLICE 3 — PRE-RELEASE UX WORDING: COMPLETE** (D-348, D-349): the six named surfaces (Masters on both shells, Tax rates, Vendors, the Revenue ledger, the Expense save failure) now show one plain sentence and, for reads, a Try again that genuinely reads again; the exception goes to the developer log only. The Administration destination states the approved V1 sentence instead of a Phase 2 promise. The Windows staging data identity is approved (D-349) and is built when staging is first exercised. Host suite **3,248 passed**. Presentation only: no schema, server, authority or storage change. **Slice 4 is not started.** See *Phase 9 Slice 3* at the end of this file.
+
+Previously: **2026-10-03** — **PHASE 9 SLICE 2 — RELEASE-BUILD HARDENING: COMPLETE** (D-346, D-347): all six D-335 blockers fixed. `INTERNET` is in the production manifest; Android release builds are signed only with the upload key from a git-ignored `android/key.properties` and stop without it (no debug fallback); R8 runs with an existing, empty rules file; a production build with no backend, with the dev backend, or with a mismatched flavour refuses to start; and production keeps its local data in `%APPDATA%\Krishna Imperial\Krishna Imperial MIS Production` with key `krishna_mis.db_key.prod.v1` (its own DPAPI key file on Windows), never the D-247 folder. Host suite **3,223 passed**. No schema, migration, server or Supabase change. **Slice 3 is not started.** See *Phase 9 Slice 2* at the end of this file.
 
 Previously: **2026-10-03** — **PHASE 9 — PRODUCTION RELEASE, DEPLOYMENT & GO-LIVE: STARTED. Slice 1 (governance and production inputs) is complete** (D-334 … D-345): the release contract, six verified release blockers for Slice 2, the authoritative replay contract (98 committed migration files), the read-only production smoke policy, the product-lead input register, the secrets register and the runbook skeleton (`docs/PRODUCTION_RUNBOOK.md`). Documentation only: no code, schema, server, signing or build change. **Slice 2 is not started.** See *PHASE 9* at the end of this file.
 
@@ -189,9 +191,10 @@ drill-down, and the Owner Accounts ledger, settlement engine and preview surface
 ## Current phase
 
 **Phase 9 — Production Release, Deployment & Go-Live: IN PROGRESS (started 2026-10-03).** Slices 1
-(governance and production inputs) and 2 (release-build hardening, D-346, D-347) are complete;
-Slices 3–9 are not started. Its record is *PHASE 9* at the **end** of this file. *(This read
-"Slice 1 is complete; Slices 2–9 are not started" until Slice 2.)*
+(governance and production inputs), 2 (release-build hardening, D-346, D-347) and 3 (pre-release
+UX wording, D-348, D-349) are complete; Slices 4–9 are not started. Its record is *PHASE 9* at the
+**end** of this file. *(This read "Slice 1 is complete; Slices 2–9 are not started" until Slice 2,
+and "Slices 3–9 are not started" until Slice 3.)*
 
 **Phase 8 — Performance, Hardening & Recovery: COMPLETE and formally closed (2026-10-03, Slice 9,
 D-333).** Its authoritative record is *PHASE 8 — PERFORMANCE, HARDENING & RECOVERY: COMPLETE AND
@@ -8118,7 +8121,7 @@ closed V1 to a production backend, signed releases on both platforms, and a go-l
 |---|---|---|
 | 1 | Governance and production inputs | **COMPLETE** |
 | 2 | Release-build hardening | **COMPLETE** (D-346, D-347) |
-| 3 | Pre-release UX wording | not started |
+| 3 | Pre-release UX wording | **COMPLETE** (D-348) |
 | 4 | Authoritative migration replay and rehearsal | not started |
 | 5 | Production Supabase | not started |
 | 6 | Android release, AAB, Play Internal Testing | not started |
@@ -8191,7 +8194,7 @@ project lead's own answer, recorded in a decision.
 | 18 | Go-live date | REQUIRED BEFORE SLICE 8 | PENDING |
 | 19 | 50:50 ownership effective-from date | OPTIONAL / NON-BLOCKING for Phase 9 — blocks production Owner Settlement only | UNKNOWN |
 | 20 | D-247 disposition | REQUIRED BEFORE any normal build runs on this workstation; NON-BLOCKING for release work done in isolation | PENDING |
-| 21 | Windows staging data identity — today staging shares the development folder and key (D-346) | REQUIRED BEFORE a staging client runs on Windows (Slice 4 rehearsal) | PENDING |
+| 21 | Windows staging data identity — today staging shares the development folder and key (D-346) | REQUIRED BEFORE a staging client runs on Windows (Slice 4 rehearsal) | **APPROVED** — `Krishna Imperial MIS Staging`, `krishna_mis.db_key.staging.v1` (D-349); built and guarded when staging is first exercised |
 
 ### Unresolved product-lead decisions
 
@@ -8281,3 +8284,57 @@ type, #7 privacy-policy URL, #9 administration path, #10 staff list, #11 Site UR
 50:50 date, #20 D-247, and new **#21 Windows staging data identity**. Signing: the real upload
 keystore and `android/key.properties` exist only on the project lead's release machine, created
 by the project lead (runbook §7).
+
+## Phase 9 Slice 3 — Pre-release UX wording: **COMPLETE** (2026-10-03)
+
+Decisions **D-348** (the error-presentation rule) and **D-349** (Windows staging identity,
+input register #21 approved, not yet built). `ARCHITECTURE.md` §53.6; `RELEASE_CHECKLIST.md`
+§W.3. **Presentation only.** No business logic, schema, migration, server, authority,
+paging, sync, recovery, signing, manifest, storage-identity or export change. Local Drift
+schema **v22**; `krishna-mis-dev` ledger **105**, reviewed API **57**, untouched.
+
+### In plain words
+
+When a screen cannot read its data, it now says so in a sentence anybody can act on and
+offers a Try again that actually reads again. The technical cause is kept for whoever
+diagnoses the device, in the developer log, and is no longer printed on screen. The
+Administration page no longer says it "will be built in Phase 2"; it says who handles those
+tasks in this version.
+
+### What each surface says
+
+| Surface | Text | Try again |
+|---|---|---|
+| Masters (Windows, Android) | *The property structure could not be read on this device. Try again.* | re-reads the hierarchy |
+| Tax rates | *Tax configuration could not be read on this device. Try again.* | re-reads whichever input failed (new) |
+| Vendors | *Suppliers could not be read on this device. Try again.* | re-reads the list for the filter on screen (new) |
+| Revenue ledger | *The sales ledger could not be read* · *Try again. If this keeps happening, restart the app.* | re-reads the ledger page (new) |
+| Expense save failure | *This expense could not be saved. Check Transactions before trying again.* (edit: *This edit could not be saved. Check the expense in Transactions before trying again.*) | Save stays available (D-326) |
+| Administration | *Users, roles, period close and audit review are handled by the project administrator in this version.* | — |
+
+The expense sentence no longer claims *"Nothing has been recorded"*: the expense commits
+before its bills are moved on, so that claim could be false (D-348).
+
+### Verified
+
+| Item | Status | Evidence |
+|---|---|---|
+| Regression tests | **Tested** | `test/features/pre_release_wording_test.dart`, 10: Masters ×2, Tax ×3, Vendors ×2, Revenue ledger ×2 (each: plain words, no raw text, fits at 1366×768 and 360×740, Try again re-reads with automatic retry off), Administration on the real desktop router |
+| Expense save failure | **Tested** | `expense_ui_test.dart` D-326 retry test now asserts the new sentence and no `StateError` / `Bad state` / exception text |
+| Structural guard | **Tested** | `test/app/error_presentation_guard_test.dart`, 15, with planted controls for every detector and for false positives (comments, log calls, `Text(error.message)`) |
+| Presentation controls C1–C7 (raw `$error`, `${failed.error}`, `runtimeType`, the old Phase 2 notice — one per surface) | **Tested** | each RED in its regression **and** in the guard (+13 −2); every file restored byte-identically (`cmp`) |
+| No-op Try again controls (Masters, Tax, Vendors, Revenue ledger) | **Tested** | each RED (−1 / −2 / −2 / −2); restored byte-identically |
+| Targeted suites (Masters, Vendors/Tax, Revenue ledger ×3, Revenue UI, Expense UI and ledger, routing, P&L wiring, surface guards, account control, docs, missed-tap, one-shot, migration audit, schema parity) | **Tested** | **389 passed** |
+| Full host suite | **Tested** | **3,248 passed**, 0 failed (3,223 + 25) |
+| `dart format --set-exit-if-changed` | **Tested** | 439 files, 0 changed |
+| `flutter analyze` | **Tested** | No issues found |
+| Live suites, device runs | **Not run** | no server or platform-specific behaviour changed |
+
+### Recorded, not changed
+
+* `VendorsView` sorts the provider's list in place (found by a test fixture's `const []`);
+  harmless with the repository's growable list.
+* Two acceptance-suite diagnostics matched the old *"was not saved"* wording and would have
+  gone silent; they now match *"could not be saved"*.
+* A lib-wide scan found no other surface rendering an exception.
+

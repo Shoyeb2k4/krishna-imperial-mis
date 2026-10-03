@@ -51,7 +51,13 @@ class VendorsView extends ConsumerWidget {
 
     return vendorsAsync.when(
       loading: () => const QuietLoading(label: 'Loading vendors…'),
-      error: (error, _) => MasterErrorState('$error'),
+      error: (error, stack) {
+        logMasterReadFailure('the supplier list', error, stack);
+        return MasterErrorState(
+          suppliersUnreadable,
+          onRetry: () => ref.invalidate(vendorListProvider(showArchived)),
+        );
+      },
       data: (vendors) {
         final term = ref.watch(vendorSearchProvider).trim().toLowerCase();
         final filtered =
